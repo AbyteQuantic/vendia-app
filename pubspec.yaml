@@ -1,0 +1,72 @@
+name: vendia_pos
+description: VendIA — POS inteligente para tenderos colombianos
+publish_to: 'none'
+version: 2.0.0+1
+
+environment:
+  sdk: '>=3.3.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # Estado
+  provider: ^6.1.2
+
+  # Networking
+  dio: ^5.7.0
+
+  # Animaciones y UI
+  shimmer: ^3.0.0
+  animate_do: ^3.3.4
+  flutter_svg: ^2.0.10+1
+  rive: ^0.13.6
+
+  # Almacenamiento seguro del JWT
+  flutter_secure_storage: ^9.2.2
+
+  # Almacenamiento local simple
+  shared_preferences: ^2.3.3
+
+  # Base de datos local offline-first
+  isar: ^3.1.0+1
+  isar_flutter_libs: ^3.1.0+1
+  path_provider: ^2.1.0
+
+  # UUIDs para entidades
+  uuid: ^4.0.0
+
+  # Conectividad
+  connectivity_plus: ^6.0.0
+
+  # Escáner de código de barras (cámara nativa)
+  mobile_scanner: ^5.2.3
+
+  # Captura de fotos (facturas, productos)
+  image_picker: ^1.1.2
+
+  # QR para pagos Nequi/Daviplata
+  qr_flutter: ^4.1.0
+
+  # Deep links (WhatsApp)
+  url_launcher: ^6.2.0
+
+  # Variables de entorno
+  flutter_dotenv: ^5.2.1
+
+  # Utilidades
+  intl: ^0.19.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^4.0.0
+  isar_generator: ^3.1.0+1
+  build_runner: ^2.4.0
+
+flutter:
+  uses-material-design: true
+  assets:
+    - .env
+    - assets/images/
+    - assets/rive/
