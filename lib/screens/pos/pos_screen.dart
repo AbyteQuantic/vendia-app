@@ -9,6 +9,7 @@ import '../../widgets/sync_status_banner.dart';
 import 'cart_controller.dart';
 import 'account_qr_screen.dart';
 import 'widgets/container_dialog.dart';
+import '../inventory/add_merchandise_screen.dart';
 
 /// PosScreen — Premium POS module with 10 independent carts.
 /// Provides its own CartController via ChangeNotifierProvider.
@@ -78,6 +79,20 @@ class _PosScreenBodyState extends State<_PosScreenBody> {
   Widget build(BuildContext context) {
     return Consumer<CartController>(
       builder: (context, ctrl, _) {
+        // Si no hay productos reales, mostrar guía de inventario
+        if (!ctrl.hasRealProducts) {
+          return _EmptyInventoryGuide(
+            onAddInventory: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (_) => const AddMerchandiseScreen(),
+                ),
+              );
+            },
+            onGoBack: () => Navigator.of(context).pop(),
+          );
+        }
+
         return Scaffold(
           backgroundColor: Colors.transparent,
           body: Container(
@@ -1193,6 +1208,96 @@ class _HeaderBadgeIcon extends StatelessWidget {
                     ),
                   ),
                 ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Pantalla guía cuando el inventario está vacío.
+class _EmptyInventoryGuide extends StatelessWidget {
+  final VoidCallback onAddInventory;
+  final VoidCallback onGoBack;
+
+  const _EmptyInventoryGuide({
+    required this.onAddInventory,
+    required this.onGoBack,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: AppTheme.background,
+      body: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            children: [
+              // Back button
+              Align(
+                alignment: Alignment.centerLeft,
+                child: IconButton(
+                  onPressed: onGoBack,
+                  icon: const Icon(Icons.arrow_back_rounded,
+                      size: 28, color: AppTheme.textPrimary),
+                ),
+              ),
+              const Spacer(),
+              // Ilustración
+              Container(
+                width: 120,
+                height: 120,
+                decoration: BoxDecoration(
+                  color: AppTheme.primary.withValues(alpha: 0.08),
+                  borderRadius: BorderRadius.circular(36),
+                ),
+                child: const Icon(
+                  Icons.inventory_2_outlined,
+                  size: 64,
+                  color: AppTheme.primary,
+                ),
+              ),
+              const SizedBox(height: 28),
+              const Text(
+                'Su inventario está vacío',
+                style: TextStyle(
+                  fontSize: 26,
+                  fontWeight: FontWeight.bold,
+                  color: AppTheme.textPrimary,
+                ),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 12),
+              Text(
+                'Para empezar a vender, primero necesita\nagregar sus productos al inventario.',
+                style: TextStyle(
+                  fontSize: 18,
+                  color: Colors.grey.shade600,
+                  height: 1.5,
+                ),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 36),
+              // CTA principal
+              ElevatedButton.icon(
+                onPressed: onAddInventory,
+                icon: const Icon(Icons.add_business_rounded, size: 26),
+                label: const Text('Agregar mercancía'),
+              ),
+              const SizedBox(height: 14),
+              Text(
+                'Puede fotografiar su factura y la IA\ndetectará los productos automáticamente.',
+                style: TextStyle(
+                  fontSize: 16,
+                  color: Colors.grey.shade500,
+                  fontStyle: FontStyle.italic,
+                  height: 1.4,
+                ),
+                textAlign: TextAlign.center,
+              ),
+              const Spacer(),
             ],
           ),
         ),

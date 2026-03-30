@@ -6,6 +6,7 @@ import '../../widgets/panic_button.dart';
 import '../../widgets/sync_status_banner.dart';
 import '../admin/admin_hub_screen.dart';
 import '../fiar/fiar_screen.dart';
+import '../inventory/add_merchandise_screen.dart';
 import '../tables/tables_screen.dart';
 
 class MainDashboardScreen extends StatefulWidget {
@@ -203,7 +204,7 @@ class _MainDashboardScreenState extends State<MainDashboardScreen> {
                             ),
                             const SizedBox(height: 16),
 
-                            // Bottom row: ADMINISTRAR (+ VENDER if post_payment)
+                            // Middle row: INVENTARIO (+ VENDER if post_payment)
                             Expanded(
                               flex: 2,
                               child: Row(
@@ -221,6 +222,21 @@ class _MainDashboardScreenState extends State<MainDashboardScreen> {
                                     ),
                                     const SizedBox(width: 16),
                                   ],
+                                  Expanded(
+                                    child: _DashButton(
+                                      keyVal: const Key('btn_inventario'),
+                                      label: 'INVENTARIO',
+                                      icon: Icons.inventory_2_rounded,
+                                      color: const Color(0xFF7C3AED),
+                                      onTap: () => Navigator.of(context).push(
+                                        MaterialPageRoute(
+                                          builder: (_) =>
+                                              const AddMerchandiseScreen(),
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 16),
                                   Expanded(
                                     child: _DashButton(
                                       keyVal: const Key('btn_administrar'),

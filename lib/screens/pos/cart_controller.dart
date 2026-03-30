@@ -87,6 +87,8 @@ class CartController extends ChangeNotifier {
   int cartCount(int index) =>
       _carts[index].fold(0, (sum, item) => sum + item.quantity);
 
+  bool get hasRealProducts => _products.isNotEmpty;
+
   List<Product> get allProducts =>
       _products.isNotEmpty ? _products : mockProducts;
 
