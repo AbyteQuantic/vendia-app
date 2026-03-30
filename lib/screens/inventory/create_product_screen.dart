@@ -216,7 +216,7 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
       // Fixed save button at the very bottom — never inside a scroll.
       bottomNavigationBar: SafeArea(
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
           child: SizedBox(
             height: 60,
             child: DecoratedBox(
@@ -513,29 +513,66 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
 
                 const SizedBox(height: 14),
 
-                // ── Quantity ────────────────────────────────────────────────
-                _fieldLabel('Cantidad'),
-                const SizedBox(height: 6),
-                TextFormField(
-                  controller: _quantityCtrl,
-                  keyboardType: TextInputType.number,
-                  style: const TextStyle(fontSize: 18),
-                  textInputAction: TextInputAction.done,
-                  inputFormatters: [
-                    FilteringTextInputFormatter.digitsOnly,
+                // ── Quantity stepper ───────────────────────────────────────
+                Row(
+                  children: [
+                    _fieldLabel('Cantidad'),
+                    const Spacer(),
+                    // Decrease
+                    GestureDetector(
+                      onTap: () {
+                        final current = int.tryParse(_quantityCtrl.text) ?? 1;
+                        if (current > 1) {
+                          _quantityCtrl.text = '${current - 1}';
+                          setState(() {});
+                        }
+                      },
+                      child: Container(
+                        width: 48,
+                        height: 48,
+                        decoration: BoxDecoration(
+                          color: AppTheme.surfaceGrey,
+                          borderRadius: BorderRadius.circular(14),
+                          border: Border.all(color: AppTheme.borderColor),
+                        ),
+                        child: const Icon(Icons.remove_rounded,
+                            color: AppTheme.textPrimary, size: 24),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    // Value
+                    SizedBox(
+                      width: 60,
+                      child: Text(
+                        _quantityCtrl.text.isEmpty ? '1' : _quantityCtrl.text,
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(
+                          fontSize: 24,
+                          fontWeight: FontWeight.bold,
+                          color: AppTheme.textPrimary,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    // Increase
+                    GestureDetector(
+                      onTap: () {
+                        final current = int.tryParse(_quantityCtrl.text) ?? 1;
+                        _quantityCtrl.text = '${current + 1}';
+                        setState(() {});
+                      },
+                      child: Container(
+                        width: 48,
+                        height: 48,
+                        decoration: BoxDecoration(
+                          color: AppTheme.primary,
+                          borderRadius: BorderRadius.circular(14),
+                        ),
+                        child: const Icon(Icons.add_rounded,
+                            color: Colors.white, size: 24),
+                      ),
+                    ),
                   ],
-                  decoration: _inputDecoration(
-                    hint: '1',
-                    icon: Icons.numbers_rounded,
-                    iconColor: AppTheme.primary,
-                  ),
-                  validator: (v) {
-                    if (v == null || v.isEmpty) return 'Requerido';
-                    if (int.tryParse(v) == null || int.parse(v) < 1) {
-                      return 'Minimo 1';
-                    }
-                    return null;
-                  },
                 ),
               ],
             ),
