@@ -11,15 +11,27 @@ import 'account_qr_screen.dart';
 import 'widgets/container_dialog.dart';
 
 /// PosScreen — Premium POS module with 10 independent carts.
-/// Consumes CartController via Provider.
-class PosScreen extends StatefulWidget {
+/// Provides its own CartController via ChangeNotifierProvider.
+class PosScreen extends StatelessWidget {
   const PosScreen({super.key});
 
   @override
-  State<PosScreen> createState() => _PosScreenState();
+  Widget build(BuildContext context) {
+    return ChangeNotifierProvider(
+      create: (_) => CartController(),
+      child: const _PosScreenBody(),
+    );
+  }
 }
 
-class _PosScreenState extends State<PosScreen> {
+class _PosScreenBody extends StatefulWidget {
+  const _PosScreenBody();
+
+  @override
+  State<_PosScreenBody> createState() => _PosScreenBodyState();
+}
+
+class _PosScreenBodyState extends State<_PosScreenBody> {
   final _searchCtrl = TextEditingController();
 
   @override
