@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:uuid/uuid.dart';
+import '../../database/database_service.dart';
+import '../../database/collections/local_product.dart';
 import '../../theme/app_theme.dart';
 import '../../utils/format_cop.dart';
 import 'price_calculator_screen.dart';
@@ -282,8 +285,27 @@ class _PricePendingScreenState extends State<PricePendingScreen> {
                   width: double.infinity,
                   height: 64,
                   child: ElevatedButton.icon(
-                    onPressed: () {
+                    onPressed: () async {
                       HapticFeedback.mediumImpact();
+                      // Guardar todos los productos en Isar
+                      try {
+                        const uuid = Uuid();
+                        final localProducts = _products
+                            .where((p) => p.salePrice != null)
+                            .map((p) => LocalProduct()
+                              ..uuid = uuid.v4()
+                              ..name = p.name
+                              ..price = p.salePrice!
+                              ..stock = 1
+                              ..isAvailable = true
+                              ..requiresContainer = false
+                              ..containerPrice = 0
+                              ..clientUpdatedAt = DateTime.now())
+                            .toList();
+                        await DatabaseService.instance
+                            .upsertProducts(localProducts);
+                      } catch (_) {}
+                      if (!context.mounted) return;
                       // Pop back to root of inventory flow
                       Navigator.of(context)
                         ..pop()

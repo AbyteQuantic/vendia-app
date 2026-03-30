@@ -2,6 +2,9 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:uuid/uuid.dart';
+import '../../database/database_service.dart';
+import '../../database/collections/local_product.dart';
 import '../../theme/app_theme.dart';
 import '../pos/scan_screen.dart';
 
@@ -60,12 +63,26 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
     setState(() => _saving = true);
     HapticFeedback.lightImpact();
 
-    // Simulate save delay
-    await Future.delayed(const Duration(milliseconds: 600));
+    try {
+      final product = LocalProduct()
+        ..uuid = const Uuid().v4()
+        ..name = _nameCtrl.text.trim()
+        ..price = double.tryParse(_sellPriceCtrl.text.trim()) ?? 0
+        ..stock = int.tryParse(_quantityCtrl.text.trim()) ?? 1
+        ..imageUrl = _photoPath
+        ..isAvailable = true
+        ..requiresContainer = false
+        ..containerPrice = 0
+        ..clientUpdatedAt = DateTime.now();
+
+      await DatabaseService.instance.upsertProduct(product);
+    } catch (_) {
+      // Best effort save
+    }
 
     if (!mounted) return;
     HapticFeedback.mediumImpact();
-    Navigator.of(context).pop();
+    Navigator.of(context).pop(true);
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Row(
