@@ -8,6 +8,7 @@ import '../../theme/app_theme.dart';
 import '../../widgets/shimmer_box.dart';
 import '../../widgets/stat_card.dart';
 import '../auth/login_screen.dart';
+import '../inventory/add_merchandise_screen.dart';
 import '../pos/pos_screen.dart';
 
 class DashboardScreen extends StatefulWidget {
@@ -318,21 +319,34 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 // ── CTA: Nueva venta ─────────────────────────────────────────
                 SliverToBoxAdapter(
                   child: Padding(
-                    padding: const EdgeInsets.fromLTRB(24, 4, 24, 40),
-                    child: Semantics(
-                      button: true,
-                      label: 'Registrar nueva venta',
-                      child: ElevatedButton.icon(
-                        onPressed: () async {
-                          HapticFeedback.lightImpact();
-                          await Navigator.of(context).push(MaterialPageRoute(
-                            builder: (_) => const PosScreen(),
-                          ));
-                          _refresh();
-                        },
-                        icon: const Icon(Icons.add_rounded, size: 26),
-                        label: const Text('Registrar nueva venta'),
-                      ),
+                    padding: const EdgeInsets.fromLTRB(24, 4, 24, 12),
+                    child: ElevatedButton.icon(
+                      onPressed: () async {
+                        HapticFeedback.lightImpact();
+                        await Navigator.of(context).push(MaterialPageRoute(
+                          builder: (_) => const PosScreen(),
+                        ));
+                        _refresh();
+                      },
+                      icon: const Icon(Icons.add_rounded, size: 26),
+                      label: const Text('Registrar nueva venta'),
+                    ),
+                  ),
+                ),
+
+                // ── CTA: Inventario ─────────────────────────────────────────
+                SliverToBoxAdapter(
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(24, 0, 24, 40),
+                    child: OutlinedButton.icon(
+                      onPressed: () {
+                        HapticFeedback.lightImpact();
+                        Navigator.of(context).push(MaterialPageRoute(
+                          builder: (_) => const AddMerchandiseScreen(),
+                        ));
+                      },
+                      icon: const Icon(Icons.inventory_2_rounded, size: 24),
+                      label: const Text('Administrar inventario'),
                     ),
                   ),
                 ),
