@@ -41,19 +41,28 @@ class OnboardingStepperController extends ChangeNotifier {
   String nit = '';
   String address = '';
 
-  // ── Paso 3: Configuración ─────────────────────────────────────────────────
-  String businessType = '';
+  // ── Paso 2.5: Multi-sede ──────────────────────────────────────────────────
+  bool hasMultipleBranches = false;
+
+  // ── Paso 3: Configuración (Portafolios — selección múltiple) ────────────
+  List<String> businessTypes = [];
   List<String> saleTypes = ['products'];
   bool hasShowcases = false;
   bool hasTables = false;
+
+  // Backward compat getter (tipo principal = primero de la lista)
+  String get businessType =>
+      businessTypes.isNotEmpty ? businessTypes.first : '';
 
   // ── Paso 4: Empleados ─────────────────────────────────────────────────────
   bool? hasEmployees; // null = sin respuesta, true = sí, false = no
 
   // ── Navegación ────────────────────────────────────────────────────────────
 
+  static const int totalSteps = 5; // 0..4
+
   void nextStep() {
-    if (_currentStep < 3) {
+    if (_currentStep < totalSteps - 1) {
       _currentStep++;
       notifyListeners();
     }
@@ -67,8 +76,25 @@ class OnboardingStepperController extends ChangeNotifier {
     }
   }
 
+  void toggleBusinessType(String type) {
+    if (businessTypes.contains(type)) {
+      businessTypes.remove(type);
+    } else {
+      businessTypes.add(type);
+    }
+    // Auto-activar mesas si tiene bar
+    if (businessTypes.contains('bar')) hasTables = true;
+    notifyListeners();
+  }
+
+  // Legacy single-select (usado por step_business_type viejo)
   void selectBusinessType(String type) {
-    businessType = type;
+    businessTypes = [type];
+    notifyListeners();
+  }
+
+  void setMultipleBranches(bool value) {
+    hasMultipleBranches = value;
     notifyListeners();
   }
 
@@ -113,7 +139,9 @@ class OnboardingStepperController extends ChangeNotifier {
         'razon_social': razonSocial,
         'nit': nit,
         'address': address,
-        'type': businessType,
+        'type': businessType, // tipo principal
+        'types': businessTypes, // todos los portafolios
+        'has_multiple_branches': hasMultipleBranches,
       },
       'config': {
         'sale_types': saleTypes,

@@ -8,6 +8,7 @@ import '../dashboard/main_dashboard_screen.dart';
 import 'onboarding_stepper_controller.dart';
 import 'steps/step_owner.dart';
 import 'steps/step_business.dart';
+import 'steps/step_branches.dart';
 import 'steps/step_config.dart';
 import 'steps/step_employees.dart';
 
@@ -62,19 +63,17 @@ class _OnboardingStepperState extends State<OnboardingStepper> {
   // Un FormKey por paso con campos de formulario
   final _formKeys = [
     GlobalKey<FormState>(), // Paso 1 — Propietario
-    GlobalKey<FormState>(), // Paso 2 — Tienda
+    GlobalKey<FormState>(), // Paso 2 — Negocio
   ];
 
-  // Títulos y subtítulos de cada paso
+  // Títulos y subtítulos de cada paso (5 pasos)
   static const _stepTitles = [
-    ('Paso 1 de 4', 'Sus datos personales'),
-    ('Paso 2 de 4', 'Datos del negocio'),
-    ('Paso 3 de 4', 'Tipo de negocio'),
-    ('Paso 4 de 4', 'Sus empleados'),
+    ('Paso 1 de 5', 'Sus datos personales'),
+    ('Paso 2 de 5', 'Datos del negocio'),
+    ('Paso 3 de 5', '¿Tiene más de un local?'),
+    ('Paso 4 de 5', '¿Qué vende en su negocio?'),
+    ('Paso 5 de 5', 'Sus empleados'),
   ];
-
-  // Etiqueta del error de config (paso 3)
-  bool _showConfigError = false;
 
   @override
   void initState() {
@@ -120,13 +119,11 @@ class _OnboardingStepperState extends State<OnboardingStepper> {
       _formKeys[step].currentState!.save();
     }
 
-    // Paso 3 (config): verificar que se seleccionó tipo de negocio
-    if (step == 2) {
-      if (_ctrl.businessType.isEmpty) {
-        setState(() => _showConfigError = true);
+    // Paso 4 (config/portafolios): verificar que se seleccionó al menos un tipo
+    if (step == 3) {
+      if (_ctrl.businessTypes.isEmpty) {
         return;
       }
-      setState(() => _showConfigError = false);
     }
 
     _ctrl.nextStep();
@@ -157,7 +154,7 @@ class _OnboardingStepperState extends State<OnboardingStepper> {
           builder: (ctx, ctrl, _) {
             final step = ctrl.currentStep;
             final (stepLabel, stepTitle) = _stepTitles[step];
-            final isLastStep = step == 3;
+            final isLastStep = step == OnboardingStepperController.totalSteps - 1;
             final isLoading = ctrl.status == StepperStatus.loading;
 
             return Column(
@@ -182,10 +179,10 @@ class _OnboardingStepperState extends State<OnboardingStepper> {
                                 color: Colors.white, size: 24),
                           ),
                           const SizedBox(width: 12),
-                          Expanded(
+                          const Expanded(
                             child: Text(
                               'VendIA',
-                              style: const TextStyle(
+                              style: TextStyle(
                                 fontSize: 22,
                                 fontWeight: FontWeight.bold,
                                 color: AppTheme.primary,
@@ -205,14 +202,14 @@ class _OnboardingStepperState extends State<OnboardingStepper> {
                       ),
                       const SizedBox(height: 20),
 
-                      // Barra de progreso (4 segmentos)
+                      // Barra de progreso (5 segmentos)
                       Row(
-                        children: List.generate(4, (i) {
+                        children: List.generate(OnboardingStepperController.totalSteps, (i) {
                           final active = i <= step;
                           return Expanded(
                             child: Container(
                               height: 6,
-                              margin: EdgeInsets.only(right: i < 3 ? 6 : 0),
+                              margin: EdgeInsets.only(right: i < OnboardingStepperController.totalSteps - 1 ? 6 : 0),
                               decoration: BoxDecoration(
                                 color: active
                                     ? AppTheme.primary
@@ -251,6 +248,7 @@ class _OnboardingStepperState extends State<OnboardingStepper> {
                     children: [
                       StepOwner(controller: ctrl, formKey: _formKeys[0]),
                       StepBusiness(controller: ctrl, formKey: _formKeys[1]),
+                      const StepBranches(),
                       const StepConfig(),
                       const StepEmployees(),
                     ],

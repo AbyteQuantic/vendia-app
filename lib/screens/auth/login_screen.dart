@@ -6,6 +6,7 @@ import '../../services/auth_service.dart';
 import '../../theme/app_theme.dart';
 import '../dashboard/dashboard_screen.dart';
 import '../onboarding/onboarding_stepper.dart';
+import 'branch_selector_screen.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -76,20 +77,43 @@ class _LoginScreenState extends State<LoginScreen> {
       }
 
       if (!mounted) return;
-      Navigator.of(context).pushReplacement(
-        PageRouteBuilder(
-          pageBuilder: (_, animation, __) => DashboardScreen(
-            ownerName: data['owner_name'] as String,
-            businessName: data['business_name'] as String,
+
+      // Check if user has multiple branches
+      final branches = data['branches'] as List<dynamic>?;
+      if (branches != null && branches.length > 1) {
+        Navigator.of(context).pushReplacement(
+          PageRouteBuilder(
+            pageBuilder: (_, animation, __) => BranchSelectorScreen(
+              ownerName: data['owner_name'] as String,
+              branches: branches
+                  .map((b) =>
+                      BranchInfo.fromJson(b as Map<String, dynamic>))
+                  .toList(),
+            ),
+            transitionsBuilder: (_, animation, __, child) => FadeTransition(
+              opacity:
+                  CurvedAnimation(parent: animation, curve: Curves.easeInOut),
+              child: child,
+            ),
+            transitionDuration: const Duration(milliseconds: 400),
           ),
-          transitionsBuilder: (_, animation, __, child) => FadeTransition(
-            opacity:
-                CurvedAnimation(parent: animation, curve: Curves.easeInOut),
-            child: child,
+        );
+      } else {
+        Navigator.of(context).pushReplacement(
+          PageRouteBuilder(
+            pageBuilder: (_, animation, __) => DashboardScreen(
+              ownerName: data['owner_name'] as String,
+              businessName: data['business_name'] as String,
+            ),
+            transitionsBuilder: (_, animation, __, child) => FadeTransition(
+              opacity:
+                  CurvedAnimation(parent: animation, curve: Curves.easeInOut),
+              child: child,
+            ),
+            transitionDuration: const Duration(milliseconds: 400),
           ),
-          transitionDuration: const Duration(milliseconds: 400),
-        ),
-      );
+        );
+      }
     } on AppError catch (e) {
       HapticFeedback.heavyImpact();
       if (e.statusCode == 401) {
