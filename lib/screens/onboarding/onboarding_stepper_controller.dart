@@ -119,7 +119,7 @@ class OnboardingStepperController extends ChangeNotifier {
       await saveSession(data);
 
       _status = StepperStatus.success;
-    } on Exception catch (e) {
+    } catch (e) {
       _status = StepperStatus.error;
       _errorMessage = _friendlyError(e.toString());
     }

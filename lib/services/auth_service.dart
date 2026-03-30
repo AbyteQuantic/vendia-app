@@ -54,13 +54,13 @@ class AuthService {
   /// Legacy save for backward compatibility (old format).
   Future<void> saveLegacySession({
     required String token,
-    required int tenantId,
+    required String tenantId,
     required String ownerName,
     required String businessName,
   }) async {
     await Future.wait([
       _storage.write(key: _keyAccessToken, value: token),
-      _storage.write(key: _keyTenantId, value: tenantId.toString()),
+      _storage.write(key: _keyTenantId, value: tenantId),
       _storage.write(key: _keyOwnerName, value: ownerName),
       _storage.write(key: _keyBusinessName, value: businessName),
     ]);
@@ -88,9 +88,8 @@ class AuthService {
   Future<String?> getStoreSlug() => _storage.read(key: _keyStoreSlug);
   Future<String?> getLogoUrl() => _storage.read(key: _keyLogoUrl);
 
-  Future<int?> getTenantId() async {
-    final v = await _storage.read(key: _keyTenantId);
-    return v != null ? int.tryParse(v) : null;
+  Future<String?> getTenantId() async {
+    return _storage.read(key: _keyTenantId);
   }
 
   /// Check if user has active session.

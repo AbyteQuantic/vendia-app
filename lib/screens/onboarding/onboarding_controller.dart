@@ -71,14 +71,14 @@ class OnboardingController extends ChangeNotifier {
       } else {
         await _auth.saveLegacySession(
           token: data['token'] as String,
-          tenantId: data['tenant_id'] as int,
+          tenantId: data['tenant_id'].toString(),
           ownerName: data['owner_name'] as String,
           businessName: data['business_name'] as String,
         );
       }
 
       _status = OnboardingStatus.success;
-    } on Exception catch (e) {
+    } catch (e) {
       _status = OnboardingStatus.error;
       _errorMessage = _friendlyError(e.toString());
     }

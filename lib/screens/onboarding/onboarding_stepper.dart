@@ -36,7 +36,7 @@ class OnboardingStepperScreen extends StatelessWidget {
           } else {
             await auth.saveLegacySession(
               token: data['token'] as String,
-              tenantId: data['tenant_id'] as int,
+              tenantId: data['tenant_id'].toString(),
               ownerName: data['owner_name'] as String,
               businessName: data['business_name'] as String,
             );
