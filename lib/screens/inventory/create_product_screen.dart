@@ -5,6 +5,8 @@ import 'package:image_picker/image_picker.dart';
 import 'package:uuid/uuid.dart';
 import '../../database/database_service.dart';
 import '../../database/collections/local_product.dart';
+import '../../services/api_service.dart';
+import '../../services/auth_service.dart';
 import '../../theme/app_theme.dart';
 import '../pos/scan_screen.dart';
 
@@ -64,17 +66,31 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
     HapticFeedback.lightImpact();
 
     try {
+      final id = const Uuid().v4();
+      final name = _nameCtrl.text.trim();
+      final price = double.tryParse(_sellPriceCtrl.text.trim()) ?? 0;
+      final stock = int.tryParse(_quantityCtrl.text.trim()) ?? 1;
+
+      // Guardar en backend (PostgreSQL/Supabase)
+      final api = ApiService(AuthService());
+      await api.createProduct({
+        'id': id,
+        'name': name,
+        'price': price,
+        'stock': stock,
+      });
+
+      // Guardar en DB local (Isar) para offline
       final product = LocalProduct()
-        ..uuid = const Uuid().v4()
-        ..name = _nameCtrl.text.trim()
-        ..price = double.tryParse(_sellPriceCtrl.text.trim()) ?? 0
-        ..stock = int.tryParse(_quantityCtrl.text.trim()) ?? 1
+        ..uuid = id
+        ..name = name
+        ..price = price
+        ..stock = stock
         ..imageUrl = _photoPath
         ..isAvailable = true
         ..requiresContainer = false
         ..containerPrice = 0
         ..clientUpdatedAt = DateTime.now();
-
       await DatabaseService.instance.upsertProduct(product);
     } catch (_) {
       // Best effort save

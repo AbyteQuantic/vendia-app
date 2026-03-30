@@ -3,6 +3,8 @@ import 'package:flutter/services.dart';
 import 'package:uuid/uuid.dart';
 import '../../database/database_service.dart';
 import '../../database/collections/local_product.dart';
+import '../../services/api_service.dart';
+import '../../services/auth_service.dart';
 import '../../theme/app_theme.dart';
 import '../../utils/format_cop.dart';
 import 'price_calculator_screen.dart';
@@ -287,21 +289,32 @@ class _PricePendingScreenState extends State<PricePendingScreen> {
                   child: ElevatedButton.icon(
                     onPressed: () async {
                       HapticFeedback.mediumImpact();
-                      // Guardar todos los productos en Isar
+                      // Guardar en backend + Isar local
                       try {
                         const uuid = Uuid();
-                        final localProducts = _products
-                            .where((p) => p.salePrice != null)
-                            .map((p) => LocalProduct()
-                              ..uuid = uuid.v4()
-                              ..name = p.name
-                              ..price = p.salePrice!
-                              ..stock = 1
-                              ..isAvailable = true
-                              ..requiresContainer = false
-                              ..containerPrice = 0
-                              ..clientUpdatedAt = DateTime.now())
-                            .toList();
+                        final api = ApiService(AuthService());
+                        final localProducts = <LocalProduct>[];
+
+                        for (final p in _products.where((p) => p.salePrice != null)) {
+                          final id = uuid.v4();
+                          // Backend (PostgreSQL/Supabase)
+                          await api.createProduct({
+                            'id': id,
+                            'name': p.name,
+                            'price': p.salePrice,
+                            'stock': 1,
+                          });
+                          // Local (Isar)
+                          localProducts.add(LocalProduct()
+                            ..uuid = id
+                            ..name = p.name
+                            ..price = p.salePrice!
+                            ..stock = 1
+                            ..isAvailable = true
+                            ..requiresContainer = false
+                            ..containerPrice = 0
+                            ..clientUpdatedAt = DateTime.now());
+                        }
                         await DatabaseService.instance
                             .upsertProducts(localProducts);
                       } catch (_) {}
