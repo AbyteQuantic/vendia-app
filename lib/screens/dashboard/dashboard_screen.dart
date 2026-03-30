@@ -56,11 +56,28 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   Future<_InventorySummary> _loadInventorySummary() async {
     try {
-      final products = await DatabaseService.instance.getAllProducts();
-      final total = products.length;
-      final incomplete = products.where((p) =>
-          p.price <= 0 || p.imageUrl == null || p.imageUrl!.isEmpty).length;
-      return _InventorySummary(total: total, incomplete: incomplete);
+      // Intentar desde DB local primero
+      final localProducts = await DatabaseService.instance.getAllProducts();
+      if (localProducts.isNotEmpty) {
+        final total = localProducts.length;
+        final incomplete = localProducts.where((p) =>
+            p.price <= 0 || p.imageUrl == null || p.imageUrl!.isEmpty).length;
+        return _InventorySummary(total: total, incomplete: incomplete);
+      }
+
+      // Fallback: consultar al backend
+      final token = await AuthService().getToken();
+      final res = await Dio(BaseOptions(
+        baseUrl: ApiConfig.baseUrl,
+        connectTimeout: const Duration(seconds: 5),
+        receiveTimeout: const Duration(seconds: 5),
+      )).get(
+        '/api/v1/products',
+        queryParameters: {'page': 1, 'limit': 1},
+        options: Options(headers: {'Authorization': 'Bearer $token'}),
+      );
+      final total = res.data['total'] as int? ?? 0;
+      return _InventorySummary(total: total, incomplete: 0);
     } catch (_) {
       return const _InventorySummary(total: 0, incomplete: 0);
     }
@@ -79,9 +96,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
           // Desactiva el StretchingOverscrollIndicator de Android API 31+
           // que deformaba todos los componentes al hacer pull-down.
           behavior: ScrollConfiguration.of(context).copyWith(overscroll: false),
-          child: RefreshIndicator(
+          child: RefreshIndicator.adaptive(
             color: AppTheme.primary,
             onRefresh: _refresh,
+            displacement: 40,
+            edgeOffset: 10,
             child: CustomScrollView(
               // ClampingScrollPhysics: previene el stretch/bounce nativo;
               // AlwaysScrollable: mantiene el pull-to-refresh funcionando.
@@ -266,6 +285,28 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                 ),
                               ],
                             ),
+                            const SizedBox(height: 16),
+                            // Tarjeta de inventario
+                            FutureBuilder<_InventorySummary>(
+                              future: _inventoryFuture,
+                              builder: (context, invSnap) {
+                                final inv = invSnap.data ??
+                                    const _InventorySummary(
+                                        total: 0, incomplete: 0);
+                                return _InventoryCard(
+                                  summary: inv,
+                                  onTap: () {
+                                    HapticFeedback.lightImpact();
+                                    Navigator.of(context).push(
+                                      MaterialPageRoute(
+                                        builder: (_) =>
+                                            const AddMerchandiseScreen(),
+                                      ),
+                                    );
+                                  },
+                                );
+                              },
+                            ),
                           ],
                         ),
                       );
@@ -346,26 +387,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       icon: const Icon(Icons.add_rounded, size: 26),
                       label: const Text('Registrar nueva venta'),
                     ),
-                  ),
-                ),
-
-                // ── Tarjeta resumen de inventario ────────────────────────────
-                SliverToBoxAdapter(
-                  child: FutureBuilder<_InventorySummary>(
-                    future: _inventoryFuture,
-                    builder: (context, snap) {
-                      final inv = snap.data ??
-                          const _InventorySummary(total: 0, incomplete: 0);
-                      return _InventoryCard(
-                        summary: inv,
-                        onTap: () {
-                          HapticFeedback.lightImpact();
-                          Navigator.of(context).push(MaterialPageRoute(
-                            builder: (_) => const AddMerchandiseScreen(),
-                          ));
-                        },
-                      );
-                    },
                   ),
                 ),
 
@@ -543,100 +564,87 @@ class _InventoryCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final hasIncomplete = summary.incomplete > 0;
+    final iconColor = hasIncomplete ? AppTheme.warning : AppTheme.primary;
 
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(24, 0, 24, 0),
-      child: GestureDetector(
-        onTap: onTap,
-        child: Container(
-          padding: const EdgeInsets.all(20),
-          decoration: BoxDecoration(
-            color: AppTheme.surfaceGrey,
-            borderRadius: BorderRadius.circular(24),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.04),
-                blurRadius: 10,
-                offset: const Offset(0, 4),
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(
+          color: AppTheme.surfaceGrey,
+          borderRadius: BorderRadius.circular(24),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.04),
+              blurRadius: 10,
+              offset: const Offset(0, 4),
+            ),
+          ],
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 52,
+              height: 52,
+              decoration: BoxDecoration(
+                color: iconColor.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(16),
               ),
-            ],
-          ),
-          child: Row(
-            children: [
-              // Ícono
-              Container(
-                width: 52,
-                height: 52,
-                decoration: BoxDecoration(
-                  color: hasIncomplete
-                      ? AppTheme.warning.withValues(alpha: 0.12)
-                      : AppTheme.primary.withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(16),
-                ),
-                child: Icon(
-                  Icons.inventory_2_rounded,
-                  color: hasIncomplete ? AppTheme.warning : AppTheme.primary,
-                  size: 28,
-                ),
-              ),
-              const SizedBox(width: 16),
-
-              // Info
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
+              child: Icon(Icons.inventory_2_rounded, color: iconColor, size: 28),
+            ),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Inventario',
+                    style: TextStyle(
+                      fontSize: 18,
+                      color: AppTheme.textSecondary,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  if (summary.total == 0)
                     const Text(
-                      'Inventario',
+                      'Sin productos',
                       style: TextStyle(
-                        fontSize: 18,
-                        color: AppTheme.textSecondary,
-                        fontWeight: FontWeight.w500,
+                        fontSize: 22,
+                        fontWeight: FontWeight.bold,
+                        color: AppTheme.textPrimary,
+                      ),
+                    )
+                  else ...[
+                    Text(
+                      '${summary.total} referencia${summary.total == 1 ? '' : 's'}',
+                      style: const TextStyle(
+                        fontSize: 22,
+                        fontWeight: FontWeight.bold,
+                        color: AppTheme.textPrimary,
                       ),
                     ),
-                    const SizedBox(height: 2),
-                    if (summary.total == 0)
-                      const Text(
-                        'Sin productos',
-                        style: TextStyle(
-                          fontSize: 22,
-                          fontWeight: FontWeight.bold,
-                          color: AppTheme.textPrimary,
-                        ),
-                      )
-                    else ...[
+                    if (hasIncomplete) ...[
+                      const SizedBox(height: 2),
                       Text(
-                        '${summary.total} referencia${summary.total == 1 ? '' : 's'}',
+                        '${summary.incomplete} sin completar',
                         style: const TextStyle(
-                          fontSize: 22,
-                          fontWeight: FontWeight.bold,
-                          color: AppTheme.textPrimary,
+                          fontSize: 18,
+                          fontWeight: FontWeight.w600,
+                          color: AppTheme.warning,
                         ),
                       ),
-                      if (hasIncomplete) ...[
-                        const SizedBox(height: 2),
-                        Text(
-                          '${summary.incomplete} sin completar',
-                          style: const TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.w600,
-                            color: AppTheme.warning,
-                          ),
-                        ),
-                      ],
                     ],
                   ],
-                ),
+                ],
               ),
-
-              // Flecha
-              const Icon(
-                Icons.chevron_right_rounded,
-                color: AppTheme.textSecondary,
-                size: 28,
-              ),
-            ],
-          ),
+            ),
+            const Icon(
+              Icons.chevron_right_rounded,
+              color: AppTheme.textSecondary,
+              size: 28,
+            ),
+          ],
         ),
       ),
     );
