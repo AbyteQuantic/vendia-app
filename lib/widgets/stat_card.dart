@@ -7,7 +7,8 @@ class StatCard extends StatelessWidget {
   final IconData icon;
   final Color? iconColor;
   final Color? backgroundColor;
-  final String? trend; // ej. "+12%" — null si no aplica
+  final String? trend;
+  final bool compact;
 
   const StatCard({
     super.key,
@@ -17,6 +18,7 @@ class StatCard extends StatelessWidget {
     this.iconColor,
     this.backgroundColor,
     this.trend,
+    this.compact = false,
   });
 
   @override
@@ -25,83 +27,77 @@ class StatCard extends StatelessWidget {
     final fgColor = iconColor ?? AppTheme.primary;
 
     return Container(
-      padding: const EdgeInsets.all(20),
+      padding: EdgeInsets.all(compact ? 14 : 16),
       decoration: BoxDecoration(
         color: bgColor,
-        borderRadius: BorderRadius.circular(24),
+        borderRadius: BorderRadius.circular(20),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withValues(alpha: 0.04),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
+            blurRadius: 8,
+            offset: const Offset(0, 3),
           ),
         ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Ícono en burbuja
           Container(
-            width: 52,
-            height: 52,
+            width: compact ? 40 : 44,
+            height: compact ? 40 : 44,
             decoration: BoxDecoration(
               color: fgColor.withValues(alpha: 0.12),
-              borderRadius: BorderRadius.circular(16),
+              borderRadius: BorderRadius.circular(14),
             ),
-            child: Icon(icon, color: fgColor, size: 28),
+            child: Icon(icon, color: fgColor, size: compact ? 22 : 24),
           ),
-          const SizedBox(height: 16),
-
-          // Etiqueta
+          SizedBox(height: compact ? 8 : 12),
           Text(
             label,
-            style: const TextStyle(
-              fontSize: 18,
+            style: TextStyle(
+              fontSize: compact ? 16 : 18,
               color: AppTheme.textSecondary,
               fontWeight: FontWeight.w500,
             ),
           ),
-          const SizedBox(height: 4),
-
-          // Valor principal
+          const SizedBox(height: 2),
           Text(
             value,
-            style: const TextStyle(
-              fontSize: 28,
+            style: TextStyle(
+              fontSize: compact ? 22 : 26,
               fontWeight: FontWeight.bold,
               color: AppTheme.textPrimary,
             ),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
           ),
-
-          // Tendencia (opcional)
           if (trend != null) ...[
-            const SizedBox(height: 4),
+            const SizedBox(height: 2),
             Row(
               children: [
                 Icon(
                   trend!.startsWith('+')
                       ? Icons.trending_up_rounded
                       : Icons.trending_down_rounded,
-                  size: 16,
+                  size: 14,
                   color: trend!.startsWith('+')
                       ? AppTheme.success
                       : AppTheme.error,
                 ),
-                const SizedBox(width: 4),
-                Text(
-                  trend!,
-                  style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.w600,
-                    color: trend!.startsWith('+')
-                        ? AppTheme.success
-                        : AppTheme.error,
+                const SizedBox(width: 3),
+                Flexible(
+                  child: Text(
+                    '${trend!} vs. ayer',
+                    style: TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w600,
+                      color: trend!.startsWith('+')
+                          ? AppTheme.success
+                          : AppTheme.error,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                   ),
-                ),
-                const SizedBox(width: 4),
-                const Text(
-                  'vs. ayer',
-                  style: TextStyle(fontSize: 18, color: AppTheme.textSecondary),
                 ),
               ],
             ),

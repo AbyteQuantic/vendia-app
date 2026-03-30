@@ -111,7 +111,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 // ── Header ────────────────────────────────────────────────────
                 SliverToBoxAdapter(
                   child: Padding(
-                    padding: const EdgeInsets.fromLTRB(24, 24, 24, 0),
+                    padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
                     child: Row(
                       children: [
                         Expanded(
@@ -192,46 +192,25 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   ),
                 ),
 
-                // ── Fecha ─────────────────────────────────────────────────────
+                // ── Fecha + Título ────────────────────────────────────────────
                 SliverToBoxAdapter(
                   child: Padding(
-                    padding: const EdgeInsets.fromLTRB(24, 16, 24, 0),
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 14, vertical: 10),
-                      decoration: BoxDecoration(
-                        color: AppTheme.surfaceGrey,
-                        borderRadius: BorderRadius.circular(16),
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          const Icon(Icons.calendar_today_rounded,
-                              size: 18, color: AppTheme.primary),
-                          const SizedBox(width: 8),
-                          Text(
-                            _todayLabel(),
-                            style: const TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.w600,
-                              color: AppTheme.textPrimary,
-                            ),
+                    padding: const EdgeInsets.fromLTRB(20, 12, 20, 10),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.calendar_today_rounded,
+                            size: 16, color: AppTheme.primary),
+                        const SizedBox(width: 6),
+                        Text(
+                          _todayLabel(),
+                          style: const TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600,
+                            color: AppTheme.textSecondary,
                           ),
-                        ],
-                      ),
+                        ),
+                      ],
                     ),
-                  ),
-                ),
-
-                // ── Stats del día ─────────────────────────────────────────────
-                const SliverToBoxAdapter(
-                  child: Padding(
-                    padding: EdgeInsets.fromLTRB(24, 28, 24, 14),
-                    child: Text('Resumen del día',
-                        style: TextStyle(
-                            fontSize: 20,
-                            fontWeight: FontWeight.bold,
-                            color: AppTheme.textPrimary)),
                   ),
                 ),
 
@@ -243,7 +222,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         return const _StatsShimmer();
                       }
 
-                      // Si falla el API, mostrar stats vacíos (primer día)
                       final s = snap.data ??
                           const DashboardStats(
                             totalSalesToday: 0,
@@ -252,60 +230,74 @@ class _DashboardScreenState extends State<DashboardScreen> {
                             trend: 'primer día',
                           );
                       return Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 24),
+                        padding: const EdgeInsets.symmetric(horizontal: 20),
                         child: Column(
                           children: [
-                            StatCard(
-                              label: 'Ventas de hoy',
-                              value: s.formattedTotal,
-                              icon: Icons.payments_rounded,
-                              iconColor: AppTheme.primary,
-                              backgroundColor:
-                                  AppTheme.primary.withValues(alpha: 0.06),
-                              trend: s.trend,
-                            ),
-                            const SizedBox(height: 16),
+                            // Fila 1: Ventas + Transacciones
                             Row(
                               children: [
                                 Expanded(
+                                  flex: 3,
                                   child: StatCard(
-                                    label: 'Transacciones',
-                                    value: '${s.transactionCount}',
-                                    icon: Icons.receipt_long_rounded,
+                                    label: 'Ventas de hoy',
+                                    value: s.formattedTotal,
+                                    icon: Icons.payments_rounded,
+                                    iconColor: AppTheme.primary,
+                                    backgroundColor: AppTheme.primary
+                                        .withValues(alpha: 0.06),
+                                    trend: s.trend,
+                                    compact: true,
                                   ),
                                 ),
-                                const SizedBox(width: 16),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  flex: 2,
+                                  child: StatCard(
+                                    label: 'Ventas',
+                                    value: '${s.transactionCount}',
+                                    icon: Icons.receipt_long_rounded,
+                                    compact: true,
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 12),
+                            // Fila 2: Más vendido + Inventario
+                            Row(
+                              children: [
                                 Expanded(
                                   child: StatCard(
                                     label: 'Más vendido',
                                     value: s.topProduct,
                                     icon: Icons.star_rounded,
                                     iconColor: const Color(0xFFF59E0B),
+                                    compact: true,
+                                  ),
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: FutureBuilder<_InventorySummary>(
+                                    future: _inventoryFuture,
+                                    builder: (context, invSnap) {
+                                      final inv = invSnap.data ??
+                                          const _InventorySummary(
+                                              total: 0, incomplete: 0);
+                                      return _InventoryCardCompact(
+                                        summary: inv,
+                                        onTap: () {
+                                          HapticFeedback.lightImpact();
+                                          Navigator.of(context).push(
+                                            MaterialPageRoute(
+                                              builder: (_) =>
+                                                  const AddMerchandiseScreen(),
+                                            ),
+                                          );
+                                        },
+                                      );
+                                    },
                                   ),
                                 ),
                               ],
-                            ),
-                            const SizedBox(height: 16),
-                            // Tarjeta de inventario
-                            FutureBuilder<_InventorySummary>(
-                              future: _inventoryFuture,
-                              builder: (context, invSnap) {
-                                final inv = invSnap.data ??
-                                    const _InventorySummary(
-                                        total: 0, incomplete: 0);
-                                return _InventoryCard(
-                                  summary: inv,
-                                  onTap: () {
-                                    HapticFeedback.lightImpact();
-                                    Navigator.of(context).push(
-                                      MaterialPageRoute(
-                                        builder: (_) =>
-                                            const AddMerchandiseScreen(),
-                                      ),
-                                    );
-                                  },
-                                );
-                              },
                             ),
                           ],
                         ),
@@ -317,7 +309,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 // ── Últimas ventas ────────────────────────────────────────────
                 const SliverToBoxAdapter(
                   child: Padding(
-                    padding: EdgeInsets.fromLTRB(24, 32, 24, 4),
+                    padding: EdgeInsets.fromLTRB(20, 20, 20, 4),
                     child: Text('Últimas ventas',
                         style: TextStyle(
                             fontSize: 20,
@@ -338,7 +330,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       final sales = snap.data ?? [];
                       if (sales.isEmpty) {
                         return const Padding(
-                          padding: EdgeInsets.fromLTRB(24, 12, 24, 0),
+                          padding: EdgeInsets.fromLTRB(20, 8, 20, 0),
                           child: Center(
                             child: Text(
                               'Aún no hay ventas hoy.\n¡Registre la primera!',
@@ -375,7 +367,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 // ── CTA: Nueva venta ─────────────────────────────────────────
                 SliverToBoxAdapter(
                   child: Padding(
-                    padding: const EdgeInsets.fromLTRB(24, 4, 24, 12),
+                    padding: const EdgeInsets.fromLTRB(20, 4, 20, 24),
                     child: ElevatedButton.icon(
                       onPressed: () async {
                         HapticFeedback.lightImpact();
@@ -555,95 +547,84 @@ class _InventorySummary {
   int get complete => total - incomplete;
 }
 
-class _InventoryCard extends StatelessWidget {
+class _InventoryCardCompact extends StatelessWidget {
   final _InventorySummary summary;
   final VoidCallback onTap;
 
-  const _InventoryCard({required this.summary, required this.onTap});
+  const _InventoryCardCompact({required this.summary, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
     final hasIncomplete = summary.incomplete > 0;
     final iconColor = hasIncomplete ? AppTheme.warning : AppTheme.primary;
+    final value = summary.total == 0
+        ? 'Vacío'
+        : '${summary.total} ref.';
 
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        padding: const EdgeInsets.all(20),
+        padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(
           color: AppTheme.surfaceGrey,
-          borderRadius: BorderRadius.circular(24),
+          borderRadius: BorderRadius.circular(20),
           boxShadow: [
             BoxShadow(
               color: Colors.black.withValues(alpha: 0.04),
-              blurRadius: 10,
-              offset: const Offset(0, 4),
+              blurRadius: 8,
+              offset: const Offset(0, 3),
             ),
           ],
         ),
-        child: Row(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Container(
-              width: 52,
-              height: 52,
-              decoration: BoxDecoration(
-                color: iconColor.withValues(alpha: 0.12),
-                borderRadius: BorderRadius.circular(16),
-              ),
-              child: Icon(Icons.inventory_2_rounded, color: iconColor, size: 28),
-            ),
-            const SizedBox(width: 16),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    'Inventario',
-                    style: TextStyle(
-                      fontSize: 18,
-                      color: AppTheme.textSecondary,
-                      fontWeight: FontWeight.w500,
-                    ),
+            Row(
+              children: [
+                Container(
+                  width: 40,
+                  height: 40,
+                  decoration: BoxDecoration(
+                    color: iconColor.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(14),
                   ),
-                  const SizedBox(height: 2),
-                  if (summary.total == 0)
-                    const Text(
-                      'Sin productos',
-                      style: TextStyle(
-                        fontSize: 22,
-                        fontWeight: FontWeight.bold,
-                        color: AppTheme.textPrimary,
-                      ),
-                    )
-                  else ...[
-                    Text(
-                      '${summary.total} referencia${summary.total == 1 ? '' : 's'}',
-                      style: const TextStyle(
-                        fontSize: 22,
-                        fontWeight: FontWeight.bold,
-                        color: AppTheme.textPrimary,
-                      ),
-                    ),
-                    if (hasIncomplete) ...[
-                      const SizedBox(height: 2),
-                      Text(
-                        '${summary.incomplete} sin completar',
-                        style: const TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.w600,
-                          color: AppTheme.warning,
-                        ),
-                      ),
-                    ],
-                  ],
-                ],
+                  child: Icon(Icons.inventory_2_rounded,
+                      color: iconColor, size: 22),
+                ),
+                const Spacer(),
+                Icon(Icons.chevron_right_rounded,
+                    color: Colors.grey.shade400, size: 22),
+              ],
+            ),
+            const SizedBox(height: 8),
+            const Text(
+              'Inventario',
+              style: TextStyle(
+                fontSize: 16,
+                color: AppTheme.textSecondary,
+                fontWeight: FontWeight.w500,
               ),
             ),
-            const Icon(
-              Icons.chevron_right_rounded,
-              color: AppTheme.textSecondary,
-              size: 28,
+            const SizedBox(height: 2),
+            Text(
+              value,
+              style: const TextStyle(
+                fontSize: 22,
+                fontWeight: FontWeight.bold,
+                color: AppTheme.textPrimary,
+              ),
             ),
+            if (hasIncomplete) ...[
+              const SizedBox(height: 2),
+              Text(
+                '${summary.incomplete} pendiente${summary.incomplete == 1 ? '' : 's'}',
+                style: const TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w600,
+                  color: AppTheme.warning,
+                ),
+              ),
+            ],
           ],
         ),
       ),
