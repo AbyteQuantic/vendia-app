@@ -204,15 +204,18 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   child: FutureBuilder<DashboardStats>(
                     future: _statsFuture,
                     builder: (context, snap) {
-                      if (snap.hasError) {
-                        return _ErrorBanner(
-                          message: 'No se pudo cargar el resumen.',
-                          onRetry: _refresh,
-                        );
+                      if (!snap.hasData && !snap.hasError) {
+                        return const _StatsShimmer();
                       }
-                      if (!snap.hasData) return const _StatsShimmer();
 
-                      final s = snap.data!;
+                      // Si falla el API, mostrar stats vacíos (primer día)
+                      final s = snap.data ??
+                          const DashboardStats(
+                            totalSalesToday: 0,
+                            transactionCount: 0,
+                            topProduct: '—',
+                            trend: 'primer día',
+                          );
                       return Padding(
                         padding: const EdgeInsets.symmetric(horizontal: 24),
                         child: Column(
@@ -270,15 +273,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   child: FutureBuilder<List<RecentSale>>(
                     future: _salesFuture,
                     builder: (context, snap) {
-                      if (snap.hasError) {
-                        return _ErrorBanner(
-                          message: 'No se pudieron cargar las ventas.',
-                          onRetry: _refresh,
-                        );
+                      if (!snap.hasData && !snap.hasError) {
+                        return const _TransactionsShimmer();
                       }
-                      if (!snap.hasData) return const _TransactionsShimmer();
 
-                      final sales = snap.data!;
+                      // Si falla el API, mostrar lista vacía
+                      final sales = snap.data ?? [];
                       if (sales.isEmpty) {
                         return const Padding(
                           padding: EdgeInsets.fromLTRB(24, 12, 24, 0),
@@ -443,41 +443,6 @@ class _SaleTile extends StatelessWidget {
   }
 }
 
-class _ErrorBanner extends StatelessWidget {
-  final String message;
-  final VoidCallback onRetry;
-  const _ErrorBanner({required this.message, required this.onRetry});
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
-      child: Container(
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: AppTheme.error.withValues(alpha: 0.08),
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: AppTheme.error.withValues(alpha: 0.3)),
-        ),
-        child: Row(
-          children: [
-            const Icon(Icons.wifi_off_rounded, color: AppTheme.error, size: 22),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Text(message,
-                  style: const TextStyle(color: AppTheme.error, fontSize: 18)),
-            ),
-            TextButton(
-              onPressed: onRetry,
-              child: const Text('Reintentar',
-                  style: TextStyle(color: AppTheme.primary, fontSize: 18)),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
 
 class _StatsShimmer extends StatelessWidget {
   const _StatsShimmer();
