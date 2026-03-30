@@ -1,4 +1,3 @@
-import 'dart:io';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 
 class ApiConfig {
@@ -15,8 +14,7 @@ class ApiConfig {
     final dotenvUrl = dotenv.maybeGet('API_BASE_URL');
     if (dotenvUrl != null && dotenvUrl.isNotEmpty) return dotenvUrl;
 
-    // Fallback: emulador Android usa 10.0.2.2 para llegar al host
-    if (Platform.isAndroid) return 'http://10.0.2.2:8089/api/v1';
-    return 'http://localhost:8089/api/v1';
+    // Fallback: producción en Render
+    return 'https://vendia-api.onrender.com';
   }
 }

@@ -19,13 +19,9 @@ class ApiClient {
 
   factory ApiClient() => _instance ??= ApiClient._();
 
-  /// Hace un health check al backend (/ping está fuera de /api/v1).
-  /// Retorna el body de respuesta si es exitoso, o lanza excepción.
+  /// Hace un health check al backend.
   Future<String> healthCheck() async {
-    // /ping es relativo a la raíz del servidor, no al baseUrl (/api/v1)
-    final baseUri = Uri.parse(ApiConfig.baseUrl);
-    final pingUrl = '${baseUri.scheme}://${baseUri.host}:${baseUri.port}/ping';
-    final response = await dio.get(pingUrl);
+    final response = await dio.get('/ping');
     return response.data.toString();
   }
 }
