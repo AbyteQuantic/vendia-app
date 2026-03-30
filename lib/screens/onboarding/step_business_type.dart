@@ -178,7 +178,7 @@ class _BusinessCard extends StatelessWidget {
           boxShadow: isSelected
               ? [
                   BoxShadow(
-                    color: AppTheme.primary.withOpacity(0.3),
+                    color: AppTheme.primary.withValues(alpha: 0.3),
                     blurRadius: 12,
                     offset: const Offset(0, 4),
                   )
@@ -212,7 +212,7 @@ class _BusinessCard extends StatelessWidget {
               style: TextStyle(
                 fontSize: 18,
                 color: isSelected
-                    ? Colors.white.withOpacity(0.85)
+                    ? Colors.white.withValues(alpha: 0.85)
                     : AppTheme.textSecondary,
                 height: 1.3,
               ),

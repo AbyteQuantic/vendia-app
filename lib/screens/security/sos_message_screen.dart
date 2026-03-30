@@ -119,9 +119,9 @@ class _SosMessageScreenState extends State<SosMessageScreen> {
                     ),
                     child: Semantics(
                       label: 'Vista previa del mensaje de emergencia',
-                      child: Column(
+                      child: const Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
-                        children: const [
+                        children: [
                           Text(
                             '\u{1F6A8} EMERGENCIA en Tienda Don Pedro.',
                             style: TextStyle(
@@ -216,9 +216,9 @@ class _SosMessageScreenState extends State<SosMessageScreen> {
                       color: const Color(0xFFEFF6FF),
                       borderRadius: BorderRadius.circular(16),
                     ),
-                    child: Row(
+                    child: const Row(
                       crossAxisAlignment: CrossAxisAlignment.start,
-                      children: const [
+                      children: [
                         Icon(
                           Icons.info_rounded,
                           color: Color(0xFF667EEA),

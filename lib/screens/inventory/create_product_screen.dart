@@ -281,7 +281,7 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
                                   color: Colors.grey.shade400,
                                   fontWeight: FontWeight.w400,
                                 ),
-                                prefixIcon: Icon(Icons.attach_money_rounded,
+                                prefixIcon: const Icon(Icons.attach_money_rounded,
                                     color: AppTheme.textSecondary, size: 24),
                               ),
                               validator: (v) {
@@ -325,7 +325,7 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
                                   color: Colors.grey.shade400,
                                   fontWeight: FontWeight.w400,
                                 ),
-                                prefixIcon: Icon(Icons.attach_money_rounded,
+                                prefixIcon: const Icon(Icons.attach_money_rounded,
                                     color: Color(0xFF10B981), size: 24),
                               ),
                               validator: (v) {

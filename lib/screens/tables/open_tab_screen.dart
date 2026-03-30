@@ -209,9 +209,9 @@ class _OpenTabScreenState extends State<OpenTabScreen> {
                   Container(
                     padding: EdgeInsets.fromLTRB(
                         24, 16, 24, 16 + MediaQuery.of(context).padding.bottom),
-                    decoration: BoxDecoration(
+                    decoration: const BoxDecoration(
                       color: AppTheme.surfaceGrey,
-                      border: const Border(
+                      border: Border(
                           top: BorderSide(color: AppTheme.borderColor)),
                     ),
                     child: Column(

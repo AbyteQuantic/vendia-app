@@ -111,12 +111,12 @@ class AdminHubScreen extends StatelessWidget {
             const SizedBox(height: 24),
 
             // ── Section 2: Salud del inventario ──────────────────────
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 20),
+            const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 20),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text(
+                  Text(
                     'Salud del inventario',
                     style: TextStyle(
                       fontSize: 20,
@@ -124,26 +124,26 @@ class AdminHubScreen extends StatelessWidget {
                       color: AppTheme.textPrimary,
                     ),
                   ),
-                  const SizedBox(height: 12),
+                  SizedBox(height: 12),
                   Row(
                     children: [
                       Expanded(
                         child: _InventoryStatCard(
                           label: 'Mercancia actual',
                           value: '\$1.500.000',
-                          valueColor: const Color(0xFF059669),
-                          bgColor: const Color(0xFFD1FAE5),
-                          borderColor: const Color(0xFF10B981),
+                          valueColor: Color(0xFF059669),
+                          bgColor: Color(0xFFD1FAE5),
+                          borderColor: Color(0xFF10B981),
                         ),
                       ),
-                      const SizedBox(width: 12),
+                      SizedBox(width: 12),
                       Expanded(
                         child: _InventoryStatCard(
                           label: 'Le alcanza para',
                           value: '\u2248 4 dias',
-                          valueColor: const Color(0xFF2563EB),
-                          bgColor: const Color(0xFFDBEAFE),
-                          borderColor: const Color(0xFF3B82F6),
+                          valueColor: Color(0xFF2563EB),
+                          bgColor: Color(0xFFDBEAFE),
+                          borderColor: Color(0xFF3B82F6),
                         ),
                       ),
                     ],
@@ -174,11 +174,11 @@ class AdminHubScreen extends StatelessWidget {
                     color: const Color(0xFF667EEA).withValues(alpha: 0.2),
                   ),
                 ),
-                child: Row(
+                child: const Row(
                   children: [
-                    const Text('\uD83D\uDCA1', style: TextStyle(fontSize: 28)),
-                    const SizedBox(width: 12),
-                    const Expanded(
+                    Text('\uD83D\uDCA1', style: TextStyle(fontSize: 28)),
+                    SizedBox(width: 12),
+                    Expanded(
                       child: Text(
                         'Cerveza Corona se vende mucho esta semana en Bogota. \u00BFAgregarla?',
                         style: TextStyle(

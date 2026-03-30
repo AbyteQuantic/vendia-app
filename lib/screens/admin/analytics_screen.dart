@@ -82,35 +82,35 @@ class AnalyticsScreen extends StatelessWidget {
             const SizedBox(height: 20),
 
             // ── Stat Cards ───────────────────────────────────────────
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 20),
+            const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 20),
               child: Column(
                 children: [
                   _StatCard(
                     label: 'Ventas de Hoy',
                     value: '\$284.500',
                     icon: Icons.trending_up_rounded,
-                    iconColor: const Color(0xFF059669),
-                    borderColor: const Color(0xFF10B981),
-                    bgColor: const Color(0xFFD1FAE5),
+                    iconColor: Color(0xFF059669),
+                    borderColor: Color(0xFF10B981),
+                    bgColor: Color(0xFFD1FAE5),
                   ),
-                  const SizedBox(height: 14),
+                  SizedBox(height: 14),
                   _StatCard(
                     label: 'Ganancia Libre Estimada',
                     value: '\$68.200',
                     icon: Icons.savings_rounded,
-                    iconColor: const Color(0xFF2563EB),
-                    borderColor: const Color(0xFF3B82F6),
-                    bgColor: const Color(0xFFDBEAFE),
+                    iconColor: Color(0xFF2563EB),
+                    borderColor: Color(0xFF3B82F6),
+                    bgColor: Color(0xFFDBEAFE),
                   ),
-                  const SizedBox(height: 14),
+                  SizedBox(height: 14),
                   _StatCard(
                     label: 'Cuentas por Cobrar (El Fiar)',
                     value: '\$185.000',
                     icon: Icons.menu_book_rounded,
-                    iconColor: const Color(0xFFD97706),
-                    borderColor: const Color(0xFFF59E0B),
-                    bgColor: const Color(0xFFFEF3C7),
+                    iconColor: Color(0xFFD97706),
+                    borderColor: Color(0xFFF59E0B),
+                    bgColor: Color(0xFFFEF3C7),
                   ),
                 ],
               ),
@@ -119,12 +119,12 @@ class AnalyticsScreen extends StatelessWidget {
             const SizedBox(height: 28),
 
             // ── Top Products ─────────────────────────────────────────
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 20),
+            const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 20),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text(
+                  Text(
                     'Sus 3 productos estrella hoy',
                     style: TextStyle(
                       fontSize: 20,
@@ -132,21 +132,21 @@ class AnalyticsScreen extends StatelessWidget {
                       color: AppTheme.textPrimary,
                     ),
                   ),
-                  const SizedBox(height: 14),
+                  SizedBox(height: 14),
                   _TopProductRow(
                     medal: '\uD83E\uDD47',
                     name: 'Cerveza Aguila',
                     units: '45 uds',
                     total: '\$225.000',
                   ),
-                  const SizedBox(height: 10),
+                  SizedBox(height: 10),
                   _TopProductRow(
                     medal: '\uD83E\uDD48',
                     name: 'Gaseosa Colombiana',
                     units: '32 uds',
                     total: '\$96.000',
                   ),
-                  const SizedBox(height: 10),
+                  SizedBox(height: 10),
                   _TopProductRow(
                     medal: '\uD83E\uDD49',
                     name: 'Pan Tajado Bimbo',

@@ -1,6 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:vendia_pos/screens/pos/cart_controller.dart';
-import 'package:vendia_pos/models/product.dart';
 
 void main() {
   late CartController ctrl;

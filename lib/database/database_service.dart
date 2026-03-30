@@ -18,8 +18,9 @@ class DatabaseService {
   }
 
   Isar get isar {
-    if (_isar == null)
+    if (_isar == null) {
       throw StateError('DatabaseService not initialized. Call init() first.');
+    }
     return _isar!;
   }
 

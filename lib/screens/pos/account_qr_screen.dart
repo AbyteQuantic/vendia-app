@@ -36,7 +36,7 @@ class AccountQrScreen extends StatelessWidget {
           },
           tooltip: 'Volver',
         ),
-        title: Text(
+        title: const Text(
           'QR de la Cuenta',
           style: TextStyle(
             fontSize: 24,
@@ -115,10 +115,10 @@ class AccountQrScreen extends StatelessWidget {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(
+          const Icon(
             Icons.table_restaurant,
             size: 24,
-            color: const Color(0xFF667EEA),
+            color: Color(0xFF667EEA),
           ),
           const SizedBox(width: 8),
           Text(

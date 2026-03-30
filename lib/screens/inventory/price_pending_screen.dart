@@ -15,11 +15,11 @@ class PricePendingScreen extends StatefulWidget {
 class _PricePendingScreenState extends State<PricePendingScreen> {
   // Mock products awaiting pricing
   final List<_PendingProduct> _products = [
-    _PendingProduct(
+    const _PendingProduct(
         emoji: '\uD83E\uDD64', name: 'Coca-Cola 350ml', cost: 1500),
-    _PendingProduct(
+    const _PendingProduct(
         emoji: '\uD83E\uDDC3', name: 'Hit Naranja 1L', cost: 3200),
-    _PendingProduct(
+    const _PendingProduct(
         emoji: '\uD83D\uDCA7', name: 'Agua Cristal 600ml', cost: 1000),
   ];
 

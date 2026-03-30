@@ -50,14 +50,14 @@ class ShimmerStatCard extends StatelessWidget {
         color: AppTheme.surfaceGrey,
         borderRadius: BorderRadius.circular(24),
       ),
-      child: Column(
+      child: const Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const ShimmerBox(width: 52, height: 52, borderRadius: 16),
-          const SizedBox(height: 16),
-          const ShimmerBox.full(height: 18, borderRadius: 6),
-          const SizedBox(height: 8),
-          const ShimmerBox(width: 100, height: 28, borderRadius: 8),
+          ShimmerBox(width: 52, height: 52, borderRadius: 16),
+          SizedBox(height: 16),
+          ShimmerBox.full(height: 18, borderRadius: 6),
+          SizedBox(height: 8),
+          ShimmerBox(width: 100, height: 28, borderRadius: 8),
         ],
       ),
     );
@@ -70,24 +70,24 @@ class ShimmerTransactionRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 12),
+    return const Padding(
+      padding: EdgeInsets.symmetric(vertical: 12),
       child: Row(
         children: [
-          const ShimmerBox(width: 52, height: 52, borderRadius: 20),
-          const SizedBox(width: 14),
+          ShimmerBox(width: 52, height: 52, borderRadius: 20),
+          SizedBox(width: 14),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
-              children: const [
+              children: [
                 ShimmerBox.full(height: 14, borderRadius: 6),
                 SizedBox(height: 6),
                 ShimmerBox(width: 80, height: 12, borderRadius: 6),
               ],
             ),
           ),
-          const SizedBox(width: 14),
-          const ShimmerBox(width: 60, height: 18, borderRadius: 6),
+          SizedBox(width: 14),
+          ShimmerBox(width: 60, height: 18, borderRadius: 6),
         ],
       ),
     );

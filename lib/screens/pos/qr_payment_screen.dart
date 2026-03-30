@@ -95,9 +95,9 @@ class _QrPaymentScreenState extends State<QrPaymentScreen> {
             child: Column(
               children: [
                 // Total
-                Text(
+                const Text(
                   'Total:',
-                  style: const TextStyle(
+                  style: TextStyle(
                       fontSize: 20, color: AppTheme.textSecondary),
                 ),
                 Text(

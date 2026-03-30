@@ -89,8 +89,9 @@ class _StepPhoneState extends State<StepPhone> {
                     : null,
               ),
               validator: (v) {
-                if (v == null || v.isEmpty)
+                if (v == null || v.isEmpty) {
                   return 'Ingrese su número de celular';
+                }
                 if (v.length < 7) return 'Mínimo 7 dígitos';
                 return null;
               },

@@ -75,8 +75,8 @@ class ReceiptDetailScreen extends StatelessWidget {
                         width: double.infinity,
                         height: 4,
                         margin: const EdgeInsets.symmetric(horizontal: 16),
-                        decoration: BoxDecoration(
-                          borderRadius: const BorderRadius.vertical(
+                        decoration: const BoxDecoration(
+                          borderRadius: BorderRadius.vertical(
                               top: Radius.circular(28)),
                           border: Border(
                             top: BorderSide(
@@ -92,9 +92,9 @@ class ReceiptDetailScreen extends StatelessWidget {
                         child: Column(
                           children: [
                             // Store name
-                            Text(
+                            const Text(
                               storeName,
-                              style: const TextStyle(
+                              style: TextStyle(
                                 fontSize: 20,
                                 fontWeight: FontWeight.bold,
                                 color: AppTheme.textPrimary,
@@ -103,9 +103,9 @@ class ReceiptDetailScreen extends StatelessWidget {
                             ),
                             const SizedBox(height: 8),
                             // Date + time
-                            Text(
+                            const Text(
                               '$date - $time',
-                              style: const TextStyle(
+                              style: TextStyle(
                                 fontSize: 18,
                                 color: AppTheme.textSecondary,
                               ),
@@ -183,10 +183,10 @@ class ReceiptDetailScreen extends StatelessWidget {
                             ),
                             const SizedBox(height: 12),
                             // Payment method
-                            Row(
+                            const Row(
                               mainAxisAlignment: MainAxisAlignment.spaceBetween,
                               children: [
-                                const Text(
+                                Text(
                                   'Metodo de pago',
                                   style: TextStyle(
                                     fontSize: 18,
@@ -195,7 +195,7 @@ class ReceiptDetailScreen extends StatelessWidget {
                                 ),
                                 Text(
                                   paymentMethod,
-                                  style: const TextStyle(
+                                  style: TextStyle(
                                     fontSize: 18,
                                     fontWeight: FontWeight.w600,
                                     color: AppTheme.textPrimary,
@@ -363,10 +363,10 @@ class _DashedDivider extends StatelessWidget {
         return Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: List.generate(dashCount, (_) {
-            return SizedBox(
+            return const SizedBox(
               width: dashWidth,
               height: 1.5,
-              child: const DecoratedBox(
+              child: DecoratedBox(
                 decoration: BoxDecoration(color: AppTheme.borderColor),
               ),
             );

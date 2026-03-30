@@ -172,7 +172,7 @@ class _PromoManagementScreenState extends State<PromoManagementScreen> {
                                 HapticFeedback.mediumImpact();
                                 setState(() => _offersVisible = val);
                               },
-                              activeColor: Colors.white,
+                              activeThumbColor: Colors.white,
                               activeTrackColor: AppTheme.success,
                             ),
                           ),

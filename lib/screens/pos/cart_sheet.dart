@@ -306,8 +306,8 @@ class _PaymentPanelState extends State<_PaymentPanel> {
                       HapticFeedback.mediumImpact();
                       Navigator.of(context).pop();
                       ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: const Row(
+                        const SnackBar(
+                          content: Row(
                             children: [
                               Icon(Icons.check_circle_rounded,
                                   color: Colors.white, size: 24),
@@ -317,7 +317,7 @@ class _PaymentPanelState extends State<_PaymentPanel> {
                             ],
                           ),
                           backgroundColor: AppTheme.success,
-                          duration: const Duration(seconds: 5),
+                          duration: Duration(seconds: 5),
                         ),
                       );
                     } else {

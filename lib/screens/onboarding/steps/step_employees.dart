@@ -73,15 +73,15 @@ class StepEmployees extends StatelessWidget {
                         color: AppTheme.primary.withValues(alpha: 0.25),
                       ),
                     ),
-                    child: Row(
+                    child: const Row(
                       children: [
-                        const Icon(Icons.info_outline_rounded,
+                        Icon(Icons.info_outline_rounded,
                             color: AppTheme.primary, size: 28),
-                        const SizedBox(width: 14),
+                        SizedBox(width: 14),
                         Expanded(
                           child: Text(
                             'Te asignaremos como el cajero principal por defecto',
-                            style: const TextStyle(
+                            style: TextStyle(
                               fontSize: 18,
                               color: AppTheme.primary,
                               fontWeight: FontWeight.w600,
@@ -106,15 +106,15 @@ class StepEmployees extends StatelessWidget {
                         color: AppTheme.success.withValues(alpha: 0.3),
                       ),
                     ),
-                    child: Row(
+                    child: const Row(
                       children: [
-                        const Icon(Icons.check_circle_outline_rounded,
+                        Icon(Icons.check_circle_outline_rounded,
                             color: AppTheme.success, size: 28),
-                        const SizedBox(width: 14),
+                        SizedBox(width: 14),
                         Expanded(
                           child: Text(
                             'Podrás registrar empleados desde el módulo Administrar una vez terminado el registro.',
-                            style: const TextStyle(
+                            style: TextStyle(
                               fontSize: 18,
                               color: AppTheme.success,
                               height: 1.4,

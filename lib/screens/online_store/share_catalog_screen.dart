@@ -63,7 +63,14 @@ class ShareCatalogScreen extends StatelessWidget {
                   version: QrVersions.auto,
                   size: 220,
                   gapless: true,
-                  foregroundColor: AppTheme.textPrimary,
+                  eyeStyle: const QrEyeStyle(
+                    eyeShape: QrEyeShape.square,
+                    color: AppTheme.textPrimary,
+                  ),
+                  dataModuleStyle: const QrDataModuleStyle(
+                    dataModuleShape: QrDataModuleShape.square,
+                    color: AppTheme.textPrimary,
+                  ),
                 ),
               ),
 

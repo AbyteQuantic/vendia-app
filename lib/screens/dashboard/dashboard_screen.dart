@@ -144,7 +144,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                               width: 60,
                               height: 60,
                               decoration: BoxDecoration(
-                                color: AppTheme.primary.withOpacity(0.1),
+                                color: AppTheme.primary.withValues(alpha: 0.1),
                                 borderRadius: BorderRadius.circular(20),
                               ),
                               child: const Icon(Icons.storefront_rounded,
@@ -223,7 +223,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                               icon: Icons.payments_rounded,
                               iconColor: AppTheme.primary,
                               backgroundColor:
-                                  AppTheme.primary.withOpacity(0.06),
+                                  AppTheme.primary.withValues(alpha: 0.06),
                               trend: s.trend,
                             ),
                             const SizedBox(height: 16),
@@ -303,7 +303,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                           physics: const NeverScrollableScrollPhysics(),
                           shrinkWrap: true,
                           itemCount: sales.length,
-                          separatorBuilder: (_, __) => Divider(
+                          separatorBuilder: (_, __) => const Divider(
                             height: 1,
                             indent: 76,
                             color: AppTheme.borderColor,
@@ -402,7 +402,7 @@ class _SaleTile extends StatelessWidget {
             width: 48,
             height: 48,
             decoration: BoxDecoration(
-              color: AppTheme.primary.withOpacity(0.1),
+              color: AppTheme.primary.withValues(alpha: 0.1),
               borderRadius: BorderRadius.circular(20),
             ),
             child: Icon(_payIcon, color: AppTheme.primary, size: 24),
@@ -455,9 +455,9 @@ class _ErrorBanner extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          color: AppTheme.error.withOpacity(0.08),
+          color: AppTheme.error.withValues(alpha: 0.08),
           borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: AppTheme.error.withOpacity(0.3)),
+          border: Border.all(color: AppTheme.error.withValues(alpha: 0.3)),
         ),
         child: Row(
           children: [
@@ -484,14 +484,14 @@ class _StatsShimmer extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 24),
+    return const Padding(
+      padding: EdgeInsets.symmetric(horizontal: 24),
       child: Column(
         children: [
-          const ShimmerBox.full(height: 130, borderRadius: 24),
-          const SizedBox(height: 16),
+          ShimmerBox.full(height: 130, borderRadius: 24),
+          SizedBox(height: 16),
           Row(
-            children: const [
+            children: [
               Expanded(child: ShimmerBox.full(height: 110, borderRadius: 24)),
               SizedBox(width: 16),
               Expanded(child: ShimmerBox.full(height: 110, borderRadius: 24)),

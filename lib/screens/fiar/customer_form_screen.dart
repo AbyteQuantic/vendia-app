@@ -116,8 +116,9 @@ class _CustomerFormScreenState extends State<CustomerFormScreen> {
                           color: AppTheme.primary, size: 26),
                     ),
                     validator: (v) {
-                      if (v == null || v.trim().isEmpty)
+                      if (v == null || v.trim().isEmpty) {
                         return 'Ingrese el nombre';
+                      }
                       return null;
                     },
                   ),

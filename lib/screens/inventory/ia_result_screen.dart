@@ -10,19 +10,19 @@ class IaResultScreen extends StatelessWidget {
 
   // Mock detected products
   static final List<_DetectedProduct> _mockProducts = [
-    _DetectedProduct(
+    const _DetectedProduct(
       emoji: '\uD83E\uDD64', // cup with straw
       name: 'Coca-Cola 350ml',
       unitPrice: 1500,
       quantity: 24,
     ),
-    _DetectedProduct(
+    const _DetectedProduct(
       emoji: '\uD83E\uDDC3', // beverage box
       name: 'Hit Naranja 1L',
       unitPrice: 3200,
       quantity: 12,
     ),
-    _DetectedProduct(
+    const _DetectedProduct(
       emoji: '\uD83D\uDCA7', // droplet
       name: 'Agua Cristal 600ml',
       unitPrice: 1000,

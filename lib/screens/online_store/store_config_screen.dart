@@ -145,7 +145,7 @@ class _StoreConfigScreenState extends State<StoreConfigScreen> {
                                 HapticFeedback.mediumImpact();
                                 setState(() => _isOpen = val);
                               },
-                              activeColor: Colors.white,
+                              activeThumbColor: Colors.white,
                               activeTrackColor: AppTheme.success,
                             ),
                           ),

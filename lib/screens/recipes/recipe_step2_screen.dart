@@ -25,14 +25,13 @@ class _MockIngredient {
   final String emoji;
   final double unitCost;
   final List<Color> gradientColors;
-  int quantity;
+  int quantity = 1;
 
   _MockIngredient({
     required this.name,
     required this.emoji,
     required this.unitCost,
     required this.gradientColors,
-    this.quantity = 1,
   });
 
   double get totalCost => unitCost * quantity;

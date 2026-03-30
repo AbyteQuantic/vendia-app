@@ -16,7 +16,7 @@ class _AISuggestion {
   final String alertText;
   final Color alertColor;
   final String suggestionText;
-  bool applied;
+  bool applied = false;
 
   _AISuggestion({
     required this.emoji,
@@ -24,7 +24,6 @@ class _AISuggestion {
     required this.alertText,
     required this.alertColor,
     required this.suggestionText,
-    this.applied = false,
   });
 }
 

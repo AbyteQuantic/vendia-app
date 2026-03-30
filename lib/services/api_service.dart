@@ -61,8 +61,8 @@ class ApiService {
           }
           _auth.logout();
           scaffoldKey.currentState?.showSnackBar(
-            SnackBar(
-              content: const Row(
+            const SnackBar(
+              content: Row(
                 children: [
                   Icon(Icons.lock_clock_rounded,
                       color: Colors.white, size: 24),
@@ -76,7 +76,7 @@ class ApiService {
                 ],
               ),
               backgroundColor: AppTheme.error,
-              duration: const Duration(seconds: 5),
+              duration: Duration(seconds: 5),
             ),
           );
         }
