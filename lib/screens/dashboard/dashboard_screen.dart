@@ -364,29 +364,27 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   ),
                 ),
 
-                // ── CTA: Nueva venta ─────────────────────────────────────────
-                SliverToBoxAdapter(
-                  child: Padding(
-                    padding: const EdgeInsets.fromLTRB(20, 4, 20, 24),
-                    child: ElevatedButton.icon(
-                      onPressed: () async {
-                        HapticFeedback.lightImpact();
-                        await Navigator.of(context).push(MaterialPageRoute(
-                          builder: (_) => const PosScreen(),
-                        ));
-                        _refresh();
-                      },
-                      icon: const Icon(Icons.add_rounded, size: 26),
-                      label: const Text('Registrar nueva venta'),
-                    ),
-                  ),
-                ),
-
                 const SliverToBoxAdapter(
-                  child: SizedBox(height: 40),
+                  child: SizedBox(height: 16),
                 ),
               ],
             ),
+          ),
+        ),
+      ),
+      bottomNavigationBar: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 12, 20, 16),
+          child: ElevatedButton.icon(
+            onPressed: () async {
+              HapticFeedback.lightImpact();
+              await Navigator.of(context).push(MaterialPageRoute(
+                builder: (_) => const PosScreen(),
+              ));
+              _refresh();
+            },
+            icon: const Icon(Icons.add_rounded, size: 26),
+            label: const Text('Registrar nueva venta'),
           ),
         ),
       ),
