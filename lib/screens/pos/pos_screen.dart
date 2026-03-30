@@ -79,6 +79,16 @@ class _PosScreenBodyState extends State<_PosScreenBody> {
   Widget build(BuildContext context) {
     return Consumer<CartController>(
       builder: (context, ctrl, _) {
+        // Esperando carga de productos
+        if (!ctrl.productsLoaded) {
+          return const Scaffold(
+            backgroundColor: AppTheme.background,
+            body: Center(
+              child: CircularProgressIndicator(color: AppTheme.primary),
+            ),
+          );
+        }
+
         // Si no hay productos reales, mostrar guía de inventario
         if (!ctrl.hasRealProducts) {
           return _EmptyInventoryGuide(

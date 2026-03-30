@@ -14,6 +14,7 @@ class CartController extends ChangeNotifier {
   int _activeIndex = 0;
   String _search = '';
   List<Product> _products = [];
+  bool _productsLoaded = false;
 
   CartController() {
     _restoreCarts();
@@ -38,13 +39,12 @@ class CartController extends ChangeNotifier {
     try {
       final db = DatabaseService.instance;
       final local = await db.getAllProducts();
-      if (local.isNotEmpty) {
-        _products = local.map(_localToProduct).toList();
-        notifyListeners();
-      }
+      _products = local.map(_localToProduct).toList();
     } catch (_) {
       // Fallback to mock products
     }
+    _productsLoaded = true;
+    notifyListeners();
   }
 
   Product _localToProduct(LocalProduct lp) => Product(
@@ -87,7 +87,9 @@ class CartController extends ChangeNotifier {
   int cartCount(int index) =>
       _carts[index].fold(0, (sum, item) => sum + item.quantity);
 
+  bool get productsLoaded => _productsLoaded;
   bool get hasRealProducts => _products.isNotEmpty;
+  int get productCount => _products.length;
 
   List<Product> get allProducts =>
       _products.isNotEmpty ? _products : mockProducts;

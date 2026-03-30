@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:dio/dio.dart';
 import '../../config/api_config.dart';
+import '../../database/database_service.dart';
 import '../../services/auth_service.dart';
 import '../../services/dashboard_service.dart';
 import '../../theme/app_theme.dart';
@@ -30,6 +31,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   late Future<DashboardStats> _statsFuture;
   late Future<List<RecentSale>> _salesFuture;
+  late Future<_InventorySummary> _inventoryFuture;
 
   @override
   void initState() {
@@ -49,6 +51,19 @@ class _DashboardScreenState extends State<DashboardScreen> {
   void _load() {
     _statsFuture = _service.fetchStats();
     _salesFuture = _service.fetchRecentSales();
+    _inventoryFuture = _loadInventorySummary();
+  }
+
+  Future<_InventorySummary> _loadInventorySummary() async {
+    try {
+      final products = await DatabaseService.instance.getAllProducts();
+      final total = products.length;
+      final incomplete = products.where((p) =>
+          p.price <= 0 || p.imageUrl == null || p.imageUrl!.isEmpty).length;
+      return _InventorySummary(total: total, incomplete: incomplete);
+    } catch (_) {
+      return const _InventorySummary(total: 0, incomplete: 0);
+    }
   }
 
   Future<void> _refresh() async {
@@ -334,21 +349,28 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   ),
                 ),
 
-                // ── CTA: Inventario ─────────────────────────────────────────
+                // ── Tarjeta resumen de inventario ────────────────────────────
                 SliverToBoxAdapter(
-                  child: Padding(
-                    padding: const EdgeInsets.fromLTRB(24, 0, 24, 40),
-                    child: OutlinedButton.icon(
-                      onPressed: () {
-                        HapticFeedback.lightImpact();
-                        Navigator.of(context).push(MaterialPageRoute(
-                          builder: (_) => const AddMerchandiseScreen(),
-                        ));
-                      },
-                      icon: const Icon(Icons.inventory_2_rounded, size: 24),
-                      label: const Text('Administrar inventario'),
-                    ),
+                  child: FutureBuilder<_InventorySummary>(
+                    future: _inventoryFuture,
+                    builder: (context, snap) {
+                      final inv = snap.data ??
+                          const _InventorySummary(total: 0, incomplete: 0);
+                      return _InventoryCard(
+                        summary: inv,
+                        onTap: () {
+                          HapticFeedback.lightImpact();
+                          Navigator.of(context).push(MaterialPageRoute(
+                            builder: (_) => const AddMerchandiseScreen(),
+                          ));
+                        },
+                      );
+                    },
                   ),
+                ),
+
+                const SliverToBoxAdapter(
+                  child: SizedBox(height: 40),
                 ),
               ],
             ),
@@ -496,6 +518,126 @@ class _TransactionsShimmer extends StatelessWidget {
       ),
       child: Column(
         children: List.generate(4, (_) => const ShimmerTransactionRow()),
+      ),
+    );
+  }
+}
+
+// ── Inventario ──────────────────────────────────────────────────────────────
+
+class _InventorySummary {
+  final int total;
+  final int incomplete;
+
+  const _InventorySummary({required this.total, required this.incomplete});
+
+  int get complete => total - incomplete;
+}
+
+class _InventoryCard extends StatelessWidget {
+  final _InventorySummary summary;
+  final VoidCallback onTap;
+
+  const _InventoryCard({required this.summary, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    final hasIncomplete = summary.incomplete > 0;
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(24, 0, 24, 0),
+      child: GestureDetector(
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.all(20),
+          decoration: BoxDecoration(
+            color: AppTheme.surfaceGrey,
+            borderRadius: BorderRadius.circular(24),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.04),
+                blurRadius: 10,
+                offset: const Offset(0, 4),
+              ),
+            ],
+          ),
+          child: Row(
+            children: [
+              // Ícono
+              Container(
+                width: 52,
+                height: 52,
+                decoration: BoxDecoration(
+                  color: hasIncomplete
+                      ? AppTheme.warning.withValues(alpha: 0.12)
+                      : AppTheme.primary.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: Icon(
+                  Icons.inventory_2_rounded,
+                  color: hasIncomplete ? AppTheme.warning : AppTheme.primary,
+                  size: 28,
+                ),
+              ),
+              const SizedBox(width: 16),
+
+              // Info
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Inventario',
+                      style: TextStyle(
+                        fontSize: 18,
+                        color: AppTheme.textSecondary,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    if (summary.total == 0)
+                      const Text(
+                        'Sin productos',
+                        style: TextStyle(
+                          fontSize: 22,
+                          fontWeight: FontWeight.bold,
+                          color: AppTheme.textPrimary,
+                        ),
+                      )
+                    else ...[
+                      Text(
+                        '${summary.total} referencia${summary.total == 1 ? '' : 's'}',
+                        style: const TextStyle(
+                          fontSize: 22,
+                          fontWeight: FontWeight.bold,
+                          color: AppTheme.textPrimary,
+                        ),
+                      ),
+                      if (hasIncomplete) ...[
+                        const SizedBox(height: 2),
+                        Text(
+                          '${summary.incomplete} sin completar',
+                          style: const TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.w600,
+                            color: AppTheme.warning,
+                          ),
+                        ),
+                      ],
+                    ],
+                  ],
+                ),
+              ),
+
+              // Flecha
+              const Icon(
+                Icons.chevron_right_rounded,
+                color: AppTheme.textSecondary,
+                size: 28,
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
