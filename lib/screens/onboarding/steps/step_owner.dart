@@ -26,7 +26,7 @@ class StepOwner extends StatelessWidget {
             const SizedBox(height: 10),
             _field(
               key: const Key('owner_name'),
-              hint: 'Pedro',
+              hint: 'Ej: Pedro',
               icon: Icons.person_outline_rounded,
               initialValue: controller.ownerName,
               onSaved: (v) => controller.ownerName = v!.trim(),
@@ -38,7 +38,7 @@ class StepOwner extends StatelessWidget {
             const SizedBox(height: 10),
             _field(
               key: const Key('owner_lastname'),
-              hint: 'Martínez',
+              hint: 'Ej: Martínez',
               icon: Icons.badge_outlined,
               initialValue: controller.ownerLastName,
               onSaved: (v) => controller.ownerLastName = v!.trim(),
@@ -51,7 +51,7 @@ class StepOwner extends StatelessWidget {
             const SizedBox(height: 10),
             _field(
               key: const Key('owner_phone'),
-              hint: '310 000 0000',
+              hint: 'Ej: 310 000 0000',
               icon: Icons.phone_outlined,
               keyboard: TextInputType.phone,
               inputFormatters: [FilteringTextInputFormatter.digitsOnly],
@@ -69,7 +69,12 @@ class StepOwner extends StatelessWidget {
             _PinField(
               initialValue: controller.pin,
               onSaved: (v) => controller.pin = v!.trim(),
+              onChanged: (v) => controller.pin = v,
             ),
+            const SizedBox(height: 24),
+            _label('Confirmar clave'),
+            const SizedBox(height: 10),
+            _ConfirmPinField(controller: controller),
           ],
         ),
       ),
@@ -103,6 +108,11 @@ class StepOwner extends StatelessWidget {
       style: const TextStyle(fontSize: 20),
       decoration: InputDecoration(
         hintText: hint,
+        hintStyle: TextStyle(
+          color: Colors.grey.shade400,
+          fontWeight: FontWeight.w400,
+          fontStyle: FontStyle.italic,
+        ),
         prefixIcon: Icon(icon, color: AppTheme.primary, size: 26),
       ),
       onSaved: onSaved,
@@ -114,8 +124,9 @@ class StepOwner extends StatelessWidget {
 class _PinField extends StatefulWidget {
   final String? initialValue;
   final void Function(String?)? onSaved;
+  final void Function(String)? onChanged;
 
-  const _PinField({this.initialValue, this.onSaved});
+  const _PinField({this.initialValue, this.onSaved, this.onChanged});
 
   @override
   State<_PinField> createState() => _PinFieldState();
@@ -138,6 +149,10 @@ class _PinFieldState extends State<_PinField> {
       style: const TextStyle(fontSize: 22, letterSpacing: 6),
       decoration: InputDecoration(
         hintText: '• • • •',
+        hintStyle: TextStyle(
+          color: Colors.grey.shade400,
+          fontWeight: FontWeight.w400,
+        ),
         prefixIcon:
             const Icon(Icons.lock_outline, color: AppTheme.primary, size: 26),
         suffixIcon: IconButton(
@@ -148,10 +163,67 @@ class _PinFieldState extends State<_PinField> {
           onPressed: () => setState(() => _visible = !_visible),
         ),
       ),
+      onChanged: (v) {
+        _lastValue = v;
+        widget.onChanged?.call(v);
+      },
       onSaved: widget.onSaved,
       validator: (v) {
         if (v == null || v.isEmpty) return 'Ingrese su clave';
         if (v.length < 4) return 'Mínimo 4 dígitos';
+        return null;
+      },
+    );
+  }
+
+  String _lastValue = '';
+  String get value => _lastValue.isNotEmpty ? _lastValue : (widget.initialValue ?? '');
+}
+
+class _ConfirmPinField extends StatefulWidget {
+  final OnboardingStepperController controller;
+
+  const _ConfirmPinField({required this.controller});
+
+  @override
+  State<_ConfirmPinField> createState() => _ConfirmPinFieldState();
+}
+
+class _ConfirmPinFieldState extends State<_ConfirmPinField> {
+  bool _visible = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return TextFormField(
+      key: const Key('owner_pin_confirm'),
+      keyboardType: TextInputType.number,
+      obscureText: !_visible,
+      inputFormatters: [
+        FilteringTextInputFormatter.digitsOnly,
+        LengthLimitingTextInputFormatter(8),
+      ],
+      style: const TextStyle(fontSize: 22, letterSpacing: 6),
+      decoration: InputDecoration(
+        hintText: '• • • •',
+        hintStyle: TextStyle(
+          color: Colors.grey.shade400,
+          fontWeight: FontWeight.w400,
+        ),
+        prefixIcon:
+            const Icon(Icons.lock_outline, color: AppTheme.primary, size: 26),
+        suffixIcon: IconButton(
+          icon: Icon(
+            _visible ? Icons.visibility_off : Icons.visibility,
+            color: AppTheme.textSecondary,
+          ),
+          onPressed: () => setState(() => _visible = !_visible),
+        ),
+      ),
+      validator: (v) {
+        if (v == null || v.isEmpty) return 'Confirme su clave';
+        if (v != widget.controller.pin && widget.controller.pin.isNotEmpty) {
+          return 'Las claves no coinciden';
+        }
         return null;
       },
     );

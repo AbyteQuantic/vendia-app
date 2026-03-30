@@ -3,6 +3,10 @@
     <!-- Permiso de internet (requerido para llamadas al backend) -->
     <uses-permission android:name="android.permission.INTERNET"/>
 
+    <!-- Permisos de ubicación (GPS para dirección del negocio) -->
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/>
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"/>
+
     <application
         android:label="VendIA"
         android:name="${applicationName}"

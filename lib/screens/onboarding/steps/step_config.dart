@@ -29,6 +29,12 @@ class StepConfig extends StatelessWidget {
       icon: Icons.local_bar_rounded,
     ),
     _BusinessTypeOption(
+      key: Key('btype_comidas_rapidas'),
+      value: 'comidas_rapidas',
+      label: 'Comidas\nRápidas',
+      icon: Icons.fastfood_rounded,
+    ),
+    _BusinessTypeOption(
       key: Key('btype_miscelanea'),
       value: 'miscelanea',
       label: 'Miscelánea\n/ Papelería',
@@ -57,7 +63,7 @@ class StepConfig extends StatelessWidget {
                 ),
                 const SizedBox(height: 8),
                 const Text(
-                  'Toca la tarjeta que mejor describa tu tienda.',
+                  'Toca la tarjeta que mejor describa tu negocio.',
                   style: TextStyle(fontSize: 18, color: AppTheme.textSecondary),
                 ),
                 const SizedBox(height: 24),

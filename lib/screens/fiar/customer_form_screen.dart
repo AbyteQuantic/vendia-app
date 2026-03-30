@@ -105,9 +105,14 @@ class _CustomerFormScreenState extends State<CustomerFormScreen> {
                     controller: _nameCtrl,
                     style: const TextStyle(fontSize: 20),
                     textInputAction: TextInputAction.next,
-                    decoration: const InputDecoration(
+                    decoration: InputDecoration(
                       hintText: 'Ej: Don Pedro',
-                      prefixIcon: Icon(Icons.person_rounded,
+                      hintStyle: TextStyle(
+                        color: Colors.grey.shade400,
+                        fontWeight: FontWeight.w400,
+                        fontStyle: FontStyle.italic,
+                      ),
+                      prefixIcon: const Icon(Icons.person_rounded,
                           color: AppTheme.primary, size: 26),
                     ),
                     validator: (v) {
@@ -130,9 +135,14 @@ class _CustomerFormScreenState extends State<CustomerFormScreen> {
                     inputFormatters: [FilteringTextInputFormatter.digitsOnly],
                     textInputAction: TextInputAction.done,
                     onFieldSubmitted: (_) => _save(),
-                    decoration: const InputDecoration(
-                      hintText: '310 000 0000',
-                      prefixIcon: Icon(Icons.phone_rounded,
+                    decoration: InputDecoration(
+                      hintText: 'Ej: 310 000 0000',
+                      hintStyle: TextStyle(
+                        color: Colors.grey.shade400,
+                        fontWeight: FontWeight.w400,
+                        fontStyle: FontStyle.italic,
+                      ),
+                      prefixIcon: const Icon(Icons.phone_rounded,
                           color: AppTheme.primary, size: 26),
                     ),
                     validator: (v) {

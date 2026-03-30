@@ -230,9 +230,14 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
                         style: const TextStyle(fontSize: 20),
                         textInputAction: TextInputAction.next,
                         onChanged: (_) => setState(() {}),
-                        decoration: const InputDecoration(
+                        decoration: InputDecoration(
                           hintText: 'Ej: Coca-Cola 350ml',
-                          prefixIcon: Icon(Icons.inventory_2_rounded,
+                          hintStyle: TextStyle(
+                            color: Colors.grey.shade400,
+                            fontWeight: FontWeight.w400,
+                            fontStyle: FontStyle.italic,
+                          ),
+                          prefixIcon: const Icon(Icons.inventory_2_rounded,
                               color: AppTheme.primary, size: 26),
                         ),
                         validator: (v) {
@@ -270,8 +275,12 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
                               inputFormatters: [
                                 FilteringTextInputFormatter.digitsOnly,
                               ],
-                              decoration: const InputDecoration(
+                              decoration: InputDecoration(
                                 hintText: '\$0',
+                                hintStyle: TextStyle(
+                                  color: Colors.grey.shade400,
+                                  fontWeight: FontWeight.w400,
+                                ),
                                 prefixIcon: Icon(Icons.attach_money_rounded,
                                     color: AppTheme.textSecondary, size: 24),
                               ),
@@ -310,8 +319,12 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
                               inputFormatters: [
                                 FilteringTextInputFormatter.digitsOnly,
                               ],
-                              decoration: const InputDecoration(
+                              decoration: InputDecoration(
                                 hintText: '\$0',
+                                hintStyle: TextStyle(
+                                  color: Colors.grey.shade400,
+                                  fontWeight: FontWeight.w400,
+                                ),
                                 prefixIcon: Icon(Icons.attach_money_rounded,
                                     color: Color(0xFF10B981), size: 24),
                               ),
@@ -350,9 +363,13 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
                         inputFormatters: [
                           FilteringTextInputFormatter.digitsOnly,
                         ],
-                        decoration: const InputDecoration(
+                        decoration: InputDecoration(
                           hintText: '1',
-                          prefixIcon: Icon(Icons.numbers_rounded,
+                          hintStyle: TextStyle(
+                            color: Colors.grey.shade400,
+                            fontWeight: FontWeight.w400,
+                          ),
+                          prefixIcon: const Icon(Icons.numbers_rounded,
                               color: AppTheme.primary, size: 26),
                         ),
                         validator: (v) {

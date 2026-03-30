@@ -131,8 +131,13 @@ class _AdminScreenState extends State<AdminScreen> {
                           ],
                           style:
                               const TextStyle(fontSize: 20, letterSpacing: 1.5),
-                          decoration: const InputDecoration(
-                            hintText: '310 000 0000',
+                          decoration: InputDecoration(
+                            hintText: 'Ej: 310 000 0000',
+                            hintStyle: TextStyle(
+                              color: Colors.grey.shade400,
+                              fontWeight: FontWeight.w400,
+                              fontStyle: FontStyle.italic,
+                            ),
                             prefixIcon: Icon(Icons.phone_android_rounded,
                                 color: Color(0xFF311B92), size: 24),
                           ),
@@ -155,8 +160,13 @@ class _AdminScreenState extends State<AdminScreen> {
                           ],
                           style:
                               const TextStyle(fontSize: 20, letterSpacing: 1.5),
-                          decoration: const InputDecoration(
-                            hintText: '310 000 0000',
+                          decoration: InputDecoration(
+                            hintText: 'Ej: 310 000 0000',
+                            hintStyle: TextStyle(
+                              color: Colors.grey.shade400,
+                              fontWeight: FontWeight.w400,
+                              fontStyle: FontStyle.italic,
+                            ),
                             prefixIcon: Icon(Icons.phone_android_rounded,
                                 color: AppTheme.error, size: 24),
                           ),

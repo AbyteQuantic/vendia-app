@@ -3,6 +3,9 @@
 <plist version="1.0">
 <dict>
 	<!-- Permite HTTP cleartext para desarrollo local (backend en red WiFi) -->
+	<!-- Permiso de ubicación GPS -->
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>VendIA necesita su ubicación para encontrar la dirección de su negocio automáticamente.</string>
 	<key>NSAppTransportSecurity</key>
 	<dict>
 		<key>NSAllowsArbitraryLoads</key>

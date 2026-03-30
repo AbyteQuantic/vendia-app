@@ -19,8 +19,8 @@ class ApiService {
   ApiService(this._auth) {
     _dio = Dio(BaseOptions(
       baseUrl: ApiConfig.baseUrl,
-      connectTimeout: const Duration(seconds: 10),
-      receiveTimeout: const Duration(seconds: 15),
+      connectTimeout: const Duration(seconds: 60),
+      receiveTimeout: const Duration(seconds: 60),
       headers: {'Content-Type': 'application/json'},
     ));
 
@@ -45,7 +45,8 @@ class ApiService {
       },
       onError: (error, handler) async {
         if (error.response?.statusCode == 401 &&
-            !error.requestOptions.path.contains('/auth/refresh')) {
+            !error.requestOptions.path.contains('/auth/refresh') &&
+            !error.requestOptions.path.contains('/login')) {
           // Try token refresh
           final refreshed = await _tryRefreshToken();
           if (refreshed) {

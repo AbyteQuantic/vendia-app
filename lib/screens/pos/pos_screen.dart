@@ -10,8 +10,8 @@ import 'cart_controller.dart';
 import 'account_qr_screen.dart';
 import 'widgets/container_dialog.dart';
 
-/// PosScreen — Módulo de venta con 5 carritos independientes.
-/// Consume CartController vía Provider.
+/// PosScreen — Premium POS module with 10 independent carts.
+/// Consumes CartController via Provider.
 class PosScreen extends StatefulWidget {
   const PosScreen({super.key});
 
@@ -46,141 +46,216 @@ class _PosScreenState extends State<PosScreen> {
     }
   }
 
+  void _showProductDetailModal(Product product, CartController ctrl) {
+    HapticFeedback.mediumImpact();
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => _ProductDetailSheet(
+        product: product,
+        onAddToCart: () {
+          Navigator.of(ctx).pop();
+          _addProductWithContainerCheck(ctrl, product);
+        },
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Consumer<CartController>(
       builder: (context, ctrl, _) {
         return Scaffold(
-          backgroundColor: AppTheme.background,
-          appBar: AppBar(
-            backgroundColor: AppTheme.background,
-            elevation: 0,
-            leading: Semantics(
-              button: true,
-              label: 'Volver al inicio',
-              child: IconButton(
-                icon: const Icon(Icons.arrow_back_rounded,
-                    color: AppTheme.textPrimary, size: 28),
-                tooltip: 'Volver',
-                onPressed: () => Navigator.of(context).pop(),
+          backgroundColor: Colors.transparent,
+          body: Container(
+            decoration: const BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [Color(0xFFFFFBF7), Color(0xFFF5F3F0)],
               ),
             ),
-            title: const Text(
-              'Vender',
-              style: TextStyle(
-                fontSize: 24,
-                fontWeight: FontWeight.w800,
-                color: AppTheme.textPrimary,
-              ),
-            ),
-            actions: [
-              // Botón de pánico silencioso
-              PanicButton(
-                onPanicTriggered: () {
-                  // TODO: send SOS via API
-                },
-              ),
-              const SizedBox(width: 6),
-              // Rockola / Música
-              _HeaderBadgeIcon(
-                key: const Key('btn_music'),
-                icon: Icons.music_note_rounded,
-                badgeCount: 3,
-                badgeColor: const Color(0xFF764BA2),
-                tooltip: 'Rockola',
-                onPressed: () {
-                  HapticFeedback.lightImpact();
-                  // TODO: navigate to rockola
-                },
-              ),
-              const SizedBox(width: 6),
-              // Notificaciones KDS
-              _HeaderBadgeIcon(
-                key: const Key('btn_notifications'),
-                icon: Icons.notifications_rounded,
-                badgeCount: 2,
-                badgeColor: const Color(0xFFFF6B6B),
-                tooltip: 'Notificaciones',
-                onPressed: () {
-                  HapticFeedback.lightImpact();
-                  // TODO: navigate to KDS notifications
-                },
-              ),
-              const SizedBox(width: 12),
-            ],
-          ),
-          body: Column(
-            children: [
-              const SyncStatusBanner(),
-
-              // ── Pestañas de carrito (1–5) ──────────────────────────────────
-              _CartTabs(
-                activeIndex: ctrl.activeIndex,
-                onTabSelected: ctrl.switchCart,
-                cartCounts: List.generate(10, ctrl.cartCount),
-              ),
-
-              // ── Buscador ───────────────────────────────────────────────────
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
-                child: TextField(
-                  key: const Key('search_field'),
-                  controller: _searchCtrl,
-                  style: const TextStyle(fontSize: 18),
-                  onChanged: ctrl.setSearch,
-                  decoration: InputDecoration(
-                    hintText: 'Buscar producto...',
-                    prefixIcon: const Icon(Icons.search_rounded,
-                        color: AppTheme.primary, size: 24),
-                    suffixIcon: ValueListenableBuilder(
-                      valueListenable: _searchCtrl,
-                      builder: (_, value, __) => value.text.isNotEmpty
-                          ? IconButton(
-                              icon: const Icon(Icons.close_rounded,
-                                  color: AppTheme.textSecondary),
-                              onPressed: () {
-                                _searchCtrl.clear();
-                                ctrl.setSearch('');
-                              },
-                            )
-                          : const SizedBox.shrink(),
+            child: SafeArea(
+              child: Column(
+                children: [
+                  // ── AppBar replacement ──
+                  Padding(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    child: Row(
+                      children: [
+                        Semantics(
+                          button: true,
+                          label: 'Volver al inicio',
+                          child: IconButton(
+                            icon: const Icon(Icons.arrow_back_rounded,
+                                color: AppTheme.textPrimary, size: 28),
+                            tooltip: 'Volver',
+                            onPressed: () => Navigator.of(context).pop(),
+                          ),
+                        ),
+                        const SizedBox(width: 4),
+                        const Text(
+                          'Vender',
+                          style: TextStyle(
+                            fontSize: 24,
+                            fontWeight: FontWeight.w800,
+                            color: AppTheme.textPrimary,
+                          ),
+                        ),
+                        const Spacer(),
+                        PanicButton(
+                          onPanicTriggered: () {
+                            // TODO: send SOS via API
+                          },
+                        ),
+                        const SizedBox(width: 6),
+                        _HeaderBadgeIcon(
+                          key: const Key('btn_music'),
+                          icon: Icons.music_note_rounded,
+                          badgeCount: 3,
+                          badgeColor: const Color(0xFF764BA2),
+                          tooltip: 'Rockola',
+                          onPressed: () {
+                            HapticFeedback.lightImpact();
+                            // TODO: navigate to rockola
+                          },
+                        ),
+                        const SizedBox(width: 6),
+                        _HeaderBadgeIcon(
+                          key: const Key('btn_notifications'),
+                          icon: Icons.notifications_rounded,
+                          badgeCount: 2,
+                          badgeColor: const Color(0xFFFF6B6B),
+                          tooltip: 'Notificaciones',
+                          onPressed: () {
+                            HapticFeedback.lightImpact();
+                            // TODO: navigate to KDS notifications
+                          },
+                        ),
+                        const SizedBox(width: 8),
+                      ],
                     ),
                   ),
-                ),
-              ),
 
-              // ── Contenido principal: grid + carrito ────────────────────────
-              Expanded(
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // Grid de productos (60% del ancho)
-                    Expanded(
-                      flex: 6,
-                      child: _ProductGrid(
-                        products: ctrl.filteredProducts,
-                        onAdd: (p) => _addProductWithContainerCheck(ctrl, p),
+                  const SyncStatusBanner(),
+
+                  // ── Cart tabs (C1-C10) ──
+                  _CartTabs(
+                    activeIndex: ctrl.activeIndex,
+                    onTabSelected: ctrl.switchCart,
+                    cartCounts: List.generate(10, ctrl.cartCount),
+                  ),
+
+                  // ── Search bar ──
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+                    child: Container(
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFF8F7F5),
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(
+                          color: const Color(0xFFE8E4DF),
+                          width: 1,
+                        ),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withValues(alpha: 0.04),
+                            blurRadius: 8,
+                            offset: const Offset(0, 2),
+                          ),
+                        ],
+                      ),
+                      child: TextField(
+                        key: const Key('search_field'),
+                        controller: _searchCtrl,
+                        style: const TextStyle(fontSize: 18),
+                        onChanged: ctrl.setSearch,
+                        decoration: InputDecoration(
+                          hintText: 'Buscar producto...',
+                          hintStyle: const TextStyle(
+                            fontSize: 18,
+                            color: Color(0xFF9CA3AF),
+                          ),
+                          prefixIcon: const Icon(Icons.search_rounded,
+                              color: Color(0xFF9CA3AF), size: 24),
+                          suffixIcon: ValueListenableBuilder(
+                            valueListenable: _searchCtrl,
+                            builder: (_, value, __) => value.text.isNotEmpty
+                                ? IconButton(
+                                    icon: const Icon(Icons.close_rounded,
+                                        color: AppTheme.textSecondary),
+                                    onPressed: () {
+                                      _searchCtrl.clear();
+                                      ctrl.setSearch('');
+                                    },
+                                  )
+                                : const SizedBox.shrink(),
+                          ),
+                          filled: true,
+                          fillColor: Colors.transparent,
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(16),
+                            borderSide: BorderSide.none,
+                          ),
+                          enabledBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(16),
+                            borderSide: BorderSide.none,
+                          ),
+                          focusedBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(16),
+                            borderSide: BorderSide.none,
+                          ),
+                          contentPadding: const EdgeInsets.symmetric(
+                              horizontal: 20, vertical: 18),
+                        ),
                       ),
                     ),
+                  ),
 
-                    const VerticalDivider(width: 1, thickness: 1),
+                  // ── Main content: grid + cart ──
+                  Expanded(
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // Product grid (60%)
+                        Expanded(
+                          flex: 6,
+                          child: _ProductGrid(
+                            products: ctrl.filteredProducts,
+                            onAdd: (p) =>
+                                _addProductWithContainerCheck(ctrl, p),
+                            onLongPress: (p) =>
+                                _showProductDetailModal(p, ctrl),
+                          ),
+                        ),
 
-                    // Panel de carrito activo (40% del ancho)
-                    Expanded(
-                      flex: 4,
-                      child: _CartPanel(
-                        items: ctrl.activeCart,
-                        total: ctrl.formattedTotal,
-                        activeIndex: ctrl.activeIndex,
-                        onIncrement: ctrl.increment,
-                        onDecrement: ctrl.decrement,
-                        onClear: ctrl.clearActiveCart,
-                      ),
+                        // Subtle separator
+                        Container(
+                          width: 1,
+                          margin: const EdgeInsets.symmetric(vertical: 8),
+                          color: const Color(0xFFE8E4DF),
+                        ),
+
+                        // Active cart panel (40%)
+                        Expanded(
+                          flex: 4,
+                          child: _CartPanel(
+                            items: ctrl.activeCart,
+                            total: ctrl.formattedTotal,
+                            activeIndex: ctrl.activeIndex,
+                            onIncrement: ctrl.increment,
+                            onDecrement: ctrl.decrement,
+                            onClear: ctrl.clearActiveCart,
+                          ),
+                        ),
+                      ],
                     ),
-                  ],
-                ),
+                  ),
+                ],
               ),
-            ],
+            ),
           ),
         );
       },
@@ -188,7 +263,7 @@ class _PosScreenState extends State<PosScreen> {
   }
 }
 
-// ── Pestañas de carrito ────────────────────────────────────────────────────────
+// ── Cart Tabs ─────────────────────────────────────────────────────────────────
 
 class _CartTabs extends StatelessWidget {
   final int activeIndex;
@@ -204,13 +279,12 @@ class _CartTabs extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      height: 56,
-      color: AppTheme.surfaceGrey,
-      padding: const EdgeInsets.symmetric(vertical: 4),
+      height: 64,
+      padding: const EdgeInsets.symmetric(vertical: 6),
       child: ListView.builder(
         scrollDirection: Axis.horizontal,
         padding: const EdgeInsets.symmetric(horizontal: 8),
-        itemCount: cartCounts.length, // 10 cuentas
+        itemCount: cartCounts.length,
         itemBuilder: (_, i) {
           final isActive = activeIndex == i;
           final count = cartCounts[i];
@@ -224,21 +298,33 @@ class _CartTabs extends StatelessWidget {
                 onTabSelected(i);
               },
               child: AnimatedContainer(
-                duration: const Duration(milliseconds: 150),
-                width: 55,
+                duration: const Duration(milliseconds: 200),
+                curve: Curves.easeOutCubic,
+                width: 52,
+                height: 52,
                 alignment: Alignment.center,
                 decoration: BoxDecoration(
                   gradient: isActive
                       ? const LinearGradient(
-                          colors: [Color(0xFF667EEA), Color(0xFF764BA2)],
+                          colors: [Color(0xFF1A2FA0), Color(0xFF2541B2)],
                           begin: Alignment.topLeft,
                           end: Alignment.bottomRight,
                         )
                       : null,
                   color: isActive ? null : Colors.white,
-                  borderRadius: BorderRadius.circular(14),
+                  borderRadius: BorderRadius.circular(16),
                   border: hasItems
                       ? Border.all(color: const Color(0xFFF59E0B), width: 2)
+                      : null,
+                  boxShadow: isActive
+                      ? [
+                          BoxShadow(
+                            color:
+                                const Color(0xFF1A2FA0).withValues(alpha: 0.3),
+                            blurRadius: 10,
+                            offset: const Offset(0, 3),
+                          ),
+                        ]
                       : null,
                 ),
                 child: Column(
@@ -253,7 +339,7 @@ class _CartTabs extends StatelessWidget {
                             ? Colors.white
                             : hasItems
                                 ? AppTheme.textPrimary
-                                : const Color(0xFF9CA3AF),
+                                : const Color(0xFFBBBBBB),
                       ),
                     ),
                     if (isActive)
@@ -262,7 +348,7 @@ class _CartTabs extends StatelessWidget {
                         style: TextStyle(
                           fontSize: 9,
                           fontWeight: FontWeight.w600,
-                          color: Colors.white.withValues(alpha: 0.8),
+                          color: Colors.white.withValues(alpha: 0.85),
                         ),
                       ),
                     if (hasItems)
@@ -285,13 +371,18 @@ class _CartTabs extends StatelessWidget {
   }
 }
 
-// ── Grid de productos ──────────────────────────────────────────────────────────
+// ── Product Grid ──────────────────────────────────────────────────────────────
 
 class _ProductGrid extends StatelessWidget {
   final List<Product> products;
   final ValueChanged<Product> onAdd;
+  final ValueChanged<Product> onLongPress;
 
-  const _ProductGrid({required this.products, required this.onAdd});
+  const _ProductGrid({
+    required this.products,
+    required this.onAdd,
+    required this.onLongPress,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -307,18 +398,19 @@ class _ProductGrid extends StatelessWidget {
 
     return GridView.builder(
       key: const Key('product_grid'),
-      padding: const EdgeInsets.all(8),
+      padding: const EdgeInsets.all(10),
       gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
         crossAxisCount: 2,
-        crossAxisSpacing: 8,
-        mainAxisSpacing: 8,
-        childAspectRatio: 0.80,
+        crossAxisSpacing: 10,
+        mainAxisSpacing: 10,
+        childAspectRatio: 0.72,
       ),
       itemCount: products.length,
       itemBuilder: (_, i) => _ProductCard(
         index: i,
         product: products[i],
         onTap: () => onAdd(products[i]),
+        onLongPress: () => onLongPress(products[i]),
       ),
     );
   }
@@ -328,11 +420,13 @@ class _ProductCard extends StatelessWidget {
   final int index;
   final Product product;
   final VoidCallback onTap;
+  final VoidCallback onLongPress;
 
   const _ProductCard({
     required this.index,
     required this.product,
     required this.onTap,
+    required this.onLongPress,
   });
 
   @override
@@ -347,62 +441,99 @@ class _ProductCard extends StatelessWidget {
           HapticFeedback.lightImpact();
           onTap();
         },
+        onLongPress: onLongPress,
         child: Container(
           decoration: BoxDecoration(
-            color: AppTheme.surfaceGrey,
+            color: Colors.white,
             borderRadius: BorderRadius.circular(20),
-            border: Border.all(color: AppTheme.borderColor, width: 1.5),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.06),
+                blurRadius: 12,
+                offset: const Offset(0, 4),
+              ),
+            ],
           ),
-          padding: const EdgeInsets.all(14),
+          clipBehavior: Clip.antiAlias,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Container(
-                width: 48,
-                height: 48,
-                decoration: BoxDecoration(
-                  color: AppTheme.primary.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(14),
-                ),
-                child: const Icon(Icons.inventory_2_rounded,
-                    color: AppTheme.primary, size: 24),
+              // Image or gradient placeholder
+              _ProductImageSection(
+                imageUrl: product.imageUrl,
+                height: 90,
               ),
-              const Spacer(),
-              Text(
-                product.name,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.w600,
-                  color: AppTheme.textPrimary,
-                  height: 1.3,
-                ),
-              ),
-              const SizedBox(height: 4),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Flexible(
-                    child: Text(
-                      product.formattedPrice,
-                      style: const TextStyle(
-                        fontSize: 20,
-                        fontWeight: FontWeight.bold,
-                        color: AppTheme.primary,
+
+              // Content
+              Expanded(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(12, 8, 12, 10),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        product.name,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w600,
+                          color: AppTheme.textPrimary,
+                          height: 1.2,
+                        ),
                       ),
-                    ),
+                      const Spacer(),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        crossAxisAlignment: CrossAxisAlignment.center,
+                        children: [
+                          Flexible(
+                            child: Text(
+                              product.formattedPrice,
+                              style: const TextStyle(
+                                fontSize: 20,
+                                fontWeight: FontWeight.bold,
+                                color: AppTheme.primary,
+                              ),
+                            ),
+                          ),
+                          // 60x60 touch target wrapping the 48x48 visual button
+                          SizedBox(
+                            width: 60,
+                            height: 60,
+                            child: Center(
+                              child: Container(
+                                width: 48,
+                                height: 48,
+                                decoration: BoxDecoration(
+                                  gradient: const LinearGradient(
+                                    colors: [
+                                      AppTheme.primary,
+                                      AppTheme.primaryLight
+                                    ],
+                                    begin: Alignment.topLeft,
+                                    end: Alignment.bottomRight,
+                                  ),
+                                  borderRadius: BorderRadius.circular(14),
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: AppTheme.primary
+                                          .withValues(alpha: 0.3),
+                                      blurRadius: 8,
+                                      offset: const Offset(0, 3),
+                                    ),
+                                  ],
+                                ),
+                                child: const Icon(Icons.add,
+                                    color: Colors.white, size: 24),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
                   ),
-                  Container(
-                    width: 60,
-                    height: 60,
-                    decoration: BoxDecoration(
-                      color: AppTheme.primary,
-                      borderRadius: BorderRadius.circular(16),
-                    ),
-                    child: const Icon(Icons.add, color: Colors.white, size: 24),
-                  ),
-                ],
+                ),
               ),
             ],
           ),
@@ -412,7 +543,76 @@ class _ProductCard extends StatelessWidget {
   }
 }
 
-// ── Panel del carrito activo ───────────────────────────────────────────────────
+// ── Product image section (shared between card and modal) ─────────────────────
+
+class _ProductImageSection extends StatelessWidget {
+  final String? imageUrl;
+  final double height;
+
+  const _ProductImageSection({required this.imageUrl, required this.height});
+
+  @override
+  Widget build(BuildContext context) {
+    if (imageUrl != null && imageUrl!.isNotEmpty) {
+      return ClipRRect(
+        borderRadius: const BorderRadius.only(
+          topLeft: Radius.circular(16),
+          topRight: Radius.circular(16),
+        ),
+        child: Image.network(
+          imageUrl!,
+          height: height,
+          width: double.infinity,
+          fit: BoxFit.cover,
+          errorBuilder: (_, __, ___) => _GradientPlaceholder(height: height),
+          loadingBuilder: (_, child, progress) {
+            if (progress == null) return child;
+            return _GradientPlaceholder(height: height);
+          },
+        ),
+      );
+    }
+    return _GradientPlaceholder(height: height);
+  }
+}
+
+class _GradientPlaceholder extends StatelessWidget {
+  final double height;
+
+  const _GradientPlaceholder({required this.height});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: height,
+      width: double.infinity,
+      decoration: const BoxDecoration(
+        gradient: LinearGradient(
+          colors: [Color(0xFFF0F4FF), Color(0xFFE8EEFF)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+      ),
+      child: Center(
+        child: Container(
+          width: 44,
+          height: 44,
+          decoration: BoxDecoration(
+            color: AppTheme.primary.withValues(alpha: 0.1),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: const Icon(
+            Icons.inventory_2_rounded,
+            color: AppTheme.primary,
+            size: 24,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ── Cart Panel ────────────────────────────────────────────────────────────────
 
 class _CartPanel extends StatelessWidget {
   final List<CartItem> items;
@@ -435,7 +635,48 @@ class _CartPanel extends StatelessWidget {
   Widget build(BuildContext context) {
     return Column(
       children: [
-        // Lista del carrito — siempre visible con key cart_list
+        // Cart header
+        Padding(
+          padding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
+          child: Row(
+            children: [
+              Text(
+                'Cuenta C${activeIndex + 1}',
+                style: const TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w700,
+                  color: AppTheme.textPrimary,
+                ),
+              ),
+              const Spacer(),
+              if (items.isNotEmpty)
+                GestureDetector(
+                  onTap: () {
+                    HapticFeedback.lightImpact();
+                    onClear();
+                  },
+                  child: Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: AppTheme.error.withValues(alpha: 0.08),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: const Text(
+                      'Limpiar',
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                        color: AppTheme.error,
+                      ),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ),
+
+        // Cart list
         Expanded(
           child: items.isEmpty
               ? ListView(
@@ -444,11 +685,23 @@ class _CartPanel extends StatelessWidget {
                     Center(
                       key: Key('cart_empty_msg'),
                       child: Padding(
-                        padding: EdgeInsets.only(top: 32),
-                        child: Text(
-                          'Carrito vacío',
-                          style: TextStyle(
-                              fontSize: 18, color: AppTheme.textSecondary),
+                        padding: EdgeInsets.only(top: 48),
+                        child: Column(
+                          children: [
+                            Icon(
+                              Icons.shopping_cart_outlined,
+                              size: 48,
+                              color: Color(0xFFD6D0C8),
+                            ),
+                            SizedBox(height: 12),
+                            Text(
+                              'Carrito vacio',
+                              style: TextStyle(
+                                fontSize: 18,
+                                color: AppTheme.textSecondary,
+                              ),
+                            ),
+                          ],
                         ),
                       ),
                     ),
@@ -457,7 +710,7 @@ class _CartPanel extends StatelessWidget {
               : ListView(
                   key: const Key('cart_list'),
                   padding:
-                      const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                   children: [
                     for (int i = 0; i < items.length; i++)
                       _CartItemRow(
@@ -470,13 +723,13 @@ class _CartPanel extends StatelessWidget {
                 ),
         ),
 
-        // Botones QR + COBRAR
+        // QR + COBRAR buttons
         if (items.isNotEmpty)
           Padding(
-            padding: const EdgeInsets.all(8),
+            padding: const EdgeInsets.fromLTRB(10, 4, 10, 10),
             child: Row(
               children: [
-                // Botón QR de cuenta
+                // QR button
                 GestureDetector(
                   onTap: () {
                     HapticFeedback.mediumImpact();
@@ -494,36 +747,58 @@ class _CartPanel extends StatelessWidget {
                     width: 60,
                     height: 60,
                     decoration: BoxDecoration(
-                      color: const Color(0xFF667EEA).withValues(alpha: 0.25),
-                      borderRadius: BorderRadius.circular(20),
+                      gradient: LinearGradient(
+                        colors: [
+                          AppTheme.primary.withValues(alpha: 0.15),
+                          AppTheme.primaryLight.withValues(alpha: 0.1),
+                        ],
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                      ),
+                      borderRadius: BorderRadius.circular(18),
                     ),
                     child: const Icon(
                       Icons.qr_code_2_rounded,
                       size: 28,
-                      color: Colors.white,
+                      color: AppTheme.primary,
                     ),
                   ),
                 ),
-                const SizedBox(width: 8),
-                // Botón COBRAR
+                const SizedBox(width: 10),
+                // COBRAR button
                 Expanded(
-                  child: ElevatedButton(
+                  child: GestureDetector(
                     key: const Key('btn_cobrar'),
-                    onPressed: () {
-                      // TODO: flujo de pago
+                    onTap: () {
+                      HapticFeedback.heavyImpact();
+                      // TODO: payment flow
                     },
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: AppTheme.success,
-                      minimumSize: const Size(double.infinity, 60),
-                      shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(20)),
-                    ),
-                    child: Text(
-                      'COBRAR $total',
-                      style: const TextStyle(
-                        fontSize: 22,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.white,
+                    child: Container(
+                      height: 60,
+                      decoration: BoxDecoration(
+                        gradient: const LinearGradient(
+                          colors: [Color(0xFF0D9668), Color(0xFF10B981)],
+                          begin: Alignment.centerLeft,
+                          end: Alignment.centerRight,
+                        ),
+                        borderRadius: BorderRadius.circular(20),
+                        boxShadow: [
+                          BoxShadow(
+                            color:
+                                const Color(0xFF0D9668).withValues(alpha: 0.3),
+                            blurRadius: 12,
+                            offset: const Offset(0, 4),
+                          ),
+                        ],
+                      ),
+                      alignment: Alignment.center,
+                      child: Text(
+                        'COBRAR $total',
+                        style: const TextStyle(
+                          fontSize: 22,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.white,
+                        ),
                       ),
                     ),
                   ),
@@ -553,12 +828,18 @@ class _CartItemRow extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       key: Key('cart_item_$index'),
-      margin: const EdgeInsets.only(bottom: 6),
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
       decoration: BoxDecoration(
-        color: AppTheme.surfaceGrey,
+        color: Colors.white,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppTheme.borderColor),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.04),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -572,12 +853,13 @@ class _CartItemRow extends StatelessWidget {
                 fontWeight: FontWeight.w600,
                 color: AppTheme.textPrimary),
           ),
-          const SizedBox(height: 6),
+          const SizedBox(height: 8),
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Row(
                 children: [
+                  // Decrement button
                   Semantics(
                     button: true,
                     label: 'Disminuir cantidad de ${item.product.name}',
@@ -591,21 +873,23 @@ class _CartItemRow extends StatelessWidget {
                         width: 60,
                         height: 60,
                         decoration: BoxDecoration(
-                          color: AppTheme.borderColor,
-                          borderRadius: BorderRadius.circular(20),
+                          color: const Color(0xFFF3F0EC),
+                          borderRadius: BorderRadius.circular(18),
                         ),
-                        child: const Icon(Icons.remove, size: 24),
+                        child: const Icon(Icons.remove,
+                            size: 24, color: AppTheme.textSecondary),
                       ),
                     ),
                   ),
                   Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                    padding: const EdgeInsets.symmetric(horizontal: 14),
                     child: Text(
                       '${item.quantity}',
                       style: const TextStyle(
-                          fontSize: 20, fontWeight: FontWeight.bold),
+                          fontSize: 22, fontWeight: FontWeight.bold),
                     ),
                   ),
+                  // Increment button
                   Semantics(
                     button: true,
                     label: 'Aumentar cantidad de ${item.product.name}',
@@ -619,8 +903,20 @@ class _CartItemRow extends StatelessWidget {
                         width: 60,
                         height: 60,
                         decoration: BoxDecoration(
-                          color: AppTheme.primary,
-                          borderRadius: BorderRadius.circular(20),
+                          gradient: const LinearGradient(
+                            colors: [AppTheme.primary, AppTheme.primaryLight],
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                          ),
+                          borderRadius: BorderRadius.circular(18),
+                          boxShadow: [
+                            BoxShadow(
+                              color:
+                                  AppTheme.primary.withValues(alpha: 0.25),
+                              blurRadius: 6,
+                              offset: const Offset(0, 2),
+                            ),
+                          ],
                         ),
                         child: const Icon(Icons.add,
                             size: 24, color: Colors.white),
@@ -644,7 +940,176 @@ class _CartItemRow extends StatelessWidget {
   }
 }
 
-// ── Icono de header con badge ─────────────────────────────────────────────────
+// ── Product Detail Bottom Sheet ───────────────────────────────────────────────
+
+class _ProductDetailSheet extends StatelessWidget {
+  final Product product;
+  final VoidCallback onAddToCart;
+
+  const _ProductDetailSheet({
+    required this.product,
+    required this.onAddToCart,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          // Drag handle
+          Center(
+            child: Container(
+              margin: const EdgeInsets.only(top: 12),
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: const Color(0xFFD6D0C8),
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+          ),
+
+          // Large image or placeholder
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(20),
+              child: _ProductImageSection(
+                imageUrl: product.imageUrl,
+                height: 200,
+              ),
+            ),
+          ),
+
+          // Product details
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
+            child: Text(
+              product.name,
+              style: const TextStyle(
+                fontSize: 24,
+                fontWeight: FontWeight.bold,
+                color: AppTheme.textPrimary,
+              ),
+            ),
+          ),
+
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 8, 20, 0),
+            child: Text(
+              product.formattedPrice,
+              style: const TextStyle(
+                fontSize: 28,
+                fontWeight: FontWeight.bold,
+                color: AppTheme.primary,
+              ),
+            ),
+          ),
+
+          // Stock info
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 8, 20, 0),
+            child: Row(
+              children: [
+                Container(
+                  width: 8,
+                  height: 8,
+                  decoration: BoxDecoration(
+                    color: product.stock > 0
+                        ? AppTheme.success
+                        : AppTheme.error,
+                    shape: BoxShape.circle,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  product.stock > 0
+                      ? '${product.stock} en stock'
+                      : 'Sin stock',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w500,
+                    color: product.stock > 0
+                        ? AppTheme.textSecondary
+                        : AppTheme.error,
+                  ),
+                ),
+                if (product.requiresContainer) ...[
+                  const SizedBox(width: 16),
+                  const Icon(Icons.recycling_rounded,
+                      size: 20, color: AppTheme.textSecondary),
+                  const SizedBox(width: 4),
+                  const Text(
+                    'Requiere envase',
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w500,
+                      color: AppTheme.textSecondary,
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+
+          // Add to cart button
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 20, 20, 24),
+            child: GestureDetector(
+              onTap: () {
+                HapticFeedback.mediumImpact();
+                onAddToCart();
+              },
+              child: Container(
+                height: 64,
+                decoration: BoxDecoration(
+                  gradient: const LinearGradient(
+                    colors: [AppTheme.primary, AppTheme.primaryLight],
+                    begin: Alignment.centerLeft,
+                    end: Alignment.centerRight,
+                  ),
+                  borderRadius: BorderRadius.circular(20),
+                  boxShadow: [
+                    BoxShadow(
+                      color: AppTheme.primary.withValues(alpha: 0.3),
+                      blurRadius: 12,
+                      offset: const Offset(0, 4),
+                    ),
+                  ],
+                ),
+                alignment: Alignment.center,
+                child: const Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(Icons.add_shopping_cart_rounded,
+                        color: Colors.white, size: 24),
+                    SizedBox(width: 10),
+                    Text(
+                      'Agregar al carrito',
+                      style: TextStyle(
+                        fontSize: 22,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.white,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ── Header Badge Icon ─────────────────────────────────────────────────────────
 
 class _HeaderBadgeIcon extends StatelessWidget {
   final IconData icon;
@@ -670,17 +1135,24 @@ class _HeaderBadgeIcon extends StatelessWidget {
       child: GestureDetector(
         onTap: onPressed,
         child: SizedBox(
-          width: 36,
-          height: 36,
+          width: 40,
+          height: 40,
           child: Stack(
             clipBehavior: Clip.none,
             children: [
               Container(
-                width: 36,
-                height: 36,
+                width: 40,
+                height: 40,
                 decoration: BoxDecoration(
-                  color: AppTheme.surfaceGrey,
+                  color: Colors.white,
                   borderRadius: BorderRadius.circular(12),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.05),
+                      blurRadius: 6,
+                      offset: const Offset(0, 2),
+                    ),
+                  ],
                 ),
                 child: Icon(icon, color: AppTheme.textPrimary, size: 22),
               ),
@@ -694,7 +1166,8 @@ class _HeaderBadgeIcon extends StatelessWidget {
                     decoration: BoxDecoration(
                       color: badgeColor,
                       shape: BoxShape.circle,
-                      border: Border.all(color: AppTheme.background, width: 1.5),
+                      border: Border.all(
+                          color: const Color(0xFFFFFBF7), width: 1.5),
                     ),
                     alignment: Alignment.center,
                     child: Text(

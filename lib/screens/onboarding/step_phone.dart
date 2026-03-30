@@ -72,7 +72,12 @@ class _StepPhoneState extends State<StepPhone> {
               inputFormatters: [FilteringTextInputFormatter.digitsOnly],
               onChanged: (v) => setState(() => _phoneValid = v.length >= 7),
               decoration: InputDecoration(
-                hintText: '310 000 0000',
+                hintText: 'Ej: 310 000 0000',
+                hintStyle: TextStyle(
+                  color: Colors.grey.shade400,
+                  fontWeight: FontWeight.w400,
+                  fontStyle: FontStyle.italic,
+                ),
                 prefixIcon: const Icon(Icons.phone_outlined,
                     color: AppTheme.primary, size: 26),
                 suffixIcon: _phoneCtrl.text.isNotEmpty
@@ -113,6 +118,10 @@ class _StepPhoneState extends State<StepPhone> {
               ],
               decoration: InputDecoration(
                 hintText: '• • • •',
+                hintStyle: TextStyle(
+                  color: Colors.grey.shade400,
+                  fontWeight: FontWeight.w400,
+                ),
                 prefixIcon: const Icon(Icons.lock_outline,
                     color: AppTheme.primary, size: 26),
                 suffixIcon: IconButton(

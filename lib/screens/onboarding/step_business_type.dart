@@ -38,6 +38,12 @@ const _options = [
     description: 'Bebidas, licores\ny snacks',
   ),
   BusinessTypeOption(
+    id: 'comidas_rapidas',
+    label: 'Comidas\nRápidas',
+    icon: Icons.fastfood_rounded,
+    description: 'Turnos, recetas\ne insumos',
+  ),
+  BusinessTypeOption(
     id: 'miscelanea',
     label: 'Miscelánea\n/ Papelería',
     icon: Icons.edit_note_rounded,

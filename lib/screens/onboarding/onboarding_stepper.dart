@@ -68,7 +68,7 @@ class _OnboardingStepperState extends State<OnboardingStepper> {
   // Títulos y subtítulos de cada paso
   static const _stepTitles = [
     ('Paso 1 de 4', 'Sus datos personales'),
-    ('Paso 2 de 4', 'Datos de la tienda'),
+    ('Paso 2 de 4', 'Datos del negocio'),
     ('Paso 3 de 4', 'Tipo de negocio'),
     ('Paso 4 de 4', 'Sus empleados'),
   ];
