@@ -1,4 +1,6 @@
+import 'dart:async';
 import 'dart:io';
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
@@ -32,13 +34,78 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
   bool _enhancing = false;
   bool _lookingUp = false;
 
+  // Autocomplete
+  List<_ProductSuggestion> _suggestions = [];
+  Timer? _debounce;
+  final _offDio = Dio(BaseOptions(
+    baseUrl: 'https://world.openfoodfacts.org',
+    connectTimeout: const Duration(seconds: 5),
+    receiveTimeout: const Duration(seconds: 5),
+  ));
+
   @override
   void dispose() {
+    _debounce?.cancel();
     _nameCtrl.dispose();
     _buyPriceCtrl.dispose();
     _sellPriceCtrl.dispose();
     _quantityCtrl.dispose();
     super.dispose();
+  }
+
+  void _onNameChanged(String query) {
+    setState(() {});
+    _debounce?.cancel();
+    if (query.trim().length < 3) {
+      setState(() => _suggestions = []);
+      return;
+    }
+    _debounce = Timer(const Duration(milliseconds: 400), () {
+      _searchProducts(query.trim());
+    });
+  }
+
+  Future<void> _searchProducts(String query) async {
+    try {
+      final res = await _offDio.get('/cgi/search.pl', queryParameters: {
+        'search_terms': query,
+        'search_simple': 1,
+        'action': 'process',
+        'json': 1,
+        'page_size': 5,
+        'fields': 'product_name,image_small_url,brands',
+        'lc': 'es',
+      });
+      final products = res.data['products'] as List? ?? [];
+      if (!mounted) return;
+      setState(() {
+        _suggestions = products
+            .where((p) =>
+                p['product_name'] != null &&
+                (p['product_name'] as String).isNotEmpty)
+            .map((p) => _ProductSuggestion(
+                  name: p['product_name'] as String,
+                  brand: p['brands'] as String? ?? '',
+                  imageUrl: p['image_small_url'] as String?,
+                ))
+            .toList();
+      });
+    } catch (_) {
+      // Silent fail — user types manually
+    }
+  }
+
+  void _selectSuggestion(_ProductSuggestion s) {
+    final fullName =
+        s.brand.isNotEmpty ? '${s.name} (${s.brand})' : s.name;
+    _nameCtrl.text = fullName;
+    if (s.imageUrl != null && s.imageUrl!.isNotEmpty) {
+      setState(() {
+        _photoUrl = s.imageUrl;
+        _photoPath = null;
+      });
+    }
+    setState(() => _suggestions = []);
   }
 
   // ── Photo ──────────────────────────────────────────────────────────────────
@@ -425,14 +492,14 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
 
                 const SizedBox(height: 16),
 
-                // ── Product name ────────────────────────────────────────────
+                // ── Product name with autocomplete ────────────────────────
                 _fieldLabel('Nombre del producto'),
                 const SizedBox(height: 6),
                 TextFormField(
                   controller: _nameCtrl,
                   style: const TextStyle(fontSize: 18),
                   textInputAction: TextInputAction.next,
-                  onChanged: (_) => setState(() {}),
+                  onChanged: _onNameChanged,
                   decoration: _inputDecoration(
                     hint: 'Ej: Coca-Cola 350ml',
                     icon: Icons.inventory_2_rounded,
@@ -443,6 +510,73 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
                     return null;
                   },
                 ),
+                // Sugerencias de autocomplete
+                if (_suggestions.isNotEmpty)
+                  Container(
+                    constraints: const BoxConstraints(maxHeight: 180),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(color: AppTheme.borderColor),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.08),
+                          blurRadius: 12,
+                          offset: const Offset(0, 4),
+                        ),
+                      ],
+                    ),
+                    child: ListView.separated(
+                      shrinkWrap: true,
+                      padding: EdgeInsets.zero,
+                      itemCount: _suggestions.length,
+                      separatorBuilder: (_, __) =>
+                          const Divider(height: 1, color: AppTheme.borderColor),
+                      itemBuilder: (_, i) {
+                        final s = _suggestions[i];
+                        return ListTile(
+                          dense: true,
+                          contentPadding: const EdgeInsets.symmetric(
+                              horizontal: 12, vertical: 2),
+                          leading: s.imageUrl != null
+                              ? ClipRRect(
+                                  borderRadius: BorderRadius.circular(8),
+                                  child: Image.network(
+                                    s.imageUrl!,
+                                    width: 40,
+                                    height: 40,
+                                    fit: BoxFit.cover,
+                                    errorBuilder: (_, __, ___) => Container(
+                                      width: 40,
+                                      height: 40,
+                                      decoration: BoxDecoration(
+                                        color: AppTheme.surfaceGrey,
+                                        borderRadius: BorderRadius.circular(8),
+                                      ),
+                                      child: const Icon(Icons.fastfood_rounded,
+                                          size: 20, color: AppTheme.textSecondary),
+                                    ),
+                                  ),
+                                )
+                              : null,
+                          title: Text(
+                            s.name,
+                            style: const TextStyle(
+                                fontSize: 16, fontWeight: FontWeight.w600),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          subtitle: s.brand.isNotEmpty
+                              ? Text(s.brand,
+                                  style: const TextStyle(
+                                      fontSize: 14,
+                                      color: AppTheme.textSecondary))
+                              : null,
+                          onTap: () => _selectSuggestion(s),
+                        );
+                      },
+                    ),
+                  ),
 
                 const SizedBox(height: 14),
 
@@ -641,4 +775,16 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
           const EdgeInsets.symmetric(vertical: 12, horizontal: 12),
     );
   }
+}
+
+class _ProductSuggestion {
+  final String name;
+  final String brand;
+  final String? imageUrl;
+
+  const _ProductSuggestion({
+    required this.name,
+    required this.brand,
+    this.imageUrl,
+  });
 }
