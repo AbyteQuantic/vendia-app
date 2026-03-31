@@ -69,6 +69,10 @@ class _VendIAAppState extends State<VendIAApp> {
         theme: AppTheme.light,
         darkTheme: AppTheme.dark,
         themeMode: ThemeMode.system,
+        // Disable overscroll glow/stretch globally (fixes teal circles on Android 12+)
+        scrollBehavior: const MaterialScrollBehavior().copyWith(
+          overscroll: false,
+        ),
         home: const AnimatedSplashScreen(),
       ),
     );

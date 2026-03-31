@@ -23,6 +23,7 @@ class CreateProductScreen extends StatefulWidget {
 class _CreateProductScreenState extends State<CreateProductScreen> {
   final _formKey = GlobalKey<FormState>();
   final _nameCtrl = TextEditingController();
+  final _nameFocus = FocusNode();
   final _buyPriceCtrl = TextEditingController();
   final _sellPriceCtrl = TextEditingController();
   final _quantityCtrl = TextEditingController(text: '1');
@@ -47,10 +48,24 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
   void dispose() {
     _debounce?.cancel();
     _nameCtrl.dispose();
+    _nameFocus.dispose();
     _buyPriceCtrl.dispose();
     _sellPriceCtrl.dispose();
     _quantityCtrl.dispose();
     super.dispose();
+  }
+
+  Widget _suggestionPlaceholder() {
+    return Container(
+      width: 40,
+      height: 40,
+      decoration: BoxDecoration(
+        color: AppTheme.surfaceGrey,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: const Icon(Icons.fastfood_rounded,
+          size: 20, color: AppTheme.textSecondary),
+    );
   }
 
   void _onNameChanged(String query) {
@@ -495,88 +510,102 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
                 // ── Product name with autocomplete ────────────────────────
                 _fieldLabel('Nombre del producto'),
                 const SizedBox(height: 6),
-                TextFormField(
-                  controller: _nameCtrl,
-                  style: const TextStyle(fontSize: 18),
-                  textInputAction: TextInputAction.next,
-                  onChanged: _onNameChanged,
-                  decoration: _inputDecoration(
-                    hint: 'Ej: Coca-Cola 350ml',
-                    icon: Icons.inventory_2_rounded,
-                    iconColor: AppTheme.primary,
-                  ),
-                  validator: (v) {
-                    if (v == null || v.trim().isEmpty) return 'Ingrese el nombre';
-                    return null;
+                RawAutocomplete<_ProductSuggestion>(
+                  textEditingController: _nameCtrl,
+                  focusNode: _nameFocus,
+                  optionsBuilder: (textEditingValue) {
+                    _onNameChanged(textEditingValue.text);
+                    return _suggestions;
+                  },
+                  displayStringForOption: (s) =>
+                      s.brand.isNotEmpty ? '${s.name} (${s.brand})' : s.name,
+                  optionsViewBuilder: (context, onSelected, options) {
+                    if (options.isEmpty) return const SizedBox.shrink();
+                    return Align(
+                      alignment: Alignment.topLeft,
+                      child: Material(
+                        elevation: 8,
+                        borderRadius: BorderRadius.circular(14),
+                        child: Container(
+                          constraints: const BoxConstraints(maxHeight: 220),
+                          width: MediaQuery.of(context).size.width - 40,
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(14),
+                            border: Border.all(color: AppTheme.borderColor),
+                          ),
+                          child: ListView.separated(
+                            shrinkWrap: true,
+                            padding: EdgeInsets.zero,
+                            itemCount: options.length,
+                            separatorBuilder: (_, __) => const Divider(
+                                height: 1, color: AppTheme.borderColor),
+                            itemBuilder: (_, i) {
+                              final s = options.elementAt(i);
+                              return ListTile(
+                                dense: true,
+                                contentPadding: const EdgeInsets.symmetric(
+                                    horizontal: 12, vertical: 2),
+                                leading: s.imageUrl != null
+                                    ? ClipRRect(
+                                        borderRadius: BorderRadius.circular(8),
+                                        child: Image.network(
+                                          s.imageUrl!,
+                                          width: 40,
+                                          height: 40,
+                                          fit: BoxFit.cover,
+                                          errorBuilder: (_, __, ___) =>
+                                              _suggestionPlaceholder(),
+                                        ),
+                                      )
+                                    : _suggestionPlaceholder(),
+                                title: Text(
+                                  s.name,
+                                  style: const TextStyle(
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.w600),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                                subtitle: s.brand.isNotEmpty
+                                    ? Text(s.brand,
+                                        style: const TextStyle(
+                                            fontSize: 14,
+                                            color: AppTheme.textSecondary))
+                                    : null,
+                                onTap: () {
+                                  onSelected(s);
+                                  _selectSuggestion(s);
+                                },
+                              );
+                            },
+                          ),
+                        ),
+                      ),
+                    );
+                  },
+                  fieldViewBuilder:
+                      (context, controller, focusNode, onFieldSubmitted) {
+                    return TextFormField(
+                      controller: controller,
+                      focusNode: focusNode,
+                      style: const TextStyle(fontSize: 18),
+                      textInputAction: TextInputAction.next,
+                      onChanged: _onNameChanged,
+                      decoration: _inputDecoration(
+                        hint: 'Ej: Coca-Cola 350ml',
+                        icon: Icons.inventory_2_rounded,
+                        iconColor: AppTheme.primary,
+                      ),
+                      validator: (v) {
+                        if (v == null || v.trim().isEmpty) {
+                          return 'Ingrese el nombre';
+                        }
+                        return null;
+                      },
+                    );
                   },
                 ),
-                // Sugerencias de autocomplete
-                if (_suggestions.isNotEmpty)
-                  Container(
-                    constraints: const BoxConstraints(maxHeight: 180),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(14),
-                      border: Border.all(color: AppTheme.borderColor),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withValues(alpha: 0.08),
-                          blurRadius: 12,
-                          offset: const Offset(0, 4),
-                        ),
-                      ],
-                    ),
-                    child: ListView.separated(
-                      shrinkWrap: true,
-                      padding: EdgeInsets.zero,
-                      itemCount: _suggestions.length,
-                      separatorBuilder: (_, __) =>
-                          const Divider(height: 1, color: AppTheme.borderColor),
-                      itemBuilder: (_, i) {
-                        final s = _suggestions[i];
-                        return ListTile(
-                          dense: true,
-                          contentPadding: const EdgeInsets.symmetric(
-                              horizontal: 12, vertical: 2),
-                          leading: s.imageUrl != null
-                              ? ClipRRect(
-                                  borderRadius: BorderRadius.circular(8),
-                                  child: Image.network(
-                                    s.imageUrl!,
-                                    width: 40,
-                                    height: 40,
-                                    fit: BoxFit.cover,
-                                    errorBuilder: (_, __, ___) => Container(
-                                      width: 40,
-                                      height: 40,
-                                      decoration: BoxDecoration(
-                                        color: AppTheme.surfaceGrey,
-                                        borderRadius: BorderRadius.circular(8),
-                                      ),
-                                      child: const Icon(Icons.fastfood_rounded,
-                                          size: 20, color: AppTheme.textSecondary),
-                                    ),
-                                  ),
-                                )
-                              : null,
-                          title: Text(
-                            s.name,
-                            style: const TextStyle(
-                                fontSize: 16, fontWeight: FontWeight.w600),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                          subtitle: s.brand.isNotEmpty
-                              ? Text(s.brand,
-                                  style: const TextStyle(
-                                      fontSize: 14,
-                                      color: AppTheme.textSecondary))
-                              : null,
-                          onTap: () => _selectSuggestion(s),
-                        );
-                      },
-                    ),
-                  ),
 
                 const SizedBox(height: 14),
 
