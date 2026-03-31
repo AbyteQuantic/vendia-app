@@ -36,7 +36,7 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
   bool _enhancing = false;
   bool _lookingUp = false;
 
-  // Autocomplete
+  // Autocomplete (backed by cached catalog in backend)
   List<_ProductSuggestion> _suggestions = [];
   Timer? _debounce;
 
@@ -62,12 +62,12 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
     if (_suggestions.isEmpty) return;
 
     _overlayEntry = OverlayEntry(
-      builder: (context) => Positioned(
-        width: MediaQuery.of(context).size.width - 32,
-        child: CompositedTransformFollower(
-          link: _nameLayerLink,
-          showWhenUnlinked: false,
-          offset: const Offset(0, 52),
+      builder: (context) => CompositedTransformFollower(
+        link: _nameLayerLink,
+        showWhenUnlinked: false,
+        offset: const Offset(0, 52),
+        child: SizedBox(
+          width: MediaQuery.of(context).size.width - 32,
           child: Material(
             elevation: 8,
             borderRadius: BorderRadius.circular(14),
@@ -149,19 +149,15 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
       return;
     }
     _debounce = Timer(const Duration(milliseconds: 500), () {
-      debugPrint('[Autocomplete] Searching: "${query.trim()}"');
       _searchProducts(query.trim());
     });
   }
 
   Future<void> _searchProducts(String query) async {
     try {
-      debugPrint('[Autocomplete] Calling API...');
       final api = ApiService(AuthService());
       final res = await api.searchProductsOFF(query);
-      debugPrint('[Autocomplete] Response: ${res.keys}');
       final products = res['data'] as List? ?? [];
-      debugPrint('[Autocomplete] Found ${products.length} products');
       if (!mounted) return;
       _suggestions = products
           .map((p) {
@@ -174,10 +170,9 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
           })
           .where((s) => s.name.isNotEmpty)
           .toList();
-      debugPrint('[Autocomplete] Suggestions: ${_suggestions.length}');
       _showSuggestionsOverlay();
-    } catch (e) {
-      debugPrint('[Autocomplete] ERROR: $e');
+    } catch (_) {
+      // silently ignore — suggestions are optional
     }
   }
 
