@@ -263,6 +263,7 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
     setState(() => _enhancing = true);
     try {
       final api = ApiService(AuthService());
+      final price = double.tryParse(_sellPriceCtrl.text.trim()) ?? 1;
 
       // Auto-create the product in backend if it doesn't exist yet
       if (_pendingUuid == null) {
@@ -270,7 +271,7 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
         await api.createProduct({
           'id': id,
           'name': _nameCtrl.text.trim(),
-          'price': double.tryParse(_sellPriceCtrl.text.trim()) ?? 0,
+          'price': price > 0 ? price : 1,
           'stock': int.tryParse(_quantityCtrl.text.trim()) ?? 1,
           'image_url': _photoUrl,
           'presentation': _presentation,
@@ -287,15 +288,24 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
       }
 
       final result = await api.enhanceProductPhoto(_pendingUuid!);
-      final url = result['image_url'] as String?;
+      // Backend returns "photo_url" key
+      final url = (result['photo_url'] ?? result['image_url']) as String?;
       if (url != null && mounted) {
         setState(() {
           _photoUrl = url;
           _photoPath = null;
         });
       }
-    } catch (_) {
-      // best effort
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error al mejorar foto: $e'),
+            backgroundColor: Colors.red.shade700,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
     } finally {
       if (mounted) setState(() => _enhancing = false);
     }
