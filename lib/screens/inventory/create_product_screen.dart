@@ -38,9 +38,10 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
   bool _lookingUp = false;
   String _presentation = ''; // botella, lata, bolsa, etc.
 
-  // Autocomplete (backed by cached catalog in backend)
+  // Autocomplete (local Isar + backend catalog)
   List<_ProductSuggestion> _suggestions = [];
   Timer? _debounce;
+  bool _searching = false;
 
   static const _presentationOptions = [
     {'value': 'botella', 'label': 'Botella', 'icon': '🍾'},
@@ -79,60 +80,145 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
       builder: (context) => CompositedTransformFollower(
         link: _nameLayerLink,
         showWhenUnlinked: false,
-        offset: const Offset(0, 52),
+        offset: const Offset(0, 56),
         child: SizedBox(
           width: MediaQuery.of(context).size.width - 32,
           child: Material(
-            elevation: 8,
-            borderRadius: BorderRadius.circular(14),
+            elevation: 12,
+            shadowColor: Colors.black26,
+            borderRadius: BorderRadius.circular(16),
             child: Container(
-              constraints: const BoxConstraints(maxHeight: 220),
+              constraints: const BoxConstraints(maxHeight: 280),
               decoration: BoxDecoration(
                 color: Colors.white,
-                borderRadius: BorderRadius.circular(14),
-                border: Border.all(color: AppTheme.borderColor),
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: AppTheme.borderColor.withValues(alpha: 0.5)),
               ),
-              child: ListView.separated(
-                shrinkWrap: true,
-                padding: EdgeInsets.zero,
-                itemCount: _suggestions.length,
-                separatorBuilder: (_, __) =>
-                    const Divider(height: 1, color: AppTheme.borderColor),
-                itemBuilder: (_, i) {
-                  final s = _suggestions[i];
-                  return ListTile(
-                    dense: true,
-                    contentPadding: const EdgeInsets.symmetric(
-                        horizontal: 12, vertical: 2),
-                    leading: s.imageUrl != null
-                        ? ClipRRect(
-                            borderRadius: BorderRadius.circular(8),
-                            child: Image.network(
-                              s.imageUrl!,
-                              width: 40,
-                              height: 40,
-                              fit: BoxFit.cover,
-                              errorBuilder: (_, __, ___) =>
-                                  _suggestionPlaceholder(),
-                            ),
-                          )
-                        : _suggestionPlaceholder(),
-                    title: Text(
-                      s.name,
-                      style: const TextStyle(
-                          fontSize: 16, fontWeight: FontWeight.w600),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // Header
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 14, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: AppTheme.primary.withValues(alpha: 0.05),
+                      borderRadius: const BorderRadius.vertical(
+                          top: Radius.circular(16)),
                     ),
-                    subtitle: s.brand.isNotEmpty
-                        ? Text(s.brand,
-                            style: const TextStyle(
-                                fontSize: 14,
-                                color: AppTheme.textSecondary))
-                        : null,
-                    onTap: () => _selectSuggestion(s),
-                  );
-                },
+                    child: Row(
+                      children: [
+                        Icon(Icons.search_rounded,
+                            size: 16, color: AppTheme.primary.withValues(alpha: 0.7)),
+                        const SizedBox(width: 6),
+                        Text(
+                          '${_suggestions.length} producto${_suggestions.length == 1 ? '' : 's'} encontrado${_suggestions.length == 1 ? '' : 's'}',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: AppTheme.primary.withValues(alpha: 0.7),
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const Divider(height: 1, color: AppTheme.borderColor),
+                  // List
+                  Flexible(
+                    child: ListView.separated(
+                      shrinkWrap: true,
+                      padding: const EdgeInsets.symmetric(vertical: 4),
+                      itemCount: _suggestions.length,
+                      separatorBuilder: (_, __) =>
+                          const Divider(height: 1, indent: 62, color: AppTheme.borderColor),
+                      itemBuilder: (_, i) {
+                        final s = _suggestions[i];
+                        return InkWell(
+                          onTap: () => _selectSuggestion(s),
+                          borderRadius: BorderRadius.circular(8),
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 12, vertical: 8),
+                            child: Row(
+                              children: [
+                                // Image
+                                ClipRRect(
+                                  borderRadius: BorderRadius.circular(10),
+                                  child: Container(
+                                    width: 44,
+                                    height: 44,
+                                    color: AppTheme.surfaceGrey,
+                                    child: s.imageUrl != null
+                                        ? Image.network(
+                                            s.imageUrl!,
+                                            fit: BoxFit.cover,
+                                            errorBuilder: (_, __, ___) =>
+                                                _suggestionPlaceholder(),
+                                          )
+                                        : _suggestionPlaceholder(),
+                                  ),
+                                ),
+                                const SizedBox(width: 12),
+                                // Text
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        s.name,
+                                        style: const TextStyle(
+                                          fontSize: 15,
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                      if (s.brand.isNotEmpty)
+                                        Text(
+                                          s.brand,
+                                          style: TextStyle(
+                                            fontSize: 13,
+                                            color: AppTheme.textSecondary
+                                                .withValues(alpha: 0.8),
+                                          ),
+                                          maxLines: 1,
+                                        ),
+                                    ],
+                                  ),
+                                ),
+                                // Source badge
+                                if (s.isLocal)
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(
+                                        horizontal: 6, vertical: 2),
+                                    decoration: BoxDecoration(
+                                      color: const Color(0xFF10B981)
+                                          .withValues(alpha: 0.1),
+                                      borderRadius:
+                                          BorderRadius.circular(6),
+                                    ),
+                                    child: const Text(
+                                      'Mi tienda',
+                                      style: TextStyle(
+                                        fontSize: 10,
+                                        color: Color(0xFF10B981),
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                  ),
+                                const SizedBox(width: 4),
+                                Icon(Icons.chevron_right_rounded,
+                                    size: 18,
+                                    color: Colors.grey.shade300),
+                              ],
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                ],
               ),
             ),
           ),
@@ -159,21 +245,50 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
     _debounce?.cancel();
     if (query.trim().length < 3) {
       _suggestions = [];
+      _searching = false;
       _removeOverlay();
+      setState(() {});
       return;
     }
-    _debounce = Timer(const Duration(milliseconds: 500), () {
-      _searchProducts(query.trim());
+    setState(() => _searching = true);
+    _debounce = Timer(const Duration(milliseconds: 300), () {
+      _searchProducts(query.trim()).then((_) {
+        if (mounted) setState(() => _searching = false);
+      });
     });
   }
 
   Future<void> _searchProducts(String query) async {
+    final lowerQ = query.toLowerCase();
+
+    // 1. Instant results from local Isar DB
+    try {
+      final localProducts = await DatabaseService.instance.getAllProducts();
+      final localMatches = localProducts
+          .where((p) => p.name.toLowerCase().contains(lowerQ))
+          .take(5)
+          .map((p) => _ProductSuggestion(
+                name: p.name,
+                brand: '',
+                imageUrl: p.imageUrl,
+                isLocal: true,
+              ))
+          .toList();
+
+      if (localMatches.isNotEmpty && mounted) {
+        _suggestions = localMatches;
+        _showSuggestionsOverlay();
+      }
+    } catch (_) {}
+
+    // 2. Backend catalog (cached OFF) — merges with local
     try {
       final api = ApiService(AuthService());
       final res = await api.searchProductsOFF(query);
       final products = res['data'] as List? ?? [];
       if (!mounted) return;
-      _suggestions = products
+
+      final remoteResults = products
           .map((p) {
             final map = p as Map<String, dynamic>;
             return _ProductSuggestion(
@@ -184,9 +299,19 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
           })
           .where((s) => s.name.isNotEmpty)
           .toList();
+
+      // Merge: local first, then remote (deduplicated)
+      final seen = <String>{};
+      final merged = <_ProductSuggestion>[];
+      for (final s in [..._suggestions.where((s) => s.isLocal), ...remoteResults]) {
+        final key = s.name.toLowerCase();
+        if (seen.add(key)) merged.add(s);
+        if (merged.length >= 6) break;
+      }
+      _suggestions = merged;
       _showSuggestionsOverlay();
     } catch (_) {
-      // silently ignore — suggestions are optional
+      // keep local results if backend fails
     }
   }
 
@@ -682,10 +807,29 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
                     style: const TextStyle(fontSize: 18),
                     textInputAction: TextInputAction.next,
                     onChanged: _onNameChanged,
-                    decoration: _inputDecoration(
-                      hint: 'Ej: Coca-Cola 350ml',
-                      icon: Icons.inventory_2_rounded,
-                      iconColor: AppTheme.primary,
+                    decoration: InputDecoration(
+                      hintText: 'Buscar o escribir nombre...',
+                      hintStyle: TextStyle(
+                        color: Colors.grey.shade400,
+                        fontWeight: FontWeight.w400,
+                        fontStyle: FontStyle.italic,
+                      ),
+                      prefixIcon: const Icon(Icons.search_rounded,
+                          color: AppTheme.primary, size: 22),
+                      suffixIcon: _searching
+                          ? const Padding(
+                              padding: EdgeInsets.all(12),
+                              child: SizedBox(
+                                width: 18,
+                                height: 18,
+                                child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    color: AppTheme.primary),
+                              ),
+                            )
+                          : null,
+                      contentPadding: const EdgeInsets.symmetric(
+                          vertical: 12, horizontal: 12),
                     ),
                     validator: (v) {
                       if (v == null || v.trim().isEmpty) {
@@ -1022,10 +1166,12 @@ class _ProductSuggestion {
   final String name;
   final String brand;
   final String? imageUrl;
+  final bool isLocal;
 
   const _ProductSuggestion({
     required this.name,
     required this.brand,
     this.imageUrl,
+    this.isLocal = false,
   });
 }
