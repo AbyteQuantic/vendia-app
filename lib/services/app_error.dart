@@ -60,9 +60,10 @@ class AppError implements Exception {
     }
 
     if (statusCode != null && statusCode >= 500) {
+      final serverMsg = data is Map ? data['error'] as String? : null;
       return AppError(
         type: AppErrorType.server,
-        message: 'Error del servidor. Intenta de nuevo.',
+        message: serverMsg ?? 'Error del servidor. Intenta de nuevo.',
         statusCode: statusCode,
       );
     }
