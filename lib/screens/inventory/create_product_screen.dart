@@ -142,7 +142,6 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
   }
 
   void _onNameChanged(String query) {
-    setState(() {});
     _debounce?.cancel();
     if (query.trim().length < 3) {
       _suggestions = [];
@@ -150,15 +149,19 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
       return;
     }
     _debounce = Timer(const Duration(milliseconds: 500), () {
+      debugPrint('[Autocomplete] Searching: "${query.trim()}"');
       _searchProducts(query.trim());
     });
   }
 
   Future<void> _searchProducts(String query) async {
     try {
+      debugPrint('[Autocomplete] Calling API...');
       final api = ApiService(AuthService());
       final res = await api.searchProductsOFF(query);
+      debugPrint('[Autocomplete] Response: ${res.keys}');
       final products = res['data'] as List? ?? [];
+      debugPrint('[Autocomplete] Found ${products.length} products');
       if (!mounted) return;
       _suggestions = products
           .map((p) {
@@ -171,9 +174,10 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
           })
           .where((s) => s.name.isNotEmpty)
           .toList();
+      debugPrint('[Autocomplete] Suggestions: ${_suggestions.length}');
       _showSuggestionsOverlay();
     } catch (e) {
-      debugPrint('Autocomplete error: $e');
+      debugPrint('[Autocomplete] ERROR: $e');
     }
   }
 
