@@ -27,6 +27,7 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
   final _buyPriceCtrl = TextEditingController();
   final _sellPriceCtrl = TextEditingController();
   final _quantityCtrl = TextEditingController(text: '1');
+  final _contentCtrl = TextEditingController(); // e.g. "350ml", "500g"
   OverlayEntry? _overlayEntry;
 
   String? _photoPath;
@@ -35,10 +36,22 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
   bool _saving = false;
   bool _enhancing = false;
   bool _lookingUp = false;
+  String _presentation = ''; // botella, lata, bolsa, etc.
 
   // Autocomplete (backed by cached catalog in backend)
   List<_ProductSuggestion> _suggestions = [];
   Timer? _debounce;
+
+  static const _presentationOptions = [
+    {'value': 'botella', 'label': 'Botella', 'icon': '🍾'},
+    {'value': 'lata', 'label': 'Lata', 'icon': '🥫'},
+    {'value': 'bolsa', 'label': 'Bolsa', 'icon': '🛍️'},
+    {'value': 'caja', 'label': 'Caja', 'icon': '📦'},
+    {'value': 'paquete', 'label': 'Paquete', 'icon': '📦'},
+    {'value': 'frasco', 'label': 'Frasco', 'icon': '🫙'},
+    {'value': 'sobre', 'label': 'Sobre', 'icon': '✉️'},
+    {'value': 'unidad', 'label': 'Unidad', 'icon': '🔘'},
+  ];
 
   @override
   void dispose() {
@@ -49,6 +62,7 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
     _buyPriceCtrl.dispose();
     _sellPriceCtrl.dispose();
     _quantityCtrl.dispose();
+    _contentCtrl.dispose();
     super.dispose();
   }
 
@@ -210,8 +224,40 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
   }
 
   Future<void> _enhancePhoto() async {
-    // Need a photo URL to enhance (local photos not supported yet)
     if (_photoUrl == null || _photoUrl!.isEmpty) return;
+
+    // Validate required fields for a good AI result
+    final missingFields = <String>[];
+    if (_nameCtrl.text.trim().isEmpty) missingFields.add('nombre');
+    if (_presentation.isEmpty) missingFields.add('presentación');
+    if (_contentCtrl.text.trim().isEmpty) missingFields.add('contenido (ej: 350ml)');
+
+    if (missingFields.isNotEmpty) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Row(
+            children: [
+              const Icon(Icons.info_outline_rounded,
+                  color: Colors.white, size: 22),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  'Para mejorar la foto completa los campos: ${missingFields.join(", ")}',
+                  style: const TextStyle(fontSize: 15),
+                ),
+              ),
+            ],
+          ),
+          backgroundColor: const Color(0xFF7C3AED),
+          duration: const Duration(seconds: 4),
+          behavior: SnackBarBehavior.floating,
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        ),
+      );
+      return;
+    }
 
     HapticFeedback.lightImpact();
     setState(() => _enhancing = true);
@@ -221,16 +267,23 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
       // Auto-create the product in backend if it doesn't exist yet
       if (_pendingUuid == null) {
         final id = const Uuid().v4();
-        final productName = _nameCtrl.text.trim();
-        if (productName.isEmpty) return;
         await api.createProduct({
           'id': id,
-          'name': productName,
+          'name': _nameCtrl.text.trim(),
           'price': double.tryParse(_sellPriceCtrl.text.trim()) ?? 0,
           'stock': int.tryParse(_quantityCtrl.text.trim()) ?? 1,
           'image_url': _photoUrl,
+          'presentation': _presentation,
+          'content': _contentCtrl.text.trim(),
         });
         _pendingUuid = id;
+      } else {
+        // Update with latest presentation info before enhancing
+        await api.updateProduct(_pendingUuid!, {
+          'presentation': _presentation,
+          'content': _contentCtrl.text.trim(),
+          'image_url': _photoUrl,
+        });
       }
 
       final result = await api.enhanceProductPhoto(_pendingUuid!);
@@ -310,6 +363,8 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
           'price': price,
           'stock': stock,
           'image_url': _photoUrl,
+          'presentation': _presentation,
+          'content': _contentCtrl.text.trim(),
         });
       } else {
         // Create new product
@@ -320,6 +375,8 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
           'price': price,
           'stock': stock,
           'image_url': _photoUrl,
+          'presentation': _presentation,
+          'content': _contentCtrl.text.trim(),
         });
       }
 
@@ -450,8 +507,7 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
           padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
           child: Form(
             key: _formKey,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
+            child: ListView(
               children: [
                 // ── Top row: photo + action buttons ────────────────────────
                 Row(
@@ -627,6 +683,101 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
                       }
                       return null;
                     },
+                  ),
+                ),
+
+                const SizedBox(height: 14),
+
+                // ── Presentation + Content row ──────────────────────────
+                Row(
+                  children: [
+                    // Presentation chips
+                    Expanded(
+                      flex: 3,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          _fieldLabel('Presentación'),
+                          const SizedBox(height: 6),
+                          SizedBox(
+                            height: 42,
+                            child: ListView.separated(
+                              scrollDirection: Axis.horizontal,
+                              itemCount: _presentationOptions.length,
+                              separatorBuilder: (_, __) =>
+                                  const SizedBox(width: 6),
+                              itemBuilder: (_, i) {
+                                final opt = _presentationOptions[i];
+                                final selected =
+                                    _presentation == opt['value'];
+                                return GestureDetector(
+                                  onTap: () => setState(
+                                      () => _presentation = opt['value']!),
+                                  child: AnimatedContainer(
+                                    duration: const Duration(
+                                        milliseconds: 200),
+                                    padding: const EdgeInsets.symmetric(
+                                        horizontal: 10),
+                                    decoration: BoxDecoration(
+                                      color: selected
+                                          ? AppTheme.primary
+                                              .withValues(alpha: 0.12)
+                                          : AppTheme.surfaceGrey,
+                                      borderRadius:
+                                          BorderRadius.circular(10),
+                                      border: Border.all(
+                                        color: selected
+                                            ? AppTheme.primary
+                                            : AppTheme.borderColor,
+                                        width: selected ? 2 : 1,
+                                      ),
+                                    ),
+                                    child: Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Text(opt['icon']!,
+                                            style: const TextStyle(
+                                                fontSize: 16)),
+                                        const SizedBox(width: 4),
+                                        Text(
+                                          opt['label']!,
+                                          style: TextStyle(
+                                            fontSize: 13,
+                                            fontWeight: selected
+                                                ? FontWeight.w700
+                                                : FontWeight.w500,
+                                            color: selected
+                                                ? AppTheme.primary
+                                                : AppTheme.textPrimary,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                );
+                              },
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+
+                const SizedBox(height: 10),
+
+                // Content / gramaje
+                _fieldLabel('Contenido'),
+                const SizedBox(height: 6),
+                TextFormField(
+                  controller: _contentCtrl,
+                  keyboardType: TextInputType.text,
+                  style: const TextStyle(fontSize: 18),
+                  textInputAction: TextInputAction.next,
+                  decoration: _inputDecoration(
+                    hint: 'Ej: 350ml, 500g, 1L, 6 unidades',
+                    icon: Icons.scale_rounded,
+                    iconColor: AppTheme.textSecondary,
                   ),
                 ),
 
