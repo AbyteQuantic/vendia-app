@@ -247,6 +247,16 @@ class ApiService {
     }
   }
 
+  Future<Map<String, dynamic>> searchProductsOFF(String query) async {
+    try {
+      final response = await _dio.get('/api/v1/products/search-off',
+          queryParameters: {'q': query});
+      return response.data as Map<String, dynamic>;
+    } on DioException catch (e) {
+      throw AppError.fromDioException(e);
+    }
+  }
+
   Future<Map<String, dynamic>> fetchPendingPrices({
     int page = 1,
     int perPage = 20,

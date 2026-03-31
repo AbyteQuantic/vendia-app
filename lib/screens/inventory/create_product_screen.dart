@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:io';
-import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
@@ -40,12 +39,6 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
   // Autocomplete
   List<_ProductSuggestion> _suggestions = [];
   Timer? _debounce;
-  final _offDio = Dio(BaseOptions(
-    baseUrl: 'https://world.openfoodfacts.org',
-    connectTimeout: const Duration(seconds: 8),
-    receiveTimeout: const Duration(seconds: 8),
-    headers: {'User-Agent': 'VendIA/1.0 (contact@vendia.co)'},
-  ));
 
   @override
   void dispose() {
@@ -163,27 +156,24 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
 
   Future<void> _searchProducts(String query) async {
     try {
-      final res = await _offDio.get('/api/v2/search', queryParameters: {
-        'search_terms': query,
-        'fields': 'product_name,image_small_url,brands',
-        'page_size': 5,
-        'sort_by': 'popularity_key',
-      });
-      final products = res.data['products'] as List? ?? [];
+      final api = ApiService(AuthService());
+      final res = await api.searchProductsOFF(query);
+      final products = res['data'] as List? ?? [];
       if (!mounted) return;
       _suggestions = products
-          .where((p) =>
-              p['product_name'] != null &&
-              (p['product_name'] as String).isNotEmpty)
-          .map((p) => _ProductSuggestion(
-                name: p['product_name'] as String,
-                brand: p['brands'] as String? ?? '',
-                imageUrl: p['image_small_url'] as String?,
-              ))
+          .map((p) {
+            final map = p as Map<String, dynamic>;
+            return _ProductSuggestion(
+              name: map['name'] as String? ?? '',
+              brand: map['brand'] as String? ?? '',
+              imageUrl: map['image_url'] as String?,
+            );
+          })
+          .where((s) => s.name.isNotEmpty)
           .toList();
       _showSuggestionsOverlay();
-    } catch (_) {
-      // Silent fail — user types manually
+    } catch (e) {
+      debugPrint('Autocomplete error: $e');
     }
   }
 
