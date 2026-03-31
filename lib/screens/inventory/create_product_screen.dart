@@ -250,38 +250,41 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
       setState(() {});
       return;
     }
-    setState(() => _searching = true);
-    _debounce = Timer(const Duration(milliseconds: 300), () {
-      _searchProducts(query.trim()).then((_) {
-        if (mounted) setState(() => _searching = false);
-      });
+    // Instant local search (no debounce, no spinner)
+    _searchLocal(query.trim());
+    // Backend search with debounce
+    _debounce = Timer(const Duration(milliseconds: 500), () {
+      _searchRemote(query.trim());
     });
   }
 
-  Future<void> _searchProducts(String query) async {
+  void _searchLocal(String query) {
     final lowerQ = query.toLowerCase();
-
-    // 1. Instant results from local Isar DB
     try {
-      final localProducts = await DatabaseService.instance.getAllProducts();
-      final localMatches = localProducts
-          .where((p) => p.name.toLowerCase().contains(lowerQ))
-          .take(5)
-          .map((p) => _ProductSuggestion(
-                name: p.name,
-                brand: '',
-                imageUrl: p.imageUrl,
-                isLocal: true,
-              ))
-          .toList();
-
-      if (localMatches.isNotEmpty && mounted) {
-        _suggestions = localMatches;
-        _showSuggestionsOverlay();
-      }
+      // Synchronous filter on already-loaded products
+      DatabaseService.instance.getAllProducts().then((localProducts) {
+        if (!mounted) return;
+        final matches = localProducts
+            .where((p) => p.name.toLowerCase().contains(lowerQ))
+            .take(6)
+            .map((p) => _ProductSuggestion(
+                  name: p.name,
+                  brand: '',
+                  imageUrl: p.imageUrl,
+                  isLocal: true,
+                ))
+            .toList();
+        if (matches.isNotEmpty) {
+          _suggestions = matches;
+          _showSuggestionsOverlay();
+        }
+      });
     } catch (_) {}
+  }
 
-    // 2. Backend catalog (cached OFF) — merges with local
+  Future<void> _searchRemote(String query) async {
+    if (!mounted) return;
+    setState(() => _searching = true);
     try {
       final api = ApiService(AuthService());
       final res = await api.searchProductsOFF(query);
@@ -312,6 +315,8 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
       _showSuggestionsOverlay();
     } catch (_) {
       // keep local results if backend fails
+    } finally {
+      if (mounted) setState(() => _searching = false);
     }
   }
 
