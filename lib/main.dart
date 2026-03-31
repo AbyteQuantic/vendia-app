@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:provider/provider.dart';
+import 'database/collections/local_catalog_product.dart';
 import 'database/database_service.dart';
 import 'database/sync/connectivity_monitor.dart';
 import 'database/sync/sync_service.dart';
@@ -46,6 +47,22 @@ class _VendIAAppState extends State<VendIAApp> {
       auth: AuthService(),
     );
     _syncService.startBackgroundSync();
+    _syncCatalogInBackground();
+  }
+
+  /// Sync the OFF catalog to Isar in background for offline-first autocomplete.
+  Future<void> _syncCatalogInBackground() async {
+    try {
+      final api = ApiService(AuthService());
+      final items = await api.fetchCatalogSync();
+      final products = items
+          .map((json) => LocalCatalogProduct.fromJson(json))
+          .toList();
+      await DatabaseService.instance.syncCatalog(products);
+      debugPrint('[CATALOG] synced ${products.length} products to Isar');
+    } catch (e) {
+      debugPrint('[CATALOG] sync failed (will retry next launch): $e');
+    }
   }
 
   @override

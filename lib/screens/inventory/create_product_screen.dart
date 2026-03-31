@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:uuid/uuid.dart';
 import '../../database/database_service.dart';
+import '../../database/collections/local_catalog_product.dart';
 import '../../database/collections/local_product.dart';
 import '../../services/api_service.dart';
 import '../../services/auth_service.dart';
@@ -259,27 +260,54 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
   }
 
   void _searchLocal(String query) {
-    final lowerQ = query.toLowerCase();
-    try {
-      // Synchronous filter on already-loaded products
-      DatabaseService.instance.getAllProducts().then((localProducts) {
-        if (!mounted) return;
-        final matches = localProducts
-            .where((p) => p.name.toLowerCase().contains(lowerQ))
-            .take(6)
-            .map((p) => _ProductSuggestion(
-                  name: p.name,
-                  brand: '',
-                  imageUrl: p.imageUrl,
-                  isLocal: true,
-                ))
-            .toList();
-        if (matches.isNotEmpty) {
-          _suggestions = matches;
-          _showSuggestionsOverlay();
+    final db = DatabaseService.instance;
+
+    // Search both: user's products + OFF catalog (both in Isar)
+    Future.wait([
+      db.getAllProducts(),
+      db.searchCatalog(query),
+    ]).then((results) {
+      if (!mounted) return;
+      final lowerQ = query.toLowerCase();
+      final userProducts = results[0] as List<LocalProduct>;
+      final catalogProducts = results[1] as List<LocalCatalogProduct>;
+
+      final seen = <String>{};
+      final matches = <_ProductSuggestion>[];
+
+      // User's own products first
+      for (final p in userProducts) {
+        if (!p.name.toLowerCase().contains(lowerQ)) continue;
+        final key = p.name.toLowerCase();
+        if (seen.add(key)) {
+          matches.add(_ProductSuggestion(
+            name: p.name,
+            brand: '',
+            imageUrl: p.imageUrl,
+            isLocal: true,
+          ));
         }
-      });
-    } catch (_) {}
+        if (matches.length >= 6) break;
+      }
+
+      // Then OFF catalog products
+      for (final p in catalogProducts) {
+        if (matches.length >= 6) break;
+        final key = p.name.toLowerCase();
+        if (seen.add(key)) {
+          matches.add(_ProductSuggestion(
+            name: p.name,
+            brand: p.brand,
+            imageUrl: p.imageUrl,
+          ));
+        }
+      }
+
+      if (matches.isNotEmpty) {
+        _suggestions = matches;
+        _showSuggestionsOverlay();
+      }
+    }).catchError((_) {});
   }
 
   Future<void> _searchRemote(String query) async {

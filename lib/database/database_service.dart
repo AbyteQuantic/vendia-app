@@ -1,5 +1,6 @@
 import 'package:isar/isar.dart';
 import 'package:path_provider/path_provider.dart';
+import 'collections/local_catalog_product.dart';
 import 'collections/local_product.dart';
 import 'collections/local_sale.dart';
 import 'collections/local_customer.dart';
@@ -31,6 +32,7 @@ class DatabaseService {
     _isar = await Isar.open(
       [
         LocalProductSchema,
+        LocalCatalogProductSchema,
         LocalSaleSchema,
         LocalCustomerSchema,
         LocalCreditSchema,
@@ -81,6 +83,38 @@ class DatabaseService {
       }
       await isar.localProducts.putAll(products);
     });
+  }
+
+  // ── Catalog (OFF cache for offline-first autocomplete) ─────────────────────
+
+  Future<List<LocalCatalogProduct>> searchCatalog(String query) async {
+    final lower = query.toLowerCase();
+    return isar.localCatalogProducts
+        .filter()
+        .nameContains(lower, caseSensitive: false)
+        .limit(10)
+        .findAll();
+  }
+
+  Future<void> syncCatalog(List<LocalCatalogProduct> products) async {
+    await isar.writeTxn(() async {
+      // Upsert by name+brand
+      for (final p in products) {
+        final existing = await isar.localCatalogProducts
+            .filter()
+            .nameEqualTo(p.name, caseSensitive: false)
+            .brandEqualTo(p.brand, caseSensitive: false)
+            .findFirst();
+        if (existing != null) {
+          p.isarId = existing.isarId;
+        }
+        await isar.localCatalogProducts.put(p);
+      }
+    });
+  }
+
+  Future<int> getCatalogCount() async {
+    return isar.localCatalogProducts.count();
   }
 
   // ── Sales ───────────────────────────────────────────────────────────────────

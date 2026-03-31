@@ -257,6 +257,17 @@ class ApiService {
     }
   }
 
+  /// Download the full OFF catalog for offline-first sync.
+  Future<List<Map<String, dynamic>>> fetchCatalogSync() async {
+    try {
+      final response = await _dio.get('/api/v1/products/catalog-sync');
+      final data = response.data as Map<String, dynamic>;
+      return (data['data'] as List).cast<Map<String, dynamic>>();
+    } on DioException catch (e) {
+      throw AppError.fromDioException(e);
+    }
+  }
+
   Future<Map<String, dynamic>> fetchPendingPrices({
     int page = 1,
     int perPage = 20,
