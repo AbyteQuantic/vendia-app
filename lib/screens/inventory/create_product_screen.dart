@@ -210,11 +210,29 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
   }
 
   Future<void> _enhancePhoto() async {
-    if (_pendingUuid == null) return;
+    // Need a photo URL to enhance (local photos not supported yet)
+    if (_photoUrl == null || _photoUrl!.isEmpty) return;
+
     HapticFeedback.lightImpact();
     setState(() => _enhancing = true);
     try {
       final api = ApiService(AuthService());
+
+      // Auto-create the product in backend if it doesn't exist yet
+      if (_pendingUuid == null) {
+        final id = const Uuid().v4();
+        final productName = _nameCtrl.text.trim();
+        if (productName.isEmpty) return;
+        await api.createProduct({
+          'id': id,
+          'name': productName,
+          'price': double.tryParse(_sellPriceCtrl.text.trim()) ?? 0,
+          'stock': int.tryParse(_quantityCtrl.text.trim()) ?? 1,
+          'image_url': _photoUrl,
+        });
+        _pendingUuid = id;
+      }
+
       final result = await api.enhanceProductPhoto(_pendingUuid!);
       final url = result['image_url'] as String?;
       if (url != null && mounted) {
@@ -280,19 +298,30 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
     final productName = _nameCtrl.text.trim();
 
     try {
-      final id = const Uuid().v4();
-      _pendingUuid = id;
+      final id = _pendingUuid ?? const Uuid().v4();
       final price = double.tryParse(_sellPriceCtrl.text.trim()) ?? 0;
       final stock = int.tryParse(_quantityCtrl.text.trim()) ?? 1;
 
-      // Save to backend
       final api = ApiService(AuthService());
-      await api.createProduct({
-        'id': id,
-        'name': productName,
-        'price': price,
-        'stock': stock,
-      });
+      if (_pendingUuid != null) {
+        // Product was already created by enhance — update it
+        await api.updateProduct(id, {
+          'name': productName,
+          'price': price,
+          'stock': stock,
+          'image_url': _photoUrl,
+        });
+      } else {
+        // Create new product
+        _pendingUuid = id;
+        await api.createProduct({
+          'id': id,
+          'name': productName,
+          'price': price,
+          'stock': stock,
+          'image_url': _photoUrl,
+        });
+      }
 
       // Save to local Isar for offline
       final product = LocalProduct()
