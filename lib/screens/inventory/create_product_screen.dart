@@ -702,21 +702,49 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
                             color: AppTheme.textPrimary, size: 24),
                       ),
                     ),
-                    const SizedBox(width: 12),
-                    // Value
+                    const SizedBox(width: 8),
+                    // Editable value
                     SizedBox(
-                      width: 60,
-                      child: Text(
-                        _quantityCtrl.text.isEmpty ? '1' : _quantityCtrl.text,
+                      width: 64,
+                      height: 48,
+                      child: TextField(
+                        controller: _quantityCtrl,
+                        keyboardType: TextInputType.number,
                         textAlign: TextAlign.center,
                         style: const TextStyle(
                           fontSize: 24,
                           fontWeight: FontWeight.bold,
                           color: AppTheme.textPrimary,
                         ),
+                        inputFormatters: [
+                          FilteringTextInputFormatter.digitsOnly,
+                        ],
+                        decoration: InputDecoration(
+                          contentPadding: EdgeInsets.zero,
+                          filled: true,
+                          fillColor: AppTheme.surfaceGrey,
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: BorderSide.none,
+                          ),
+                          enabledBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: const BorderSide(
+                                color: AppTheme.borderColor, width: 1),
+                          ),
+                          focusedBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: const BorderSide(
+                                color: AppTheme.primary, width: 2),
+                          ),
+                        ),
+                        onChanged: (v) {
+                          if (v.isEmpty || int.tryParse(v) == null) return;
+                          setState(() {});
+                        },
                       ),
                     ),
-                    const SizedBox(width: 12),
+                    const SizedBox(width: 8),
                     // Increase
                     GestureDetector(
                       onTap: () {
