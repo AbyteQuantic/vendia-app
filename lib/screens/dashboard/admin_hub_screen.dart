@@ -73,6 +73,17 @@ class AdminHubScreen extends StatelessWidget {
               onTap: () {},
             ),
             _SettingsTile(
+              icon: Icons.trending_up_rounded,
+              iconColor: const Color(0xFF10B981),
+              title: 'Margen de Ganancia',
+              subtitle: 'Porcentaje aplicado a precios sugeridos',
+              trailing: const Text('20%',
+                  style: TextStyle(
+                      fontSize: 18, fontWeight: FontWeight.bold,
+                      color: Color(0xFF10B981))),
+              onTap: () => _showMarginConfig(context),
+            ),
+            _SettingsTile(
               icon: Icons.receipt_long_rounded,
               iconColor: const Color(0xFFEA580C),
               title: 'Métodos de Pago',
@@ -202,6 +213,115 @@ class AdminHubScreen extends StatelessWidget {
         backgroundColor: AppTheme.primary,
         behavior: SnackBarBehavior.floating,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      ),
+    );
+  }
+
+  void _showMarginConfig(BuildContext context) {
+    final ctrl = TextEditingController(text: '20'); // TODO: read from settings
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => Padding(
+        padding: EdgeInsets.only(bottom: MediaQuery.of(ctx).viewInsets.bottom),
+        child: Container(
+          decoration: const BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+          ),
+          padding: const EdgeInsets.fromLTRB(24, 16, 24, 24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 40, height: 4,
+                margin: const EdgeInsets.only(bottom: 20),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFD6D0C8),
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              const Text('Margen de Ganancia Global',
+                  style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
+              const SizedBox(height: 8),
+              const Text(
+                'Este porcentaje se aplica automáticamente al sugerir precios de venta cuando ingresa mercancía.',
+                textAlign: TextAlign.center,
+                style: TextStyle(fontSize: 16, color: AppTheme.textSecondary),
+              ),
+              const SizedBox(height: 20),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  SizedBox(
+                    width: 120,
+                    child: TextField(
+                      controller: ctrl,
+                      autofocus: true,
+                      keyboardType: TextInputType.number,
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(
+                          fontSize: 48, fontWeight: FontWeight.bold),
+                      decoration: InputDecoration(
+                        hintText: '20',
+                        hintStyle: TextStyle(
+                            fontSize: 48, color: Colors.grey.shade300),
+                        contentPadding:
+                            const EdgeInsets.symmetric(vertical: 12),
+                      ),
+                    ),
+                  ),
+                  const Text('%',
+                      style: TextStyle(
+                          fontSize: 36, fontWeight: FontWeight.bold,
+                          color: AppTheme.textSecondary)),
+                ],
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Ej: Compra \$2.000 → Venta sugerida \$${((2000 * (1 + (int.tryParse(ctrl.text) ?? 20) / 100) / 50).ceil() * 50)}',
+                style: const TextStyle(
+                    fontSize: 15, color: AppTheme.success,
+                    fontWeight: FontWeight.w600),
+              ),
+              const SizedBox(height: 20),
+              SizedBox(
+                width: double.infinity,
+                height: 64,
+                child: ElevatedButton.icon(
+                  onPressed: () {
+                    HapticFeedback.mediumImpact();
+                    // TODO: persist margin to settings
+                    Navigator.of(ctx).pop();
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text(
+                          'Margen actualizado a ${ctrl.text}%',
+                          style: const TextStyle(fontSize: 16),
+                        ),
+                        backgroundColor: const Color(0xFF10B981),
+                        behavior: SnackBarBehavior.floating,
+                        shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12)),
+                      ),
+                    );
+                  },
+                  icon: const Icon(Icons.check_rounded, size: 24),
+                  label: const Text('Guardar',
+                      style: TextStyle(
+                          fontSize: 20, fontWeight: FontWeight.bold)),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF10B981),
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(18)),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }

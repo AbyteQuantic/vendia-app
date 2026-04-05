@@ -1,7 +1,10 @@
 import 'dart:async';
+import 'dart:io';
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import '../../services/api_service.dart';
+import '../../services/auth_service.dart';
 import '../../theme/app_theme.dart';
 import 'ia_result_screen.dart';
 
@@ -42,17 +45,43 @@ class _IaLoadingScreenState extends State<IaLoadingScreen>
       duration: const Duration(milliseconds: 1500),
     )..repeat();
 
-    // Simulate 3-second AI delay then navigate
-    Future.delayed(const Duration(seconds: 3), () {
-      if (mounted) {
-        HapticFeedback.mediumImpact();
-        Navigator.of(context).pushReplacement(
-          MaterialPageRoute(
-            builder: (_) => const IaResultScreen(),
+    // Call real AI endpoint
+    _scanInvoice();
+  }
+
+  Future<void> _scanInvoice() async {
+    try {
+      final api = ApiService(AuthService());
+      final result = await api.scanInvoice(File(widget.imagePath));
+      if (!mounted) return;
+      HapticFeedback.mediumImpact();
+
+      final products = (result['products'] as List?)
+              ?.map((p) => p as Map<String, dynamic>)
+              .toList() ??
+          [];
+      final provider = result['provider'] as String? ?? 'Proveedor';
+
+      Navigator.of(context).pushReplacement(
+        MaterialPageRoute(
+          builder: (_) => IaResultScreen(
+            extractedProducts: products,
+            providerName: provider,
           ),
-        );
-      }
-    });
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      HapticFeedback.heavyImpact();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error al leer factura: $e',
+              style: const TextStyle(fontSize: 16)),
+          backgroundColor: AppTheme.error,
+        ),
+      );
+      Navigator.of(context).pop();
+    }
   }
 
   @override

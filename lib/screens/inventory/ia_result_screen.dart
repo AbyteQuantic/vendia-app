@@ -1,324 +1,656 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:uuid/uuid.dart';
+import '../../database/database_service.dart';
+import '../../database/collections/local_product.dart';
 import '../../theme/app_theme.dart';
-import '../../utils/format_cop.dart';
-import 'price_pending_screen.dart';
 
-/// Shows the products detected by AI from the supplier invoice.
-class IaResultScreen extends StatelessWidget {
-  const IaResultScreen({super.key});
+/// Colombian rounding: ceil to nearest $50 COP
+int roundCOP(double amount) {
+  return ((amount / 50).ceil() * 50);
+}
 
-  // Mock detected products
-  static final List<_DetectedProduct> _mockProducts = [
-    const _DetectedProduct(
-      emoji: '\uD83E\uDD64', // cup with straw
-      name: 'Coca-Cola 350ml',
-      unitPrice: 1500,
-      quantity: 24,
-    ),
-    const _DetectedProduct(
-      emoji: '\uD83E\uDDC3', // beverage box
-      name: 'Hit Naranja 1L',
-      unitPrice: 3200,
-      quantity: 12,
-    ),
-    const _DetectedProduct(
-      emoji: '\uD83D\uDCA7', // droplet
-      name: 'Agua Cristal 600ml',
-      unitPrice: 1000,
-      quantity: 48,
-    ),
-  ];
+/// Suggest a sale price based on purchase price + margin, rounded to $50 COP
+int suggestPrice(double purchasePrice, double marginPercent) {
+  final base = purchasePrice * (1 + marginPercent / 100);
+  return roundCOP(base);
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+
+class IaResultScreen extends StatefulWidget {
+  /// Products extracted by AI. Each map has: name, quantity, unit_price, total_price
+  final List<Map<String, dynamic>> extractedProducts;
+  final String providerName;
+
+  const IaResultScreen({
+    super.key,
+    required this.extractedProducts,
+    required this.providerName,
+  });
+
+  @override
+  State<IaResultScreen> createState() => _IaResultScreenState();
+}
+
+class _IaResultScreenState extends State<IaResultScreen> {
+  late List<_EditableProduct> _products;
+  double _marginPercent = 20.0; // Default global margin
+  bool _saving = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _products = widget.extractedProducts.map((p) {
+      final purchasePrice = (p['unit_price'] as num?)?.toDouble() ?? 0;
+      return _EditableProduct(
+        name: p['name'] as String? ?? '',
+        presentation: p['presentation'] as String? ?? '',
+        quantity: (p['quantity'] as num?)?.toInt() ?? 1,
+        purchasePrice: purchasePrice,
+        sellPrice: suggestPrice(purchasePrice, _marginPercent).toDouble(),
+        confidence: (p['confidence'] as num?)?.toDouble() ?? 0.9,
+      );
+    }).toList();
+  }
+
+  void _recalculateAllPrices() {
+    for (final p in _products) {
+      p.sellPrice = suggestPrice(p.purchasePrice, _marginPercent).toDouble();
+    }
+    setState(() {});
+  }
+
+  double get _totalInvoice =>
+      _products.fold(0, (sum, p) => sum + p.purchasePrice * p.quantity);
+
+  Future<void> _saveAll() async {
+    setState(() => _saving = true);
+    HapticFeedback.mediumImpact();
+
+    try {
+      final db = DatabaseService.instance;
+      for (final p in _products) {
+        final product = LocalProduct()
+          ..uuid = const Uuid().v4()
+          ..name = p.name
+          ..price = p.sellPrice
+          ..stock = p.quantity
+          ..isAvailable = true
+          ..requiresContainer = false
+          ..containerPrice = 0
+          ..presentation = p.presentation
+          ..barcode = ''
+          ..content = ''
+          ..clientUpdatedAt = DateTime.now();
+        await db.upsertProduct(product);
+      }
+
+      if (!mounted) return;
+      HapticFeedback.heavyImpact();
+      Navigator.of(context).popUntil((route) => route.isFirst);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            '${_products.length} productos guardados en inventario',
+            style: const TextStyle(fontSize: 16),
+          ),
+          backgroundColor: AppTheme.success,
+          behavior: SnackBarBehavior.floating,
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        ),
+      );
+    } catch (e) {
+      if (mounted) {
+        setState(() => _saving = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error al guardar: $e'),
+            backgroundColor: AppTheme.error,
+          ),
+        );
+      }
+    }
+  }
+
+  void _deleteProduct(int index) {
+    HapticFeedback.lightImpact();
+    setState(() => _products.removeAt(index));
+  }
+
+  void _editProduct(int index) {
+    final p = _products[index];
+    final nameCtrl = TextEditingController(text: p.name);
+    final presCtrl = TextEditingController(text: p.presentation);
+    final qtyCtrl = TextEditingController(text: p.quantity.toString());
+    final buyCtrl = TextEditingController(text: p.purchasePrice.round().toString());
+    final sellCtrl = TextEditingController(text: p.sellPrice.round().toString());
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => Padding(
+        padding: EdgeInsets.only(bottom: MediaQuery.of(ctx).viewInsets.bottom),
+        child: Container(
+          constraints: BoxConstraints(
+            maxHeight: MediaQuery.of(ctx).size.height * 0.8,
+          ),
+          decoration: const BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+          ),
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.fromLTRB(24, 16, 24, 24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Center(
+                  child: Container(
+                    width: 40, height: 4,
+                    margin: const EdgeInsets.only(bottom: 16),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFD6D0C8),
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                ),
+                const Text('Editar Producto',
+                    style: TextStyle(
+                        fontSize: 22, fontWeight: FontWeight.bold,
+                        color: AppTheme.textPrimary)),
+                const SizedBox(height: 16),
+
+                _EditField(label: 'Nombre', controller: nameCtrl),
+                const SizedBox(height: 12),
+                _EditField(label: 'Presentación', controller: presCtrl,
+                    hint: 'Ej: PACA X12, 350ml'),
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    Expanded(child: _EditField(
+                        label: 'Cantidad', controller: qtyCtrl,
+                        numeric: true)),
+                    const SizedBox(width: 12),
+                    Expanded(child: _EditField(
+                        label: 'P. Compra', controller: buyCtrl,
+                        numeric: true, prefix: '\$')),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                _EditField(
+                    label: 'Precio Venta', controller: sellCtrl,
+                    numeric: true, prefix: '\$'),
+                const SizedBox(height: 6),
+                Text(
+                  'Sugerido: \$${suggestPrice(double.tryParse(buyCtrl.text) ?? 0, _marginPercent)} (+${_marginPercent.round()}%)',
+                  style: const TextStyle(
+                      fontSize: 14, color: AppTheme.success,
+                      fontWeight: FontWeight.w600),
+                ),
+                const SizedBox(height: 20),
+                SizedBox(
+                  height: 60,
+                  child: ElevatedButton.icon(
+                    onPressed: () {
+                      HapticFeedback.mediumImpact();
+                      setState(() {
+                        p.name = nameCtrl.text.trim();
+                        p.presentation = presCtrl.text.trim();
+                        p.quantity = int.tryParse(qtyCtrl.text) ?? p.quantity;
+                        p.purchasePrice = double.tryParse(buyCtrl.text) ?? p.purchasePrice;
+                        p.sellPrice = double.tryParse(sellCtrl.text) ?? p.sellPrice;
+                      });
+                      Navigator.of(ctx).pop();
+                    },
+                    icon: const Icon(Icons.check_rounded, size: 22),
+                    label: const Text('Guardar cambios',
+                        style: TextStyle(fontSize: 18)),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppTheme.primary,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  String _formatCOP(double amount) {
+    final n = amount.round();
+    if (n == 0) return '\$0';
+    final s = n.toString();
+    final buffer = StringBuffer('\$');
+    final start = s.length % 3;
+    if (start > 0) buffer.write(s.substring(0, start));
+    for (int i = start; i < s.length; i += 3) {
+      if (i > 0) buffer.write('.');
+      buffer.write(s.substring(i, i + 3));
+    }
+    return buffer.toString();
+  }
 
   @override
   Widget build(BuildContext context) {
-    final totalInvoice = _mockProducts.fold<double>(
-      0,
-      (sum, p) => sum + p.unitPrice * p.quantity,
-    );
-    final count = _mockProducts.length;
-
     return Scaffold(
       backgroundColor: AppTheme.background,
-      body: Semantics(
-        label: 'Resultados de la lectura de factura',
-        child: Column(
-          children: [
-            // Green header
-            Container(
-              width: double.infinity,
-              padding: EdgeInsets.only(
-                top: MediaQuery.of(context).padding.top + 16,
-                left: 24,
-                right: 24,
-                bottom: 28,
+      body: Column(
+        children: [
+          // Green header
+          Container(
+            width: double.infinity,
+            padding: EdgeInsets.only(
+              top: MediaQuery.of(context).padding.top + 12,
+              left: 24, right: 24, bottom: 20,
+            ),
+            decoration: const BoxDecoration(
+              gradient: LinearGradient(
+                colors: [Color(0xFF10B981), Color(0xFF059669)],
               ),
-              decoration: const BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                  colors: [Color(0xFF10B981), Color(0xFF059669)],
-                ),
-                borderRadius: BorderRadius.only(
-                  bottomLeft: Radius.circular(32),
-                  bottomRight: Radius.circular(32),
-                ),
-              ),
-              child: SafeArea(
-                bottom: false,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // Back button
-                    Semantics(
-                      button: true,
-                      label: 'Volver',
-                      child: GestureDetector(
-                        onTap: () {
-                          HapticFeedback.lightImpact();
-                          Navigator.of(context).pop();
-                        },
-                        child: Container(
-                          width: 48,
-                          height: 48,
-                          decoration: BoxDecoration(
-                            color: Colors.white.withValues(alpha: 0.2),
-                            borderRadius: BorderRadius.circular(14),
-                          ),
-                          child: const Icon(Icons.arrow_back_rounded,
-                              color: Colors.white, size: 26),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 20),
-
-                    // Badge
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 16, vertical: 8),
-                      decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: 0.2),
-                        borderRadius: BorderRadius.circular(16),
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          const Icon(Icons.star_rounded,
-                              color: Colors.white, size: 22),
-                          const SizedBox(width: 8),
-                          Text(
-                            'IA detecto $count productos',
-                            style: const TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.w600,
-                              color: Colors.white,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    const Text(
-                      'Factura de Postobon',
-                      style: TextStyle(
-                        fontSize: 24,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.white,
-                      ),
-                    ),
-                  ],
-                ),
+              borderRadius: BorderRadius.only(
+                bottomLeft: Radius.circular(28),
+                bottomRight: Radius.circular(28),
               ),
             ),
-
-            // Product list
-            Expanded(
-              child: ListView.builder(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-                itemCount: _mockProducts.length,
-                itemBuilder: (context, index) {
-                  final p = _mockProducts[index];
-                  final total = p.unitPrice * p.quantity;
-                  return Container(
-                    margin: const EdgeInsets.only(bottom: 12),
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      color: AppTheme.surfaceGrey,
-                      borderRadius: BorderRadius.circular(20),
-                      border:
-                          Border.all(color: AppTheme.borderColor, width: 1.5),
-                    ),
-                    child: Row(
-                      children: [
-                        // Emoji avatar
-                        Container(
-                          width: 64,
-                          height: 64,
-                          decoration: BoxDecoration(
-                            borderRadius: BorderRadius.circular(18),
-                            gradient: const LinearGradient(
-                              begin: Alignment.topLeft,
-                              end: Alignment.bottomRight,
-                              colors: [
-                                Color(0x20667EEA),
-                                Color(0x20764BA2),
-                              ],
-                            ),
-                          ),
-                          child: Center(
-                            child: Text(
-                              p.emoji,
-                              style: const TextStyle(fontSize: 32),
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 14),
-                        // Info
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                p.name,
-                                style: const TextStyle(
-                                  fontSize: 20,
-                                  fontWeight: FontWeight.bold,
-                                  color: AppTheme.textPrimary,
-                                ),
-                              ),
-                              const SizedBox(height: 4),
-                              Text(
-                                '${formatCOP(p.unitPrice)} x ${p.quantity} = ${formatCOP(total)}',
-                                style: const TextStyle(
-                                  fontSize: 18,
-                                  color: AppTheme.textSecondary,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                        // Green check
-                        Container(
-                          width: 40,
-                          height: 40,
-                          decoration: BoxDecoration(
-                            color: const Color(0x2010B981),
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          child: const Icon(Icons.check_rounded,
-                              color: Color(0xFF10B981), size: 24),
-                        ),
-                      ],
-                    ),
-                  );
-                },
-              ),
-            ),
-
-            // Total bar
-            Container(
-              margin: const EdgeInsets.symmetric(horizontal: 20),
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-              decoration: BoxDecoration(
-                color: const Color(0x1010B981),
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(
-                    color: const Color(0x3010B981), width: 1.5),
-              ),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            child: SafeArea(
+              bottom: false,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text(
-                    'Total factura',
-                    style: TextStyle(
-                      fontSize: 20,
-                      fontWeight: FontWeight.w600,
-                      color: AppTheme.textPrimary,
+                  GestureDetector(
+                    onTap: () => Navigator.of(context).pop(),
+                    child: Container(
+                      width: 48, height: 48,
+                      decoration: BoxDecoration(
+                        color: Colors.white24,
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                      child: const Icon(Icons.arrow_back_rounded,
+                          color: Colors.white, size: 26),
                     ),
                   ),
-                  Text(
-                    formatCOP(totalInvoice),
-                    style: const TextStyle(
-                      fontSize: 24,
-                      fontWeight: FontWeight.bold,
-                      color: Color(0xFF10B981),
+                  const SizedBox(height: 14),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 14, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: Colors.white24,
+                      borderRadius: BorderRadius.circular(14),
                     ),
+                    child: Text(
+                      '${_products.length} productos detectados',
+                      style: const TextStyle(
+                          fontSize: 16, fontWeight: FontWeight.w600,
+                          color: Colors.white),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'Factura de ${widget.providerName}',
+                    style: const TextStyle(
+                        fontSize: 22, fontWeight: FontWeight.bold,
+                        color: Colors.white),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    'Total: ${_formatCOP(_totalInvoice)} · Margen: ${_marginPercent.round()}%',
+                    style: TextStyle(
+                        fontSize: 15,
+                        color: Colors.white.withValues(alpha: 0.85)),
                   ),
                 ],
               ),
             ),
+          ),
 
-            // Bottom button
-            Padding(
-              padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
-              child: SizedBox(
-                width: double.infinity,
-                height: 64,
-                child: DecoratedBox(
-                  decoration: BoxDecoration(
-                    gradient: const LinearGradient(
-                      colors: [Color(0xFF10B981), Color(0xFF059669)],
-                    ),
-                    borderRadius: BorderRadius.circular(20),
-                    boxShadow: [
-                      BoxShadow(
-                        color:
-                            const Color(0xFF10B981).withValues(alpha: 0.3),
-                        blurRadius: 16,
-                        offset: const Offset(0, 6),
-                      ),
-                    ],
-                  ),
-                  child: ElevatedButton.icon(
-                    onPressed: () {
-                      HapticFeedback.mediumImpact();
-                      Navigator.of(context).pushReplacement(
-                        MaterialPageRoute(
-                          builder: (_) => const PricePendingScreen(),
-                        ),
-                      );
-                    },
-                    icon: const Icon(Icons.check_rounded,
-                        size: 24, color: Colors.white),
-                    label: const Text(
-                      'Confirmar y Guardar',
-                      style: TextStyle(
-                        fontSize: 22,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.white,
-                      ),
-                    ),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.transparent,
-                      shadowColor: Colors.transparent,
-                      minimumSize: const Size(double.infinity, 64),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(20),
-                      ),
+          // Editable product list
+          Expanded(
+            child: _products.isEmpty
+                ? const Center(
+                    child: Text('No hay productos',
+                        style: TextStyle(fontSize: 18,
+                            color: AppTheme.textSecondary)),
+                  )
+                : ListView.builder(
+                    padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+                    itemCount: _products.length,
+                    itemBuilder: (_, i) => _ProductCard(
+                      product: _products[i],
+                      marginPercent: _marginPercent,
+                      formatCOP: _formatCOP,
+                      onEdit: () => _editProduct(i),
+                      onDelete: () => _deleteProduct(i),
                     ),
                   ),
+          ),
+        ],
+      ),
+      bottomNavigationBar: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+          child: SizedBox(
+            height: 64,
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                gradient: const LinearGradient(
+                  colors: [Color(0xFF10B981), Color(0xFF059669)],
+                ),
+                borderRadius: BorderRadius.circular(20),
+                boxShadow: [
+                  BoxShadow(
+                    color: const Color(0xFF10B981).withValues(alpha: 0.3),
+                    blurRadius: 12, offset: const Offset(0, 4),
+                  ),
+                ],
+              ),
+              child: ElevatedButton.icon(
+                onPressed: _saving || _products.isEmpty ? null : _saveAll,
+                icon: _saving
+                    ? const SizedBox(
+                        width: 20, height: 20,
+                        child: CircularProgressIndicator(
+                            color: Colors.white, strokeWidth: 2.5),
+                      )
+                    : const Icon(Icons.save_rounded,
+                        size: 22, color: Colors.white),
+                label: Text(
+                  _saving
+                      ? 'Guardando...'
+                      : 'Guardar ${_products.length} productos',
+                  style: const TextStyle(
+                      fontSize: 20, fontWeight: FontWeight.bold,
+                      color: Colors.white),
+                ),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.transparent,
+                  shadowColor: Colors.transparent,
+                  disabledBackgroundColor: Colors.transparent,
+                  minimumSize: const Size(double.infinity, 64),
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(20)),
                 ),
               ),
             ),
-          ],
+          ),
         ),
       ),
     );
   }
 }
 
-class _DetectedProduct {
-  final String emoji;
-  final String name;
-  final double unitPrice;
-  final int quantity;
+// ═══════════════════════════════════════════════════════════════════════════════
+// PRODUCT CARD (editable)
+// ═══════════════════════════════════════════════════════════════════════════════
 
-  const _DetectedProduct({
-    required this.emoji,
+class _ProductCard extends StatelessWidget {
+  final _EditableProduct product;
+  final double marginPercent;
+  final String Function(double) formatCOP;
+  final VoidCallback onEdit;
+  final VoidCallback onDelete;
+
+  const _ProductCard({
+    required this.product,
+    required this.marginPercent,
+    required this.formatCOP,
+    required this.onEdit,
+    required this.onDelete,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final total = product.purchasePrice * product.quantity;
+    final isLowConfidence = product.confidence < 0.7;
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(
+          color: isLowConfidence
+              ? AppTheme.warning.withValues(alpha: 0.5)
+              : AppTheme.borderColor,
+          width: isLowConfidence ? 2 : 1,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.03),
+            blurRadius: 6, offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Name + confidence badge
+          Row(
+            children: [
+              Expanded(
+                child: Text(product.name,
+                    style: const TextStyle(
+                        fontSize: 18, fontWeight: FontWeight.bold,
+                        color: AppTheme.textPrimary)),
+              ),
+              if (isLowConfidence)
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 8, vertical: 3),
+                  decoration: BoxDecoration(
+                    color: AppTheme.warning.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: const Text('Revisar',
+                      style: TextStyle(fontSize: 12,
+                          color: AppTheme.warning,
+                          fontWeight: FontWeight.bold)),
+                ),
+            ],
+          ),
+          if (product.presentation.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(top: 2),
+              child: Text(product.presentation,
+                  style: const TextStyle(
+                      fontSize: 14, color: AppTheme.textSecondary)),
+            ),
+          const SizedBox(height: 8),
+
+          // Prices row
+          Row(
+            children: [
+              // Purchase
+              _PriceChip(
+                label: 'Compra',
+                value: formatCOP(product.purchasePrice),
+                color: AppTheme.textSecondary,
+              ),
+              const SizedBox(width: 8),
+              const Icon(Icons.arrow_forward_rounded,
+                  size: 16, color: AppTheme.textSecondary),
+              const SizedBox(width: 8),
+              // Sale (suggested)
+              _PriceChip(
+                label: 'Venta',
+                value: formatCOP(product.sellPrice),
+                color: AppTheme.success,
+                badge: '+${marginPercent.round()}%',
+              ),
+              const Spacer(),
+              // Qty
+              Text('x${product.quantity}',
+                  style: const TextStyle(
+                      fontSize: 16, fontWeight: FontWeight.bold,
+                      color: AppTheme.primary)),
+            ],
+          ),
+          const SizedBox(height: 8),
+
+          // Action buttons
+          Row(
+            children: [
+              Text('Total: ${formatCOP(total)}',
+                  style: const TextStyle(
+                      fontSize: 15, color: AppTheme.textSecondary)),
+              const Spacer(),
+              // Edit
+              GestureDetector(
+                onTap: onEdit,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 12, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: AppTheme.primary.withValues(alpha: 0.08),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: const Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.edit_rounded,
+                          size: 18, color: AppTheme.primary),
+                      SizedBox(width: 4),
+                      Text('Editar',
+                          style: TextStyle(fontSize: 14,
+                              fontWeight: FontWeight.w600,
+                              color: AppTheme.primary)),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              // Delete
+              GestureDetector(
+                onTap: onDelete,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 12, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: AppTheme.error.withValues(alpha: 0.08),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: const Icon(Icons.delete_rounded,
+                      size: 18, color: AppTheme.error),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _PriceChip extends StatelessWidget {
+  final String label;
+  final String value;
+  final Color color;
+  final String? badge;
+
+  const _PriceChip({
+    required this.label,
+    required this.value,
+    required this.color,
+    this.badge,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(label, style: TextStyle(fontSize: 11, color: color)),
+            if (badge != null) ...[
+              const SizedBox(width: 4),
+              Container(
+                padding: const EdgeInsets.symmetric(
+                    horizontal: 4, vertical: 1),
+                decoration: BoxDecoration(
+                  color: color.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(4),
+                ),
+                child: Text(badge!,
+                    style: TextStyle(fontSize: 10,
+                        fontWeight: FontWeight.bold, color: color)),
+              ),
+            ],
+          ],
+        ),
+        Text(value,
+            style: TextStyle(fontSize: 16,
+                fontWeight: FontWeight.bold, color: color)),
+      ],
+    );
+  }
+}
+
+class _EditField extends StatelessWidget {
+  final String label;
+  final TextEditingController controller;
+  final bool numeric;
+  final String? prefix;
+  final String? hint;
+
+  const _EditField({
+    required this.label,
+    required this.controller,
+    this.numeric = false,
+    this.prefix,
+    this.hint,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(label, style: const TextStyle(
+            fontSize: 15, fontWeight: FontWeight.w600,
+            color: AppTheme.textSecondary)),
+        const SizedBox(height: 4),
+        TextField(
+          controller: controller,
+          style: const TextStyle(fontSize: 18, color: Color(0xFF1A1A1A)),
+          keyboardType: numeric ? TextInputType.number : TextInputType.text,
+          inputFormatters: numeric
+              ? [FilteringTextInputFormatter.digitsOnly]
+              : null,
+          decoration: InputDecoration(
+            hintText: hint,
+            prefixText: prefix,
+            contentPadding: const EdgeInsets.symmetric(
+                horizontal: 14, vertical: 12),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+
+class _EditableProduct {
+  String name;
+  String presentation;
+  int quantity;
+  double purchasePrice;
+  double sellPrice;
+  double confidence;
+
+  _EditableProduct({
     required this.name,
-    required this.unitPrice,
+    required this.presentation,
     required this.quantity,
+    required this.purchasePrice,
+    required this.sellPrice,
+    required this.confidence,
   });
 }
