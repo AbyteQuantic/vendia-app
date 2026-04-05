@@ -1,15 +1,74 @@
+import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../database/database_service.dart';
 import '../../database/collections/local_product.dart';
 import '../../models/product.dart';
 import '../../models/cart_item.dart';
+import '../../services/api_service.dart';
+import '../../services/auth_service.dart';
+
+// ── Account Context (Mostrador / Mesa / Fiado) ─────────────────────────────
+
+enum AccountType { mostrador, mesa, fiado, mesaInmediata }
+
+class AccountContext {
+  final AccountType type;
+  final String? tableLabel;   // e.g. "Mesa 3"
+  final String? customerName; // e.g. "Don Carlos"
+  final String? customerPhone;
+
+  const AccountContext({
+    this.type = AccountType.mostrador,
+    this.tableLabel,
+    this.customerName,
+    this.customerPhone,
+  });
+
+  String get tabLabel {
+    switch (type) {
+      case AccountType.mesa:
+        return tableLabel ?? 'Mesa';
+      case AccountType.mesaInmediata:
+        return tableLabel ?? 'Mesa';
+      case AccountType.fiado:
+        return customerName ?? 'Fiado';
+      case AccountType.mostrador:
+        return '';
+    }
+  }
+
+  Map<String, dynamic> toJson() => {
+        'type': type.name,
+        'tableLabel': tableLabel,
+        'customerName': customerName,
+        'customerPhone': customerPhone,
+      };
+
+  factory AccountContext.fromJson(Map<String, dynamic> json) {
+    final typeName = json['type'] as String? ?? 'mostrador';
+    return AccountContext(
+      type: AccountType.values.firstWhere(
+        (e) => e.name == typeName,
+        orElse: () => AccountType.mostrador,
+      ),
+      tableLabel: json['tableLabel'] as String?,
+      customerName: json['customerName'] as String?,
+      customerPhone: json['customerPhone'] as String?,
+    );
+  }
+}
+
+// ── Cart Controller ─────────────────────────────────────────────────────────
 
 class CartController extends ChangeNotifier {
   static const int _cartCount = 10;
   static const String _storageKey = 'vendia_carts';
+  static const String _contextKey = 'vendia_cart_contexts';
 
   final List<List<CartItem>> _carts = List.generate(_cartCount, (_) => []);
+  final List<AccountContext> _contexts =
+      List.generate(_cartCount, (_) => const AccountContext());
 
   int _activeIndex = 0;
   String _search = '';
@@ -38,8 +97,26 @@ class CartController extends ChangeNotifier {
   Future<void> _loadProducts() async {
     try {
       final db = DatabaseService.instance;
+      // Load local first (instant)
       final local = await db.getAllProducts();
       _products = local.map(_localToProduct).toList();
+      _productsLoaded = true;
+      notifyListeners();
+
+      // Then pull from server and replace local
+      try {
+        final api = ApiService(AuthService());
+        final res = await api.fetchProducts(page: 1, perPage: 100);
+        final data = res['data'] as List? ?? [];
+        final serverProducts = data
+            .map((e) => LocalProduct.fromJson(e as Map<String, dynamic>))
+            .toList();
+        await db.replaceAllProducts(serverProducts);
+        _products = serverProducts.map(_localToProduct).toList();
+        notifyListeners();
+      } catch (_) {
+        // Keep local data if server fails
+      }
     } catch (_) {
       // Fallback to mock products
     }
@@ -58,7 +135,26 @@ class CartController extends ChangeNotifier {
         requiresContainer: lp.requiresContainer,
         containerPrice: lp.containerPrice,
         barcode: lp.barcode,
+        presentation: lp.presentation,
+        content: lp.content,
       );
+
+  // ── Context Getters ────────────────────────────────────────────────────────
+
+  AccountContext get activeContext => _contexts[_activeIndex];
+  AccountContext contextAt(int index) => _contexts[index];
+
+  void setContext(AccountContext ctx) {
+    _contexts[_activeIndex] = ctx;
+    notifyListeners();
+    _persistContexts();
+  }
+
+  void clearContextForActive() {
+    _contexts[_activeIndex] = const AccountContext();
+    notifyListeners();
+    _persistContexts();
+  }
 
   // ── Getters ────────────────────────────────────────────────────────────────
 
@@ -121,15 +217,32 @@ class CartController extends ChangeNotifier {
     try {
       final prefs = await SharedPreferences.getInstance();
       for (int i = 0; i < _cartCount; i++) {
-        final json = prefs.getString('${_storageKey}_$i');
-        if (json != null && json.isNotEmpty) {
-          _carts[i] = CartItem.decodeList(json);
+        final cartJson = prefs.getString('${_storageKey}_$i');
+        if (cartJson != null && cartJson.isNotEmpty) {
+          _carts[i] = CartItem.decodeList(cartJson);
+        }
+      }
+      // Restore contexts
+      final ctxJson = prefs.getString(_contextKey);
+      if (ctxJson != null && ctxJson.isNotEmpty) {
+        final list = jsonDecode(ctxJson) as List;
+        for (int i = 0; i < list.length && i < _cartCount; i++) {
+          _contexts[i] =
+              AccountContext.fromJson(list[i] as Map<String, dynamic>);
         }
       }
       notifyListeners();
     } catch (_) {
       // Silently fail on restore — start with empty carts
     }
+  }
+
+  Future<void> _persistContexts() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final list = _contexts.map((c) => c.toJson()).toList();
+      await prefs.setString(_contextKey, jsonEncode(list));
+    } catch (_) {}
   }
 
   Future<void> _persistCarts() async {
@@ -158,7 +271,7 @@ class CartController extends ChangeNotifier {
 
   void addProduct(Product product) {
     final existing =
-        activeCart.where((item) => item.product.id == product.id).firstOrNull;
+        activeCart.where((item) => item.product.uuid == product.uuid).firstOrNull;
     if (existing != null) {
       existing.quantity++;
     } else {
@@ -189,10 +302,73 @@ class CartController extends ChangeNotifier {
     _persistCarts();
   }
 
+  void setQuantity(Product product, int qty) {
+    if (qty <= 0) {
+      activeCart.removeWhere((i) => i.product.uuid == product.uuid);
+    } else {
+      final item =
+          activeCart.where((i) => i.product.uuid == product.uuid).firstOrNull;
+      if (item != null) {
+        item.quantity = qty;
+      } else {
+        activeCart.add(CartItem(product: product, quantity: qty));
+      }
+    }
+    notifyListeners();
+    _persistCarts();
+  }
+
+  int getQuantity(Product product) {
+    final item =
+        activeCart.where((i) => i.product.uuid == product.uuid).firstOrNull;
+    return item?.quantity ?? 0;
+  }
+
   void clearActiveCart() {
+    activeCart.clear();
+    _contexts[_activeIndex] = const AccountContext();
+    notifyListeners();
+    _persistCarts();
+    _persistContexts();
+  }
+
+  /// Clear cart items but KEEP the account context (mesa stays assigned).
+  void clearCartKeepContext() {
     activeCart.clear();
     notifyListeners();
     _persistCarts();
+  }
+
+  /// Find the next empty tab (no items AND no context assigned).
+  /// Returns -1 if all tabs are occupied.
+  int get nextEmptyIndex {
+    for (int i = 0; i < _cartCount; i++) {
+      if (_carts[i].isEmpty && _contexts[i].type == AccountType.mostrador) {
+        return i;
+      }
+    }
+    return -1;
+  }
+
+  /// True if the tab at [index] has a mesa/fiado context but empty cart
+  /// (i.e. it was sent to kitchen and is waiting for more orders or payment).
+  bool isOccupied(int index) {
+    return _carts[index].isEmpty &&
+        _contexts[index].type != AccountType.mostrador;
+  }
+
+  /// Assign a fiado context to a specific tab and switch to it.
+  void assignFiadoToTab(String name, String phone) {
+    final target = nextEmptyIndex;
+    if (target == -1) return;
+    _activeIndex = target;
+    _contexts[target] = AccountContext(
+      type: AccountType.fiado,
+      customerName: name,
+      customerPhone: phone,
+    );
+    notifyListeners();
+    _persistContexts();
   }
 
   void setSearch(String query) {

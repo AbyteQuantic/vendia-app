@@ -162,7 +162,7 @@ class AppTheme {
         ),
       ),
 
-      // ─── Input fields (larger, warmer) ───
+      // ─── Input fields (larger, warmer, explicit colors for EMUI compat) ───
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
         fillColor: surface,
@@ -188,9 +188,17 @@ class AppTheme {
           borderRadius: BorderRadius.circular(16),
           borderSide: const BorderSide(color: error, width: 2.5),
         ),
-        hintStyle: TextStyle(color: textSecondary, fontSize: 18),
+        // Explicit colors: never inherit from OS theme
+        hintStyle: const TextStyle(color: Color(0xFF9CA3AF), fontSize: 18),
         labelStyle: TextStyle(color: primary, fontSize: 18),
         errorStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.w500),
+      ),
+
+      // Force text selection and input text color for all TextFields
+      textSelectionTheme: TextSelectionThemeData(
+        cursorColor: primary,
+        selectionColor: primary.withValues(alpha: 0.3),
+        selectionHandleColor: primary,
       ),
 
       // ─── Card theme (NEW — modern rounded) ───

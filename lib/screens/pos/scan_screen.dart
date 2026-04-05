@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
-import '../../models/product.dart';
 import '../../services/api_service.dart';
 import '../../services/app_error.dart';
 import '../../services/auth_service.dart';
 import '../../theme/app_theme.dart';
+import '../inventory/create_product_screen.dart';
 
 class ScanScreen extends StatefulWidget {
   const ScanScreen({super.key});
@@ -60,9 +60,9 @@ class _ScanScreenState extends State<ScanScreen> {
       if (!mounted) return;
 
       if (results.isNotEmpty) {
-        final product = Product.fromJson(results.first);
         HapticFeedback.mediumImpact();
-        Navigator.of(context).pop(product);
+        // Pop with barcode string — caller decides what to do
+        Navigator.of(context).pop(barcode);
       } else {
         _showNotFoundDialog(barcode);
       }
@@ -119,9 +119,13 @@ class _ScanScreenState extends State<ScanScreen> {
           ),
           ElevatedButton(
             onPressed: () {
-              Navigator.of(ctx).pop();
-              Navigator.of(context).pop();
-              // TODO: navigate to create product screen with barcode pre-filled
+              Navigator.of(ctx).pop(); // close dialog
+              // Navigate directly to create product with barcode pre-filled
+              Navigator.of(context).pushReplacement(
+                MaterialPageRoute(
+                  builder: (_) => CreateProductScreen(initialSku: barcode),
+                ),
+              );
             },
             style: ElevatedButton.styleFrom(minimumSize: const Size(120, 56)),
             child: const Text('Crear producto',
@@ -242,33 +246,12 @@ class _ScanOverlay extends StatelessWidget {
 
         return Stack(
           children: [
-            // Dark overlay with cutout
-            ColorFiltered(
-              colorFilter: ColorFilter.mode(
-                Colors.black.withValues(alpha: 0.5),
-                BlendMode.srcOut,
-              ),
-              child: Stack(
-                children: [
-                  Container(
-                    decoration: const BoxDecoration(
-                      color: Colors.black,
-                      backgroundBlendMode: BlendMode.dstOut,
-                    ),
-                  ),
-                  Positioned(
-                    top: top,
-                    left: left,
-                    child: Container(
-                      width: scanAreaSize,
-                      height: scanAreaSize,
-                      decoration: BoxDecoration(
-                        color: Colors.red,
-                        borderRadius: BorderRadius.circular(24),
-                      ),
-                    ),
-                  ),
-                ],
+            // Dark semitransparent overlay with clear cutout
+            CustomPaint(
+              size: Size(constraints.maxWidth, constraints.maxHeight),
+              painter: _OverlayPainter(
+                scanRect: Rect.fromLTWH(left, top, scanAreaSize, scanAreaSize),
+                borderRadius: 24,
               ),
             ),
 
@@ -354,4 +337,29 @@ class _CornerPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(_CornerPainter old) => old.color != color;
+}
+
+/// Paints a semitransparent overlay with a clear rounded-rect cutout.
+class _OverlayPainter extends CustomPainter {
+  final Rect scanRect;
+  final double borderRadius;
+
+  _OverlayPainter({required this.scanRect, required this.borderRadius});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final bgPaint = Paint()..color = Colors.black54;
+    final clearPaint = Paint()..blendMode = BlendMode.clear;
+
+    canvas.saveLayer(Rect.fromLTWH(0, 0, size.width, size.height), Paint());
+    canvas.drawRect(Rect.fromLTWH(0, 0, size.width, size.height), bgPaint);
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(scanRect, Radius.circular(borderRadius)),
+      clearPaint,
+    );
+    canvas.restore();
+  }
+
+  @override
+  bool shouldRepaint(_OverlayPainter old) => old.scanRect != scanRect;
 }

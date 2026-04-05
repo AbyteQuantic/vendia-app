@@ -84,8 +84,8 @@ class _VendIAAppState extends State<VendIAApp> {
         debugShowCheckedModeBanner: false,
         scaffoldMessengerKey: ApiService.scaffoldKey,
         theme: AppTheme.light,
-        darkTheme: AppTheme.dark,
-        themeMode: ThemeMode.system,
+        // Force light mode — dark mode not yet supported for Gerontodiseño
+        themeMode: ThemeMode.light,
         // Disable overscroll glow/stretch globally (fixes teal circles on Android 12+)
         scrollBehavior: const MaterialScrollBehavior().copyWith(
           overscroll: false,

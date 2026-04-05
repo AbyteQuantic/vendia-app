@@ -9,6 +9,8 @@ class Product {
   final bool requiresContainer;
   final int containerPrice;
   final String? barcode;
+  final String? presentation;
+  final String? content;
 
   const Product({
     required this.id,
@@ -21,12 +23,24 @@ class Product {
     this.requiresContainer = false,
     this.containerPrice = 0,
     this.barcode,
+    this.presentation,
+    this.content,
   });
 
+  /// Short subtitle: "Botella · 350ml"
+  String get subtitle {
+    final parts = <String>[
+      if (presentation != null && presentation!.isNotEmpty) presentation!,
+      if (content != null && content!.isNotEmpty) content!,
+    ];
+    return parts.join(' · ');
+  }
+
   factory Product.fromJson(Map<String, dynamic> json) {
+    final id = json['id'];
     return Product(
-      id: json['id'] as int? ?? 0,
-      uuid: json['uuid'] as String? ?? json['id']?.toString() ?? '',
+      id: id is int ? id : 0,
+      uuid: id is String ? id : (json['uuid'] as String? ?? id?.toString() ?? ''),
       name: json['name'] as String,
       price: (json['price'] as num).toDouble(),
       stock: json['stock'] as int? ?? 0,
@@ -35,6 +49,8 @@ class Product {
       requiresContainer: json['requires_container'] as bool? ?? false,
       containerPrice: json['container_price'] as int? ?? 0,
       barcode: json['barcode'] as String?,
+      presentation: json['presentation'] as String?,
+      content: json['content'] as String?,
     );
   }
 
@@ -49,6 +65,8 @@ class Product {
         'requires_container': requiresContainer,
         'container_price': containerPrice,
         'barcode': barcode,
+        'presentation': presentation,
+        'content': content,
       };
 
   String get formattedPrice {

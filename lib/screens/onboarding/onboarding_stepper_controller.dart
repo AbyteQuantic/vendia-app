@@ -54,12 +54,39 @@ class OnboardingStepperController extends ChangeNotifier {
   String get businessType =>
       businessTypes.isNotEmpty ? businessTypes.first : '';
 
-  // ── Paso 4: Empleados ─────────────────────────────────────────────────────
+  /// Human-readable labels for selected business types (for AI prompts & UI).
+  static const _typeLabels = {
+    'tienda_barrio': 'Tienda/Minimercado',
+    'bar': 'Bar/Licorera',
+    'comidas_rapidas': 'Restaurante/Comidas Rápidas',
+    'miscelanea': 'Miscelánea/Papelería',
+    'muebles': 'Mueblería/Decoración',
+    'manufactura': 'Fábrica/Manufactura',
+    'reparacion': 'Reparación/Remodelación',
+  };
+
+  /// Returns readable labels for all selected business types.
+  List<String> get businessTypeLabels =>
+      businessTypes.map((t) => _typeLabels[t] ?? t).toList();
+
+  /// Single string for AI prompts: "Tienda/Minimercado y Bar/Licorera"
+  String get businessTypesSummary {
+    final labels = businessTypeLabels;
+    if (labels.isEmpty) return '';
+    if (labels.length == 1) return labels.first;
+    return '${labels.sublist(0, labels.length - 1).join(", ")} y ${labels.last}';
+  }
+
+  // ── Paso 4: Logo ──────────────────────────────────────────────────────────
+  String? logoUrl;        // URL of selected/generated logo
+  String? logoLocalPath;  // Local path of gallery-picked logo
+
+  // ── Paso 5: Empleados ─────────────────────────────────────────────────────
   bool? hasEmployees; // null = sin respuesta, true = sí, false = no
 
   // ── Navegación ────────────────────────────────────────────────────────────
 
-  static const int totalSteps = 5; // 0..4
+  static const int totalSteps = 6; // 0..5
 
   void nextStep() {
     if (_currentStep < totalSteps - 1) {

@@ -151,9 +151,8 @@ class SyncService extends ChangeNotifier {
       final products = list
           .map((e) => LocalProduct.fromJson(e as Map<String, dynamic>))
           .toList();
-      if (products.isNotEmpty) {
-        await _db.upsertProducts(products);
-      }
+      // Replace all local products with server data (removes deleted ones)
+      await _db.replaceAllProducts(products);
     } catch (_) {
       // Silent fail on pull — local data still works
     }

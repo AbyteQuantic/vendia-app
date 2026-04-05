@@ -186,236 +186,238 @@ class _LoginScreenState extends State<LoginScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      // resizeToAvoidBottomInset keeps the layout stable when the keyboard opens
+      resizeToAvoidBottomInset: true,
       body: Container(
-        // 1. Fondo degradado cálido premium
         decoration: const BoxDecoration(
           gradient: LinearGradient(
             begin: Alignment.topCenter,
             end: Alignment.bottomCenter,
             colors: [
-              Color(0xFFFFFBF7), // crema cálido arriba
-              Color(0xFFF0F2F8), // azul-gris pálido abajo
+              Color(0xFFFFFBF7),
+              Color(0xFFF0F2F8),
             ],
           ),
         ),
-        child: Semantics(
-          label: 'Pantalla de inicio de sesión',
-          child: SafeArea(
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.symmetric(horizontal: 28),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const SizedBox(height: 48),
-
-                  // ── 2. Logo premium con doble sombra ──────────────────────
-                  Container(
-                    width: 80,
-                    height: 80,
-                    decoration: BoxDecoration(
-                      gradient: const LinearGradient(
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
-                        colors: [
-                          Color(0xFF667EEA),
-                          Color(0xFF1A2FA0),
-                        ],
-                      ),
-                      borderRadius: BorderRadius.circular(24),
-                      boxShadow: [
-                        BoxShadow(
-                          color: AppTheme.primary.withValues(alpha: 0.2),
-                          blurRadius: 12,
-                          offset: const Offset(0, 4),
-                        ),
-                        BoxShadow(
-                          color: AppTheme.primary.withValues(alpha: 0.1),
-                          blurRadius: 30,
-                          offset: const Offset(0, 10),
-                        ),
-                      ],
-                    ),
-                    child: const Icon(Icons.point_of_sale_rounded,
-                        color: Colors.white, size: 42),
+        child: SafeArea(
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              return SingleChildScrollView(
+                padding: const EdgeInsets.symmetric(horizontal: 28),
+                child: ConstrainedBox(
+                  constraints: BoxConstraints(
+                    minHeight: constraints.maxHeight,
                   ),
-                  const SizedBox(height: 28),
-
-                  // ── 3. Título con peso máximo ─────────────────────────────
-                  const Text(
-                    'Bienvenido\nde nuevo',
-                    style: TextStyle(
-                      fontSize: 40,
-                      fontWeight: FontWeight.w900,
-                      color: AppTheme.textPrimary,
-                      letterSpacing: -1.0,
-                      height: 1.1,
-                    ),
-                  ),
-                  const SizedBox(height: 10),
-
-                  // ── 4. Subtítulo ──────────────────────────────────────────
-                  const Text(
-                    'Ingrese su número y clave para entrar.',
-                    style: TextStyle(
-                      fontSize: 18,
-                      color: Color(0xFF666666),
-                      height: 1.6,
-                    ),
-                  ),
-                  const SizedBox(height: 44),
-
-                  // ── 5. Formulario con campos Gerontodesign ────────────────
-                  Form(
-                    key: _formKey,
+                  child: IntrinsicHeight(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        // Label teléfono
-                        const Text('Número de celular',
-                            style: TextStyle(
-                                fontSize: 18,
-                                fontWeight: FontWeight.w600,
-                                color: AppTheme.textPrimary)),
-                        const SizedBox(height: 10),
+                        const SizedBox(height: 32),
 
-                        // Campo teléfono con sombra neutra
+                        // ── Logo ──────────────────────────────────────────
                         Container(
+                          width: 72,
+                          height: 72,
                           decoration: BoxDecoration(
-                            borderRadius: BorderRadius.circular(18),
+                            gradient: const LinearGradient(
+                              begin: Alignment.topLeft,
+                              end: Alignment.bottomRight,
+                              colors: [Color(0xFF667EEA), Color(0xFF1A2FA0)],
+                            ),
+                            borderRadius: BorderRadius.circular(22),
                             boxShadow: [
                               BoxShadow(
-                                color: Colors.black.withValues(
-                                    alpha:
-                                        _phoneFocus.hasFocus ? 0.08 : 0.05),
-                                blurRadius:
-                                    _phoneFocus.hasFocus ? 14 : 10,
-                                offset: const Offset(0, 3),
+                                color: AppTheme.primary.withValues(alpha: 0.2),
+                                blurRadius: 12,
+                                offset: const Offset(0, 4),
                               ),
                             ],
                           ),
-                          child: TextFormField(
-                            controller: _phoneCtrl,
-                            focusNode: _phoneFocus,
-                            keyboardType: TextInputType.phone,
-                            style: const TextStyle(
-                                fontSize: 20, letterSpacing: 1.5),
-                            inputFormatters: [
-                              FilteringTextInputFormatter.digitsOnly
-                            ],
-                            textInputAction: TextInputAction.next,
-                            decoration: _inputDecoration(
-                              hint: 'Ej: 310 000 0000',
-                              icon: Icons.phone_rounded,
-                              focused: _phoneFocus.hasFocus,
-                            ),
-                            validator: (v) {
-                              if (v == null || v.isEmpty) {
-                                return 'Ingrese su número';
-                              }
-                              if (v.length < 7) return 'Número muy corto';
-                              return null;
-                            },
-                          ),
-                        ),
-                        const SizedBox(height: 28),
-
-                        // Label clave
-                        const Text('Clave de acceso',
-                            style: TextStyle(
-                                fontSize: 18,
-                                fontWeight: FontWeight.w600,
-                                color: AppTheme.textPrimary)),
-                        const SizedBox(height: 10),
-
-                        // Campo PIN con sombra neutra
-                        Container(
-                          decoration: BoxDecoration(
-                            borderRadius: BorderRadius.circular(18),
-                            boxShadow: [
-                              BoxShadow(
-                                color: Colors.black.withValues(
-                                    alpha:
-                                        _pinFocus.hasFocus ? 0.08 : 0.05),
-                                blurRadius:
-                                    _pinFocus.hasFocus ? 14 : 10,
-                                offset: const Offset(0, 3),
-                              ),
-                            ],
-                          ),
-                          child: TextFormField(
-                            controller: _pinCtrl,
-                            focusNode: _pinFocus,
-                            keyboardType: TextInputType.number,
-                            obscureText: !_pinVisible,
-                            style: const TextStyle(
-                                fontSize: 22, letterSpacing: 6),
-                            inputFormatters: [
-                              FilteringTextInputFormatter.digitsOnly,
-                              LengthLimitingTextInputFormatter(8),
-                            ],
-                            textInputAction: TextInputAction.done,
-                            onFieldSubmitted: (_) => _handleLogin(),
-                            decoration: _inputDecoration(
-                              hint: '• • • •',
-                              icon: Icons.lock_rounded,
-                              isPin: true,
-                              italic: false,
-                              focused: _pinFocus.hasFocus,
-                              suffixIcon: IconButton(
-                                icon: Icon(
-                                  _pinVisible
-                                      ? Icons.visibility_off_rounded
-                                      : Icons.visibility_rounded,
-                                  color: AppTheme.textSecondary,
-                                ),
-                                tooltip: _pinVisible
-                                    ? 'Ocultar clave'
-                                    : 'Mostrar clave',
-                                onPressed: () =>
-                                    setState(() => _pinVisible = !_pinVisible),
-                              ),
-                            ),
-                            validator: (v) {
-                              if (v == null || v.isEmpty) {
-                                return 'Ingrese su clave';
-                              }
-                              if (v.length < 4) return 'Clave muy corta';
-                              return null;
-                            },
-                          ),
+                          child: const Icon(Icons.point_of_sale_rounded,
+                              color: Colors.white, size: 38),
                         ),
                         const SizedBox(height: 20),
 
-                        // Error inline con estilo premium
-                        if (_errorMessage != null)
-                          Container(
-                            padding: const EdgeInsets.all(14),
-                            decoration: BoxDecoration(
-                              color: AppTheme.error.withValues(alpha: 0.05),
-                              borderRadius: BorderRadius.circular(16),
-                              border: Border.all(
-                                  color:
-                                      AppTheme.error.withValues(alpha: 0.2)),
-                            ),
-                            child: Row(
-                              children: [
-                                const Icon(Icons.error_outline_rounded,
-                                    color: AppTheme.error, size: 22),
-                                const SizedBox(width: 10),
-                                Expanded(
-                                  child: Text(
-                                    _errorMessage!,
-                                    style: const TextStyle(
-                                        color: AppTheme.error, fontSize: 18),
+                        // ── Título ────────────────────────────────────────
+                        const Text(
+                          'Bienvenido\nde nuevo',
+                          style: TextStyle(
+                            fontSize: 36,
+                            fontWeight: FontWeight.w900,
+                            color: AppTheme.textPrimary,
+                            letterSpacing: -1.0,
+                            height: 1.1,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+
+                        const Text(
+                          'Ingrese su número y clave para entrar.',
+                          style: TextStyle(
+                            fontSize: 17,
+                            color: Color(0xFF666666),
+                            height: 1.5,
+                          ),
+                        ),
+
+                        // Flexible space: pushes form toward center on tall screens
+                        const Spacer(flex: 1),
+                        const SizedBox(height: 16),
+
+                        // ── Form ──────────────────────────────────────────
+                        Form(
+                          key: _formKey,
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text('Número de celular',
+                                  style: TextStyle(
+                                      fontSize: 18,
+                                      fontWeight: FontWeight.w600,
+                                      color: AppTheme.textPrimary)),
+                              const SizedBox(height: 8),
+                              Container(
+                                decoration: BoxDecoration(
+                                  borderRadius: BorderRadius.circular(18),
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: Colors.black.withValues(
+                                          alpha: _phoneFocus.hasFocus
+                                              ? 0.08
+                                              : 0.05),
+                                      blurRadius:
+                                          _phoneFocus.hasFocus ? 14 : 10,
+                                      offset: const Offset(0, 3),
+                                    ),
+                                  ],
+                                ),
+                                child: TextFormField(
+                                  controller: _phoneCtrl,
+                                  focusNode: _phoneFocus,
+                                  keyboardType: TextInputType.phone,
+                                  style: const TextStyle(
+                                      fontSize: 20, letterSpacing: 1.5),
+                                  inputFormatters: [
+                                    FilteringTextInputFormatter.digitsOnly
+                                  ],
+                                  textInputAction: TextInputAction.next,
+                                  decoration: _inputDecoration(
+                                    hint: 'Ej: 310 000 0000',
+                                    icon: Icons.phone_rounded,
+                                    focused: _phoneFocus.hasFocus,
+                                  ),
+                                  validator: (v) {
+                                    if (v == null || v.isEmpty) {
+                                      return 'Ingrese su número';
+                                    }
+                                    if (v.length < 7) return 'Número muy corto';
+                                    return null;
+                                  },
+                                ),
+                              ),
+                              const SizedBox(height: 20),
+
+                              const Text('Clave de acceso',
+                                  style: TextStyle(
+                                      fontSize: 18,
+                                      fontWeight: FontWeight.w600,
+                                      color: AppTheme.textPrimary)),
+                              const SizedBox(height: 8),
+                              Container(
+                                decoration: BoxDecoration(
+                                  borderRadius: BorderRadius.circular(18),
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: Colors.black.withValues(
+                                          alpha: _pinFocus.hasFocus
+                                              ? 0.08
+                                              : 0.05),
+                                      blurRadius:
+                                          _pinFocus.hasFocus ? 14 : 10,
+                                      offset: const Offset(0, 3),
+                                    ),
+                                  ],
+                                ),
+                                child: TextFormField(
+                                  controller: _pinCtrl,
+                                  focusNode: _pinFocus,
+                                  keyboardType: TextInputType.number,
+                                  obscureText: !_pinVisible,
+                                  style: const TextStyle(
+                                      fontSize: 22, letterSpacing: 6),
+                                  inputFormatters: [
+                                    FilteringTextInputFormatter.digitsOnly,
+                                    LengthLimitingTextInputFormatter(8),
+                                  ],
+                                  textInputAction: TextInputAction.done,
+                                  onFieldSubmitted: (_) => _handleLogin(),
+                                  decoration: _inputDecoration(
+                                    hint: '• • • •',
+                                    icon: Icons.lock_rounded,
+                                    isPin: true,
+                                    italic: false,
+                                    focused: _pinFocus.hasFocus,
+                                    suffixIcon: IconButton(
+                                      icon: Icon(
+                                        _pinVisible
+                                            ? Icons.visibility_off_rounded
+                                            : Icons.visibility_rounded,
+                                        color: AppTheme.textSecondary,
+                                      ),
+                                      tooltip: _pinVisible
+                                          ? 'Ocultar clave'
+                                          : 'Mostrar clave',
+                                      onPressed: () => setState(
+                                          () => _pinVisible = !_pinVisible),
+                                    ),
+                                  ),
+                                  validator: (v) {
+                                    if (v == null || v.isEmpty) {
+                                      return 'Ingrese su clave';
+                                    }
+                                    if (v.length < 4) return 'Clave muy corta';
+                                    return null;
+                                  },
+                                ),
+                              ),
+                              const SizedBox(height: 16),
+
+                              // Error
+                              if (_errorMessage != null)
+                                Container(
+                                  padding: const EdgeInsets.all(14),
+                                  margin: const EdgeInsets.only(bottom: 12),
+                                  decoration: BoxDecoration(
+                                    color:
+                                        AppTheme.error.withValues(alpha: 0.05),
+                                    borderRadius: BorderRadius.circular(16),
+                                    border: Border.all(
+                                        color: AppTheme.error
+                                            .withValues(alpha: 0.2)),
+                                  ),
+                                  child: Row(
+                                    children: [
+                                      const Icon(Icons.error_outline_rounded,
+                                          color: AppTheme.error, size: 22),
+                                      const SizedBox(width: 10),
+                                      Expanded(
+                                        child: Text(_errorMessage!,
+                                            style: const TextStyle(
+                                                color: AppTheme.error,
+                                                fontSize: 18)),
+                                      ),
+                                    ],
                                   ),
                                 ),
-                              ],
-                            ),
+                            ],
                           ),
+                        ),
 
-                        const SizedBox(height: 32),
+                        // Flexible space: pushes button to bottom on tall screens
+                        const Spacer(flex: 2),
+                        const SizedBox(height: 16),
 
-                        // ── 6. Botón premium con degradado y sombra neutra ──
+                        // ── Login Button (always visible) ─────────────────
                         Container(
                           width: double.infinity,
                           height: 64,
@@ -423,16 +425,12 @@ class _LoginScreenState extends State<LoginScreen> {
                             gradient: const LinearGradient(
                               begin: Alignment.topLeft,
                               end: Alignment.bottomRight,
-                              colors: [
-                                Color(0xFF1A2FA0),
-                                Color(0xFF2541B2),
-                              ],
+                              colors: [Color(0xFF1A2FA0), Color(0xFF2541B2)],
                             ),
                             borderRadius: BorderRadius.circular(20),
                             boxShadow: [
                               BoxShadow(
-                                color:
-                                    Colors.black.withValues(alpha: 0.15),
+                                color: Colors.black.withValues(alpha: 0.15),
                                 blurRadius: 16,
                                 offset: const Offset(0, 6),
                               ),
@@ -464,10 +462,9 @@ class _LoginScreenState extends State<LoginScreen> {
                             ),
                           ),
                         ),
+                        const SizedBox(height: 16),
 
-                        const SizedBox(height: 24),
-
-                        // ── 7. Link registro con underline dotted ───────────
+                        // ── Register link ─────────────────────────────────
                         Center(
                           child: TextButton(
                             onPressed: () {
@@ -505,12 +502,13 @@ class _LoginScreenState extends State<LoginScreen> {
                             ),
                           ),
                         ),
+                        const SizedBox(height: 12),
                       ],
                     ),
                   ),
-                ],
-              ),
-            ),
+                ),
+              );
+            },
           ),
         ),
       ),

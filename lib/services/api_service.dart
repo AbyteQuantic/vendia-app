@@ -237,11 +237,29 @@ class ApiService {
     }
   }
 
+  Future<void> deleteProduct(String id) async {
+    try {
+      await _dio.delete('/api/v1/products/$id');
+    } on DioException catch (e) {
+      throw AppError.fromDioException(e);
+    }
+  }
+
   Future<Map<String, dynamic>> lookupBarcode(String barcode) async {
     try {
       final response = await _dio.get('/api/v1/products/lookup',
           queryParameters: {'barcode': barcode});
       return _extractData(response);
+    } on DioException catch (e) {
+      throw AppError.fromDioException(e);
+    }
+  }
+
+  Future<Map<String, dynamic>> searchCatalog(String query) async {
+    try {
+      final response = await _dio.get('/api/v1/catalog/search',
+          queryParameters: {'q': query});
+      return response.data as Map<String, dynamic>;
     } on DioException catch (e) {
       throw AppError.fromDioException(e);
     }
@@ -309,6 +327,16 @@ class ApiService {
   Future<Map<String, dynamic>> enhanceProductPhoto(String uuid) async {
     try {
       final response = await _dio.post('/api/v1/products/$uuid/enhance');
+      return _extractData(response);
+    } on DioException catch (e) {
+      throw AppError.fromDioException(e);
+    }
+  }
+
+  Future<Map<String, dynamic>> generateProductImage(String uuid) async {
+    try {
+      final response =
+          await _dio.post('/api/v1/products/$uuid/generate-image');
       return _extractData(response);
     } on DioException catch (e) {
       throw AppError.fromDioException(e);

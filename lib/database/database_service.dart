@@ -85,6 +85,14 @@ class DatabaseService {
     });
   }
 
+  /// Replace all local products with the server list (removes deleted products).
+  Future<void> replaceAllProducts(List<LocalProduct> products) async {
+    await isar.writeTxn(() async {
+      await isar.localProducts.clear();
+      await isar.localProducts.putAll(products);
+    });
+  }
+
   // ── Catalog (OFF cache for offline-first autocomplete) ─────────────────────
 
   Future<List<LocalCatalogProduct>> searchCatalog(String query) async {
@@ -132,6 +140,27 @@ class DatabaseService {
   Future<void> insertSale(LocalSale sale) async {
     await isar.writeTxn(() async {
       await isar.localSales.put(sale);
+    });
+  }
+
+  /// Atomic: insert sale AND deduct stock from products in one Isar transaction.
+  Future<void> insertSaleAndDeductStock(LocalSale sale) async {
+    await isar.writeTxn(() async {
+      // 1. Save the sale
+      await isar.localSales.put(sale);
+
+      // 2. Deduct stock for each item
+      for (final item in sale.items) {
+        if (item.isContainerCharge) continue; // skip container charges
+        final product = await isar.localProducts
+            .filter()
+            .uuidEqualTo(item.productUuid)
+            .findFirst();
+        if (product != null) {
+          product.stock = (product.stock - item.quantity).clamp(0, 999999);
+          await isar.localProducts.put(product);
+        }
+      }
     });
   }
 

@@ -14,7 +14,8 @@ import '../pos/scan_screen.dart';
 
 /// Manual product creation form — single-screen, no scroll.
 class CreateProductScreen extends StatefulWidget {
-  const CreateProductScreen({super.key});
+  final String? initialSku;
+  const CreateProductScreen({super.key, this.initialSku});
 
   @override
   State<CreateProductScreen> createState() => _CreateProductScreenState();
@@ -34,10 +35,14 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
   String? _photoPath;
   String? _photoUrl; // from barcode lookup
   String? _pendingUuid; // set after create, before enhance
+  String? _pendingCatalogImageId; // set after enhance/generate, sent on save
+  List<String> _catalogImages = []; // accepted images from catalog
   bool _saving = false;
   bool _enhancing = false;
   bool _lookingUp = false;
+  bool _dataFromCatalog = false; // shows "datos cargados" indicator
   String _presentation = ''; // botella, lata, bolsa, etc.
+  final _skuCtrl = TextEditingController();
 
   // Autocomplete (local Isar + backend catalog)
   List<_ProductSuggestion> _suggestions = [];
@@ -56,6 +61,24 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
   ];
 
   @override
+  void initState() {
+    super.initState();
+    _nameFocus.addListener(() {
+      if (!_nameFocus.hasFocus) {
+        _confirmNameField(unfocus: false);
+      }
+    });
+    // Pre-fill SKU if coming from scanner
+    if (widget.initialSku != null && widget.initialSku!.isNotEmpty) {
+      _skuCtrl.text = widget.initialSku!;
+      // Auto-lookup barcode data
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _lookupBarcode(widget.initialSku!);
+      });
+    }
+  }
+
+  @override
   void dispose() {
     _removeOverlay();
     _debounce?.cancel();
@@ -65,6 +88,7 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
     _sellPriceCtrl.dispose();
     _quantityCtrl.dispose();
     _contentCtrl.dispose();
+    _skuCtrl.dispose();
     super.dispose();
   }
 
@@ -81,145 +105,141 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
       builder: (context) => CompositedTransformFollower(
         link: _nameLayerLink,
         showWhenUnlinked: false,
-        offset: const Offset(0, 56),
-        child: SizedBox(
-          width: MediaQuery.of(context).size.width - 32,
-          child: Material(
-            elevation: 12,
-            shadowColor: Colors.black26,
-            borderRadius: BorderRadius.circular(16),
-            child: Container(
-              constraints: const BoxConstraints(maxHeight: 280),
-              decoration: BoxDecoration(
+        offset: const Offset(0, 60),
+        child: Align(
+          alignment: Alignment.topLeft,
+          child: Padding(
+            padding: const EdgeInsets.only(top: 4),
+            child: SizedBox(
+              width: MediaQuery.of(context).size.width - 32,
+              child: Material(
+                elevation: 8,
+                shadowColor: Colors.black26,
                 color: Colors.white,
                 borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: AppTheme.borderColor.withValues(alpha: 0.5)),
-              ),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  // Header
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 14, vertical: 8),
-                    decoration: BoxDecoration(
-                      color: AppTheme.primary.withValues(alpha: 0.05),
-                      borderRadius: const BorderRadius.vertical(
-                          top: Radius.circular(16)),
-                    ),
-                    child: Row(
-                      children: [
-                        Icon(Icons.search_rounded,
-                            size: 16, color: AppTheme.primary.withValues(alpha: 0.7)),
-                        const SizedBox(width: 6),
-                        Text(
-                          '${_suggestions.length} producto${_suggestions.length == 1 ? '' : 's'} encontrado${_suggestions.length == 1 ? '' : 's'}',
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: AppTheme.primary.withValues(alpha: 0.7),
-                            fontWeight: FontWeight.w600,
+                clipBehavior: Clip.antiAlias,
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxHeight: 300),
+                  child: ListView.builder(
+                    shrinkWrap: true,
+                    padding: const EdgeInsets.symmetric(vertical: 8),
+                    itemCount: _suggestions.length,
+                    itemBuilder: (_, i) {
+                      final s = _suggestions[i];
+                      // Subtitle: Presentación - Contenido (priority), fallback to brand
+                      final pres = s.presentation ?? '';
+                      final cont = s.content ?? '';
+                      final detail = [
+                        if (pres.isNotEmpty) pres,
+                        if (cont.isNotEmpty) cont,
+                      ].join(' - ');
+                      final subtitleText = detail.isNotEmpty
+                          ? detail
+                          : (s.brand.isNotEmpty ? s.brand : 'Sin especificar');
+
+                      return InkWell(
+                        onTap: () => _selectSuggestion(s),
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 14, vertical: 10),
+                          child: Row(
+                            children: [
+                              // Image (strict 48x48)
+                              ClipRRect(
+                                borderRadius: BorderRadius.circular(8),
+                                child: Container(
+                                  width: 48,
+                                  height: 48,
+                                  color: Colors.grey.shade100,
+                                  child: s.imageUrl != null && s.imageUrl!.isNotEmpty
+                                      ? Image.network(
+                                          s.imageUrl!,
+                                          width: 48,
+                                          height: 48,
+                                          fit: BoxFit.contain,
+                                          errorBuilder: (_, __, ___) =>
+                                              _suggestionPlaceholder(),
+                                        )
+                                      : _suggestionPlaceholder(),
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              // Title + Subtitle
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment:
+                                      CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      s.brand.isNotEmpty
+                                          ? '${s.name} (${s.brand})'
+                                          : s.name,
+                                      style: const TextStyle(
+                                        fontSize: 15,
+                                        fontWeight: FontWeight.w600,
+                                        color: AppTheme.textPrimary,
+                                      ),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                    const SizedBox(height: 2),
+                                    Text(
+                                      subtitleText,
+                                      style: TextStyle(
+                                        fontSize: 14,
+                                        color: Colors.grey.shade700,
+                                      ),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              // Source badge (pill style)
+                              if (s.source == 'user')
+                                Container(
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 8, vertical: 3),
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFF7C3AED)
+                                        .withValues(alpha: 0.1),
+                                    borderRadius: BorderRadius.circular(100),
+                                  ),
+                                  child: const Text(
+                                    'VendIA',
+                                    style: TextStyle(
+                                      fontSize: 11,
+                                      color: Color(0xFF7C3AED),
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                )
+                              else if (s.isLocal)
+                                Container(
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 8, vertical: 3),
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFF10B981)
+                                        .withValues(alpha: 0.08),
+                                    borderRadius: BorderRadius.circular(100),
+                                  ),
+                                  child: const Text(
+                                    'Mi tienda',
+                                    style: TextStyle(
+                                      fontSize: 11,
+                                      color: Color(0xFF0D8B5E),
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                ),
+                            ],
                           ),
                         ),
-                      ],
-                    ),
+                      );
+                    },
                   ),
-                  const Divider(height: 1, color: AppTheme.borderColor),
-                  // List
-                  Flexible(
-                    child: ListView.separated(
-                      shrinkWrap: true,
-                      padding: const EdgeInsets.symmetric(vertical: 4),
-                      itemCount: _suggestions.length,
-                      separatorBuilder: (_, __) =>
-                          const Divider(height: 1, indent: 62, color: AppTheme.borderColor),
-                      itemBuilder: (_, i) {
-                        final s = _suggestions[i];
-                        return InkWell(
-                          onTap: () => _selectSuggestion(s),
-                          borderRadius: BorderRadius.circular(8),
-                          child: Padding(
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 12, vertical: 8),
-                            child: Row(
-                              children: [
-                                // Image
-                                ClipRRect(
-                                  borderRadius: BorderRadius.circular(10),
-                                  child: Container(
-                                    width: 44,
-                                    height: 44,
-                                    color: AppTheme.surfaceGrey,
-                                    child: s.imageUrl != null
-                                        ? Image.network(
-                                            s.imageUrl!,
-                                            fit: BoxFit.cover,
-                                            errorBuilder: (_, __, ___) =>
-                                                _suggestionPlaceholder(),
-                                          )
-                                        : _suggestionPlaceholder(),
-                                  ),
-                                ),
-                                const SizedBox(width: 12),
-                                // Text
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      Text(
-                                        s.name,
-                                        style: const TextStyle(
-                                          fontSize: 15,
-                                          fontWeight: FontWeight.w600,
-                                        ),
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                      ),
-                                      if (s.brand.isNotEmpty)
-                                        Text(
-                                          s.brand,
-                                          style: TextStyle(
-                                            fontSize: 13,
-                                            color: AppTheme.textSecondary
-                                                .withValues(alpha: 0.8),
-                                          ),
-                                          maxLines: 1,
-                                        ),
-                                    ],
-                                  ),
-                                ),
-                                // Source badge
-                                if (s.isLocal)
-                                  Container(
-                                    padding: const EdgeInsets.symmetric(
-                                        horizontal: 6, vertical: 2),
-                                    decoration: BoxDecoration(
-                                      color: const Color(0xFF10B981)
-                                          .withValues(alpha: 0.1),
-                                      borderRadius:
-                                          BorderRadius.circular(6),
-                                    ),
-                                    child: const Text(
-                                      'Mi tienda',
-                                      style: TextStyle(
-                                        fontSize: 10,
-                                        color: Color(0xFF10B981),
-                                        fontWeight: FontWeight.w600,
-                                      ),
-                                    ),
-                                  ),
-                                const SizedBox(width: 4),
-                                Icon(Icons.chevron_right_rounded,
-                                    size: 18,
-                                    color: Colors.grey.shade300),
-                              ],
-                            ),
-                          ),
-                        );
-                      },
-                    ),
-                  ),
-                ],
+                ),
               ),
             ),
           ),
@@ -315,17 +335,29 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
     setState(() => _searching = true);
     try {
       final api = ApiService(AuthService());
-      final res = await api.searchProductsOFF(query);
+      final res = await api.searchCatalog(query);
       final products = res['data'] as List? ?? [];
       if (!mounted) return;
 
       final remoteResults = products
           .map((p) {
             final map = p as Map<String, dynamic>;
+            final imagesList = (map['images'] as List?)
+                    ?.map((img) =>
+                        (img as Map<String, dynamic>)['image_url'] as String? ??
+                        '')
+                    .where((url) => url.isNotEmpty)
+                    .toList() ??
+                [];
             return _ProductSuggestion(
               name: map['name'] as String? ?? '',
               brand: map['brand'] as String? ?? '',
               imageUrl: map['image_url'] as String?,
+              presentation: map['presentation'] as String?,
+              content: map['content'] as String?,
+              barcode: map['barcode'] as String?,
+              source: map['source'] as String? ?? 'off',
+              images: imagesList,
             );
           })
           .where((s) => s.name.isNotEmpty)
@@ -348,20 +380,70 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
     }
   }
 
+  /// Called when the user presses Enter/Done on the name field without
+  /// selecting a suggestion. Capitalises the text, closes suggestions and
+  /// optionally moves focus away.
+  void _confirmNameField({bool unfocus = true}) {
+    _debounce?.cancel();
+    _removeOverlay();
+    _suggestions = [];
+    final raw = _nameCtrl.text.trim();
+    if (raw.isNotEmpty) {
+      // Title Case: capitalise first letter of every word
+      _nameCtrl.text = raw
+          .split(RegExp(r'\s+'))
+          .map((w) => w.isEmpty
+              ? w
+              : '${w[0].toUpperCase()}${w.substring(1).toLowerCase()}')
+          .join(' ');
+      _nameCtrl.selection =
+          TextSelection.collapsed(offset: _nameCtrl.text.length);
+    }
+    setState(() => _searching = false);
+    if (unfocus && _nameFocus.hasFocus) {
+      _nameFocus.unfocus();
+    }
+  }
+
   void _selectSuggestion(_ProductSuggestion s) {
     final fullName =
         s.brand.isNotEmpty ? '${s.name} (${s.brand})' : s.name;
     _nameCtrl.text = fullName;
     _removeOverlay();
     _suggestions = [];
-    if (s.imageUrl != null && s.imageUrl!.isNotEmpty) {
-      setState(() {
+
+    final hadUserPhoto = _photoPath != null;
+
+    setState(() {
+      // Auto-fill image (only if user hasn't taken their own photo)
+      if (!hadUserPhoto && s.imageUrl != null && s.imageUrl!.isNotEmpty) {
         _photoUrl = s.imageUrl;
-        _photoPath = null;
-      });
-    } else {
-      setState(() {});
-    }
+      }
+
+      // Auto-fill presentation & content
+      if (s.presentation != null && s.presentation!.isNotEmpty) {
+        _presentation = s.presentation!;
+      }
+      if (s.content != null && s.content!.isNotEmpty) {
+        _contentCtrl.text = s.content!;
+      }
+
+      // Auto-fill barcode/SKU
+      if (s.barcode != null && s.barcode!.isNotEmpty) {
+        _skuCtrl.text = s.barcode!;
+      }
+
+      // Store catalog images for selection
+      _catalogImages = s.images;
+
+      // Show "data loaded" indicator
+      _dataFromCatalog = true;
+    });
+
+    // Hide indicator after 4 seconds
+    Future.delayed(const Duration(seconds: 4), () {
+      if (mounted) setState(() => _dataFromCatalog = false);
+    });
   }
 
   // ── Photo ──────────────────────────────────────────────────────────────────
@@ -381,9 +463,7 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
     }
   }
 
-  Future<void> _enhancePhoto() async {
-    if (_photoUrl == null || _photoUrl!.isEmpty) return;
-
+  Future<void> _enhanceOrGeneratePhoto() async {
     // Validate required fields for a good AI result
     final missingFields = <String>[];
     if (_nameCtrl.text.trim().isEmpty) missingFields.add('nombre');
@@ -401,7 +481,7 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
               const SizedBox(width: 10),
               Expanded(
                 child: Text(
-                  'Para mejorar la foto completa los campos: ${missingFields.join(", ")}',
+                  'Complete los campos: ${missingFields.join(", ")}',
                   style: const TextStyle(fontSize: 15),
                 ),
               ),
@@ -416,6 +496,8 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
       );
       return;
     }
+
+    final hasExistingPhoto = _photoUrl != null && _photoUrl!.isNotEmpty;
 
     HapticFeedback.lightImpact();
     setState(() => _enhancing = true);
@@ -437,7 +519,6 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
         });
         _pendingUuid = id;
       } else {
-        // Update with latest presentation info before enhancing
         await api.updateProduct(_pendingUuid!, {
           'presentation': _presentation,
           'content': _contentCtrl.text.trim(),
@@ -445,20 +526,30 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
         });
       }
 
-      final result = await api.enhanceProductPhoto(_pendingUuid!);
-      // Backend returns "photo_url" key
+      // If product has a photo URL, enhance it. Otherwise, generate from scratch.
+      final Map<String, dynamic> result;
+      if (hasExistingPhoto) {
+        result = await api.enhanceProductPhoto(_pendingUuid!);
+      } else {
+        result = await api.generateProductImage(_pendingUuid!);
+      }
+
       final url = (result['photo_url'] ?? result['image_url']) as String?;
+      final catalogImgId = result['catalog_image_id'] as String?;
       if (url != null && mounted) {
         setState(() {
           _photoUrl = url;
           _photoPath = null;
+          if (catalogImgId != null && catalogImgId.isNotEmpty) {
+            _pendingCatalogImageId = catalogImgId;
+          }
         });
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Error al mejorar foto: $e'),
+            content: Text('Error: $e'),
             backgroundColor: Colors.red.shade700,
             behavior: SnackBarBehavior.floating,
           ),
@@ -483,6 +574,8 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
 
   Future<void> _lookupBarcode(String barcode) async {
     setState(() => _lookingUp = true);
+    // Always fill the SKU field with the scanned barcode
+    _skuCtrl.text = barcode;
     try {
       final api = ApiService(AuthService());
       final data = await api.lookupBarcode(barcode);
@@ -493,9 +586,8 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
         _nameCtrl.text = name;
       }
       setState(() {
-        if (imageUrl != null && imageUrl.isNotEmpty) {
+        if (imageUrl != null && imageUrl.isNotEmpty && _photoPath == null) {
           _photoUrl = imageUrl;
-          _photoPath = null;
         }
       });
     } catch (_) {
@@ -531,8 +623,11 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
           'price': price,
           'stock': stock,
           'image_url': _photoUrl,
+          'barcode': _skuCtrl.text.trim(),
           'presentation': _presentation,
           'content': _contentCtrl.text.trim(),
+          if (_pendingCatalogImageId != null)
+            'catalog_image_id': _pendingCatalogImageId,
         });
       } else {
         // Create new product
@@ -543,8 +638,11 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
           'price': price,
           'stock': stock,
           'image_url': _photoUrl,
+          'barcode': _skuCtrl.text.trim(),
           'presentation': _presentation,
           'content': _contentCtrl.text.trim(),
+          if (_pendingCatalogImageId != null)
+            'catalog_image_id': _pendingCatalogImageId,
         });
       }
 
@@ -558,6 +656,9 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
         ..isAvailable = true
         ..requiresContainer = false
         ..containerPrice = 0
+        ..barcode = _skuCtrl.text.trim()
+        ..presentation = _presentation
+        ..content = _contentCtrl.text.trim()
         ..clientUpdatedAt = DateTime.now();
       await DatabaseService.instance.upsertProduct(product);
     } catch (_) {
@@ -595,9 +696,9 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
     final hasPhoto = _photoPath != null || _photoUrl != null;
 
     return Scaffold(
-      backgroundColor: AppTheme.background,
+      backgroundColor: const Color(0xFFF5F7FA),
       appBar: AppBar(
-        backgroundColor: AppTheme.background,
+        backgroundColor: const Color(0xFFF5F7FA),
         elevation: 0,
         leading: Semantics(
           button: true,
@@ -671,24 +772,77 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
         ),
       ),
       body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-          child: Form(
-            key: _formKey,
-            child: ListView(
-              children: [
-                // ── Top row: photo + action buttons ────────────────────────
+        child: Form(
+          key: _formKey,
+          child: ListView(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+            children: [
+              // ═══════════════════════════════════════════════════════════
+              // HERO: Scan Barcode Button
+              // ═══════════════════════════════════════════════════════════
+              GestureDetector(
+                onTap: _lookingUp ? null : _scanBarcode,
+                child: Container(
+                  height: 64,
+                  decoration: BoxDecoration(
+                    gradient: const LinearGradient(
+                      colors: [Color(0xFF667EEA), Color(0xFF5A67D8)],
+                    ),
+                    borderRadius: BorderRadius.circular(20),
+                    boxShadow: [
+                      BoxShadow(
+                        color: const Color(0xFF667EEA).withValues(alpha: 0.3),
+                        blurRadius: 12,
+                        offset: const Offset(0, 4),
+                      ),
+                    ],
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      if (_lookingUp)
+                        const SizedBox(
+                          width: 22, height: 22,
+                          child: CircularProgressIndicator(
+                              strokeWidth: 2.5, color: Colors.white),
+                        )
+                      else
+                        const Icon(Icons.qr_code_scanner_rounded,
+                            color: Colors.white, size: 26),
+                      const SizedBox(width: 12),
+                      Text(
+                        _lookingUp ? 'Buscando producto...' : 'Escanear Código de Barras',
+                        style: const TextStyle(
+                          fontSize: 20, fontWeight: FontWeight.bold, color: Colors.white,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 6),
+              const Center(
+                child: Text('Escanee para auto-completar los datos',
+                    style: TextStyle(fontSize: 14, color: AppTheme.textSecondary)),
+              ),
+
+              const SizedBox(height: 20),
+
+              // ═══════════════════════════════════════════════════════════
+              // CARD 1: Identidad Visual y Nombre
+              // ═══════════════════════════════════════════════════════════
+              _card(children: [
                 Row(
-                  crossAxisAlignment: CrossAxisAlignment.center,
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // Photo thumbnail
+                    // Photo thumbnail (110x110)
                     GestureDetector(
                       onTap: _takePhoto,
                       child: ClipRRect(
                         borderRadius: BorderRadius.circular(16),
                         child: Container(
-                          width: 100,
-                          height: 100,
+                          width: 110,
+                          height: 110,
                           decoration: BoxDecoration(
                             color: AppTheme.surfaceGrey,
                             borderRadius: BorderRadius.circular(16),
@@ -703,126 +857,83 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
-                          // Tomar foto
-                          SizedBox(
-                            height: 44,
-                            child: OutlinedButton.icon(
-                              onPressed: _takePhoto,
-                              icon: const Icon(Icons.camera_alt_rounded,
-                                  size: 20),
-                              label: const Text(
-                                'Tomar foto',
-                                style: TextStyle(fontSize: 16),
-                              ),
-                              style: OutlinedButton.styleFrom(
-                                foregroundColor: AppTheme.primary,
-                                side: const BorderSide(
-                                    color: AppTheme.primary, width: 1.5),
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(12),
-                                ),
-                                padding:
-                                    const EdgeInsets.symmetric(horizontal: 10),
-                              ),
-                            ),
+                          _actionButton(
+                            label: 'Tomar foto',
+                            icon: Icons.camera_alt_rounded,
+                            color: AppTheme.primary,
+                            onTap: _takePhoto,
                           ),
                           const SizedBox(height: 8),
-                          // Mejorar con IA — only when photo exists
-                          if (hasPhoto)
-                            SizedBox(
-                              height: 44,
-                              child: OutlinedButton.icon(
-                                onPressed: _enhancing ? null : _enhancePhoto,
-                                icon: _enhancing
-                                    ? const SizedBox(
-                                        width: 18,
-                                        height: 18,
-                                        child: CircularProgressIndicator(
-                                            strokeWidth: 2),
-                                      )
-                                    : const Icon(Icons.auto_fix_high_rounded,
-                                        size: 20),
-                                label: Text(
-                                  _enhancing ? 'Mejorando...' : 'Mejorar con IA',
-                                  style: const TextStyle(fontSize: 16),
-                                ),
-                                style: OutlinedButton.styleFrom(
-                                  foregroundColor: const Color(0xFF7C3AED),
-                                  side: const BorderSide(
-                                      color: Color(0xFF7C3AED), width: 1.5),
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(12),
-                                  ),
-                                  padding:
-                                      const EdgeInsets.symmetric(horizontal: 10),
-                                ),
-                              ),
-                            ),
-                          // Escanear código — compact, only when no "Mejorar"
-                          if (!hasPhoto)
-                            SizedBox(
-                              height: 44,
-                              child: OutlinedButton.icon(
-                                onPressed: _lookingUp ? null : _scanBarcode,
-                                icon: _lookingUp
-                                    ? const SizedBox(
-                                        width: 18,
-                                        height: 18,
-                                        child: CircularProgressIndicator(
-                                            strokeWidth: 2),
-                                      )
-                                    : const Icon(
-                                        Icons.qr_code_scanner_rounded,
-                                        size: 20),
-                                label: Text(
-                                  _lookingUp ? 'Buscando...' : 'Escanear código',
-                                  style: const TextStyle(fontSize: 16),
-                                ),
-                                style: OutlinedButton.styleFrom(
-                                  foregroundColor: const Color(0xFF667EEA),
-                                  side: const BorderSide(
-                                      color: Color(0xFF667EEA), width: 1.5),
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(12),
-                                  ),
-                                  padding:
-                                      const EdgeInsets.symmetric(horizontal: 10),
-                                ),
-                              ),
-                            ),
+                          _actionButton(
+                            label: _enhancing
+                                ? (hasPhoto ? 'Mejorando...' : 'Generando...')
+                                : (hasPhoto ? 'Mejorar con IA' : 'Generar con IA'),
+                            icon: _enhancing
+                                ? null
+                                : (hasPhoto ? Icons.auto_fix_high_rounded : Icons.auto_awesome_rounded),
+                            color: const Color(0xFF7C3AED),
+                            loading: _enhancing,
+                            onTap: _enhancing ? null : _enhanceOrGeneratePhoto,
+                          ),
                         ],
                       ),
                     ),
                   ],
                 ),
 
-                // When photo exists, show scan barcode as a second row
-                if (hasPhoto) ...[
-                  const SizedBox(height: 10),
+                // ── Catalog image options ─────────────────────────────────
+                if (_catalogImages.length > 1) ...[
+                  const SizedBox(height: 12),
+                  const Text(
+                    'Fotos del catálogo',
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                      color: AppTheme.textSecondary,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
                   SizedBox(
-                    height: 44,
-                    child: OutlinedButton.icon(
-                      onPressed: _lookingUp ? null : _scanBarcode,
-                      icon: _lookingUp
-                          ? const SizedBox(
-                              width: 18,
-                              height: 18,
-                              child: CircularProgressIndicator(strokeWidth: 2),
-                            )
-                          : const Icon(Icons.qr_code_scanner_rounded, size: 20),
-                      label: Text(
-                        _lookingUp ? 'Buscando...' : 'Escanear código de barras',
-                        style: const TextStyle(fontSize: 16),
-                      ),
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: const Color(0xFF667EEA),
-                        side: const BorderSide(
-                            color: Color(0xFF667EEA), width: 1.5),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        padding: const EdgeInsets.symmetric(horizontal: 10),
-                      ),
+                    height: 72,
+                    child: ListView.separated(
+                      scrollDirection: Axis.horizontal,
+                      itemCount: _catalogImages.length,
+                      separatorBuilder: (_, __) => const SizedBox(width: 10),
+                      itemBuilder: (context, index) {
+                        final url = _catalogImages[index];
+                        final isSelected = _photoUrl == url;
+                        return GestureDetector(
+                          onTap: () {
+                            HapticFeedback.lightImpact();
+                            setState(() {
+                              _photoUrl = url;
+                              _photoPath = null;
+                            });
+                          },
+                          child: Container(
+                            width: 72,
+                            height: 72,
+                            decoration: BoxDecoration(
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(
+                                color: isSelected
+                                    ? AppTheme.primary
+                                    : AppTheme.borderColor,
+                                width: isSelected ? 2.5 : 1,
+                              ),
+                            ),
+                            child: ClipRRect(
+                              borderRadius: BorderRadius.circular(10),
+                              child: Image.network(url,
+                                  fit: BoxFit.cover,
+                                  errorBuilder: (_, __, ___) => const Icon(
+                                      Icons.broken_image_rounded,
+                                      size: 24,
+                                      color: AppTheme.textSecondary)),
+                            ),
+                          ),
+                        );
+                      },
                     ),
                   ),
                 ],
@@ -840,6 +951,7 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
                     style: const TextStyle(fontSize: 18),
                     textInputAction: TextInputAction.next,
                     onChanged: _onNameChanged,
+                    onFieldSubmitted: (_) => _confirmNameField(),
                     decoration: InputDecoration(
                       hintText: 'Buscar o escribir nombre...',
                       hintStyle: TextStyle(
@@ -872,88 +984,138 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
                     },
                   ),
                 ),
+              ]),
 
+              const SizedBox(height: 14),
+
+              // ═══════════════════════════════════════════════════════════
+              // CARD 2: SKU, Presentación, Contenido
+              // ═══════════════════════════════════════════════════════════
+              _card(children: [
+                // ── "Data loaded from catalog" indicator ──────────────────
+                if (_dataFromCatalog) ...[
+                  Container(
+                    margin: const EdgeInsets.only(bottom: 12),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF7C3AED).withValues(alpha: 0.08),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                          color:
+                              const Color(0xFF7C3AED).withValues(alpha: 0.2)),
+                    ),
+                    child: const Row(
+                      children: [
+                        Icon(Icons.auto_awesome_rounded,
+                            size: 18, color: Color(0xFF7C3AED)),
+                        SizedBox(width: 8),
+                        Text(
+                          'Datos cargados del catálogo',
+                          style: TextStyle(
+                            fontSize: 15,
+                            fontWeight: FontWeight.w600,
+                            color: Color(0xFF7C3AED),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+
+                // ── SKU / Barcode ─────────────────────────────────────────
+                _fieldLabel('Código SKU / Barras'),
+                const SizedBox(height: 6),
+                TextFormField(
+                  controller: _skuCtrl,
+                  style: const TextStyle(fontSize: 18),
+                  textInputAction: TextInputAction.next,
+                  decoration: InputDecoration(
+                    hintText: 'Ej: 7702535011119',
+                    hintStyle: TextStyle(
+                      color: Colors.grey.shade400,
+                      fontWeight: FontWeight.w400,
+                      fontStyle: FontStyle.italic,
+                    ),
+                    prefixIcon: const Icon(Icons.qr_code_rounded,
+                        color: AppTheme.textSecondary, size: 22),
+                    suffixIcon: IconButton(
+                      onPressed: _generateSku,
+                      icon: const Icon(Icons.auto_fix_high_rounded,
+                          color: AppTheme.primary, size: 22),
+                      tooltip: 'Generar SKU',
+                    ),
+                    contentPadding: const EdgeInsets.symmetric(
+                        vertical: 12, horizontal: 12),
+                  ),
+                ),
                 const SizedBox(height: 14),
 
-                // ── Presentation + Content row ──────────────────────────
-                Row(
-                  children: [
-                    // Presentation chips
-                    Expanded(
-                      flex: 3,
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          _fieldLabel('Presentación'),
-                          const SizedBox(height: 6),
-                          SizedBox(
-                            height: 42,
-                            child: ListView.separated(
-                              scrollDirection: Axis.horizontal,
-                              itemCount: _presentationOptions.length,
-                              separatorBuilder: (_, __) =>
-                                  const SizedBox(width: 6),
-                              itemBuilder: (_, i) {
-                                final opt = _presentationOptions[i];
-                                final selected =
-                                    _presentation == opt['value'];
-                                return GestureDetector(
-                                  onTap: () => setState(
-                                      () => _presentation = opt['value']!),
-                                  child: AnimatedContainer(
-                                    duration: const Duration(
-                                        milliseconds: 200),
-                                    padding: const EdgeInsets.symmetric(
-                                        horizontal: 10),
-                                    decoration: BoxDecoration(
-                                      color: selected
-                                          ? AppTheme.primary
-                                              .withValues(alpha: 0.12)
-                                          : AppTheme.surfaceGrey,
-                                      borderRadius:
-                                          BorderRadius.circular(10),
-                                      border: Border.all(
-                                        color: selected
-                                            ? AppTheme.primary
-                                            : AppTheme.borderColor,
-                                        width: selected ? 2 : 1,
-                                      ),
-                                    ),
-                                    child: Row(
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: [
-                                        Text(opt['icon']!,
-                                            style: const TextStyle(
-                                                fontSize: 16)),
-                                        const SizedBox(width: 4),
-                                        Text(
-                                          opt['label']!,
-                                          style: TextStyle(
-                                            fontSize: 13,
-                                            fontWeight: selected
-                                                ? FontWeight.w700
-                                                : FontWeight.w500,
-                                            color: selected
-                                                ? AppTheme.primary
-                                                : AppTheme.textPrimary,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                );
-                              },
+                // ── Presentation chips ────────────────────────────────────
+                _fieldLabel('Presentación'),
+                const SizedBox(height: 6),
+                SizedBox(
+                  height: 48,
+                  child: ListView.separated(
+                    scrollDirection: Axis.horizontal,
+                    itemCount: _presentationOptions.length,
+                    separatorBuilder: (_, __) =>
+                        const SizedBox(width: 6),
+                    itemBuilder: (_, i) {
+                      final opt = _presentationOptions[i];
+                      final selected =
+                          _presentation == opt['value'];
+                      return GestureDetector(
+                        onTap: () => setState(
+                            () => _presentation = opt['value']!),
+                        child: AnimatedContainer(
+                          duration: const Duration(
+                              milliseconds: 200),
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 12),
+                          decoration: BoxDecoration(
+                            color: selected
+                                ? AppTheme.primary
+                                    .withValues(alpha: 0.12)
+                                : Colors.white,
+                            borderRadius:
+                                BorderRadius.circular(12),
+                            border: Border.all(
+                              color: selected
+                                  ? AppTheme.primary
+                                  : AppTheme.borderColor,
+                              width: selected ? 2 : 1,
                             ),
                           ),
-                        ],
-                      ),
-                    ),
-                  ],
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(opt['icon']!,
+                                  style: const TextStyle(
+                                      fontSize: 18)),
+                              const SizedBox(width: 4),
+                              Text(
+                                opt['label']!,
+                                style: TextStyle(
+                                  fontSize: 14,
+                                  fontWeight: selected
+                                      ? FontWeight.w700
+                                      : FontWeight.w500,
+                                  color: selected
+                                      ? AppTheme.primary
+                                      : AppTheme.textPrimary,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      );
+                    },
+                  ),
                 ),
+                const SizedBox(height: 14),
 
-                const SizedBox(height: 10),
-
-                // Content / gramaje
+                // ── Content / gramaje ─────────────────────────────────────
                 _fieldLabel('Contenido'),
                 const SizedBox(height: 6),
                 TextFormField(
@@ -967,9 +1129,14 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
                     iconColor: AppTheme.textSecondary,
                   ),
                 ),
+              ]),
 
-                const SizedBox(height: 14),
+              const SizedBox(height: 14),
 
+              // ═══════════════════════════════════════════════════════════
+              // CARD 3: Precios y Cantidad
+              // ═══════════════════════════════════════════════════════════
+              _card(children: [
                 // ── Prices row ─────────────────────────────────────────────
                 Row(
                   children: [
@@ -1037,97 +1204,142 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
 
                 const SizedBox(height: 14),
 
-                // ── Quantity stepper ───────────────────────────────────────
-                Row(
-                  children: [
-                    _fieldLabel('Cantidad'),
-                    const Spacer(),
-                    // Decrease
-                    GestureDetector(
-                      onTap: () {
-                        final current = int.tryParse(_quantityCtrl.text) ?? 1;
-                        if (current > 1) {
-                          _quantityCtrl.text = '${current - 1}';
-                          setState(() {});
-                        }
-                      },
-                      child: Container(
-                        width: 48,
-                        height: 48,
-                        decoration: BoxDecoration(
-                          color: AppTheme.surfaceGrey,
-                          borderRadius: BorderRadius.circular(14),
-                          border: Border.all(color: AppTheme.borderColor),
+                // ── Quantity stepper (unified component) ──────────────────
+                _fieldLabel('Cantidad'),
+                const SizedBox(height: 8),
+                Container(
+                  height: 60,
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: AppTheme.borderColor),
+                  ),
+                  child: Row(
+                    children: [
+                      // Minus button
+                      GestureDetector(
+                        onTap: () {
+                          final c = int.tryParse(_quantityCtrl.text) ?? 1;
+                          if (c > 1) {
+                            HapticFeedback.lightImpact();
+                            _quantityCtrl.text = '${c - 1}';
+                            setState(() {});
+                          }
+                        },
+                        child: Container(
+                          width: 64,
+                          height: double.infinity,
+                          decoration: const BoxDecoration(
+                            color: Color(0xFFF5F7FA),
+                            borderRadius: BorderRadius.horizontal(
+                                left: Radius.circular(15)),
+                          ),
+                          child: const Icon(Icons.remove_rounded,
+                              color: AppTheme.textPrimary, size: 26),
                         ),
-                        child: const Icon(Icons.remove_rounded,
-                            color: AppTheme.textPrimary, size: 24),
                       ),
-                    ),
-                    const SizedBox(width: 8),
-                    // Editable value
-                    SizedBox(
-                      width: 64,
-                      height: 48,
-                      child: TextField(
-                        controller: _quantityCtrl,
-                        keyboardType: TextInputType.number,
-                        textAlign: TextAlign.center,
-                        style: const TextStyle(
-                          fontSize: 24,
-                          fontWeight: FontWeight.bold,
-                          color: AppTheme.textPrimary,
-                        ),
-                        inputFormatters: [
-                          FilteringTextInputFormatter.digitsOnly,
-                        ],
-                        decoration: InputDecoration(
-                          contentPadding: EdgeInsets.zero,
-                          filled: true,
-                          fillColor: AppTheme.surfaceGrey,
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(12),
-                            borderSide: BorderSide.none,
+                      // Center value
+                      Expanded(
+                        child: Container(
+                          decoration: const BoxDecoration(
+                            border: Border.symmetric(
+                              vertical: BorderSide(
+                                  color: AppTheme.borderColor, width: 1),
+                            ),
                           ),
-                          enabledBorder: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(12),
-                            borderSide: const BorderSide(
-                                color: AppTheme.borderColor, width: 1),
-                          ),
-                          focusedBorder: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(12),
-                            borderSide: const BorderSide(
-                                color: AppTheme.primary, width: 2),
+                          child: TextField(
+                            controller: _quantityCtrl,
+                            keyboardType: TextInputType.number,
+                            textAlign: TextAlign.center,
+                            style: const TextStyle(
+                              fontSize: 26,
+                              fontWeight: FontWeight.bold,
+                              color: AppTheme.textPrimary,
+                            ),
+                            inputFormatters: [
+                              FilteringTextInputFormatter.digitsOnly,
+                            ],
+                            decoration: const InputDecoration(
+                              contentPadding: EdgeInsets.zero,
+                              border: InputBorder.none,
+                            ),
+                            onChanged: (v) {
+                              if (v.isEmpty || int.tryParse(v) == null) return;
+                              setState(() {});
+                            },
                           ),
                         ),
-                        onChanged: (v) {
-                          if (v.isEmpty || int.tryParse(v) == null) return;
+                      ),
+                      // Plus button
+                      GestureDetector(
+                        onTap: () {
+                          HapticFeedback.lightImpact();
+                          final c = int.tryParse(_quantityCtrl.text) ?? 1;
+                          _quantityCtrl.text = '${c + 1}';
                           setState(() {});
                         },
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    // Increase
-                    GestureDetector(
-                      onTap: () {
-                        final current = int.tryParse(_quantityCtrl.text) ?? 1;
-                        _quantityCtrl.text = '${current + 1}';
-                        setState(() {});
-                      },
-                      child: Container(
-                        width: 48,
-                        height: 48,
-                        decoration: BoxDecoration(
-                          color: AppTheme.primary,
-                          borderRadius: BorderRadius.circular(14),
+                        child: Container(
+                          width: 64,
+                          height: double.infinity,
+                          decoration: const BoxDecoration(
+                            color: AppTheme.primary,
+                            borderRadius: BorderRadius.horizontal(
+                                right: Radius.circular(15)),
+                          ),
+                          child: const Icon(Icons.add_rounded,
+                              color: Colors.white, size: 26),
                         ),
-                        child: const Icon(Icons.add_rounded,
-                            color: Colors.white, size: 24),
                       ),
-                    ),
+                    ],
+                  ),
+                ),
+              ]),
+
+              // ═══════════════════════════════════════════════════════════
+              // Advanced options (collapsed by default)
+              // ═══════════════════════════════════════════════════════════
+              Theme(
+                data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+                child: ExpansionTile(
+                  tilePadding: const EdgeInsets.symmetric(horizontal: 4),
+                  title: const Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.tune_rounded, size: 20, color: AppTheme.textSecondary),
+                      SizedBox(width: 8),
+                      Text('Opciones avanzadas',
+                          style: TextStyle(fontSize: 16, color: AppTheme.textSecondary)),
+                    ],
+                  ),
+                  children: [
+                    _card(children: [
+                      _fieldLabel('Categoría'),
+                      const SizedBox(height: 6),
+                      TextFormField(
+                        style: const TextStyle(fontSize: 18),
+                        decoration: _inputDecoration(
+                          hint: 'Ej: Bebidas, Aseo, Snacks',
+                          icon: Icons.category_rounded,
+                          iconColor: AppTheme.textSecondary,
+                        ),
+                      ),
+                      const SizedBox(height: 14),
+                      _fieldLabel('Proveedor'),
+                      const SizedBox(height: 6),
+                      TextFormField(
+                        style: const TextStyle(fontSize: 18),
+                        decoration: _inputDecoration(
+                          hint: 'Ej: Coca-Cola, Postobón',
+                          icon: Icons.local_shipping_rounded,
+                          iconColor: AppTheme.textSecondary,
+                        ),
+                      ),
+                    ]),
                   ],
                 ),
-              ],
-            ),
+              ),
+
+              const SizedBox(height: 24),
+            ],
           ),
         ),
       ),
@@ -1135,6 +1347,62 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
   }
 
   // ── Helpers ────────────────────────────────────────────────────────────────
+
+  Widget _card({required List<Widget> children}) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.05),
+            blurRadius: 10,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: children,
+      ),
+    );
+  }
+
+  Widget _actionButton({
+    required String label,
+    IconData? icon,
+    required Color color,
+    bool loading = false,
+    VoidCallback? onTap,
+  }) {
+    return SizedBox(
+      height: 44,
+      child: OutlinedButton.icon(
+        onPressed: onTap,
+        icon: loading
+            ? SizedBox(
+                width: 18,
+                height: 18,
+                child: CircularProgressIndicator(
+                    strokeWidth: 2, color: color),
+              )
+            : Icon(icon, size: 20),
+        label: Text(
+          label,
+          style: const TextStyle(fontSize: 16),
+        ),
+        style: OutlinedButton.styleFrom(
+          foregroundColor: color,
+          side: BorderSide(color: color, width: 1.5),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+          padding: const EdgeInsets.symmetric(horizontal: 10),
+        ),
+      ),
+    );
+  }
 
   Widget _buildPhotoContent() {
     if (_photoPath != null) {
@@ -1176,6 +1444,26 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
     );
   }
 
+  /// Generates an internal SKU based on the product name and presentation.
+  /// Format: VND-{PRES}-{3-letter-name}-{random4digits}
+  void _generateSku() {
+    HapticFeedback.lightImpact();
+    final name = _nameCtrl.text.trim().toUpperCase();
+    final presMap = {
+      'botella': 'BOT', 'lata': 'LAT', 'bolsa': 'BLS', 'caja': 'CAJ',
+      'frasco': 'FRA', 'paquete': 'PAQ', 'unidad': 'UNI', 'sobre': 'SOB',
+    };
+    final pres = presMap[_presentation.toLowerCase()] ?? 'GEN';
+    final letters = name.replaceAll(RegExp(r'[^A-Z]'), '');
+    final nameCode =
+        letters.length >= 3 ? letters.substring(0, 3) : letters.padRight(3, 'X');
+    final digits =
+        (DateTime.now().millisecondsSinceEpoch % 10000).toString().padLeft(4, '0');
+    setState(() {
+      _skuCtrl.text = 'VND-$pres-$nameCode-$digits';
+    });
+  }
+
   InputDecoration _inputDecoration({
     required String hint,
     required IconData icon,
@@ -1200,11 +1488,21 @@ class _ProductSuggestion {
   final String brand;
   final String? imageUrl;
   final bool isLocal;
+  final String? presentation;
+  final String? content;
+  final String? barcode;
+  final String source; // "off", "user", or "local"
+  final List<String> images; // accepted catalog images (max 3)
 
   const _ProductSuggestion({
     required this.name,
     required this.brand,
     this.imageUrl,
     this.isLocal = false,
+    this.presentation,
+    this.content,
+    this.barcode,
+    this.source = 'off',
+    this.images = const [],
   });
 }

@@ -1,16 +1,34 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:dio/dio.dart';
-import '../../config/api_config.dart';
 import '../../database/database_service.dart';
-import '../../services/auth_service.dart';
-import '../../services/dashboard_service.dart';
+import '../../database/collections/local_sale.dart';
+import '../../database/collections/local_product.dart';
 import '../../theme/app_theme.dart';
-import '../../widgets/shimmer_box.dart';
 import '../../widgets/stat_card.dart';
-import '../auth/login_screen.dart';
 import '../inventory/add_merchandise_screen.dart';
 import '../pos/pos_screen.dart';
+import 'admin_hub_screen.dart';
+
+// ── Dashboard Data (computed from Isar) ─────────────────────────────────────
+
+class _DashboardData {
+  final double totalToday;
+  final int txCount;
+  final String topProduct;
+  final int prodCount;
+  final List<LocalSale> recentSales;
+
+  const _DashboardData({
+    required this.totalToday,
+    required this.txCount,
+    required this.topProduct,
+    required this.prodCount,
+    required this.recentSales,
+  });
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
 
 class DashboardScreen extends StatefulWidget {
   final String ownerName;
@@ -27,65 +45,124 @@ class DashboardScreen extends StatefulWidget {
 }
 
 class _DashboardScreenState extends State<DashboardScreen> {
-  late final DashboardService _service;
+  final _db = DatabaseService.instance;
 
-  late Future<DashboardStats> _statsFuture;
-  late Future<List<RecentSale>> _salesFuture;
-  late Future<_InventorySummary> _inventoryFuture;
+  // Isar lazy streams — fire a void event on every collection change
+  late final StreamSubscription _salesSub;
+  late final StreamSubscription _productsSub;
+
+  // Reactive data holder
+  _DashboardData _data = const _DashboardData(
+    totalToday: 0, txCount: 0, topProduct: '—', prodCount: 0, recentSales: [],
+  );
 
   @override
   void initState() {
     super.initState();
-    final auth = AuthService();
-    _service = DashboardService(
-      Dio(BaseOptions(
-        baseUrl: ApiConfig.baseUrl,
-        connectTimeout: const Duration(seconds: 10),
-        receiveTimeout: const Duration(seconds: 15),
-      )),
-      auth,
-    );
-    _load();
+    _loadData(); // Initial load
+
+    final isar = _db.isar;
+
+    // Listen for changes in sales & products collections
+    _salesSub = isar.localSales
+        .watchLazy(fireImmediately: false)
+        .listen((_) => _loadData());
+
+    _productsSub = isar.localProducts
+        .watchLazy(fireImmediately: false)
+        .listen((_) => _loadData());
   }
 
-  void _load() {
-    _statsFuture = _service.fetchStats();
-    _salesFuture = _service.fetchRecentSales();
-    _inventoryFuture = _loadInventorySummary();
+  @override
+  void dispose() {
+    _salesSub.cancel();
+    _productsSub.cancel();
+    super.dispose();
   }
 
-  Future<_InventorySummary> _loadInventorySummary() async {
-    try {
-      // Intentar desde DB local primero
-      final localProducts = await DatabaseService.instance.getAllProducts();
-      if (localProducts.isNotEmpty) {
-        final total = localProducts.length;
-        final incomplete = localProducts.where((p) =>
-            p.price <= 0 || p.imageUrl == null || p.imageUrl!.isEmpty).length;
-        return _InventorySummary(total: total, incomplete: incomplete);
-      }
+  Future<void> _loadData() async {
+    final sales = await _db.getSalesToday();
+    sales.sort((a, b) => b.createdAt.compareTo(a.createdAt));
 
-      // Fallback: consultar al backend
-      final token = await AuthService().getToken();
-      final res = await Dio(BaseOptions(
-        baseUrl: ApiConfig.baseUrl,
-        connectTimeout: const Duration(seconds: 5),
-        receiveTimeout: const Duration(seconds: 5),
-      )).get(
-        '/api/v1/products',
-        queryParameters: {'page': 1, 'limit': 1},
-        options: Options(headers: {'Authorization': 'Bearer $token'}),
-      );
-      final total = res.data['total'] as int? ?? 0;
-      return _InventorySummary(total: total, incomplete: 0);
-    } catch (_) {
-      return const _InventorySummary(total: 0, incomplete: 0);
+    final allProducts = await _db.getAllProducts();
+    final prodCount = allProducts.length;
+
+    final totalToday = sales.fold<double>(0, (sum, s) => sum + s.total);
+    final top = _topProduct(sales);
+
+    if (mounted) {
+      setState(() {
+        _data = _DashboardData(
+          totalToday: totalToday,
+          txCount: sales.length,
+          topProduct: top,
+          prodCount: prodCount,
+          recentSales: sales.take(10).toList(),
+        );
+      });
     }
   }
 
   Future<void> _refresh() async {
-    setState(() => _load());
+    await _loadData();
   }
+
+  // ── Helpers ─────────────────────────────────────────────────────────────────
+
+  String _formatCOP(int amount) {
+    if (amount == 0) return '\$0';
+    final s = amount.toString();
+    final buffer = StringBuffer('\$');
+    final start = s.length % 3;
+    if (start > 0) buffer.write(s.substring(0, start));
+    for (int i = start; i < s.length; i += 3) {
+      if (i > 0) buffer.write('.');
+      buffer.write(s.substring(i, i + 3));
+    }
+    return buffer.toString();
+  }
+
+  String _topProduct(List<LocalSale> sales) {
+    if (sales.isEmpty) return '—';
+    final counts = <String, int>{};
+    for (final sale in sales) {
+      for (final item in sale.items) {
+        if (item.isContainerCharge) continue;
+        counts[item.productName] =
+            (counts[item.productName] ?? 0) + item.quantity;
+      }
+    }
+    if (counts.isEmpty) return '—';
+    final sorted = counts.entries.toList()
+      ..sort((a, b) => b.value.compareTo(a.value));
+    return sorted.first.key;
+  }
+
+  String _timeAgo(DateTime dt) {
+    final diff = DateTime.now().difference(dt);
+    if (diff.inMinutes < 1) return 'Ahora mismo';
+    if (diff.inMinutes < 60) return 'Hace ${diff.inMinutes} min';
+    if (diff.inHours < 24) return 'Hace ${diff.inHours}h';
+    return 'Hace ${diff.inDays}d';
+  }
+
+  IconData _payIcon(String method) => switch (method) {
+        'transfer' || 'nequi' || 'daviplata' => Icons.phone_android_rounded,
+        'card' => Icons.credit_card_rounded,
+        'credit' => Icons.menu_book_rounded,
+        _ => Icons.payments_rounded,
+      };
+
+  String _payLabel(String method) => switch (method) {
+        'transfer' => 'Transferencia',
+        'nequi' => 'Nequi',
+        'daviplata' => 'Daviplata',
+        'card' => 'Tarjeta',
+        'credit' => 'Fiado',
+        _ => 'Efectivo',
+      };
+
+  // ── Build ───────────────────────────────────────────────────────────────────
 
   @override
   Widget build(BuildContext context) {
@@ -93,22 +170,19 @@ class _DashboardScreenState extends State<DashboardScreen> {
       backgroundColor: AppTheme.background,
       body: SafeArea(
         child: ScrollConfiguration(
-          // Desactiva el StretchingOverscrollIndicator de Android API 31+
-          // que deformaba todos los componentes al hacer pull-down.
-          behavior: ScrollConfiguration.of(context).copyWith(overscroll: false),
+          behavior:
+              ScrollConfiguration.of(context).copyWith(overscroll: false),
           child: RefreshIndicator.adaptive(
             color: AppTheme.primary,
             onRefresh: _refresh,
             displacement: 40,
             edgeOffset: 10,
             child: CustomScrollView(
-              // ClampingScrollPhysics: previene el stretch/bounce nativo;
-              // AlwaysScrollable: mantiene el pull-to-refresh funcionando.
               physics: const AlwaysScrollableScrollPhysics(
                 parent: ClampingScrollPhysics(),
               ),
               slivers: [
-                // ── Header ────────────────────────────────────────────────────
+                // ── Header ──────────────────────────────────────────
                 SliverToBoxAdapter(
                   child: Padding(
                     padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
@@ -118,81 +192,43 @@ class _DashboardScreenState extends State<DashboardScreen> {
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Text(
-                                _greeting(),
-                                style: const TextStyle(
-                                    fontSize: 18,
-                                    color: AppTheme.textSecondary),
-                              ),
-                              Text(
-                                widget.ownerName,
-                                style:
-                                    Theme.of(context).textTheme.headlineMedium,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                              Text(
-                                widget.businessName,
-                                style: const TextStyle(
-                                  fontSize: 18,
-                                  color: AppTheme.primary,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
+                              Text(_greeting(),
+                                  style: const TextStyle(
+                                      fontSize: 18,
+                                      color: AppTheme.textSecondary)),
+                              Text(widget.ownerName,
+                                  style: const TextStyle(
+                                    fontSize: 30,
+                                    fontWeight: FontWeight.bold,
+                                    color: Color(0xFF1A1A1A),
+                                  ),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis),
+                              Text(widget.businessName,
+                                  style: const TextStyle(
+                                      fontSize: 18,
+                                      color: AppTheme.primary,
+                                      fontWeight: FontWeight.w600)),
                             ],
                           ),
                         ),
-                        Semantics(
-                          button: true,
-                          label: 'Menú de opciones',
-                          child: PopupMenuButton<String>(
-                            onSelected: (v) async {
-                              if (v == 'logout') {
-                                await AuthService().logout();
-                                if (!context.mounted) return;
-                                Navigator.of(context).pushAndRemoveUntil(
-                                  MaterialPageRoute(
-                                      builder: (_) => const LoginScreen()),
-                                  (_) => false,
-                                );
-                              }
-                            },
-                            itemBuilder: (_) => [
-                              const PopupMenuItem(
-                                value: 'logout',
-                                child: Row(
-                                  children: [
-                                    Icon(Icons.logout_rounded,
-                                        color: AppTheme.error, size: 20),
-                                    SizedBox(width: 10),
-                                    Text('Cerrar sesión',
-                                        style: TextStyle(
-                                            color: AppTheme.error,
-                                            fontSize: 18)),
-                                  ],
-                                ),
-                              ),
-                            ],
-                            shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(20)),
-                            child: Container(
-                              width: 60,
-                              height: 60,
-                              decoration: BoxDecoration(
-                                color: AppTheme.primary.withValues(alpha: 0.1),
-                                borderRadius: BorderRadius.circular(20),
-                              ),
-                              child: const Icon(Icons.storefront_rounded,
-                                  color: AppTheme.primary, size: 28),
-                            ),
+                        // Avatar / greeting icon (no navigation)
+                        Container(
+                          width: 60,
+                          height: 60,
+                          decoration: BoxDecoration(
+                            color: AppTheme.primary.withValues(alpha: 0.1),
+                            borderRadius: BorderRadius.circular(20),
                           ),
+                          child: const Icon(Icons.storefront_rounded,
+                              color: AppTheme.primary, size: 28),
                         ),
                       ],
                     ),
                   ),
                 ),
 
-                // ── Fecha + Título ────────────────────────────────────────────
+                // ── Date ────────────────────────────────────────────
                 SliverToBoxAdapter(
                   child: Padding(
                     padding: const EdgeInsets.fromLTRB(20, 12, 20, 10),
@@ -201,112 +237,103 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         const Icon(Icons.calendar_today_rounded,
                             size: 16, color: AppTheme.primary),
                         const SizedBox(width: 6),
-                        Text(
-                          _todayLabel(),
-                          style: const TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w600,
-                            color: AppTheme.textSecondary,
-                          ),
+                        Text(_todayLabel(),
+                            style: const TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.w600,
+                                color: AppTheme.textSecondary)),
+                      ],
+                    ),
+                  ),
+                ),
+
+                // ── Stats Cards (REACTIVE) ──────────────────────────
+                SliverToBoxAdapter(
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 20),
+                    child: Column(
+                      children: [
+                        // Row 1: Sales total + count
+                        Row(
+                          children: [
+                            Expanded(
+                              flex: 3,
+                              child: Material(
+                                color: Colors.transparent,
+                                child: InkWell(
+                                  borderRadius: BorderRadius.circular(20),
+                                  onTap: () => HapticFeedback.lightImpact(),
+                                  child: StatCard(
+                                    label: 'Ventas de hoy',
+                                    value: _formatCOP(
+                                        _data.totalToday.round()),
+                                    icon: Icons.payments_rounded,
+                                    iconColor: AppTheme.primary,
+                                    backgroundColor: AppTheme.primary
+                                        .withValues(alpha: 0.06),
+                                    trend: _data.txCount > 0
+                                        ? '${_data.txCount} venta${_data.txCount > 1 ? 's' : ''}'
+                                        : 'primer día',
+                                    compact: true,
+                                  ),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              flex: 2,
+                              child: Material(
+                                color: Colors.transparent,
+                                child: InkWell(
+                                  borderRadius: BorderRadius.circular(20),
+                                  onTap: () => HapticFeedback.lightImpact(),
+                                  child: StatCard(
+                                    label: 'Ventas',
+                                    value: '${_data.txCount}',
+                                    icon: Icons.receipt_long_rounded,
+                                    compact: true,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 12),
+                        // Row 2: Top product + Inventory
+                        Row(
+                          children: [
+                            Expanded(
+                              child: StatCard(
+                                label: 'Más vendido',
+                                value: _data.topProduct,
+                                icon: Icons.star_rounded,
+                                iconColor: const Color(0xFFF59E0B),
+                                compact: true,
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: _InventoryCardCompact(
+                                total: _data.prodCount,
+                                onTap: () async {
+                                  HapticFeedback.lightImpact();
+                                  await Navigator.of(context).push(
+                                    MaterialPageRoute(
+                                      builder: (_) =>
+                                          const AddMerchandiseScreen(),
+                                    ),
+                                  );
+                                },
+                              ),
+                            ),
+                          ],
                         ),
                       ],
                     ),
                   ),
                 ),
 
-                SliverToBoxAdapter(
-                  child: FutureBuilder<DashboardStats>(
-                    future: _statsFuture,
-                    builder: (context, snap) {
-                      if (!snap.hasData && !snap.hasError) {
-                        return const _StatsShimmer();
-                      }
-
-                      final s = snap.data ??
-                          const DashboardStats(
-                            totalSalesToday: 0,
-                            transactionCount: 0,
-                            topProduct: '—',
-                            trend: 'primer día',
-                          );
-                      return Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 20),
-                        child: Column(
-                          children: [
-                            // Fila 1: Ventas + Transacciones
-                            Row(
-                              children: [
-                                Expanded(
-                                  flex: 3,
-                                  child: StatCard(
-                                    label: 'Ventas de hoy',
-                                    value: s.formattedTotal,
-                                    icon: Icons.payments_rounded,
-                                    iconColor: AppTheme.primary,
-                                    backgroundColor: AppTheme.primary
-                                        .withValues(alpha: 0.06),
-                                    trend: s.trend,
-                                    compact: true,
-                                  ),
-                                ),
-                                const SizedBox(width: 12),
-                                Expanded(
-                                  flex: 2,
-                                  child: StatCard(
-                                    label: 'Ventas',
-                                    value: '${s.transactionCount}',
-                                    icon: Icons.receipt_long_rounded,
-                                    compact: true,
-                                  ),
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 12),
-                            // Fila 2: Más vendido + Inventario
-                            Row(
-                              children: [
-                                Expanded(
-                                  child: StatCard(
-                                    label: 'Más vendido',
-                                    value: s.topProduct,
-                                    icon: Icons.star_rounded,
-                                    iconColor: const Color(0xFFF59E0B),
-                                    compact: true,
-                                  ),
-                                ),
-                                const SizedBox(width: 12),
-                                Expanded(
-                                  child: FutureBuilder<_InventorySummary>(
-                                    future: _inventoryFuture,
-                                    builder: (context, invSnap) {
-                                      final inv = invSnap.data ??
-                                          const _InventorySummary(
-                                              total: 0, incomplete: 0);
-                                      return _InventoryCardCompact(
-                                        summary: inv,
-                                        onTap: () {
-                                          HapticFeedback.lightImpact();
-                                          Navigator.of(context).push(
-                                            MaterialPageRoute(
-                                              builder: (_) =>
-                                                  const AddMerchandiseScreen(),
-                                            ),
-                                          );
-                                        },
-                                      );
-                                    },
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ],
-                        ),
-                      );
-                    },
-                  ),
-                ),
-
-                // ── Últimas ventas ────────────────────────────────────────────
+                // ── Recent Sales Header ─────────────────────────────
                 const SliverToBoxAdapter(
                   child: Padding(
                     padding: EdgeInsets.fromLTRB(20, 20, 20, 4),
@@ -318,55 +345,114 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   ),
                 ),
 
+                // ── Recent Sales List (REACTIVE) ────────────────────
                 SliverToBoxAdapter(
-                  child: FutureBuilder<List<RecentSale>>(
-                    future: _salesFuture,
-                    builder: (context, snap) {
-                      if (!snap.hasData && !snap.hasError) {
-                        return const _TransactionsShimmer();
-                      }
-
-                      // Si falla el API, mostrar lista vacía
-                      final sales = snap.data ?? [];
-                      if (sales.isEmpty) {
-                        return const Padding(
+                  child: _data.recentSales.isEmpty
+                      ? const Padding(
                           padding: EdgeInsets.fromLTRB(20, 8, 20, 0),
                           child: Center(
                             child: Text(
                               'Aún no hay ventas hoy.\n¡Registre la primera!',
                               textAlign: TextAlign.center,
                               style: TextStyle(
-                                  fontSize: 18, color: AppTheme.textSecondary),
+                                  fontSize: 18,
+                                  color: AppTheme.textSecondary),
                             ),
                           ),
-                        );
-                      }
-
-                      return Container(
-                        margin: const EdgeInsets.fromLTRB(24, 12, 24, 24),
-                        decoration: BoxDecoration(
-                          color: AppTheme.surfaceGrey,
-                          borderRadius: BorderRadius.circular(24),
-                        ),
-                        child: ListView.separated(
-                          physics: const NeverScrollableScrollPhysics(),
-                          shrinkWrap: true,
-                          itemCount: sales.length,
-                          separatorBuilder: (_, __) => const Divider(
-                            height: 1,
-                            indent: 76,
-                            color: AppTheme.borderColor,
+                        )
+                      : Container(
+                          margin:
+                              const EdgeInsets.fromLTRB(24, 12, 24, 24),
+                          decoration: BoxDecoration(
+                            color: AppTheme.surfaceGrey,
+                            borderRadius: BorderRadius.circular(24),
                           ),
-                          itemBuilder: (_, i) => _SaleTile(sale: sales[i]),
+                          child: ListView.separated(
+                            physics:
+                                const NeverScrollableScrollPhysics(),
+                            shrinkWrap: true,
+                            itemCount: _data.recentSales.length,
+                            separatorBuilder: (_, __) => const Divider(
+                              height: 1,
+                              indent: 76,
+                              color: AppTheme.borderColor,
+                            ),
+                            itemBuilder: (_, i) =>
+                                _buildSaleTile(_data.recentSales[i]),
+                          ),
                         ),
-                      );
-                    },
+                ),
+
+                // ── Settings Card (GIANT, discoverable) ────────────
+                SliverToBoxAdapter(
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(24, 8, 24, 24),
+                    child: Material(
+                      color: Colors.transparent,
+                      child: InkWell(
+                        borderRadius: BorderRadius.circular(20),
+                        onTap: () {
+                          HapticFeedback.lightImpact();
+                          Navigator.of(context).push(MaterialPageRoute(
+                            builder: (_) => const AdminHubScreen(),
+                          ));
+                        },
+                        child: Container(
+                          padding: const EdgeInsets.all(18),
+                          decoration: BoxDecoration(
+                            color: AppTheme.primary.withValues(alpha: 0.06),
+                            borderRadius: BorderRadius.circular(20),
+                            border: Border.all(
+                              color: AppTheme.primary.withValues(alpha: 0.15),
+                            ),
+                          ),
+                          child: Row(
+                            children: [
+                              Container(
+                                width: 56,
+                                height: 56,
+                                decoration: BoxDecoration(
+                                  color: AppTheme.primary.withValues(alpha: 0.12),
+                                  borderRadius: BorderRadius.circular(16),
+                                ),
+                                child: const Icon(Icons.settings_rounded,
+                                    color: AppTheme.primary, size: 30),
+                              ),
+                              const SizedBox(width: 16),
+                              const Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      'Ajustes de mi Negocio',
+                                      style: TextStyle(
+                                        fontSize: 20,
+                                        fontWeight: FontWeight.bold,
+                                        color: AppTheme.textPrimary,
+                                      ),
+                                    ),
+                                    SizedBox(height: 2),
+                                    Text(
+                                      'Mesas, Fiados, Empleados y Perfil',
+                                      style: TextStyle(
+                                        fontSize: 15,
+                                        color: AppTheme.textSecondary,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              const Icon(Icons.chevron_right_rounded,
+                                  color: AppTheme.primary, size: 28),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
                   ),
                 ),
 
-                const SliverToBoxAdapter(
-                  child: SizedBox(height: 16),
-                ),
+                const SliverToBoxAdapter(child: SizedBox(height: 16)),
               ],
             ),
           ),
@@ -381,12 +467,64 @@ class _DashboardScreenState extends State<DashboardScreen> {
               await Navigator.of(context).push(MaterialPageRoute(
                 builder: (_) => const PosScreen(),
               ));
-              _refresh();
             },
             icon: const Icon(Icons.add_rounded, size: 26),
             label: const Text('Registrar nueva venta'),
           ),
         ),
+      ),
+    );
+  }
+
+  Widget _buildSaleTile(LocalSale sale) {
+    final label = sale.items.isNotEmpty
+        ? sale.items.first.productName +
+            (sale.items.length > 1
+                ? ' + ${sale.items.length - 1} más'
+                : '')
+        : 'Venta';
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      child: Row(
+        children: [
+          Container(
+            width: 48,
+            height: 48,
+            decoration: BoxDecoration(
+              color: AppTheme.primary.withValues(alpha: 0.1),
+              borderRadius: BorderRadius.circular(20),
+            ),
+            child: Icon(_payIcon(sale.paymentMethod),
+                color: AppTheme.primary, size: 24),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w600,
+                        color: AppTheme.textPrimary)),
+                const SizedBox(height: 2),
+                Text(
+                  '${_payLabel(sale.paymentMethod)} · ${_timeAgo(sale.createdAt)}',
+                  style: const TextStyle(
+                      fontSize: 15, color: AppTheme.textSecondary),
+                ),
+              ],
+            ),
+          ),
+          Text(_formatCOP(sale.total.round()),
+              style: const TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  color: AppTheme.success)),
+        ],
       ),
     );
   }
@@ -401,164 +539,30 @@ class _DashboardScreenState extends State<DashboardScreen> {
   String _todayLabel() {
     final now = DateTime.now();
     const months = [
-      'enero',
-      'febrero',
-      'marzo',
-      'abril',
-      'mayo',
-      'junio',
-      'julio',
-      'agosto',
-      'septiembre',
-      'octubre',
-      'noviembre',
-      'diciembre'
+      'enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio',
+      'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'
     ];
     const days = [
-      'Lunes',
-      'Martes',
-      'Miércoles',
-      'Jueves',
-      'Viernes',
-      'Sábado',
-      'Domingo'
+      'Lunes', 'Martes', 'Miércoles', 'Jueves',
+      'Viernes', 'Sábado', 'Domingo'
     ];
     return '${days[now.weekday - 1]}, ${now.day} de ${months[now.month - 1]}';
   }
 }
 
-// ── Widgets auxiliares ─────────────────────────────────────────────────────────
-
-class _SaleTile extends StatelessWidget {
-  final RecentSale sale;
-  const _SaleTile({required this.sale});
-
-  IconData get _payIcon => switch (sale.paymentMethod) {
-        'transfer' => Icons.phone_android_rounded,
-        'card' => Icons.credit_card_rounded,
-        _ => Icons.payments_rounded,
-      };
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-      child: Row(
-        children: [
-          Container(
-            width: 48,
-            height: 48,
-            decoration: BoxDecoration(
-              color: AppTheme.primary.withValues(alpha: 0.1),
-              borderRadius: BorderRadius.circular(20),
-            ),
-            child: Icon(_payIcon, color: AppTheme.primary, size: 24),
-          ),
-          const SizedBox(width: 14),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  sale.label,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.w600,
-                      color: AppTheme.textPrimary),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  sale.timeAgo,
-                  style: const TextStyle(
-                      fontSize: 18, color: AppTheme.textSecondary),
-                ),
-              ],
-            ),
-          ),
-          Text(
-            sale.formattedTotal,
-            style: const TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-                color: AppTheme.success),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-
-class _StatsShimmer extends StatelessWidget {
-  const _StatsShimmer();
-
-  @override
-  Widget build(BuildContext context) {
-    return const Padding(
-      padding: EdgeInsets.symmetric(horizontal: 24),
-      child: Column(
-        children: [
-          ShimmerBox.full(height: 130, borderRadius: 24),
-          SizedBox(height: 16),
-          Row(
-            children: [
-              Expanded(child: ShimmerBox.full(height: 110, borderRadius: 24)),
-              SizedBox(width: 16),
-              Expanded(child: ShimmerBox.full(height: 110, borderRadius: 24)),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _TransactionsShimmer extends StatelessWidget {
-  const _TransactionsShimmer();
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      margin: const EdgeInsets.fromLTRB(24, 12, 24, 24),
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: AppTheme.surfaceGrey,
-        borderRadius: BorderRadius.circular(24),
-      ),
-      child: Column(
-        children: List.generate(4, (_) => const ShimmerTransactionRow()),
-      ),
-    );
-  }
-}
-
-// ── Inventario ──────────────────────────────────────────────────────────────
-
-class _InventorySummary {
-  final int total;
-  final int incomplete;
-
-  const _InventorySummary({required this.total, required this.incomplete});
-
-  int get complete => total - incomplete;
-}
+// ═══════════════════════════════════════════════════════════════════════════════
+// INVENTORY CARD
+// ═══════════════════════════════════════════════════════════════════════════════
 
 class _InventoryCardCompact extends StatelessWidget {
-  final _InventorySummary summary;
+  final int total;
   final VoidCallback onTap;
 
-  const _InventoryCardCompact({required this.summary, required this.onTap});
+  const _InventoryCardCompact({required this.total, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
-    final hasIncomplete = summary.incomplete > 0;
-    final iconColor = hasIncomplete ? AppTheme.warning : AppTheme.primary;
-    final value = summary.total == 0
-        ? 'Vacío'
-        : '${summary.total} ref.';
-
+    final value = total == 0 ? 'Vacío' : '$total ref.';
     return GestureDetector(
       onTap: onTap,
       child: Container(
@@ -583,11 +587,11 @@ class _InventoryCardCompact extends StatelessWidget {
                   width: 40,
                   height: 40,
                   decoration: BoxDecoration(
-                    color: iconColor.withValues(alpha: 0.12),
+                    color: AppTheme.primary.withValues(alpha: 0.12),
                     borderRadius: BorderRadius.circular(14),
                   ),
-                  child: Icon(Icons.inventory_2_rounded,
-                      color: iconColor, size: 22),
+                  child: const Icon(Icons.inventory_2_rounded,
+                      color: AppTheme.primary, size: 22),
                 ),
                 const Spacer(),
                 Icon(Icons.chevron_right_rounded,
@@ -595,34 +599,17 @@ class _InventoryCardCompact extends StatelessWidget {
               ],
             ),
             const SizedBox(height: 8),
-            const Text(
-              'Inventario',
-              style: TextStyle(
-                fontSize: 16,
-                color: AppTheme.textSecondary,
-                fontWeight: FontWeight.w500,
-              ),
-            ),
+            const Text('Inventario',
+                style: TextStyle(
+                    fontSize: 16,
+                    color: AppTheme.textSecondary,
+                    fontWeight: FontWeight.w500)),
             const SizedBox(height: 2),
-            Text(
-              value,
-              style: const TextStyle(
-                fontSize: 22,
-                fontWeight: FontWeight.bold,
-                color: AppTheme.textPrimary,
-              ),
-            ),
-            if (hasIncomplete) ...[
-              const SizedBox(height: 2),
-              Text(
-                '${summary.incomplete} pendiente${summary.incomplete == 1 ? '' : 's'}',
+            Text(value,
                 style: const TextStyle(
-                  fontSize: 15,
-                  fontWeight: FontWeight.w600,
-                  color: AppTheme.warning,
-                ),
-              ),
-            ],
+                    fontSize: 22,
+                    fontWeight: FontWeight.bold,
+                    color: AppTheme.textPrimary)),
           ],
         ),
       ),

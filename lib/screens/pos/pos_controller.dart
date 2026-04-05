@@ -93,6 +93,8 @@ class PosController extends ChangeNotifier {
         requiresContainer: lp.requiresContainer,
         containerPrice: lp.containerPrice,
         barcode: lp.barcode,
+        presentation: lp.presentation,
+        content: lp.content,
       );
 
   // ── Cart ─────────────────────────────────────────────────────────────────────
@@ -180,7 +182,8 @@ class PosController extends ChangeNotifier {
         ..createdAt = DateTime.now()
         ..synced = false;
 
-      await _db.insertSale(localSale);
+      // Atomic transaction: save sale + deduct stock
+      await _db.insertSaleAndDeductStock(localSale);
 
       final pendingOp = PendingOperation()
         ..uuid = saleUuid
