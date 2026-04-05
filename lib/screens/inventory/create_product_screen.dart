@@ -762,27 +762,30 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
           child: Row(
             children: [
               // Cancel button
-              SizedBox(
-                height: 56,
-                child: OutlinedButton(
-                  onPressed: () async {
-                    final shouldPop = await _confirmDiscard();
-                    if (shouldPop && mounted) Navigator.of(context).pop();
-                  },
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: AppTheme.textSecondary,
-                    side: const BorderSide(color: AppTheme.borderColor),
-                    shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(16)),
-                    padding: const EdgeInsets.symmetric(horizontal: 20),
+              Expanded(
+                flex: 2,
+                child: SizedBox(
+                  height: 56,
+                  child: OutlinedButton(
+                    onPressed: () async {
+                      final shouldPop = await _confirmDiscard();
+                      if (shouldPop && mounted) Navigator.of(context).pop();
+                    },
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: AppTheme.textSecondary,
+                      side: const BorderSide(color: AppTheme.borderColor),
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(16)),
+                    ),
+                    child: const Text('Cancelar',
+                        style: TextStyle(fontSize: 17, fontWeight: FontWeight.w600)),
                   ),
-                  child: const Text('Cancelar',
-                      style: TextStyle(fontSize: 17, fontWeight: FontWeight.w600)),
                 ),
               ),
               const SizedBox(width: 10),
               // Save button
               Expanded(
+                flex: 3,
                 child: SizedBox(
                   height: 56,
                   child: DecoratedBox(
