@@ -503,28 +503,22 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
     setState(() => _enhancing = true);
     try {
       final api = ApiService(AuthService());
-      final price = double.tryParse(_sellPriceCtrl.text.trim()) ?? 1;
 
-      // Auto-create the product in backend if it doesn't exist yet
-      if (_pendingUuid == null) {
-        final id = const Uuid().v4();
-        await api.createProduct({
-          'id': id,
-          'name': _nameCtrl.text.trim(),
-          'price': price > 0 ? price : 1,
-          'stock': int.tryParse(_quantityCtrl.text.trim()) ?? 1,
-          'image_url': _photoUrl,
-          'presentation': _presentation,
-          'content': _contentCtrl.text.trim(),
-        });
-        _pendingUuid = id;
-      } else {
-        await api.updateProduct(_pendingUuid!, {
-          'presentation': _presentation,
-          'content': _contentCtrl.text.trim(),
-          'image_url': _photoUrl,
-        });
-      }
+      // Reserve a UUID for the product (in-memory only, NOT saved to DB yet)
+      _pendingUuid ??= const Uuid().v4();
+
+      // Create a temporary product in backend ONLY for AI processing
+      // This is needed because enhance/generate endpoints require a product ID.
+      // The real save happens only when user presses "Guardar".
+      await api.createProduct({
+        'id': _pendingUuid,
+        'name': _nameCtrl.text.trim().isEmpty ? 'Producto temporal' : _nameCtrl.text.trim(),
+        'price': double.tryParse(_sellPriceCtrl.text.trim()) ?? 1,
+        'stock': int.tryParse(_quantityCtrl.text.trim()) ?? 1,
+        'image_url': _photoUrl,
+        'presentation': _presentation,
+        'content': _contentCtrl.text.trim(),
+      }).catchError((_) => <String, dynamic>{}); // Ignore if already exists
 
       // If product has a photo URL, enhance it. Otherwise, generate from scratch.
       final Map<String, dynamic> result;
@@ -689,26 +683,68 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
     );
   }
 
+  // ── Dirty check ────────────────────────────────────────────────────────────
+
+  bool get _isDirty =>
+      _nameCtrl.text.trim().isNotEmpty ||
+      _skuCtrl.text.trim().isNotEmpty ||
+      _photoPath != null ||
+      _photoUrl != null;
+
+  Future<bool> _confirmDiscard() async {
+    if (!_isDirty) return true;
+    final result = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Text('¿Descartar producto?',
+            style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
+        content: const Text(
+          'Tiene datos sin guardar. Si regresa ahora, se perderá la información.',
+          style: TextStyle(fontSize: 17, height: 1.4),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('Cancelar', style: TextStyle(fontSize: 18)),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: const Text('Sí, descartar',
+                style: TextStyle(fontSize: 18, color: AppTheme.error)),
+          ),
+        ],
+      ),
+    );
+    return result ?? false;
+  }
+
   // ── Build ──────────────────────────────────────────────────────────────────
 
   @override
   Widget build(BuildContext context) {
     final hasPhoto = _photoPath != null || _photoUrl != null;
 
-    return Scaffold(
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, _) async {
+        if (didPop) return;
+        final shouldPop = await _confirmDiscard();
+        if (shouldPop && context.mounted) Navigator.of(context).pop();
+      },
+      child: Scaffold(
       backgroundColor: const Color(0xFFF5F7FA),
       appBar: AppBar(
         backgroundColor: const Color(0xFFF5F7FA),
         elevation: 0,
-        leading: Semantics(
-          button: true,
-          label: 'Volver',
-          child: IconButton(
-            icon: const Icon(Icons.arrow_back_rounded,
-                color: AppTheme.textPrimary, size: 28),
-            tooltip: 'Volver',
-            onPressed: () => Navigator.of(context).pop(),
-          ),
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back_rounded,
+              color: AppTheme.textPrimary, size: 28),
+          tooltip: 'Volver',
+          onPressed: () async {
+            final shouldPop = await _confirmDiscard();
+            if (shouldPop && mounted) Navigator.of(context).pop();
+          },
         ),
         title: const Text(
           'Nuevo Producto',
@@ -719,55 +755,77 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
           ),
         ),
       ),
-      // Fixed save button at the very bottom — never inside a scroll.
+      // Fixed Cancel + Save buttons at the bottom
       bottomNavigationBar: SafeArea(
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
-          child: SizedBox(
-            height: 60,
-            child: DecoratedBox(
-              decoration: BoxDecoration(
-                gradient: const LinearGradient(
-                  colors: [Color(0xFF667EEA), Color(0xFF764BA2)],
-                ),
-                borderRadius: BorderRadius.circular(18),
-                boxShadow: [
-                  BoxShadow(
-                    color: const Color(0xFF667EEA).withValues(alpha: 0.3),
-                    blurRadius: 12,
-                    offset: const Offset(0, 4),
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+          child: Row(
+            children: [
+              // Cancel button
+              SizedBox(
+                height: 56,
+                child: OutlinedButton(
+                  onPressed: () async {
+                    final shouldPop = await _confirmDiscard();
+                    if (shouldPop && mounted) Navigator.of(context).pop();
+                  },
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: AppTheme.textSecondary,
+                    side: const BorderSide(color: AppTheme.borderColor),
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(16)),
+                    padding: const EdgeInsets.symmetric(horizontal: 20),
                   ),
-                ],
-              ),
-              child: ElevatedButton.icon(
-                onPressed: _saving ? null : _save,
-                icon: _saving
-                    ? const SizedBox(
-                        width: 20,
-                        height: 20,
-                        child: CircularProgressIndicator(
-                            color: Colors.white, strokeWidth: 2.5),
-                      )
-                    : const Icon(Icons.save_rounded,
-                        size: 22, color: Colors.white),
-                label: Text(
-                  _saving ? 'Guardando...' : 'Guardar',
-                  style: const TextStyle(
-                    fontSize: 20,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.white,
-                  ),
-                ),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.transparent,
-                  shadowColor: Colors.transparent,
-                  minimumSize: const Size(double.infinity, 60),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(18),
-                  ),
+                  child: const Text('Cancelar',
+                      style: TextStyle(fontSize: 17, fontWeight: FontWeight.w600)),
                 ),
               ),
-            ),
+              const SizedBox(width: 10),
+              // Save button
+              Expanded(
+                child: SizedBox(
+                  height: 56,
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      gradient: const LinearGradient(
+                        colors: [Color(0xFF667EEA), Color(0xFF764BA2)],
+                      ),
+                      borderRadius: BorderRadius.circular(16),
+                      boxShadow: [
+                        BoxShadow(
+                          color: const Color(0xFF667EEA).withValues(alpha: 0.3),
+                          blurRadius: 10,
+                          offset: const Offset(0, 4),
+                        ),
+                      ],
+                    ),
+                    child: ElevatedButton.icon(
+                      onPressed: _saving ? null : _save,
+                      icon: _saving
+                          ? const SizedBox(
+                              width: 20, height: 20,
+                              child: CircularProgressIndicator(
+                                  color: Colors.white, strokeWidth: 2.5))
+                          : const Icon(Icons.save_rounded,
+                              size: 20, color: Colors.white),
+                      label: Text(
+                        _saving ? 'Guardando...' : 'Guardar',
+                        style: const TextStyle(
+                            fontSize: 19, fontWeight: FontWeight.bold,
+                            color: Colors.white),
+                      ),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.transparent,
+                        shadowColor: Colors.transparent,
+                        minimumSize: const Size(0, 56),
+                        shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(16)),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ],
           ),
         ),
       ),
@@ -1343,6 +1401,7 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
           ),
         ),
       ),
+    ), // PopScope
     );
   }
 
