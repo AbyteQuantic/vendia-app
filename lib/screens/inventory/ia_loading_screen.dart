@@ -51,8 +51,27 @@ class _IaLoadingScreenState extends State<IaLoadingScreen>
 
   Future<void> _scanInvoice() async {
     try {
+      final file = File(widget.imagePath);
+
+      // Safety net: verify file size before sending
+      final fileSize = await file.length();
+      if (fileSize > 5 * 1024 * 1024) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'La imagen es demasiado pesada. Intente de nuevo con mejor luz.',
+              style: TextStyle(fontSize: 16),
+            ),
+            backgroundColor: AppTheme.warning,
+          ),
+        );
+        Navigator.of(context).pop();
+        return;
+      }
+
       final api = ApiService(AuthService());
-      final result = await api.scanInvoice(File(widget.imagePath));
+      final result = await api.scanInvoice(file);
       if (!mounted) return;
       HapticFeedback.mediumImpact();
 

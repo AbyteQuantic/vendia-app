@@ -18,15 +18,48 @@ class AddMerchandiseScreen extends StatelessWidget {
     final picker = ImagePicker();
     final photo = await picker.pickImage(
       source: ImageSource.camera,
-      imageQuality: 85,
+      imageQuality: 75,
+      maxWidth: 1920,
+      maxHeight: 1920,
     );
-    if (photo != null && context.mounted) {
-      Navigator.of(context).push(
-        MaterialPageRoute(
-          builder: (_) => IaLoadingScreen(imagePath: photo.path),
+    if (photo == null || !context.mounted) return;
+
+    // Validate file size before sending to AI
+    final fileSize = await photo.length();
+    const maxBytes = 5 * 1024 * 1024; // 5 MB
+
+    if (fileSize > maxBytes) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Row(
+            children: [
+              Icon(Icons.photo_size_select_large_rounded,
+                  color: Colors.white, size: 24),
+              SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  'La foto es muy pesada. Tome la foto con buena luz y un poco más de lejos.',
+                  style: TextStyle(fontSize: 16),
+                ),
+              ),
+            ],
+          ),
+          backgroundColor: AppTheme.warning,
+          behavior: SnackBarBehavior.floating,
+          duration: const Duration(seconds: 5),
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
         ),
       );
+      return;
     }
+
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => IaLoadingScreen(imagePath: photo.path),
+      ),
+    );
   }
 
   @override
