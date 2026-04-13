@@ -257,6 +257,7 @@ class _BusinessProfileScreenState extends State<BusinessProfileScreen> {
       await _api.updateBusinessProfile(updates);
       if (!mounted) return;
       _showSnack('Perfil guardado correctamente');
+      Navigator.of(context).pop();
     } catch (e) {
       if (mounted) _showSnack('Error al guardar: $e', isError: true);
     } finally {
