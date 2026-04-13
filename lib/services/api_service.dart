@@ -32,6 +32,7 @@ class ApiService {
             !options.path.contains('/account/') &&
             !options.path.contains('/rockola/') ||
             options.path.contains('/api/v1/store/config') ||
+            options.path.contains('/api/v1/store/profile') ||
             options.path.contains('/api/v1/rockola/pending') ||
             options.path.contains('/api/v1/rockola/search');
 
@@ -891,13 +892,42 @@ class ApiService {
   }
 
   // ═══════════════════════════════════════════════════════════════════════════
-  // 15. LOGO IA
+  // 15a. BUSINESS PROFILE
   // ═══════════════════════════════════════════════════════════════════════════
 
-  Future<List<Map<String, dynamic>>> generateLogo() async {
+  Future<Map<String, dynamic>> fetchBusinessProfile() async {
     try {
-      final response = await _dio.post('/api/v1/tenant/generate-logo');
-      return _extractList(response);
+      final response = await _dio.get('/api/v1/store/profile');
+      return _extractData(response);
+    } on DioException catch (e) {
+      throw AppError.fromDioException(e);
+    }
+  }
+
+  Future<Map<String, dynamic>> updateBusinessProfile(
+      Map<String, dynamic> data) async {
+    try {
+      final response = await _dio.patch('/api/v1/store/profile', data: data);
+      return _extractData(response);
+    } on DioException catch (e) {
+      throw AppError.fromDioException(e);
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // 15b. LOGO IA
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  Future<Map<String, dynamic>> generateLogoAI({
+    required String businessName,
+    required String businessType,
+  }) async {
+    try {
+      final response = await _dio.post('/api/v1/tenant/generate-logo', data: {
+        'business_name': businessName,
+        'business_type': businessType,
+      });
+      return _extractData(response);
     } on DioException catch (e) {
       throw AppError.fromDioException(e);
     }
