@@ -25,7 +25,7 @@ class _BusinessProfileScreenState extends State<BusinessProfileScreen> {
   bool _saving = false;
   bool _uploadingLogo = false;
   String? _logoUrl;
-  String? _selectedBusinessType;
+  final Set<String> _selectedTypes = {};
 
   static const _businessTypes = [
     ('tienda_barrio', 'Tienda / Minimarket'),
@@ -62,7 +62,17 @@ class _BusinessProfileScreenState extends State<BusinessProfileScreen> {
         _logoUrl = (data['logo_url'] as String?)?.isNotEmpty == true
             ? data['logo_url']
             : null;
-        _selectedBusinessType = data['business_type'];
+
+        // Support both legacy single type and new array
+        final types = data['business_types'];
+        if (types is List) {
+          _selectedTypes.addAll(types.cast<String>());
+        }
+        // Fallback for legacy single value
+        final legacyType = data['business_type'];
+        if (legacyType is String && legacyType.isNotEmpty && _selectedTypes.isEmpty) {
+          _selectedTypes.add(legacyType);
+        }
         _loading = false;
       });
     } catch (e) {
@@ -71,6 +81,8 @@ class _BusinessProfileScreenState extends State<BusinessProfileScreen> {
       _showSnack('Error al cargar perfil: $e', isError: true);
     }
   }
+
+  // ── Logo Options ──────────────────────────────────────────────────────────
 
   void _showLogoOptions() {
     showModalBottomSheet(
@@ -96,7 +108,10 @@ class _BusinessProfileScreenState extends State<BusinessProfileScreen> {
             ),
             const Text(
               'Cambiar Logo',
-              style: TextStyle(fontSize: 24, fontWeight: FontWeight.w800),
+              style: TextStyle(
+                  fontSize: 24,
+                  fontWeight: FontWeight.w800,
+                  color: Colors.black87),
             ),
             const SizedBox(height: 20),
             _LogoOptionTile(
@@ -154,23 +169,23 @@ class _BusinessProfileScreenState extends State<BusinessProfileScreen> {
 
   Future<void> _generateLogoWithAI() async {
     final name = _nameCtrl.text.trim();
-    final type = _selectedBusinessType;
 
-    if (name.isEmpty || type == null) {
+    if (name.isEmpty || _selectedTypes.isEmpty) {
       _showSnack(
-        'Por favor, escriba el nombre y tipo de negocio primero para que la IA sepa qué dibujar.',
+        'Por favor, escriba el nombre y seleccione al menos un tipo de negocio para que la IA sepa qué dibujar.',
         isError: true,
       );
       return;
     }
 
-    // Find friendly label for business type
+    // Use first selected type's friendly label for the prompt
+    final firstType = _selectedTypes.first;
     final typeLabel = _businessTypes
-        .where((t) => t.$1 == type)
-        .map((t) => t.$2)
-        .firstOrNull ?? type;
+            .where((t) => t.$1 == firstType)
+            .map((t) => t.$2)
+            .firstOrNull ??
+        firstType;
 
-    // Show loading dialog
     if (!mounted) return;
     showDialog(
       context: context,
@@ -178,17 +193,22 @@ class _BusinessProfileScreenState extends State<BusinessProfileScreen> {
       builder: (_) => PopScope(
         canPop: false,
         child: AlertDialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
           content: const Column(
             mainAxisSize: MainAxisSize.min,
             children: [
               SizedBox(height: 16),
-              CircularProgressIndicator(color: Color(0xFF8B5CF6), strokeWidth: 3),
+              CircularProgressIndicator(
+                  color: Color(0xFF8B5CF6), strokeWidth: 3),
               SizedBox(height: 24),
               Text(
                 'Diseñando su logo...\nesto tomará unos segundos',
                 textAlign: TextAlign.center,
-                style: TextStyle(fontSize: 20, fontWeight: FontWeight.w600),
+                style: TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.black87),
               ),
               SizedBox(height: 8),
             ],
@@ -214,10 +234,12 @@ class _BusinessProfileScreenState extends State<BusinessProfileScreen> {
       }
     } catch (e) {
       if (!mounted) return;
-      Navigator.of(context).pop(); // close loading dialog
+      Navigator.of(context).pop();
       _showSnack('Error al generar logo: $e', isError: true);
     }
   }
+
+  // ── Save ───────────────────────────────────────────────────────────────────
 
   Future<void> _saveProfile() async {
     if (!_formKey.currentState!.validate()) return;
@@ -229,10 +251,8 @@ class _BusinessProfileScreenState extends State<BusinessProfileScreen> {
       final updates = <String, dynamic>{
         'business_name': _nameCtrl.text.trim(),
         'nit': _nitCtrl.text.trim(),
+        'business_types': _selectedTypes.toList(),
       };
-      if (_selectedBusinessType != null) {
-        updates['business_type'] = _selectedBusinessType;
-      }
 
       await _api.updateBusinessProfile(updates);
       if (!mounted) return;
@@ -254,6 +274,8 @@ class _BusinessProfileScreenState extends State<BusinessProfileScreen> {
       ),
     );
   }
+
+  // ── Build ──────────────────────────────────────────────────────────────────
 
   @override
   Widget build(BuildContext context) {
@@ -301,7 +323,9 @@ class _BusinessProfileScreenState extends State<BusinessProfileScreen> {
             TextFormField(
               controller: _nameCtrl,
               style: const TextStyle(
-                  fontSize: 20, color: Colors.black87, fontWeight: FontWeight.w500),
+                  fontSize: 20,
+                  color: Colors.black87,
+                  fontWeight: FontWeight.w500),
               decoration: const InputDecoration(
                 hintText: 'Ej: Tienda Don José',
                 prefixIcon: Icon(Icons.storefront_rounded, size: 24),
@@ -327,33 +351,76 @@ class _BusinessProfileScreenState extends State<BusinessProfileScreen> {
             ),
             const SizedBox(height: 24),
 
-            // ── Tipo de Negocio ───────────────────────────────────
-            _buildLabel('Tipo de Negocio'),
-            const SizedBox(height: 8),
-            DropdownButtonFormField<String>(
-              initialValue: _selectedBusinessType,
-              isExpanded: true,
-              style: const TextStyle(
-                  fontSize: 20, color: Colors.black87, fontWeight: FontWeight.w500),
-              decoration: const InputDecoration(
-                prefixIcon: Icon(Icons.category_rounded, size: 24),
-              ),
-              dropdownColor: Colors.white,
-              items: _businessTypes.map((t) {
-                return DropdownMenuItem(
-                  value: t.$1,
-                  child: Text(t.$2,
-                      style: const TextStyle(
-                          fontSize: 20, color: Colors.black87)),
-                );
-              }).toList(),
-              onChanged: (v) => setState(() => _selectedBusinessType = v),
-            ),
+            // ── Tipos de Negocio (Multi-Select) ───────────────────
+            _buildLabel('Tipo de Negocio (seleccione uno o más)'),
+            const SizedBox(height: 12),
+            _buildBusinessTypeChips(),
 
             const SizedBox(height: 40),
           ],
         ),
       ),
+    );
+  }
+
+  Widget _buildBusinessTypeChips() {
+    return Wrap(
+      spacing: 10,
+      runSpacing: 10,
+      children: _businessTypes.map((t) {
+        final key = t.$1;
+        final label = t.$2;
+        final selected = _selectedTypes.contains(key);
+        return GestureDetector(
+          onTap: () {
+            HapticFeedback.lightImpact();
+            setState(() {
+              if (selected) {
+                _selectedTypes.remove(key);
+              } else {
+                _selectedTypes.add(key);
+              }
+            });
+          },
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 200),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            decoration: BoxDecoration(
+              color: selected
+                  ? AppTheme.primary.withValues(alpha: 0.12)
+                  : Colors.white,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(
+                color: selected
+                    ? AppTheme.primary
+                    : const Color(0xFFD6D0C8),
+                width: selected ? 2 : 1,
+              ),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  selected
+                      ? Icons.check_circle_rounded
+                      : Icons.circle_outlined,
+                  color: selected ? AppTheme.primary : const Color(0xFFB0A99A),
+                  size: 22,
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  label,
+                  style: TextStyle(
+                    fontSize: 17,
+                    fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+                    color: Colors.black87,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      }).toList(),
     );
   }
 
@@ -431,8 +498,7 @@ class _BusinessProfileScreenState extends State<BusinessProfileScreen> {
         const SizedBox(height: 12),
         Text(
           _logoUrl != null ? 'Toque para cambiar' : 'Toque para agregar logo',
-          style: const TextStyle(
-              fontSize: 16, color: AppTheme.textSecondary),
+          style: const TextStyle(fontSize: 16, color: AppTheme.textSecondary),
         ),
       ],
     );
@@ -564,7 +630,9 @@ class _LogoOptionTile extends StatelessWidget {
                 children: [
                   Text(title,
                       style: const TextStyle(
-                          fontSize: 20, fontWeight: FontWeight.w700)),
+                          fontSize: 20,
+                          fontWeight: FontWeight.w700,
+                          color: Colors.black87)),
                   const SizedBox(height: 2),
                   Text(subtitle,
                       style: const TextStyle(
