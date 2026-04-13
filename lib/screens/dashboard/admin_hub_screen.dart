@@ -1,232 +1,58 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import '../../services/api_service.dart';
 import '../../services/auth_service.dart';
 import '../../theme/app_theme.dart';
 import '../auth/login_screen.dart';
 import 'business_profile_screen.dart';
+import 'payment_methods_screen.dart';
 import 'table_floor_plan_screen.dart';
 
 /// Admin Hub — Business configuration screen with Gerontodiseño.
-class AdminHubScreen extends StatelessWidget {
+class AdminHubScreen extends StatefulWidget {
   const AdminHubScreen({super.key});
 
   @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color(0xFFFFFBF7),
-      appBar: AppBar(
-        backgroundColor: const Color(0xFFFFFBF7),
-        elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back_rounded,
-              color: AppTheme.textPrimary, size: 28),
-          onPressed: () => Navigator.of(context).pop(),
-        ),
-        title: const Text(
-          'Mi Negocio',
-          style: TextStyle(
-            fontSize: 24,
-            fontWeight: FontWeight.w800,
-            color: AppTheme.textPrimary,
-          ),
-        ),
-      ),
-      body: SafeArea(
-        child: ListView(
-          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-          children: [
-            // ── Section: Perfil ──────────────────────────────────────
-            _SectionHeader(title: 'Perfil', icon: Icons.storefront_rounded),
-            const SizedBox(height: 8),
+  State<AdminHubScreen> createState() => _AdminHubScreenState();
+}
 
-            _SettingsTile(
-              icon: Icons.person_rounded,
-              iconColor: AppTheme.primary,
-              title: 'Perfil del Negocio',
-              subtitle: 'Nombre, NIT, logo y tipo de catálogo',
-              onTap: () => Navigator.of(context).push(
-                MaterialPageRoute(
-                    builder: (_) => const BusinessProfileScreen()),
-              ),
-            ),
+class _AdminHubScreenState extends State<AdminHubScreen> {
+  late final ApiService _api;
+  bool _enableFiados = true;
+  double _defaultMargin = 20;
+  bool _configLoaded = false;
 
-            // ── Section: Operación ──────────────────────────────────
-            const SizedBox(height: 20),
-            _SectionHeader(title: 'Operación', icon: Icons.settings_rounded),
-            const SizedBox(height: 8),
-
-            _SettingsTile(
-              icon: Icons.table_restaurant_rounded,
-              iconColor: const Color(0xFF3B82F6),
-              title: 'Gestión de Mesas',
-              subtitle: 'Distribuya las mesas de su local',
-              onTap: () => Navigator.of(context).push(
-                MaterialPageRoute(
-                    builder: (_) => const TableFloorPlanScreen()),
-              ),
-            ),
-            _SettingsTile(
-              icon: Icons.menu_book_rounded,
-              iconColor: const Color(0xFF6D28D9),
-              title: 'Configuración de Fiados',
-              subtitle: 'Habilitar o deshabilitar el cuaderno',
-              trailing: Switch.adaptive(
-                value: true, // TODO: read from settings
-                activeColor: const Color(0xFF6D28D9),
-                onChanged: (v) {
-                  HapticFeedback.lightImpact();
-                  // TODO: persist setting
-                },
-              ),
-              onTap: () {},
-            ),
-            _SettingsTile(
-              icon: Icons.trending_up_rounded,
-              iconColor: const Color(0xFF10B981),
-              title: 'Margen de Ganancia',
-              subtitle: 'Porcentaje aplicado a precios sugeridos',
-              trailing: const Text('20%',
-                  style: TextStyle(
-                      fontSize: 18, fontWeight: FontWeight.bold,
-                      color: Color(0xFF10B981))),
-              onTap: () => _showMarginConfig(context),
-            ),
-            _SettingsTile(
-              icon: Icons.receipt_long_rounded,
-              iconColor: const Color(0xFFEA580C),
-              title: 'Métodos de Pago',
-              subtitle: 'Nequi, Daviplata y transferencias',
-              onTap: () => _showComingSoon(context),
-            ),
-
-            // ── Section: Equipo ─────────────────────────────────────
-            const SizedBox(height: 20),
-            _SectionHeader(title: 'Equipo', icon: Icons.people_rounded),
-            const SizedBox(height: 8),
-
-            _SettingsTile(
-              icon: Icons.badge_rounded,
-              iconColor: const Color(0xFF10B981),
-              title: 'Empleados y Permisos',
-              subtitle: 'Cajeros, meseros y PINs de acceso',
-              onTap: () => _showComingSoon(context),
-            ),
-
-            // ── Section: Dispositivos ───────────────────────────────
-            const SizedBox(height: 20),
-            _SectionHeader(
-                title: 'Dispositivos', icon: Icons.devices_rounded),
-            const SizedBox(height: 8),
-
-            _SettingsTile(
-              icon: Icons.print_rounded,
-              iconColor: const Color(0xFF6366F1),
-              title: 'Impresora y Recibos',
-              subtitle: 'Conectar Bluetooth, mensaje de factura',
-              onTap: () => _showComingSoon(context),
-            ),
-            _SettingsTile(
-              icon: Icons.wifi_rounded,
-              iconColor: const Color(0xFF0EA5E9),
-              title: 'Conexión y Sincronización',
-              subtitle: 'Estado del servidor y datos pendientes',
-              onTap: () => _showComingSoon(context),
-            ),
-
-            // ── Logout ──────────────────────────────────────────────
-            const SizedBox(height: 28),
-            GestureDetector(
-              onTap: () async {
-                HapticFeedback.mediumImpact();
-                final confirm = await showDialog<bool>(
-                  context: context,
-                  builder: (ctx) => AlertDialog(
-                    shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(20)),
-                    title: const Text('¿Cerrar sesión?',
-                        style: TextStyle(fontSize: 22)),
-                    content: const Text(
-                      'Sus datos locales se mantendrán guardados.',
-                      style: TextStyle(fontSize: 17),
-                    ),
-                    actions: [
-                      TextButton(
-                        onPressed: () => Navigator.of(ctx).pop(false),
-                        child: const Text('Cancelar',
-                            style: TextStyle(fontSize: 18)),
-                      ),
-                      TextButton(
-                        onPressed: () => Navigator.of(ctx).pop(true),
-                        child: const Text('Cerrar sesión',
-                            style: TextStyle(
-                                fontSize: 18, color: AppTheme.error)),
-                      ),
-                    ],
-                  ),
-                );
-                if (confirm == true && context.mounted) {
-                  await AuthService().logout();
-                  if (!context.mounted) return;
-                  Navigator.of(context).pushAndRemoveUntil(
-                    MaterialPageRoute(builder: (_) => const LoginScreen()),
-                    (_) => false,
-                  );
-                }
-              },
-              child: Container(
-                width: double.infinity,
-                height: 64,
-                decoration: BoxDecoration(
-                  color: AppTheme.error.withValues(alpha: 0.08),
-                  borderRadius: BorderRadius.circular(18),
-                  border:
-                      Border.all(color: AppTheme.error.withValues(alpha: 0.2)),
-                ),
-                child: const Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(Icons.logout_rounded, color: AppTheme.error, size: 24),
-                    SizedBox(width: 10),
-                    Text('Cerrar Sesión',
-                        style: TextStyle(
-                            fontSize: 20,
-                            fontWeight: FontWeight.bold,
-                            color: AppTheme.error)),
-                  ],
-                ),
-              ),
-            ),
-
-            const SizedBox(height: 16),
-            Center(
-              child: Text(
-                'VendIA v2.0',
-                style: TextStyle(
-                    fontSize: 14, color: Colors.grey.shade400),
-              ),
-            ),
-            const SizedBox(height: 20),
-          ],
-        ),
-      ),
-    );
+  @override
+  void initState() {
+    super.initState();
+    _api = ApiService(AuthService());
+    _loadConfig();
   }
 
-  void _showComingSoon(BuildContext context) {
+  Future<void> _loadConfig() async {
+    try {
+      final data = await _api.fetchStoreConfig();
+      if (!mounted) return;
+      setState(() {
+        _enableFiados = data['enable_fiados'] as bool? ?? true;
+        _defaultMargin = (data['default_margin'] as num?)?.toDouble() ?? 20;
+        _configLoaded = true;
+      });
+    } catch (_) {
+      if (mounted) setState(() => _configLoaded = true);
+    }
+  }
+
+  Future<void> _toggleFiados(bool value) async {
+    setState(() => _enableFiados = value);
     HapticFeedback.lightImpact();
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: const Text('Próximamente disponible',
-            style: TextStyle(fontSize: 16)),
-        backgroundColor: AppTheme.primary,
-        behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      ),
-    );
+    try {
+      await _api.updateStoreConfig({'enable_fiados': value});
+    } catch (_) {}
   }
 
-  void _showMarginConfig(BuildContext context) {
-    final ctrl = TextEditingController(text: '20'); // TODO: read from settings
+  void _showMarginConfig() {
+    final ctrl = TextEditingController(text: _defaultMargin.round().toString());
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -251,10 +77,11 @@ class AdminHubScreen extends StatelessWidget {
                 ),
               ),
               const Text('Margen de Ganancia Global',
-                  style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
+                  style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold,
+                      color: Colors.black87)),
               const SizedBox(height: 8),
               const Text(
-                'Este porcentaje se aplica automáticamente al sugerir precios de venta cuando ingresa mercancía.',
+                'Este porcentaje se aplica al sugerir precios de venta cuando ingresa mercancía.',
                 textAlign: TextAlign.center,
                 style: TextStyle(fontSize: 16, color: AppTheme.textSecondary),
               ),
@@ -270,7 +97,8 @@ class AdminHubScreen extends StatelessWidget {
                       keyboardType: TextInputType.number,
                       textAlign: TextAlign.center,
                       style: const TextStyle(
-                          fontSize: 48, fontWeight: FontWeight.bold),
+                          fontSize: 48, fontWeight: FontWeight.bold,
+                          color: Colors.black87),
                       decoration: InputDecoration(
                         hintText: '20',
                         hintStyle: TextStyle(
@@ -286,41 +114,35 @@ class AdminHubScreen extends StatelessWidget {
                           color: AppTheme.textSecondary)),
                 ],
               ),
-              const SizedBox(height: 8),
-              Text(
-                'Ej: Compra \$2.000 → Venta sugerida \$${((2000 * (1 + (int.tryParse(ctrl.text) ?? 20) / 100) / 50).ceil() * 50)}',
-                style: const TextStyle(
-                    fontSize: 15, color: AppTheme.success,
-                    fontWeight: FontWeight.w600),
-              ),
               const SizedBox(height: 20),
               SizedBox(
                 width: double.infinity,
                 height: 64,
                 child: ElevatedButton.icon(
-                  onPressed: () {
+                  onPressed: () async {
                     HapticFeedback.mediumImpact();
-                    // TODO: persist margin to settings
+                    final value = double.tryParse(ctrl.text) ?? 20;
                     Navigator.of(ctx).pop();
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: Text(
-                          'Margen actualizado a ${ctrl.text}%',
-                          style: const TextStyle(fontSize: 16),
-                        ),
-                        backgroundColor: const Color(0xFF10B981),
+                    setState(() => _defaultMargin = value);
+                    try {
+                      await _api.updateStoreConfig({'default_margin': value});
+                    } catch (_) {}
+                    if (mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                        content: Text('Margen actualizado a ${value.round()}%',
+                            style: const TextStyle(fontSize: 16)),
+                        backgroundColor: AppTheme.success,
                         behavior: SnackBarBehavior.floating,
                         shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(12)),
-                      ),
-                    );
+                      ));
+                    }
                   },
                   icon: const Icon(Icons.check_rounded, size: 24),
                   label: const Text('Guardar',
-                      style: TextStyle(
-                          fontSize: 20, fontWeight: FontWeight.bold)),
+                      style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF10B981),
+                    backgroundColor: AppTheme.success,
                     foregroundColor: Colors.white,
                     shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(18)),
@@ -334,14 +156,200 @@ class AdminHubScreen extends StatelessWidget {
     );
   }
 
-}
+  void _showComingSoon() {
+    HapticFeedback.lightImpact();
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: const Text('Próximamente disponible',
+          style: TextStyle(fontSize: 16)),
+      backgroundColor: AppTheme.primary,
+      behavior: SnackBarBehavior.floating,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+    ));
+  }
 
-// ═══════════════════════════════════════════════════════════════════════════════
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: const Color(0xFFFFFBF7),
+      appBar: AppBar(
+        backgroundColor: const Color(0xFFFFFBF7),
+        elevation: 0,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back_rounded,
+              color: AppTheme.textPrimary, size: 28),
+          onPressed: () => Navigator.of(context).pop(),
+        ),
+        title: const Text('Mi Negocio',
+            style: TextStyle(fontSize: 24, fontWeight: FontWeight.w800,
+                color: AppTheme.textPrimary)),
+      ),
+      body: SafeArea(
+        child: ListView(
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+          children: [
+            // ── Perfil ──────────────────────────────────────────────
+            const _SectionHeader(title: 'Perfil', icon: Icons.storefront_rounded),
+            const SizedBox(height: 8),
+            _SettingsTile(
+              icon: Icons.person_rounded,
+              iconColor: AppTheme.primary,
+              title: 'Perfil del Negocio',
+              subtitle: 'Nombre, NIT, logo y tipo de catálogo',
+              onTap: () => Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const BusinessProfileScreen()),
+              ),
+            ),
+
+            // ── Operación ───────────────────────────────────────────
+            const SizedBox(height: 20),
+            const _SectionHeader(title: 'Operación', icon: Icons.settings_rounded),
+            const SizedBox(height: 8),
+            _SettingsTile(
+              icon: Icons.table_restaurant_rounded,
+              iconColor: const Color(0xFF3B82F6),
+              title: 'Gestión de Mesas',
+              subtitle: 'Distribuya las mesas de su local',
+              onTap: () => Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const TableFloorPlanScreen()),
+              ),
+            ),
+            _SettingsTile(
+              icon: Icons.menu_book_rounded,
+              iconColor: const Color(0xFF6D28D9),
+              title: 'Configuración de Fiados',
+              subtitle: _enableFiados ? 'Cuaderno habilitado' : 'Cuaderno deshabilitado',
+              trailing: Switch.adaptive(
+                value: _enableFiados,
+                activeTrackColor: const Color(0xFF6D28D9),
+                onChanged: _configLoaded ? _toggleFiados : null,
+              ),
+              onTap: () {},
+            ),
+            _SettingsTile(
+              icon: Icons.trending_up_rounded,
+              iconColor: const Color(0xFF10B981),
+              title: 'Margen de Ganancia',
+              subtitle: 'Porcentaje aplicado a precios sugeridos',
+              trailing: Text('${_defaultMargin.round()}%',
+                  style: const TextStyle(
+                      fontSize: 18, fontWeight: FontWeight.bold,
+                      color: Color(0xFF10B981))),
+              onTap: _showMarginConfig,
+            ),
+            _SettingsTile(
+              icon: Icons.receipt_long_rounded,
+              iconColor: const Color(0xFFEA580C),
+              title: 'Métodos de Pago',
+              subtitle: 'Nequi, Daviplata y transferencias',
+              onTap: () => Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const PaymentMethodsScreen()),
+              ),
+            ),
+
+            // ── Equipo ──────────────────────────────────────────────
+            const SizedBox(height: 20),
+            const _SectionHeader(title: 'Equipo', icon: Icons.people_rounded),
+            const SizedBox(height: 8),
+            _SettingsTile(
+              icon: Icons.badge_rounded,
+              iconColor: const Color(0xFF10B981),
+              title: 'Empleados y Permisos',
+              subtitle: 'Cajeros, meseros y PINs de acceso',
+              onTap: _showComingSoon,
+            ),
+
+            // ── Dispositivos ────────────────────────────────────────
+            const SizedBox(height: 20),
+            const _SectionHeader(title: 'Dispositivos', icon: Icons.devices_rounded),
+            const SizedBox(height: 8),
+            _SettingsTile(
+              icon: Icons.print_rounded,
+              iconColor: const Color(0xFF6366F1),
+              title: 'Impresora y Recibos',
+              subtitle: 'Conectar Bluetooth, mensaje de factura',
+              onTap: _showComingSoon,
+            ),
+            _SettingsTile(
+              icon: Icons.wifi_rounded,
+              iconColor: const Color(0xFF0EA5E9),
+              title: 'Conexión y Sincronización',
+              subtitle: 'Estado del servidor y datos pendientes',
+              onTap: _showComingSoon,
+            ),
+
+            // ── Logout ──────────────────────────────────────────────
+            const SizedBox(height: 28),
+            GestureDetector(
+              onTap: () async {
+                HapticFeedback.mediumImpact();
+                final confirm = await showDialog<bool>(
+                  context: context,
+                  builder: (ctx) => AlertDialog(
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(20)),
+                    title: const Text('¿Cerrar sesión?',
+                        style: TextStyle(fontSize: 22)),
+                    content: const Text(
+                        'Sus datos locales se mantendrán guardados.',
+                        style: TextStyle(fontSize: 17)),
+                    actions: [
+                      TextButton(
+                        onPressed: () => Navigator.of(ctx).pop(false),
+                        child: const Text('Cancelar',
+                            style: TextStyle(fontSize: 18)),
+                      ),
+                      TextButton(
+                        onPressed: () => Navigator.of(ctx).pop(true),
+                        child: const Text('Cerrar sesión',
+                            style: TextStyle(fontSize: 18, color: AppTheme.error)),
+                      ),
+                    ],
+                  ),
+                );
+                if (confirm == true && context.mounted) {
+                  await AuthService().logout();
+                  if (!context.mounted) return;
+                  Navigator.of(context).pushAndRemoveUntil(
+                    MaterialPageRoute(builder: (_) => const LoginScreen()),
+                    (_) => false,
+                  );
+                }
+              },
+              child: Container(
+                width: double.infinity, height: 64,
+                decoration: BoxDecoration(
+                  color: AppTheme.error.withValues(alpha: 0.08),
+                  borderRadius: BorderRadius.circular(18),
+                  border: Border.all(color: AppTheme.error.withValues(alpha: 0.2)),
+                ),
+                child: const Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(Icons.logout_rounded, color: AppTheme.error, size: 24),
+                    SizedBox(width: 10),
+                    Text('Cerrar Sesión',
+                        style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold,
+                            color: AppTheme.error)),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+            Center(
+              child: Text('VendIA v2.0',
+                  style: TextStyle(fontSize: 14, color: Colors.grey.shade400)),
+            ),
+            const SizedBox(height: 20),
+          ],
+        ),
+      ),
+    );
+  }
+}
 
 class _SectionHeader extends StatelessWidget {
   final String title;
   final IconData icon;
-
   const _SectionHeader({required this.title, required this.icon});
 
   @override
@@ -351,11 +359,8 @@ class _SectionHeader extends StatelessWidget {
         Icon(icon, color: AppTheme.textSecondary, size: 20),
         const SizedBox(width: 8),
         Text(title,
-            style: const TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.w700,
-                color: AppTheme.textSecondary,
-                letterSpacing: 0.5)),
+            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700,
+                color: AppTheme.textSecondary, letterSpacing: 0.5)),
       ],
     );
   }
@@ -370,12 +375,9 @@ class _SettingsTile extends StatelessWidget {
   final Widget? trailing;
 
   const _SettingsTile({
-    required this.icon,
-    required this.iconColor,
-    required this.title,
-    required this.subtitle,
-    required this.onTap,
-    this.trailing,
+    required this.icon, required this.iconColor,
+    required this.title, required this.subtitle,
+    required this.onTap, this.trailing,
   });
 
   @override
@@ -383,28 +385,21 @@ class _SettingsTile extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
       child: GestureDetector(
-        onTap: () {
-          HapticFeedback.lightImpact();
-          onTap();
-        },
+        onTap: () { HapticFeedback.lightImpact(); onTap(); },
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
           decoration: BoxDecoration(
             color: Colors.white,
             borderRadius: BorderRadius.circular(18),
             boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.03),
-                blurRadius: 6,
-                offset: const Offset(0, 2),
-              ),
+              BoxShadow(color: Colors.black.withValues(alpha: 0.03),
+                  blurRadius: 6, offset: const Offset(0, 2)),
             ],
           ),
           child: Row(
             children: [
               Container(
-                width: 48,
-                height: 48,
+                width: 48, height: 48,
                 decoration: BoxDecoration(
                   color: iconColor.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(14),
@@ -416,18 +411,16 @@ class _SettingsTile extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(title,
-                        style: const TextStyle(
-                            fontSize: 18, fontWeight: FontWeight.bold)),
-                    Text(subtitle,
-                        style: const TextStyle(
-                            fontSize: 14, color: AppTheme.textSecondary)),
+                    Text(title, style: const TextStyle(
+                        fontSize: 18, fontWeight: FontWeight.bold,
+                        color: Colors.black87)),
+                    Text(subtitle, style: const TextStyle(
+                        fontSize: 14, color: AppTheme.textSecondary)),
                   ],
                 ),
               ),
-              trailing ??
-                  const Icon(Icons.chevron_right_rounded,
-                      color: AppTheme.textSecondary, size: 24),
+              trailing ?? const Icon(Icons.chevron_right_rounded,
+                  color: AppTheme.textSecondary, size: 24),
             ],
           ),
         ),
