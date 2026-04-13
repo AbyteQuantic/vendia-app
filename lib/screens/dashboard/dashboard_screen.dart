@@ -169,6 +169,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     return Scaffold(
       backgroundColor: AppTheme.background,
       body: SafeArea(
+        bottom: false,
         child: ScrollConfiguration(
           behavior:
               ScrollConfiguration.of(context).copyWith(overscroll: false),
