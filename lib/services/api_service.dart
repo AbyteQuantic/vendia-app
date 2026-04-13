@@ -123,6 +123,23 @@ class ApiService {
     }
   }
 
+  /// Select a workspace (multi-workspace flow). Requires temp_token as auth.
+  Future<Map<String, dynamic>> selectWorkspace({
+    required String workspaceId,
+    required String tempToken,
+  }) async {
+    try {
+      final response = await _dio.post(
+        '/api/v1/auth/select-workspace',
+        data: {'workspace_id': workspaceId},
+        options: Options(headers: {'Authorization': 'Bearer $tempToken'}),
+      );
+      return response.data as Map<String, dynamic>;
+    } on DioException catch (e) {
+      throw AppError.fromDioException(e);
+    }
+  }
+
   Future<Map<String, dynamic>> registerTenantFull(
       Map<String, dynamic> payload) async {
     try {

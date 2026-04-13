@@ -6,7 +6,7 @@ import '../../services/auth_service.dart';
 import '../../theme/app_theme.dart';
 import '../dashboard/dashboard_screen.dart';
 import '../onboarding/onboarding_stepper.dart';
-import 'branch_selector_screen.dart';
+import 'branch_selector_screen.dart'; // exports WorkspaceInfo + WorkspaceSelectorScreen
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -61,33 +61,18 @@ class _LoginScreenState extends State<LoginScreen> {
         password: _pinCtrl.text.trim(),
       );
 
-      if (data.containsKey('access_token')) {
-        await _auth.saveSession(
-          accessToken: data['access_token'] as String,
-          refreshToken: data['refresh_token'] as String? ?? '',
-          tenant: (data['tenant'] as Map<String, dynamic>?) ?? {},
-        );
-      } else {
-        await _auth.saveLegacySession(
-          token: data['token'] as String,
-          tenantId: data['tenant_id'].toString(),
-          ownerName: data['owner_name'] as String,
-          businessName: data['business_name'] as String,
-        );
-      }
-
-      if (!mounted) return;
-
-      // Check if user has multiple branches
-      final branches = data['branches'] as List<dynamic>?;
-      if (branches != null && branches.length > 1) {
+      // ── Multi-workspace response: workspaces array ──────────────
+      final workspaces = data['workspaces'] as List<dynamic>?;
+      if (workspaces != null && workspaces.length > 1) {
+        if (!mounted) return;
         Navigator.of(context).pushReplacement(
           PageRouteBuilder(
-            pageBuilder: (_, animation, __) => BranchSelectorScreen(
-              ownerName: data['owner_name'] as String,
-              branches: branches
-                  .map((b) =>
-                      BranchInfo.fromJson(b as Map<String, dynamic>))
+            pageBuilder: (_, animation, __) => WorkspaceSelectorScreen(
+              userName: data['user_name'] as String? ?? '',
+              tempToken: data['temp_token'] as String? ?? '',
+              workspaces: workspaces
+                  .map((w) =>
+                      WorkspaceInfo.fromJson(w as Map<String, dynamic>))
                   .toList(),
             ),
             transitionsBuilder: (_, animation, __, child) => FadeTransition(
@@ -98,22 +83,41 @@ class _LoginScreenState extends State<LoginScreen> {
             transitionDuration: const Duration(milliseconds: 400),
           ),
         );
+        return;
+      }
+
+      // ── Single workspace or legacy response: save session + go to dashboard
+      if (data.containsKey('access_token')) {
+        await _auth.saveSession(
+          accessToken: data['access_token'] as String,
+          refreshToken: data['refresh_token'] as String? ?? '',
+          tenant: (data['tenant'] as Map<String, dynamic>?) ?? {},
+        );
       } else {
-        Navigator.of(context).pushReplacement(
-          PageRouteBuilder(
-            pageBuilder: (_, animation, __) => DashboardScreen(
-              ownerName: data['owner_name'] as String,
-              businessName: data['business_name'] as String,
-            ),
-            transitionsBuilder: (_, animation, __, child) => FadeTransition(
-              opacity:
-                  CurvedAnimation(parent: animation, curve: Curves.easeInOut),
-              child: child,
-            ),
-            transitionDuration: const Duration(milliseconds: 400),
-          ),
+        await _auth.saveLegacySession(
+          token: data['token'] as String,
+          tenantId: data['tenant_id'].toString(),
+          ownerName: data['owner_name'] as String? ?? '',
+          businessName: data['business_name'] as String? ?? '',
         );
       }
+
+      if (!mounted) return;
+
+      Navigator.of(context).pushReplacement(
+        PageRouteBuilder(
+          pageBuilder: (_, animation, __) => DashboardScreen(
+            ownerName: data['owner_name'] as String? ?? '',
+            businessName: data['business_name'] as String? ?? '',
+          ),
+          transitionsBuilder: (_, animation, __, child) => FadeTransition(
+            opacity:
+                CurvedAnimation(parent: animation, curve: Curves.easeInOut),
+            child: child,
+          ),
+          transitionDuration: const Duration(milliseconds: 400),
+        ),
+      );
     } on AppError catch (e) {
       HapticFeedback.heavyImpact();
       if (e.statusCode == 401) {

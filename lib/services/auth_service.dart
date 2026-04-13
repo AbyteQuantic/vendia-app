@@ -13,6 +13,9 @@ class AuthService {
   static const _keyChargeMode = 'vendia_charge_mode';
   static const _keyStoreSlug = 'vendia_store_slug';
   static const _keyLogoUrl = 'vendia_logo_url';
+  static const _keyUserId = 'vendia_user_id';
+  static const _keyBranchId = 'vendia_branch_id';
+  static const _keyRole = 'vendia_role';
 
   final FlutterSecureStorage _storage;
 
@@ -88,6 +91,10 @@ class AuthService {
   Future<String?> getStoreSlug() => _storage.read(key: _keyStoreSlug);
   Future<String?> getLogoUrl() => _storage.read(key: _keyLogoUrl);
 
+  /// Update cached logo URL after upload.
+  Future<void> updateLogoUrl(String url) =>
+      _storage.write(key: _keyLogoUrl, value: url);
+
   Future<String?> getTenantId() async {
     return _storage.read(key: _keyTenantId);
   }
@@ -109,6 +116,33 @@ class AuthService {
     final mode = await getChargeMode();
     return mode == 'post_payment';
   }
+
+  /// Save workspace session after workspace selection.
+  Future<void> saveWorkspaceSession({
+    required String accessToken,
+    required String refreshToken,
+    required String tenantId,
+    required String ownerName,
+    required String businessName,
+    String userId = '',
+    String branchId = '',
+    String role = '',
+  }) async {
+    await Future.wait([
+      _storage.write(key: _keyAccessToken, value: accessToken),
+      _storage.write(key: _keyRefreshToken, value: refreshToken),
+      _storage.write(key: _keyTenantId, value: tenantId),
+      _storage.write(key: _keyOwnerName, value: ownerName),
+      _storage.write(key: _keyBusinessName, value: businessName),
+      _storage.write(key: _keyUserId, value: userId),
+      _storage.write(key: _keyBranchId, value: branchId),
+      _storage.write(key: _keyRole, value: role),
+    ]);
+  }
+
+  Future<String?> getUserId() => _storage.read(key: _keyUserId);
+  Future<String?> getBranchId() => _storage.read(key: _keyBranchId);
+  Future<String?> getRole() => _storage.read(key: _keyRole);
 
   /// Logout — clear all secure storage.
   Future<void> logout() => _storage.deleteAll();
