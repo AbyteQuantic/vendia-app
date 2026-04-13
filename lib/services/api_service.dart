@@ -1196,4 +1196,29 @@ class ApiService {
     final list = (body['data'] as List?) ?? [];
     return list.cast<Map<String, dynamic>>();
   }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // 20. FLOOR PLAN TABLES
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  Future<List<Map<String, dynamic>>> fetchTables() async {
+    try {
+      final response = await _dio.get('/api/v1/tables');
+      return _extractList(response);
+    } on DioException catch (e) {
+      throw AppError.fromDioException(e);
+    }
+  }
+
+  Future<List<Map<String, dynamic>>> syncTables(
+      List<Map<String, dynamic>> tables) async {
+    try {
+      final response = await _dio.post('/api/v1/tables/sync', data: {
+        'tables': tables,
+      });
+      return _extractList(response);
+    } on DioException catch (e) {
+      throw AppError.fromDioException(e);
+    }
+  }
 }

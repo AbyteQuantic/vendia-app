@@ -3,6 +3,8 @@ import 'package:flutter/services.dart';
 import '../../services/auth_service.dart';
 import '../../theme/app_theme.dart';
 import '../auth/login_screen.dart';
+import 'business_profile_screen.dart';
+import 'table_floor_plan_screen.dart';
 
 /// Admin Hub — Business configuration screen with Gerontodiseño.
 class AdminHubScreen extends StatelessWidget {
@@ -42,7 +44,10 @@ class AdminHubScreen extends StatelessWidget {
               iconColor: AppTheme.primary,
               title: 'Perfil del Negocio',
               subtitle: 'Nombre, NIT, logo y tipo de catálogo',
-              onTap: () => _showComingSoon(context),
+              onTap: () => Navigator.of(context).push(
+                MaterialPageRoute(
+                    builder: (_) => const BusinessProfileScreen()),
+              ),
             ),
 
             // ── Section: Operación ──────────────────────────────────
@@ -54,8 +59,11 @@ class AdminHubScreen extends StatelessWidget {
               icon: Icons.table_restaurant_rounded,
               iconColor: const Color(0xFF3B82F6),
               title: 'Gestión de Mesas',
-              subtitle: '¿Cuántas mesas tiene su local?',
-              onTap: () => _showMesasConfig(context),
+              subtitle: 'Distribuya las mesas de su local',
+              onTap: () => Navigator.of(context).push(
+                MaterialPageRoute(
+                    builder: (_) => const TableFloorPlanScreen()),
+              ),
             ),
             _SettingsTile(
               icon: Icons.menu_book_rounded,
@@ -326,91 +334,6 @@ class AdminHubScreen extends StatelessWidget {
     );
   }
 
-  void _showMesasConfig(BuildContext context) {
-    final ctrl = TextEditingController(text: '12'); // TODO: read from settings
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (ctx) => Padding(
-        padding:
-            EdgeInsets.only(bottom: MediaQuery.of(ctx).viewInsets.bottom),
-        child: Container(
-          decoration: const BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
-          ),
-          padding: const EdgeInsets.fromLTRB(24, 16, 24, 24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(
-                width: 40,
-                height: 4,
-                margin: const EdgeInsets.only(bottom: 20),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFD6D0C8),
-                  borderRadius: BorderRadius.circular(2),
-                ),
-              ),
-              const Text('¿Cuántas mesas tiene su local?',
-                  style:
-                      TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
-              const SizedBox(height: 20),
-              TextField(
-                controller: ctrl,
-                autofocus: true,
-                keyboardType: TextInputType.number,
-                textAlign: TextAlign.center,
-                style: const TextStyle(
-                    fontSize: 48, fontWeight: FontWeight.bold),
-                decoration: InputDecoration(
-                  hintText: '0',
-                  hintStyle: TextStyle(
-                      fontSize: 48, color: Colors.grey.shade300),
-                  contentPadding: const EdgeInsets.symmetric(vertical: 16),
-                ),
-              ),
-              const SizedBox(height: 20),
-              SizedBox(
-                width: double.infinity,
-                height: 64,
-                child: ElevatedButton.icon(
-                  onPressed: () {
-                    HapticFeedback.mediumImpact();
-                    // TODO: persist table count to settings
-                    Navigator.of(ctx).pop();
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: Text(
-                          '✅ ${ctrl.text} mesas configuradas',
-                          style: const TextStyle(fontSize: 16),
-                        ),
-                        backgroundColor: const Color(0xFF10B981),
-                        behavior: SnackBarBehavior.floating,
-                        shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12)),
-                      ),
-                    );
-                  },
-                  icon: const Icon(Icons.check_rounded, size: 24),
-                  label: const Text('Guardar',
-                      style: TextStyle(
-                          fontSize: 20, fontWeight: FontWeight.bold)),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF3B82F6),
-                    foregroundColor: Colors.white,
-                    shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(18)),
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
