@@ -1274,4 +1274,35 @@ class ApiService {
       throw AppError.fromDioException(e);
     }
   }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // 23. EMPLOYEES
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  Future<List<Map<String, dynamic>>> fetchEmployees() async {
+    try {
+      final response = await _dio.get('/api/v1/employees');
+      return _extractList(response);
+    } on DioException catch (e) {
+      throw AppError.fromDioException(e);
+    }
+  }
+
+  Future<Map<String, dynamic>> createEmployee(
+      Map<String, dynamic> data) async {
+    try {
+      final response = await _dio.post('/api/v1/employees', data: data);
+      return _extractData(response);
+    } on DioException catch (e) {
+      throw AppError.fromDioException(e);
+    }
+  }
+
+  Future<void> deleteEmployee(String id) async {
+    try {
+      await _dio.delete('/api/v1/employees/$id');
+    } on DioException catch (e) {
+      throw AppError.fromDioException(e);
+    }
+  }
 }

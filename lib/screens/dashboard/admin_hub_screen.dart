@@ -6,7 +6,10 @@ import '../../theme/app_theme.dart';
 import '../auth/login_screen.dart';
 import 'business_profile_screen.dart';
 import 'payment_methods_screen.dart';
+import 'printer_config_screen.dart';
+import 'sync_screen.dart';
 import 'table_floor_plan_screen.dart';
+import 'employees_screen.dart';
 
 /// Admin Hub — Business configuration screen with Gerontodiseño.
 class AdminHubScreen extends StatefulWidget {
@@ -156,17 +159,6 @@ class _AdminHubScreenState extends State<AdminHubScreen> {
     );
   }
 
-  void _showComingSoon() {
-    HapticFeedback.lightImpact();
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-      content: const Text('Próximamente disponible',
-          style: TextStyle(fontSize: 16)),
-      backgroundColor: AppTheme.primary,
-      behavior: SnackBarBehavior.floating,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-    ));
-  }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -255,7 +247,9 @@ class _AdminHubScreenState extends State<AdminHubScreen> {
               iconColor: const Color(0xFF10B981),
               title: 'Empleados y Permisos',
               subtitle: 'Cajeros, meseros y PINs de acceso',
-              onTap: _showComingSoon,
+              onTap: () => Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const EmployeesScreen()),
+              ),
             ),
 
             // ── Dispositivos ────────────────────────────────────────
@@ -267,14 +261,18 @@ class _AdminHubScreenState extends State<AdminHubScreen> {
               iconColor: const Color(0xFF6366F1),
               title: 'Impresora y Recibos',
               subtitle: 'Conectar Bluetooth, mensaje de factura',
-              onTap: _showComingSoon,
+              onTap: () => Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const PrinterConfigScreen()),
+              ),
             ),
             _SettingsTile(
               icon: Icons.wifi_rounded,
               iconColor: const Color(0xFF0EA5E9),
               title: 'Conexión y Sincronización',
               subtitle: 'Estado del servidor y datos pendientes',
-              onTap: _showComingSoon,
+              onTap: () => Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const SyncScreen()),
+              ),
             ),
 
             // ── Logout ──────────────────────────────────────────────
