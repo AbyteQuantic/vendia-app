@@ -1239,4 +1239,35 @@ class ApiService {
     }
   }
 
+  // ═══════════════════════════════════════════════════════════════════════════
+  // PAYMENT METHODS
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  Future<List<Map<String, dynamic>>> fetchPaymentMethods() async {
+    try {
+      final response = await _dio.get('/api/v1/store/payment-methods');
+      return _extractList(response);
+    } on DioException catch (e) {
+      throw AppError.fromDioException(e);
+    }
+  }
+
+  Future<Map<String, dynamic>> createPaymentMethod(
+      Map<String, dynamic> data) async {
+    try {
+      final response =
+          await _dio.post('/api/v1/store/payment-methods', data: data);
+      return _extractData(response);
+    } on DioException catch (e) {
+      throw AppError.fromDioException(e);
+    }
+  }
+
+  Future<void> deletePaymentMethod(String id) async {
+    try {
+      await _dio.delete('/api/v1/store/payment-methods/$id');
+    } on DioException catch (e) {
+      throw AppError.fromDioException(e);
+    }
+  }
 }
