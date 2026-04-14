@@ -4,6 +4,7 @@ import '../../database/database_service.dart';
 import '../../database/collections/local_sale.dart';
 import '../../services/api_service.dart';
 import '../../services/auth_service.dart';
+import '../../services/margin_service.dart';
 import '../../theme/app_theme.dart';
 import 'sales_ideas_screen.dart';
 
@@ -32,6 +33,9 @@ class _FinancialDashboardScreenState extends State<FinancialDashboardScreen> {
 
   // Local sales for today
   List<LocalSale> _localSales = [];
+
+  // Employee performance
+  List<_EmployeePerf> _employeePerf = [];
 
   // AI suggestions
   List<String> _suggestions = [];
@@ -63,8 +67,12 @@ class _FinancialDashboardScreenState extends State<FinancialDashboardScreen> {
   Future<void> _loadLocalToday() async {
     final sales = await _db.getSalesToday();
     sales.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+    final margin = await MarginService.getMargin();
 
     double cash = 0, digital = 0, credit = 0;
+    // Employee grouping
+    final empMap = <String, _EmployeePerf>{};
+
     for (final s in sales) {
       switch (s.paymentMethod) {
         case 'cash':
@@ -76,9 +84,33 @@ class _FinancialDashboardScreenState extends State<FinancialDashboardScreen> {
         default:
           cash += s.total;
       }
+
+      // Group by employee
+      final empName = (s.employeeName != null && s.employeeName!.isNotEmpty)
+          ? s.employeeName!
+          : 'Sin asignar';
+      empMap.putIfAbsent(empName, () => _EmployeePerf(name: empName));
+      empMap[empName]!.totalSales += s.total;
+      empMap[empName]!.txCount += 1;
     }
 
     final total = sales.fold<double>(0, (sum, s) => sum + s.total);
+
+    // Profit = total - estimated cost using configured margin
+    // If margin is 20%, cost = total / 1.20
+    final estimatedCost = margin > 0 ? total / (1 + margin / 100) : total;
+    final profit = total - estimatedCost;
+
+    // Calculate per-employee profit proportionally
+    for (final emp in empMap.values) {
+      final empCost = margin > 0
+          ? emp.totalSales / (1 + margin / 100)
+          : emp.totalSales;
+      emp.profit = emp.totalSales - empCost;
+    }
+
+    final perfList = empMap.values.toList()
+      ..sort((a, b) => b.totalSales.compareTo(a.totalSales));
 
     if (mounted) {
       setState(() {
@@ -87,9 +119,10 @@ class _FinancialDashboardScreenState extends State<FinancialDashboardScreen> {
         _cashInDrawer = cash;
         _digitalMoney = digital;
         _accountsReceivable = credit;
-        _profit = 0; // Can't compute cost locally
-        _dailyAvg = total; // Today only
+        _profit = profit;
+        _dailyAvg = total;
         _localSales = sales;
+        _employeePerf = perfList;
       });
     }
   }
@@ -322,11 +355,8 @@ class _FinancialDashboardScreenState extends State<FinancialDashboardScreen> {
                       Expanded(
                         child: _FinCard(
                           icon: Icons.show_chart_rounded,
-                          label: _period == 'today'
-                              ? 'Utilidad estimada'
-                              : 'Promedio diario',
-                          value: _fmt(
-                              _period == 'today' ? _totalSales : _dailyAvg),
+                          label: 'Utilidad estimada',
+                          value: _fmt(_profit),
                           bgColor: Colors.purple.shade50,
                           fgColor: Colors.purple.shade800,
                         ),
@@ -407,6 +437,95 @@ class _FinancialDashboardScreenState extends State<FinancialDashboardScreen> {
                   ),
                   ),
                   const SizedBox(height: 24),
+
+                  // ── Employee performance ───────────────────────────
+                  if (_employeePerf.isNotEmpty) ...[
+                    const Row(
+                      children: [
+                        Icon(Icons.people_rounded,
+                            color: AppTheme.textPrimary, size: 22),
+                        SizedBox(width: 8),
+                        Text('Rendimiento del Equipo',
+                            style: TextStyle(
+                                fontSize: 20,
+                                fontWeight: FontWeight.bold,
+                                color: AppTheme.textPrimary)),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    Container(
+                      decoration: BoxDecoration(
+                        color: AppTheme.surfaceGrey,
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      child: ListView.separated(
+                        shrinkWrap: true,
+                        physics: const NeverScrollableScrollPhysics(),
+                        itemCount: _employeePerf.length,
+                        separatorBuilder: (_, __) =>
+                            const Divider(height: 1, indent: 72, endIndent: 20),
+                        itemBuilder: (_, i) {
+                          final emp = _employeePerf[i];
+                          final initial = emp.name.isNotEmpty
+                              ? emp.name[0].toUpperCase()
+                              : '?';
+                          return Padding(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 16, vertical: 14),
+                            child: Row(
+                              children: [
+                                CircleAvatar(
+                                  radius: 24,
+                                  backgroundColor: AppTheme.primary
+                                      .withValues(alpha: 0.12),
+                                  child: Text(initial,
+                                      style: const TextStyle(
+                                          fontSize: 20,
+                                          fontWeight: FontWeight.bold,
+                                          color: AppTheme.primary)),
+                                ),
+                                const SizedBox(width: 14),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Text(emp.name,
+                                          style: const TextStyle(
+                                              fontSize: 17,
+                                              fontWeight: FontWeight.w600,
+                                              color: AppTheme.textPrimary)),
+                                      Text(
+                                          '${emp.txCount} venta${emp.txCount > 1 ? 's' : ''} registrada${emp.txCount > 1 ? 's' : ''}',
+                                          style: const TextStyle(
+                                              fontSize: 14,
+                                              color: AppTheme.textSecondary)),
+                                    ],
+                                  ),
+                                ),
+                                Column(
+                                  crossAxisAlignment: CrossAxisAlignment.end,
+                                  children: [
+                                    Text(_fmt(emp.totalSales),
+                                        style: const TextStyle(
+                                            fontSize: 18,
+                                            fontWeight: FontWeight.bold,
+                                            color: AppTheme.primary)),
+                                    Text('Ganancia: ${_fmt(emp.profit)}',
+                                        style: TextStyle(
+                                            fontSize: 13,
+                                            fontWeight: FontWeight.w600,
+                                            color: Colors.green.shade700)),
+                                  ],
+                                ),
+                              ],
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                    const SizedBox(height: 24),
+                  ],
 
                   // ── Sales history ──────────────────────────────────
                   const Text('Historial de ventas',
@@ -561,4 +680,18 @@ class _FinCard extends StatelessWidget {
       ),
     );
   }
+}
+
+class _EmployeePerf {
+  final String name;
+  double totalSales;
+  double profit;
+  int txCount;
+
+  _EmployeePerf({
+    required this.name,
+    this.totalSales = 0,
+    this.profit = 0,
+    this.txCount = 0,
+  });
 }
