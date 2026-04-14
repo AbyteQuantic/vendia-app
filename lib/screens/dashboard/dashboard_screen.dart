@@ -9,6 +9,7 @@ import '../../widgets/stat_card.dart';
 import '../inventory/add_merchandise_screen.dart';
 import '../pos/pos_screen.dart';
 import 'admin_hub_screen.dart';
+import 'financial_dashboard_screen.dart';
 
 // ── Dashboard Data (computed from Isar) ─────────────────────────────────────
 
@@ -252,7 +253,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                 color: Colors.transparent,
                                 child: InkWell(
                                   borderRadius: BorderRadius.circular(20),
-                                  onTap: () => HapticFeedback.lightImpact(),
+                                  onTap: () {
+                                    HapticFeedback.lightImpact();
+                                    Navigator.of(context).push(MaterialPageRoute(
+                                      builder: (_) => const FinancialDashboardScreen(),
+                                    ));
+                                  },
                                   child: StatCard(
                                     label: 'Ventas de hoy',
                                     value: _formatCOP(

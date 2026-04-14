@@ -1290,4 +1290,39 @@ class ApiService {
       throw AppError.fromDioException(e);
     }
   }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // FINANCIAL ANALYTICS
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  Future<Map<String, dynamic>> fetchFinancialSummary({
+    String period = 'today',
+  }) async {
+    try {
+      final response = await _dio.get(
+        '/api/v1/analytics/financial-summary',
+        queryParameters: {'period': period},
+      );
+      return _extractData(response);
+    } on DioException catch (e) {
+      throw AppError.fromDioException(e);
+    }
+  }
+
+  Future<List<dynamic>> fetchSalesHistoryByPeriod({
+    String period = 'today',
+    int page = 1,
+    int perPage = 50,
+  }) async {
+    try {
+      final response = await _dio.get(
+        '/api/v1/analytics/sales-history',
+        queryParameters: {'period': period, 'page': page, 'per_page': perPage},
+      );
+      final body = response.data as Map<String, dynamic>;
+      return (body['data'] as List?) ?? [];
+    } on DioException catch (e) {
+      throw AppError.fromDioException(e);
+    }
+  }
 }
