@@ -38,18 +38,8 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   bool get _canConfirm =>
       !_isCash || _amountTendered >= widget.total;
 
-  /// Bills >= total, max 4, plus always show $100.000 if total > 50k
-  List<int> get _smartBills {
-    final eligible = _denominations
-        .where((d) => d >= widget.total)
-        .take(4)
-        .toList();
-    if (eligible.isEmpty) {
-      // Total > 100k, show the biggest
-      return [100000];
-    }
-    return eligible;
-  }
+  /// Always show all common denominations so the user can combine
+  List<int> get _smartBills => _denominations;
 
   void _setTendered(double value) {
     setState(() {
