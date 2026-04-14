@@ -14,6 +14,8 @@ import 'checkout_screen.dart';
 import 'sale_success_screen.dart';
 import 'cuaderno_fiados_screen.dart';
 import '../../database/database_service.dart';
+import '../../services/api_service.dart';
+import '../../services/auth_service.dart';
 import '../../database/collections/local_sale.dart';
 import '../inventory/add_merchandise_screen.dart';
 
@@ -40,6 +42,21 @@ class _PosScreenBody extends StatefulWidget {
 
 class _PosScreenBodyState extends State<_PosScreenBody> {
   final _searchCtrl = TextEditingController();
+  List<Map<String, dynamic>> _tables = [];
+
+  @override
+  void initState() {
+    super.initState();
+    _loadTables();
+  }
+
+  Future<void> _loadTables() async {
+    try {
+      final api = ApiService(AuthService());
+      final tables = await api.fetchTables();
+      if (mounted) setState(() => _tables = tables);
+    } catch (_) {}
+  }
 
   @override
   void dispose() {
@@ -154,50 +171,68 @@ class _PosScreenBodyState extends State<_PosScreenBody> {
                 style: TextStyle(fontSize: 15, color: accentColor,
                     fontWeight: FontWeight.w600)),
             const SizedBox(height: 16),
-            GridView.builder(
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                crossAxisCount: 4,
-                mainAxisSpacing: 10,
-                crossAxisSpacing: 10,
-                childAspectRatio: 1.3,
-              ),
-              itemCount: 12,
-              itemBuilder: (_, i) {
-                final label = 'Mesa ${i + 1}';
-                return GestureDetector(
-                  onTap: () {
-                    HapticFeedback.mediumImpact();
-                    ctrl.setContext(AccountContext(
-                      type: mesaType,
-                      tableLabel: label,
-                    ));
-                    Navigator.of(context).pop();
-                  },
-                  child: Container(
-                    decoration: BoxDecoration(
-                      color: accentColor.withValues(alpha: 0.08),
-                      borderRadius: BorderRadius.circular(14),
-                      border: Border.all(color: accentColor.withValues(alpha: 0.3)),
+            _tables.isEmpty
+                ? Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 24),
+                    child: Text(
+                      'No hay mesas configuradas.\nVaya a Mi Negocio > Gestión de Mesas.',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(fontSize: 16, color: Colors.grey.shade500),
                     ),
-                    alignment: Alignment.center,
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(Icons.table_restaurant_rounded,
-                            color: accentColor, size: 24),
-                        const SizedBox(height: 2),
-                        Text('${i + 1}',
-                            style: TextStyle(
-                                fontSize: 16, fontWeight: FontWeight.bold,
-                                color: accentColor)),
-                      ],
+                  )
+                : GridView.builder(
+                    shrinkWrap: true,
+                    physics: const NeverScrollableScrollPhysics(),
+                    gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                      crossAxisCount: 4,
+                      mainAxisSpacing: 10,
+                      crossAxisSpacing: 10,
+                      childAspectRatio: 1.3,
                     ),
+                    itemCount: _tables.length,
+                    itemBuilder: (_, i) {
+                      final t = _tables[i];
+                      final label = t['label'] as String? ?? 'Mesa ${i + 1}';
+                      return GestureDetector(
+                        onTap: () {
+                          HapticFeedback.mediumImpact();
+                          ctrl.setContext(AccountContext(
+                            type: mesaType,
+                            tableLabel: label,
+                          ));
+                          Navigator.of(context).pop();
+                        },
+                        child: Container(
+                          decoration: BoxDecoration(
+                            color: accentColor.withValues(alpha: 0.08),
+                            borderRadius: BorderRadius.circular(14),
+                            border: Border.all(color: accentColor.withValues(alpha: 0.3)),
+                          ),
+                          alignment: Alignment.center,
+                          child: FittedBox(
+                            fit: BoxFit.scaleDown,
+                            child: Padding(
+                              padding: const EdgeInsets.all(4),
+                              child: Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Icon(Icons.table_restaurant_rounded,
+                                      color: accentColor, size: 24),
+                                  const SizedBox(height: 2),
+                                  Text(label,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: TextStyle(
+                                          fontSize: 13, fontWeight: FontWeight.bold,
+                                          color: accentColor)),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                      );
+                    },
                   ),
-                );
-              },
-            ),
           ],
         ),
       ),
