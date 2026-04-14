@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import '../../database/database_service.dart';
+import '../../database/collections/local_sale.dart';
 import '../../services/api_service.dart';
 import '../../services/auth_service.dart';
 import '../../theme/app_theme.dart';
@@ -14,16 +16,27 @@ class FinancialDashboardScreen extends StatefulWidget {
 
 class _FinancialDashboardScreenState extends State<FinancialDashboardScreen> {
   late final ApiService _api;
+  final _db = DatabaseService.instance;
   String _period = 'today';
-  Map<String, dynamic> _summary = {};
-  List<dynamic> _sales = [];
   bool _loading = true;
 
-  static const _periodLabels = {
-    'today': 'Hoy',
-    'week': 'Semana',
-    'month': 'Mes',
-  };
+  // Financial data
+  double _totalSales = 0;
+  int _txCount = 0;
+  double _cashInDrawer = 0;
+  double _digitalMoney = 0;
+  double _accountsReceivable = 0;
+  double _profit = 0;
+  double _dailyAvg = 0;
+
+  // Local sales for today
+  List<LocalSale> _localSales = [];
+
+  // AI suggestions
+  List<String> _suggestions = [];
+  bool _suggestionsLoading = true;
+
+  static const _periods = {'today': 'Hoy', 'week': 'Semana', 'month': 'Mes'};
 
   @override
   void initState() {
@@ -34,23 +47,110 @@ class _FinancialDashboardScreenState extends State<FinancialDashboardScreen> {
 
   Future<void> _load() async {
     setState(() => _loading = true);
-    try {
-      final summaryRes = await _api.fetchFinancialSummary(period: _period);
-      final historyRes = await _api.fetchSalesHistoryByPeriod(period: _period);
-      if (mounted) {
-        setState(() {
-          _summary = summaryRes;
-          _sales = historyRes;
-          _loading = false;
-        });
+
+    if (_period == 'today') {
+      await _loadLocalToday();
+    } else {
+      await _loadFromServer();
+    }
+
+    _loadSuggestions();
+    if (mounted) setState(() => _loading = false);
+  }
+
+  /// "Hoy" uses Isar local data — same source as the Home dashboard
+  Future<void> _loadLocalToday() async {
+    final sales = await _db.getSalesToday();
+    sales.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+
+    double cash = 0, digital = 0, credit = 0;
+    for (final s in sales) {
+      switch (s.paymentMethod) {
+        case 'cash':
+          cash += s.total;
+        case 'transfer' || 'card' || 'nequi' || 'daviplata':
+          digital += s.total;
+        case 'credit':
+          credit += s.total;
+        default:
+          cash += s.total;
       }
-    } catch (e) {
-      if (mounted) setState(() => _loading = false);
+    }
+
+    final total = sales.fold<double>(0, (sum, s) => sum + s.total);
+
+    if (mounted) {
+      setState(() {
+        _totalSales = total;
+        _txCount = sales.length;
+        _cashInDrawer = cash;
+        _digitalMoney = digital;
+        _accountsReceivable = credit;
+        _profit = 0; // Can't compute cost locally
+        _dailyAvg = total; // Today only
+        _localSales = sales;
+      });
     }
   }
 
-  String _fmt(num? amount) {
-    final v = (amount ?? 0).round();
+  /// Semana/Mes uses the backend aggregation endpoint
+  Future<void> _loadFromServer() async {
+    try {
+      final data = await _api.fetchFinancialSummary(period: _period);
+      if (mounted) {
+        setState(() {
+          _totalSales = (data['total_sales'] as num?)?.toDouble() ?? 0;
+          _txCount = (data['transaction_count'] as num?)?.toInt() ?? 0;
+          _cashInDrawer = (data['cash_in_drawer'] as num?)?.toDouble() ?? 0;
+          _digitalMoney = (data['digital_money'] as num?)?.toDouble() ?? 0;
+          _accountsReceivable =
+              (data['accounts_receivable'] as num?)?.toDouble() ?? 0;
+          _profit = (data['total_profit'] as num?)?.toDouble() ?? 0;
+          _dailyAvg = (data['daily_average'] as num?)?.toDouble() ?? 0;
+          _localSales = []; // No local data for historical periods
+        });
+      }
+    } catch (_) {
+      // If server fails for historical, show zeros
+    }
+  }
+
+  void _loadSuggestions() {
+    setState(() => _suggestionsLoading = true);
+
+    // Smart local suggestions based on sales data
+    final tips = <String>[];
+    if (_txCount == 0) {
+      tips.add('Registre su primera venta del dia para ver estadisticas.');
+    } else {
+      if (_cashInDrawer > _digitalMoney && _digitalMoney == 0) {
+        tips.add(
+            'Todas las ventas son en efectivo. Active Nequi o Daviplata para captar mas clientes.');
+      }
+      if (_txCount < 5) {
+        tips.add(
+            'Pocas ventas hoy. Considere una promocion "2x1" en productos de baja rotacion.');
+      }
+      if (_accountsReceivable > _totalSales * 0.3 &&
+          _accountsReceivable > 0) {
+        tips.add(
+            'Las cuentas por cobrar son altas. Envie recordatorios por WhatsApp.');
+      }
+    }
+    if (tips.isEmpty) {
+      tips.add('Siga asi. Sus ventas van bien hoy.');
+    }
+
+    if (mounted) {
+      setState(() {
+        _suggestions = tips;
+        _suggestionsLoading = false;
+      });
+    }
+  }
+
+  String _fmt(double amount) {
+    final v = amount.round();
     if (v == 0) return '\$0';
     final s = v.abs().toString();
     final buffer = StringBuffer(v < 0 ? '-\$' : '\$');
@@ -63,10 +163,7 @@ class _FinancialDashboardScreenState extends State<FinancialDashboardScreen> {
     return buffer.toString();
   }
 
-  String _timeAgo(String? iso) {
-    if (iso == null) return '';
-    final dt = DateTime.tryParse(iso);
-    if (dt == null) return '';
+  String _timeAgo(DateTime dt) {
     final diff = DateTime.now().difference(dt);
     if (diff.inMinutes < 1) return 'Ahora';
     if (diff.inMinutes < 60) return 'Hace ${diff.inMinutes} min';
@@ -74,7 +171,7 @@ class _FinancialDashboardScreenState extends State<FinancialDashboardScreen> {
     return 'Hace ${diff.inDays}d';
   }
 
-  String _methodIcon(String? method) => switch (method) {
+  String _methodLabel(String m) => switch (m) {
         'transfer' => 'Transferencia',
         'card' => 'Tarjeta',
         'credit' => 'Fiado',
@@ -94,11 +191,14 @@ class _FinancialDashboardScreenState extends State<FinancialDashboardScreen> {
           onPressed: () => Navigator.of(context).pop(),
         ),
         title: const Text('Finanzas',
-            style: TextStyle(fontSize: 24, fontWeight: FontWeight.w800,
+            style: TextStyle(
+                fontSize: 24,
+                fontWeight: FontWeight.w800,
                 color: AppTheme.textPrimary)),
       ),
       body: _loading
-          ? const Center(child: CircularProgressIndicator(color: AppTheme.primary))
+          ? const Center(
+              child: CircularProgressIndicator(color: AppTheme.primary))
           : RefreshIndicator(
               color: AppTheme.primary,
               onRefresh: _load,
@@ -107,8 +207,8 @@ class _FinancialDashboardScreenState extends State<FinancialDashboardScreen> {
                 children: [
                   // ── Period selector ─────────────────────────────────
                   Row(
-                    children: _periodLabels.entries.map((e) {
-                      final selected = _period == e.key;
+                    children: _periods.entries.map((e) {
+                      final sel = _period == e.key;
                       return Padding(
                         padding: const EdgeInsets.only(right: 8),
                         child: GestureDetector(
@@ -122,16 +222,15 @@ class _FinancialDashboardScreenState extends State<FinancialDashboardScreen> {
                             padding: const EdgeInsets.symmetric(
                                 horizontal: 20, vertical: 10),
                             decoration: BoxDecoration(
-                              color: selected
-                                  ? AppTheme.primary
-                                  : AppTheme.surfaceGrey,
+                              color:
+                                  sel ? AppTheme.primary : AppTheme.surfaceGrey,
                               borderRadius: BorderRadius.circular(14),
                             ),
                             child: Text(e.value,
                                 style: TextStyle(
                                     fontSize: 16,
                                     fontWeight: FontWeight.w700,
-                                    color: selected
+                                    color: sel
                                         ? Colors.white
                                         : AppTheme.textSecondary)),
                           ),
@@ -141,84 +240,170 @@ class _FinancialDashboardScreenState extends State<FinancialDashboardScreen> {
                   ),
                   const SizedBox(height: 20),
 
-                  // ── Summary cards ──────────────────────────────────
-                  Row(
-                    children: [
-                      Expanded(
-                        child: _SummaryCard(
-                          icon: Icons.trending_up_rounded,
-                          color: AppTheme.success,
-                          label: 'Ventas',
-                          value: _fmt(_summary['total_sales'] as num?),
-                          subtitle: '${(_summary['transaction_count'] as num?)?.toInt() ?? 0} transacciones',
-                        ),
+                  // ── Total ventas (hero card) ───────────────────────
+                  Container(
+                    padding: const EdgeInsets.all(20),
+                    decoration: BoxDecoration(
+                      gradient: const LinearGradient(
+                        colors: [Color(0xFF1A2FA0), Color(0xFF2541B2)],
                       ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: _SummaryCard(
-                          icon: Icons.account_balance_wallet_rounded,
-                          color: const Color(0xFF10B981),
-                          label: 'Utilidad',
-                          value: _fmt(_summary['total_profit'] as num?),
+                      borderRadius: BorderRadius.circular(24),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            const Icon(Icons.trending_up_rounded,
+                                color: Colors.white70, size: 22),
+                            const SizedBox(width: 8),
+                            Text('Ventas ${_periods[_period]}',
+                                style: const TextStyle(
+                                    fontSize: 16,
+                                    color: Colors.white70,
+                                    fontWeight: FontWeight.w500)),
+                          ],
                         ),
-                      ),
-                    ],
+                        const SizedBox(height: 8),
+                        FittedBox(
+                          fit: BoxFit.scaleDown,
+                          child: Text(_fmt(_totalSales),
+                              style: const TextStyle(
+                                  fontSize: 40,
+                                  fontWeight: FontWeight.w800,
+                                  color: Colors.white)),
+                        ),
+                        Text('$_txCount transacciones',
+                            style: const TextStyle(
+                                fontSize: 15, color: Colors.white54)),
+                      ],
+                    ),
                   ),
-                  const SizedBox(height: 12),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: _SummaryCard(
-                          icon: Icons.payments_rounded,
-                          color: const Color(0xFF3B82F6),
-                          label: 'Efectivo en caja',
-                          value: _fmt(_summary['cash_in_drawer'] as num?),
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: _SummaryCard(
-                          icon: Icons.phone_android_rounded,
-                          color: const Color(0xFF8B5CF6),
-                          label: 'Digital',
-                          value: _fmt(_summary['digital_money'] as num?),
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: _SummaryCard(
-                          icon: Icons.menu_book_rounded,
-                          color: const Color(0xFFF59E0B),
-                          label: 'Cuentas x cobrar',
-                          value: _fmt(_summary['accounts_receivable'] as num?),
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: _SummaryCard(
-                          icon: Icons.show_chart_rounded,
-                          color: AppTheme.textSecondary,
-                          label: 'Promedio diario',
-                          value: _fmt(_summary['daily_average'] as num?),
-                        ),
-                      ),
-                    ],
-                  ),
+                  const SizedBox(height: 16),
 
-                  const SizedBox(height: 28),
+                  // ── Financial grid ─────────────────────────────────
+                  Row(
+                    children: [
+                      Expanded(
+                        child: _FinCard(
+                          icon: Icons.payments_rounded,
+                          label: 'Efectivo en caja',
+                          value: _fmt(_cashInDrawer),
+                          bgColor: Colors.green.shade50,
+                          fgColor: Colors.green.shade800,
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: _FinCard(
+                          icon: Icons.phone_android_rounded,
+                          label: 'Dinero digital',
+                          value: _fmt(_digitalMoney),
+                          bgColor: Colors.blue.shade50,
+                          fgColor: Colors.blue.shade800,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: _FinCard(
+                          icon: Icons.menu_book_rounded,
+                          label: 'Cuentas x cobrar',
+                          value: _fmt(_accountsReceivable),
+                          bgColor: Colors.orange.shade50,
+                          fgColor: Colors.orange.shade800,
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: _FinCard(
+                          icon: Icons.show_chart_rounded,
+                          label: _period == 'today'
+                              ? 'Utilidad estimada'
+                              : 'Promedio diario',
+                          value: _fmt(
+                              _period == 'today' ? _totalSales : _dailyAvg),
+                          bgColor: Colors.purple.shade50,
+                          fgColor: Colors.purple.shade800,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 24),
+
+                  // ── AI Suggestions ─────────────────────────────────
+                  Container(
+                    padding: const EdgeInsets.all(20),
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        colors: [
+                          const Color(0xFF7C3AED).withValues(alpha: 0.08),
+                          const Color(0xFF3B82F6).withValues(alpha: 0.06),
+                        ],
+                      ),
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(
+                        color:
+                            const Color(0xFF7C3AED).withValues(alpha: 0.2),
+                      ),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Row(
+                          children: [
+                            Icon(Icons.auto_awesome_rounded,
+                                color: Color(0xFF7C3AED), size: 22),
+                            SizedBox(width: 8),
+                            Text('Ideas para Vender Mas',
+                                style: TextStyle(
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.w700,
+                                    color: Color(0xFF7C3AED))),
+                          ],
+                        ),
+                        const SizedBox(height: 12),
+                        if (_suggestionsLoading)
+                          const Center(
+                              child: CircularProgressIndicator(
+                                  color: Color(0xFF7C3AED), strokeWidth: 2))
+                        else
+                          for (final tip in _suggestions) ...[
+                            Padding(
+                              padding: const EdgeInsets.only(bottom: 8),
+                              child: Row(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  const Text('💡 ',
+                                      style: TextStyle(fontSize: 16)),
+                                  Expanded(
+                                    child: Text(tip,
+                                        style: const TextStyle(
+                                            fontSize: 16,
+                                            color: Colors.black87,
+                                            height: 1.4)),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 24),
 
                   // ── Sales history ──────────────────────────────────
-                  Text('Historial de ventas',
-                      style: const TextStyle(fontSize: 20,
+                  const Text('Historial de ventas',
+                      style: TextStyle(
+                          fontSize: 20,
                           fontWeight: FontWeight.bold,
                           color: AppTheme.textPrimary)),
                   const SizedBox(height: 12),
 
-                  if (_sales.isEmpty)
+                  if (_localSales.isEmpty && _period == 'today')
                     Container(
                       padding: const EdgeInsets.all(32),
                       decoration: BoxDecoration(
@@ -226,12 +411,13 @@ class _FinancialDashboardScreenState extends State<FinancialDashboardScreen> {
                         borderRadius: BorderRadius.circular(20),
                       ),
                       child: const Center(
-                        child: Text('Sin ventas en este periodo',
-                            style: TextStyle(fontSize: 18,
+                        child: Text('Sin ventas hoy todavia',
+                            style: TextStyle(
+                                fontSize: 18,
                                 color: AppTheme.textSecondary)),
                       ),
                     )
-                  else
+                  else if (_localSales.isNotEmpty)
                     Container(
                       decoration: BoxDecoration(
                         color: AppTheme.surfaceGrey,
@@ -239,10 +425,11 @@ class _FinancialDashboardScreenState extends State<FinancialDashboardScreen> {
                       ),
                       child: Column(
                         children: [
-                          for (int i = 0; i < _sales.length; i++) ...[
-                            _buildSaleTile(_sales[i] as Map<String, dynamic>),
-                            if (i < _sales.length - 1)
-                              const Divider(height: 1, indent: 72, endIndent: 20),
+                          for (int i = 0; i < _localSales.length; i++) ...[
+                            _buildLocalSaleTile(_localSales[i]),
+                            if (i < _localSales.length - 1)
+                              const Divider(
+                                  height: 1, indent: 72, endIndent: 20),
                           ],
                         ],
                       ),
@@ -254,36 +441,33 @@ class _FinancialDashboardScreenState extends State<FinancialDashboardScreen> {
     );
   }
 
-  Widget _buildSaleTile(Map<String, dynamic> sale) {
-    final items = sale['items'] as List? ?? [];
-    final firstItem = items.isNotEmpty
-        ? (items.first as Map<String, dynamic>)['name'] as String? ?? 'Venta'
+  Widget _buildLocalSaleTile(LocalSale sale) {
+    final items = sale.items;
+    final label = items.isNotEmpty
+        ? items.first.productName +
+            (items.length > 1 ? ' + ${items.length - 1} mas' : '')
         : 'Venta';
-    final label = items.length > 1
-        ? '$firstItem + ${items.length - 1} más'
-        : firstItem;
-    final method = sale['payment_method'] as String? ?? 'cash';
-    final total = (sale['total'] as num?)?.toDouble() ?? 0;
-    final employee = sale['employee_name'] as String? ?? '';
-    final time = _timeAgo(sale['created_at'] as String?);
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
       child: Row(
         children: [
           Container(
-            width: 48, height: 48,
+            width: 48,
+            height: 48,
             decoration: BoxDecoration(
               color: AppTheme.primary.withValues(alpha: 0.1),
               borderRadius: BorderRadius.circular(16),
             ),
             child: Icon(
-              method == 'credit'
+              sale.paymentMethod == 'credit'
                   ? Icons.menu_book_rounded
-                  : method == 'transfer'
+                  : sale.paymentMethod == 'transfer'
                       ? Icons.phone_android_rounded
                       : Icons.payments_rounded,
-              color: AppTheme.primary, size: 24),
+              color: AppTheme.primary,
+              size: 24,
+            ),
           ),
           const SizedBox(width: 14),
           Expanded(
@@ -293,19 +477,21 @@ class _FinancialDashboardScreenState extends State<FinancialDashboardScreen> {
                 Text(label,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(fontSize: 17,
+                    style: const TextStyle(
+                        fontSize: 17,
                         fontWeight: FontWeight.w600,
                         color: AppTheme.textPrimary)),
                 Text(
-                  '${_methodIcon(method)}${employee.isNotEmpty ? ' · $employee' : ''} · $time',
-                  style: const TextStyle(fontSize: 14,
-                      color: AppTheme.textSecondary),
+                  '${_methodLabel(sale.paymentMethod)} · ${_timeAgo(sale.createdAt)}',
+                  style: const TextStyle(
+                      fontSize: 14, color: AppTheme.textSecondary),
                 ),
               ],
             ),
           ),
-          Text(_fmt(total),
-              style: const TextStyle(fontSize: 18,
+          Text(_fmt(sale.total),
+              style: const TextStyle(
+                  fontSize: 18,
                   fontWeight: FontWeight.bold,
                   color: AppTheme.success)),
         ],
@@ -314,16 +500,19 @@ class _FinancialDashboardScreenState extends State<FinancialDashboardScreen> {
   }
 }
 
-class _SummaryCard extends StatelessWidget {
+class _FinCard extends StatelessWidget {
   final IconData icon;
-  final Color color;
   final String label;
   final String value;
-  final String? subtitle;
+  final Color bgColor;
+  final Color fgColor;
 
-  const _SummaryCard({
-    required this.icon, required this.color,
-    required this.label, required this.value, this.subtitle,
+  const _FinCard({
+    required this.icon,
+    required this.label,
+    required this.value,
+    required this.bgColor,
+    required this.fgColor,
   });
 
   @override
@@ -331,39 +520,28 @@ class _SummaryCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: bgColor,
         borderRadius: BorderRadius.circular(20),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.04),
-            blurRadius: 8, offset: const Offset(0, 3),
-          ),
-        ],
+        border: Border.all(color: fgColor.withValues(alpha: 0.15)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(icon, color: color, size: 24),
+          Icon(icon, color: fgColor, size: 24),
           const SizedBox(height: 10),
           Text(label,
-              style: const TextStyle(fontSize: 14,
-                  color: AppTheme.textSecondary,
+              style: TextStyle(
+                  fontSize: 14,
+                  color: fgColor.withValues(alpha: 0.7),
                   fontWeight: FontWeight.w500)),
           const SizedBox(height: 2),
           FittedBox(
             fit: BoxFit.scaleDown,
             alignment: Alignment.centerLeft,
             child: Text(value,
-                style: TextStyle(fontSize: 22,
-                    fontWeight: FontWeight.w800,
-                    color: color)),
+                style: TextStyle(
+                    fontSize: 22, fontWeight: FontWeight.w800, color: fgColor)),
           ),
-          if (subtitle != null) ...[
-            const SizedBox(height: 2),
-            Text(subtitle!,
-                style: const TextStyle(fontSize: 12,
-                    color: AppTheme.textSecondary)),
-          ],
         ],
       ),
     );
