@@ -367,6 +367,10 @@ class _PosScreenBodyState extends State<_PosScreenBody> {
       ),
     ).then((result) async {
       if (result is CheckoutResult && result.confirmed) {
+        // Capture total BEFORE clearing cart
+        final saleTotal = ctrl.activeTotal;
+        final saleTotalFormatted = _formatCOP(saleTotal.round());
+
         // Process sale: save to Isar + deduct stock
         final db = DatabaseService.instance;
         final saleUuid = DateTime.now().millisecondsSinceEpoch.toString();
@@ -383,7 +387,7 @@ class _PosScreenBodyState extends State<_PosScreenBody> {
 
         final localSale = LocalSale()
           ..uuid = saleUuid
-          ..total = ctrl.activeTotal
+          ..total = saleTotal
           ..paymentMethod = result.paymentMethod
           ..isCreditSale = result.paymentMethod == 'credit'
           ..items = saleItems
@@ -397,9 +401,7 @@ class _PosScreenBodyState extends State<_PosScreenBody> {
         await Navigator.of(context).push(
           MaterialPageRoute(
             builder: (_) => SaleSuccessScreen(
-              total: ctrl.formattedTotal.isEmpty
-                  ? _formatCOP(localSale.total.round())
-                  : ctrl.formattedTotal,
+              total: saleTotalFormatted,
               paymentMethod: result.paymentMethod,
             ),
           ),
