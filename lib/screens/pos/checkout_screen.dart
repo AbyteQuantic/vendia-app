@@ -457,8 +457,17 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                 height: 60,
                 child: ElevatedButton.icon(
                   onPressed: () async {
-                    if (nameCtrl.text.trim().isEmpty ||
-                        phoneCtrl.text.trim().length < 7) return;
+                    final hasPhone = phoneCtrl.text.trim().length >= 7;
+                    final hasEmail = emailCtrl.text.trim().contains('@');
+                    if (nameCtrl.text.trim().isEmpty || (!hasPhone && !hasEmail)) {
+                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                        content: Text('Ingrese nombre y al menos celular o correo',
+                            style: TextStyle(fontSize: 16)),
+                        backgroundColor: AppTheme.warning,
+                        behavior: SnackBarBehavior.floating,
+                      ));
+                      return;
+                    }
                     Navigator.of(ctx).pop();
                     await _initFiado(
                       nameCtrl.text.trim(),
@@ -626,6 +635,7 @@ class _FiadoWaitingRoomState extends State<_FiadoWaitingRoom> {
   // States: sending, link_sent, link_opened, accepted, error
   String _status = 'sending';
   String? _waLink;
+  String? _emailUrl;
   String? _acceptUrl;
   String? _fiadoToken;
   Timer? _pollTimer;
@@ -656,12 +666,15 @@ class _FiadoWaitingRoomState extends State<_FiadoWaitingRoom> {
       setState(() {
         _status = 'link_sent';
         _waLink = res['whatsapp_url'] as String?;
+        _emailUrl = res['email_url'] as String?;
         _acceptUrl = res['accept_url'] as String?;
         _fiadoToken = res['fiado_token'] as String?;
       });
-      // Open WhatsApp automatically
+      // Open WhatsApp or Email automatically
       if (_waLink != null) {
         launchUrl(Uri.parse(_waLink!), mode: LaunchMode.externalApplication);
+      } else if (_emailUrl != null) {
+        launchUrl(Uri.parse(_emailUrl!), mode: LaunchMode.externalApplication);
       }
       // Start polling every 5 seconds
       _startPolling();
@@ -731,41 +744,22 @@ class _FiadoWaitingRoomState extends State<_FiadoWaitingRoom> {
           // Resend actions (only when waiting)
           if (_status == 'link_sent' || _status == 'link_opened') ...[
             const SizedBox(height: 24),
-            Row(
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
               children: [
-                Expanded(
-                  child: OutlinedButton.icon(
-                    onPressed: _resendWhatsApp,
-                    icon: const Icon(Icons.chat_rounded, size: 18,
-                        color: Color(0xFF25D366)),
-                    label: const Text('WhatsApp',
-                        style: TextStyle(fontSize: 14,
-                            color: Color(0xFF25D366))),
-                    style: OutlinedButton.styleFrom(
-                      side: const BorderSide(color: Color(0xFF25D366)),
-                      shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(14)),
-                      padding: const EdgeInsets.symmetric(vertical: 12),
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: OutlinedButton.icon(
-                    onPressed: _copyLink,
-                    icon: const Icon(Icons.copy_rounded, size: 18,
-                        color: AppTheme.primary),
-                    label: const Text('Copiar link',
-                        style: TextStyle(fontSize: 14,
-                            color: AppTheme.primary)),
-                    style: OutlinedButton.styleFrom(
-                      side: const BorderSide(color: AppTheme.primary),
-                      shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(14)),
-                      padding: const EdgeInsets.symmetric(vertical: 12),
-                    ),
-                  ),
-                ),
+                if (_waLink != null)
+                  _resendBtn(Icons.chat_rounded, 'WhatsApp',
+                      const Color(0xFF25D366), _resendWhatsApp),
+                if (_emailUrl != null)
+                  _resendBtn(Icons.email_rounded, 'Correo',
+                      const Color(0xFF3B82F6), () {
+                    HapticFeedback.lightImpact();
+                    launchUrl(Uri.parse(_emailUrl!),
+                        mode: LaunchMode.externalApplication);
+                  }),
+                _resendBtn(Icons.copy_rounded, 'Copiar link',
+                    AppTheme.primary, _copyLink),
               ],
             ),
             const SizedBox(height: 12),
@@ -789,6 +783,19 @@ class _FiadoWaitingRoomState extends State<_FiadoWaitingRoom> {
             ),
           ],
         ],
+      ),
+    );
+  }
+
+  Widget _resendBtn(IconData icon, String label, Color color, VoidCallback onTap) {
+    return OutlinedButton.icon(
+      onPressed: onTap,
+      icon: Icon(icon, size: 18, color: color),
+      label: Text(label, style: TextStyle(fontSize: 14, color: color)),
+      style: OutlinedButton.styleFrom(
+        side: BorderSide(color: color),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+        padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 14),
       ),
     );
   }
