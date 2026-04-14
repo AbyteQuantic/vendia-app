@@ -345,19 +345,36 @@ class ApiService {
     }
   }
 
-  Future<Map<String, dynamic>> enhanceProductPhoto(String uuid) async {
+  Future<Map<String, dynamic>> enhanceProductPhoto(String uuid, {
+    String? name, String? presentation, String? content,
+  }) async {
     try {
-      final response = await _dio.post('/api/v1/products/$uuid/enhance');
+      final params = <String, String>{};
+      if (name != null && name.isNotEmpty) params['name'] = name;
+      if (presentation != null && presentation.isNotEmpty) params['presentation'] = presentation;
+      if (content != null && content.isNotEmpty) params['content'] = content;
+      final response = await _dio.post(
+        '/api/v1/products/$uuid/enhance',
+        queryParameters: params.isEmpty ? null : params,
+      );
       return _extractData(response);
     } on DioException catch (e) {
       throw AppError.fromDioException(e);
     }
   }
 
-  Future<Map<String, dynamic>> generateProductImage(String uuid) async {
+  Future<Map<String, dynamic>> generateProductImage(String uuid, {
+    String? name, String? presentation, String? content,
+  }) async {
     try {
-      final response =
-          await _dio.post('/api/v1/products/$uuid/generate-image');
+      final params = <String, String>{};
+      if (name != null && name.isNotEmpty) params['name'] = name;
+      if (presentation != null && presentation.isNotEmpty) params['presentation'] = presentation;
+      if (content != null && content.isNotEmpty) params['content'] = content;
+      final response = await _dio.post(
+        '/api/v1/products/$uuid/generate-image',
+        queryParameters: params.isEmpty ? null : params,
+      );
       return _extractData(response);
     } on DioException catch (e) {
       throw AppError.fromDioException(e);

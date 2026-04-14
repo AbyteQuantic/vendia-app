@@ -574,6 +574,11 @@ class _EditProductSheetState extends State<_EditProductSheet> {
     final id = widget.product['id'] as String? ?? '';
     if (id.isEmpty) return;
 
+    // Read CURRENT values from UI controllers, not from saved product
+    final currentName = _nameCtrl.text.trim();
+    final currentPresentation = _presentation;
+    final currentContent = _contentCtrl.text.trim();
+
     HapticFeedback.lightImpact();
     setState(() => _enhancing = true);
     try {
@@ -581,9 +586,17 @@ class _EditProductSheetState extends State<_EditProductSheet> {
       final hasPhoto = _photoUrl != null && _photoUrl!.isNotEmpty;
       final Map<String, dynamic> result;
       if (hasPhoto) {
-        result = await api.enhanceProductPhoto(id);
+        result = await api.enhanceProductPhoto(id,
+          name: currentName,
+          presentation: currentPresentation,
+          content: currentContent,
+        );
       } else {
-        result = await api.generateProductImage(id);
+        result = await api.generateProductImage(id,
+          name: currentName,
+          presentation: currentPresentation,
+          content: currentContent,
+        );
       }
       final url = (result['photo_url'] ?? result['image_url']) as String?;
       if (url != null && mounted) {
