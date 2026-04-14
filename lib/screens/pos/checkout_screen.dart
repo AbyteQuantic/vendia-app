@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../../models/cart_item.dart';
+import '../../services/api_service.dart';
+import '../../services/auth_service.dart';
 import '../../theme/app_theme.dart';
 
 class CheckoutResult {
@@ -369,8 +372,120 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
 
   void _confirmSale() {
     HapticFeedback.mediumImpact();
+
+    if (_selectedMethod == 'credit') {
+      _showFiadoHandshake();
+      return;
+    }
+
     Navigator.of(context).pop(
       CheckoutResult(confirmed: true, paymentMethod: _selectedMethod),
+    );
+  }
+
+  void _showFiadoHandshake() {
+    final nameCtrl = TextEditingController();
+    final phoneCtrl = TextEditingController();
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => Padding(
+        padding: EdgeInsets.only(bottom: MediaQuery.of(ctx).viewInsets.bottom),
+        child: Container(
+          decoration: const BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+          ),
+          padding: const EdgeInsets.fromLTRB(24, 16, 24, 24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 40, height: 4,
+                margin: const EdgeInsets.only(bottom: 20),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFD6D0C8),
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              const Icon(Icons.menu_book_rounded,
+                  color: Color(0xFFF59E0B), size: 40),
+              const SizedBox(height: 12),
+              const Text('Registrar Fiado',
+                  style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold,
+                      color: Colors.black87)),
+              const SizedBox(height: 4),
+              Text('Total: ${widget.formattedTotal}',
+                  style: const TextStyle(fontSize: 18,
+                      color: AppTheme.textSecondary)),
+              const SizedBox(height: 20),
+              TextField(
+                controller: nameCtrl,
+                style: const TextStyle(fontSize: 20, color: Colors.black87),
+                decoration: const InputDecoration(
+                  labelText: 'Nombre del cliente',
+                  prefixIcon: Icon(Icons.person_rounded),
+                ),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: phoneCtrl,
+                keyboardType: TextInputType.phone,
+                style: const TextStyle(fontSize: 20, color: Colors.black87),
+                decoration: const InputDecoration(
+                  labelText: 'Celular / WhatsApp',
+                  prefixIcon: Icon(Icons.phone_rounded),
+                ),
+              ),
+              const SizedBox(height: 20),
+              SizedBox(
+                width: double.infinity,
+                height: 60,
+                child: ElevatedButton.icon(
+                  onPressed: () async {
+                    if (nameCtrl.text.trim().isEmpty ||
+                        phoneCtrl.text.trim().length < 7) return;
+                    Navigator.of(ctx).pop();
+                    await _initFiado(
+                        nameCtrl.text.trim(), phoneCtrl.text.trim());
+                  },
+                  icon: const Icon(Icons.send_rounded, size: 24),
+                  label: const Text('Enviar link de aceptacion',
+                      style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFFF59E0B),
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(18)),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _initFiado(String customerName, String customerPhone) async {
+    // Show waiting dialog
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => _FiadoWaitingDialog(
+        total: widget.formattedTotal,
+        customerName: customerName,
+        customerPhone: customerPhone,
+        totalAmount: widget.total.round(),
+        onAccepted: () {
+          Navigator.of(context).pop(); // close dialog
+          Navigator.of(context).pop(
+            CheckoutResult(confirmed: true, paymentMethod: 'credit'),
+          );
+        },
+      ),
     );
   }
 }
@@ -459,6 +574,153 @@ class _BillChip extends StatelessWidget {
             color: selected
                 ? const Color(0xFF3B82F6)
                 : Colors.black87)),
+      ),
+    );
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+
+class _FiadoWaitingDialog extends StatefulWidget {
+  final String total;
+  final String customerName;
+  final String customerPhone;
+  final int totalAmount;
+  final VoidCallback onAccepted;
+
+  const _FiadoWaitingDialog({
+    required this.total,
+    required this.customerName,
+    required this.customerPhone,
+    required this.totalAmount,
+    required this.onAccepted,
+  });
+
+  @override
+  State<_FiadoWaitingDialog> createState() => _FiadoWaitingDialogState();
+}
+
+class _FiadoWaitingDialogState extends State<_FiadoWaitingDialog> {
+  late final ApiService _api;
+  String _status = 'sending'; // sending, waiting, accepted, error
+  String? _waLink;
+  String? _fiadoToken;
+
+  @override
+  void initState() {
+    super.initState();
+    _api = ApiService(AuthService());
+    _sendFiado();
+  }
+
+  Future<void> _sendFiado() async {
+    try {
+      final res = await _api.initFiado(
+        customerName: widget.customerName,
+        customerPhone: widget.customerPhone,
+        totalAmount: widget.totalAmount,
+      );
+      if (mounted) {
+        setState(() {
+          _status = 'waiting';
+          _waLink = res['whatsapp_url'] as String?;
+          _fiadoToken = res['fiado_token'] as String?;
+        });
+        // Open WhatsApp
+        if (_waLink != null) {
+          launchUrl(Uri.parse(_waLink!), mode: LaunchMode.externalApplication);
+        }
+      }
+    } catch (e) {
+      if (mounted) setState(() => _status = 'error');
+    }
+  }
+
+  Future<void> _checkStatus() async {
+    if (_fiadoToken == null) return;
+    try {
+      final res = await _api.checkFiadoStatus(_fiadoToken!);
+      final status = res['fiado_status'] as String? ?? '';
+      if (status == 'accepted') {
+        widget.onAccepted();
+      } else {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+            content: Text('Aun no ha aceptado. Intente de nuevo.',
+                style: TextStyle(fontSize: 16)),
+            backgroundColor: AppTheme.warning,
+            behavior: SnackBarBehavior.floating,
+          ));
+        }
+      }
+    } catch (_) {}
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (_status == 'sending') ...[
+            const CircularProgressIndicator(color: Color(0xFFF59E0B)),
+            const SizedBox(height: 16),
+            const Text('Enviando solicitud...',
+                textAlign: TextAlign.center,
+                style: TextStyle(fontSize: 18, color: Colors.black87)),
+          ] else if (_status == 'waiting') ...[
+            const Icon(Icons.hourglass_top_rounded,
+                color: Color(0xFFF59E0B), size: 48),
+            const SizedBox(height: 16),
+            Text('Esperando que ${widget.customerName} acepte...',
+                textAlign: TextAlign.center,
+                style: const TextStyle(fontSize: 18,
+                    fontWeight: FontWeight.w600, color: Colors.black87)),
+            const SizedBox(height: 8),
+            Text('Se envio un link por WhatsApp al ${widget.customerPhone}',
+                textAlign: TextAlign.center,
+                style: const TextStyle(fontSize: 15,
+                    color: AppTheme.textSecondary)),
+            const SizedBox(height: 20),
+            SizedBox(
+              width: double.infinity,
+              height: 52,
+              child: ElevatedButton.icon(
+                onPressed: _checkStatus,
+                icon: const Icon(Icons.refresh_rounded, size: 22),
+                label: const Text('Verificar estado',
+                    style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold)),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFFF59E0B),
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16)),
+                ),
+              ),
+            ),
+            const SizedBox(height: 8),
+            TextButton(
+              onPressed: () {
+                // Allow registering without signature (skip handshake)
+                widget.onAccepted();
+              },
+              child: const Text('Registrar sin firma',
+                  style: TextStyle(fontSize: 15, color: AppTheme.textSecondary)),
+            ),
+          ] else if (_status == 'error') ...[
+            const Icon(Icons.error_outline_rounded,
+                color: AppTheme.error, size: 48),
+            const SizedBox(height: 16),
+            const Text('Error al crear el fiado',
+                style: TextStyle(fontSize: 18, color: AppTheme.error)),
+            const SizedBox(height: 16),
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Cerrar', style: TextStyle(fontSize: 16)),
+            ),
+          ],
+        ],
       ),
     );
   }

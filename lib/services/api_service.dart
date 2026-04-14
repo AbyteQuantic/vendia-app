@@ -1325,4 +1325,34 @@ class ApiService {
       throw AppError.fromDioException(e);
     }
   }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // FIADO HANDSHAKE
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  Future<Map<String, dynamic>> initFiado({
+    required String customerName,
+    required String customerPhone,
+    required int totalAmount,
+  }) async {
+    try {
+      final response = await _dio.post('/api/v1/fiado/init', data: {
+        'customer_name': customerName,
+        'customer_phone': customerPhone,
+        'total_amount': totalAmount,
+      });
+      return _extractData(response);
+    } on DioException catch (e) {
+      throw AppError.fromDioException(e);
+    }
+  }
+
+  Future<Map<String, dynamic>> checkFiadoStatus(String token) async {
+    try {
+      final response = await _dio.get('/api/v1/fiado/$token/status');
+      return _extractData(response);
+    } on DioException catch (e) {
+      throw AppError.fromDioException(e);
+    }
+  }
 }
