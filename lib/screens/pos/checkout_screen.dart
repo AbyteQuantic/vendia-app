@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -460,7 +461,10 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                         phoneCtrl.text.trim().length < 7) return;
                     Navigator.of(ctx).pop();
                     await _initFiado(
-                        nameCtrl.text.trim(), phoneCtrl.text.trim());
+                      nameCtrl.text.trim(),
+                      phoneCtrl.text.trim(),
+                      emailCtrl.text.trim(),
+                    );
                   },
                   icon: const Icon(Icons.send_rounded, size: 24),
                   label: const Text('Enviar link de aceptacion',
@@ -480,18 +484,20 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     );
   }
 
-  Future<void> _initFiado(String customerName, String customerPhone) async {
-    // Show waiting dialog
+  Future<void> _initFiado(String name, String phone, String email) async {
+    final idempotencyKey = DateTime.now().millisecondsSinceEpoch.toString();
     showDialog(
       context: context,
       barrierDismissible: false,
-      builder: (_) => _FiadoWaitingDialog(
+      builder: (_) => _FiadoWaitingRoom(
         total: widget.formattedTotal,
-        customerName: customerName,
-        customerPhone: customerPhone,
+        customerName: name,
+        customerPhone: phone,
+        customerEmail: email,
         totalAmount: widget.total.round(),
+        idempotencyKey: idempotencyKey,
         onAccepted: () {
-          Navigator.of(context).pop(); // close dialog
+          Navigator.of(context).pop();
           Navigator.of(context).pop(
             CheckoutResult(confirmed: true, paymentMethod: 'credit'),
           );
@@ -592,30 +598,37 @@ class _BillChip extends StatelessWidget {
 
 // ═══════════════════════════════════════════════════════════════════════════════
 
-class _FiadoWaitingDialog extends StatefulWidget {
+class _FiadoWaitingRoom extends StatefulWidget {
   final String total;
   final String customerName;
   final String customerPhone;
+  final String customerEmail;
   final int totalAmount;
+  final String idempotencyKey;
   final VoidCallback onAccepted;
 
-  const _FiadoWaitingDialog({
+  const _FiadoWaitingRoom({
     required this.total,
     required this.customerName,
     required this.customerPhone,
+    required this.customerEmail,
     required this.totalAmount,
+    required this.idempotencyKey,
     required this.onAccepted,
   });
 
   @override
-  State<_FiadoWaitingDialog> createState() => _FiadoWaitingDialogState();
+  State<_FiadoWaitingRoom> createState() => _FiadoWaitingRoomState();
 }
 
-class _FiadoWaitingDialogState extends State<_FiadoWaitingDialog> {
+class _FiadoWaitingRoomState extends State<_FiadoWaitingRoom> {
   late final ApiService _api;
-  String _status = 'sending'; // sending, waiting, accepted, error
+  // States: sending, link_sent, link_opened, accepted, error
+  String _status = 'sending';
   String? _waLink;
+  String? _acceptUrl;
   String? _fiadoToken;
+  Timer? _pollTimer;
 
   @override
   void initState() {
@@ -624,115 +637,207 @@ class _FiadoWaitingDialogState extends State<_FiadoWaitingDialog> {
     _sendFiado();
   }
 
+  @override
+  void dispose() {
+    _pollTimer?.cancel();
+    super.dispose();
+  }
+
   Future<void> _sendFiado() async {
     try {
       final res = await _api.initFiado(
         customerName: widget.customerName,
         customerPhone: widget.customerPhone,
+        customerEmail: widget.customerEmail,
         totalAmount: widget.totalAmount,
+        idempotencyKey: widget.idempotencyKey,
       );
-      if (mounted) {
-        setState(() {
-          _status = 'waiting';
-          _waLink = res['whatsapp_url'] as String?;
-          _fiadoToken = res['fiado_token'] as String?;
-        });
-        // Open WhatsApp
-        if (_waLink != null) {
-          launchUrl(Uri.parse(_waLink!), mode: LaunchMode.externalApplication);
-        }
+      if (!mounted) return;
+      setState(() {
+        _status = 'link_sent';
+        _waLink = res['whatsapp_url'] as String?;
+        _acceptUrl = res['accept_url'] as String?;
+        _fiadoToken = res['fiado_token'] as String?;
+      });
+      // Open WhatsApp automatically
+      if (_waLink != null) {
+        launchUrl(Uri.parse(_waLink!), mode: LaunchMode.externalApplication);
       }
+      // Start polling every 5 seconds
+      _startPolling();
     } catch (e) {
       if (mounted) setState(() => _status = 'error');
     }
   }
 
-  Future<void> _checkStatus() async {
+  void _startPolling() {
+    _pollTimer = Timer.periodic(const Duration(seconds: 5), (_) => _poll());
+  }
+
+  Future<void> _poll() async {
     if (_fiadoToken == null) return;
     try {
       final res = await _api.checkFiadoStatus(_fiadoToken!);
       final status = res['fiado_status'] as String? ?? '';
+      if (!mounted) return;
+      if (status != _status) {
+        setState(() => _status = status);
+      }
       if (status == 'accepted') {
-        widget.onAccepted();
-      } else {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-            content: Text('Aun no ha aceptado. Intente de nuevo.',
-                style: TextStyle(fontSize: 16)),
-            backgroundColor: AppTheme.warning,
-            behavior: SnackBarBehavior.floating,
-          ));
-        }
+        _pollTimer?.cancel();
+        HapticFeedback.heavyImpact();
+        await Future.delayed(const Duration(milliseconds: 1500));
+        if (mounted) widget.onAccepted();
       }
     } catch (_) {}
+  }
+
+  void _resendWhatsApp() {
+    if (_waLink != null) {
+      HapticFeedback.lightImpact();
+      launchUrl(Uri.parse(_waLink!), mode: LaunchMode.externalApplication);
+    }
+  }
+
+  void _copyLink() {
+    if (_acceptUrl != null) {
+      Clipboard.setData(ClipboardData(text: _acceptUrl!));
+      HapticFeedback.lightImpact();
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('Link copiado al portapapeles',
+            style: TextStyle(fontSize: 16)),
+        backgroundColor: AppTheme.success,
+        behavior: SnackBarBehavior.floating,
+      ));
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
+      contentPadding: const EdgeInsets.all(24),
       content: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          if (_status == 'sending') ...[
-            const CircularProgressIndicator(color: Color(0xFFF59E0B)),
-            const SizedBox(height: 16),
-            const Text('Enviando solicitud...',
-                textAlign: TextAlign.center,
-                style: TextStyle(fontSize: 18, color: Colors.black87)),
-          ] else if (_status == 'waiting') ...[
-            const Icon(Icons.hourglass_top_rounded,
-                color: Color(0xFFF59E0B), size: 48),
-            const SizedBox(height: 16),
-            Text('Esperando que ${widget.customerName} acepte...',
-                textAlign: TextAlign.center,
-                style: const TextStyle(fontSize: 18,
-                    fontWeight: FontWeight.w600, color: Colors.black87)),
-            const SizedBox(height: 8),
-            Text('Se envio un link por WhatsApp al ${widget.customerPhone}',
-                textAlign: TextAlign.center,
-                style: const TextStyle(fontSize: 15,
-                    color: AppTheme.textSecondary)),
-            const SizedBox(height: 20),
-            SizedBox(
-              width: double.infinity,
-              height: 52,
-              child: ElevatedButton.icon(
-                onPressed: _checkStatus,
-                icon: const Icon(Icons.refresh_rounded, size: 22),
-                label: const Text('Verificar estado',
-                    style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold)),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFFF59E0B),
-                  foregroundColor: Colors.white,
-                  shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(16)),
+          // Status icon + animation
+          _buildStatusIcon(),
+          const SizedBox(height: 16),
+          // Status text
+          _buildStatusText(),
+          const SizedBox(height: 8),
+          _buildStatusSubtext(),
+
+          // Resend actions (only when waiting)
+          if (_status == 'link_sent' || _status == 'link_opened') ...[
+            const SizedBox(height: 24),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: _resendWhatsApp,
+                    icon: const Icon(Icons.chat_rounded, size: 18,
+                        color: Color(0xFF25D366)),
+                    label: const Text('WhatsApp',
+                        style: TextStyle(fontSize: 14,
+                            color: Color(0xFF25D366))),
+                    style: OutlinedButton.styleFrom(
+                      side: const BorderSide(color: Color(0xFF25D366)),
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(14)),
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                    ),
+                  ),
                 ),
-              ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: _copyLink,
+                    icon: const Icon(Icons.copy_rounded, size: 18,
+                        color: AppTheme.primary),
+                    label: const Text('Copiar link',
+                        style: TextStyle(fontSize: 14,
+                            color: AppTheme.primary)),
+                    style: OutlinedButton.styleFrom(
+                      side: const BorderSide(color: AppTheme.primary),
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(14)),
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                    ),
+                  ),
+                ),
+              ],
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: 12),
             TextButton(
               onPressed: () {
-                // Allow registering without signature (skip handshake)
+                _pollTimer?.cancel();
                 widget.onAccepted();
               },
               child: const Text('Registrar sin firma',
-                  style: TextStyle(fontSize: 15, color: AppTheme.textSecondary)),
+                  style: TextStyle(fontSize: 15,
+                      color: AppTheme.textSecondary)),
             ),
-          ] else if (_status == 'error') ...[
-            const Icon(Icons.error_outline_rounded,
-                color: AppTheme.error, size: 48),
-            const SizedBox(height: 16),
-            const Text('Error al crear el fiado',
-                style: TextStyle(fontSize: 18, color: AppTheme.error)),
+          ],
+
+          if (_status == 'error') ...[
             const SizedBox(height: 16),
             TextButton(
               onPressed: () => Navigator.of(context).pop(),
-              child: const Text('Cerrar', style: TextStyle(fontSize: 16)),
+              child: const Text('Cerrar',
+                  style: TextStyle(fontSize: 16, color: AppTheme.error)),
             ),
           ],
         ],
       ),
     );
+  }
+
+  Widget _buildStatusIcon() {
+    return switch (_status) {
+      'sending' => const SizedBox(width: 48, height: 48,
+          child: CircularProgressIndicator(
+              color: Color(0xFFF59E0B), strokeWidth: 3)),
+      'link_sent' => const Icon(Icons.done_all_rounded,
+          color: AppTheme.textSecondary, size: 48),
+      'link_opened' => const Icon(Icons.visibility_rounded,
+          color: Color(0xFF3B82F6), size: 48),
+      'accepted' => const Icon(Icons.check_circle_rounded,
+          color: AppTheme.success, size: 56),
+      _ => const Icon(Icons.error_outline_rounded,
+          color: AppTheme.error, size: 48),
+    };
+  }
+
+  Widget _buildStatusText() {
+    final text = switch (_status) {
+      'sending' => 'Enviando link a ${widget.customerName}...',
+      'link_sent' => 'Link enviado',
+      'link_opened' => '${widget.customerName} esta leyendo...',
+      'accepted' => 'Deuda aceptada!',
+      _ => 'Error al crear fiado',
+    };
+    return Text(text,
+        textAlign: TextAlign.center,
+        style: TextStyle(
+          fontSize: 20,
+          fontWeight: FontWeight.w700,
+          color: _status == 'error' ? AppTheme.error : Colors.black87,
+        ));
+  }
+
+  Widget _buildStatusSubtext() {
+    final text = switch (_status) {
+      'sending' => 'Preparando solicitud de fiado...',
+      'link_sent' =>
+          'Esperando que ${widget.customerName} abra el link enviado al ${widget.customerPhone}',
+      'link_opened' =>
+          '${widget.customerName} esta revisando los terminos del fiado',
+      'accepted' => 'Puede entregar los productos',
+      _ => 'Intente de nuevo o registre sin firma',
+    };
+    return Text(text,
+        textAlign: TextAlign.center,
+        style: const TextStyle(fontSize: 15, color: AppTheme.textSecondary));
   }
 }

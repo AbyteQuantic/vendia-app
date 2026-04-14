@@ -1334,12 +1334,16 @@ class ApiService {
     required String customerName,
     required String customerPhone,
     required int totalAmount,
+    String customerEmail = '',
+    String idempotencyKey = '',
   }) async {
     try {
       final response = await _dio.post('/api/v1/fiado/init', data: {
         'customer_name': customerName,
         'customer_phone': customerPhone,
+        'customer_email': customerEmail,
         'total_amount': totalAmount,
+        'idempotency_key': idempotencyKey,
       });
       return _extractData(response);
     } on DioException catch (e) {
