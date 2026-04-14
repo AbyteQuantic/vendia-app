@@ -27,14 +27,17 @@ class ApiService {
     _dio.interceptors.add(InterceptorsWrapper(
       onRequest: (options, handler) async {
         // Auto-inject JWT for protected routes
+        // Public store routes use slug pattern: /store/:slug/...
+        final isPublicStore = RegExp(r'/store/[^/]+/(catalog|product|order)')
+            .hasMatch(options.path);
+        final isPublicRockola = options.path.contains('/rockola/') &&
+            options.path.contains('/suggest');
+        final isPublicAccount = options.path.contains('/account/');
+
         final needsAuth = options.path.startsWith('/api/v1') &&
-            !options.path.contains('/store/') &&
-            !options.path.contains('/account/') &&
-            !options.path.contains('/rockola/') ||
-            options.path.contains('/api/v1/store/config') ||
-            options.path.contains('/api/v1/store/profile') ||
-            options.path.contains('/api/v1/rockola/pending') ||
-            options.path.contains('/api/v1/rockola/search');
+            !isPublicStore &&
+            !isPublicAccount &&
+            !isPublicRockola;
 
         if (needsAuth || options.path == '/api/v1/auth/logout') {
           final token = await _auth.getToken();
