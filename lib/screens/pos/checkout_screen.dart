@@ -679,6 +679,7 @@ class _FiadoWaitingRoomState extends State<_FiadoWaitingRoom> {
       // Start polling every 5 seconds
       _startPolling();
     } catch (e) {
+      debugPrint('FIADO INIT ERROR: $e');
       if (mounted) setState(() => _status = 'error');
     }
   }
