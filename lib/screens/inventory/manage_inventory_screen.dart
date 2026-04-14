@@ -570,36 +570,129 @@ class _EditProductSheetState extends State<_EditProductSheet> {
     }
   }
 
-  Future<void> _enhanceOrGeneratePhoto() async {
+  void _onAiPhotoTap() {
     final id = widget.product['id'] as String? ?? '';
     if (id.isEmpty) return;
 
-    // Read CURRENT values from UI controllers, not from saved product
-    final currentName = _nameCtrl.text.trim();
-    final currentPresentation = _presentation;
-    final currentContent = _contentCtrl.text.trim();
+    // Validate required fields first
+    final missingFields = <String>[];
+    if (_nameCtrl.text.trim().isEmpty) missingFields.add('Nombre');
+    if (_presentation.isEmpty) missingFields.add('Presentación');
+    if (_contentCtrl.text.trim().isEmpty) missingFields.add('Contenido (ej: 350ml, 1L)');
 
-    if (currentName.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-        content: Text('Escriba el nombre del producto primero',
-            style: TextStyle(fontSize: 16)),
-        backgroundColor: AppTheme.warning,
+    if (missingFields.isNotEmpty) {
+      HapticFeedback.lightImpact();
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Row(
+          children: [
+            const Icon(Icons.info_outline_rounded, color: Colors.white, size: 22),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                'Para un mejor resultado, complete: ${missingFields.join(", ")}',
+                style: const TextStyle(fontSize: 15),
+              ),
+            ),
+          ],
+        ),
+        backgroundColor: const Color(0xFF7C3AED),
+        duration: const Duration(seconds: 4),
         behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       ));
       return;
     }
+
+    final hasExistingPhoto = _photoUrl != null && _photoUrl!.isNotEmpty;
+
+    if (!hasExistingPhoto) {
+      // No photo — go straight to generate
+      _executeAiPhoto(useExisting: false);
+      return;
+    }
+
+    // Has photo — ask user what they want
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => Container(
+        decoration: const BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+        ),
+        padding: const EdgeInsets.fromLTRB(24, 16, 24, 32),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 40, height: 4,
+              margin: const EdgeInsets.only(bottom: 20),
+              decoration: BoxDecoration(
+                color: const Color(0xFFD6D0C8),
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            const Text('¿Qué desea hacer?',
+                style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800,
+                    color: Colors.black87)),
+            const SizedBox(height: 6),
+            Text(
+              'Nombre: ${_nameCtrl.text.trim()}\nPresentación: $_presentation · ${_contentCtrl.text.trim()}',
+              textAlign: TextAlign.center,
+              style: const TextStyle(fontSize: 14, color: AppTheme.textSecondary),
+            ),
+            const SizedBox(height: 20),
+            _AiOptionTile(
+              icon: Icons.auto_fix_high_rounded,
+              color: const Color(0xFF3B82F6),
+              title: 'Mejorar foto actual',
+              subtitle: 'La IA mejora la imagen que ya tiene',
+              onTap: () {
+                Navigator.of(ctx).pop();
+                _executeAiPhoto(useExisting: true);
+              },
+            ),
+            const SizedBox(height: 12),
+            _AiOptionTile(
+              icon: Icons.auto_awesome_rounded,
+              color: const Color(0xFF7C3AED),
+              title: 'Generar imagen nueva',
+              subtitle: 'Crea una imagen desde cero basada en el nombre y presentación',
+              onTap: () {
+                Navigator.of(ctx).pop();
+                _executeAiPhoto(useExisting: false);
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _executeAiPhoto({required bool useExisting}) async {
+    final id = widget.product['id'] as String? ?? '';
+    final currentName = _nameCtrl.text.trim();
+    final currentPresentation = _presentation;
+    final currentContent = _contentCtrl.text.trim();
 
     HapticFeedback.lightImpact();
     setState(() => _enhancing = true);
     try {
       final api = ApiService(AuthService());
-      // Always generate from scratch using current description,
-      // never enhance the old photo (it may not match the new name/presentation)
-      final result = await api.generateProductImage(id,
-        name: currentName,
-        presentation: currentPresentation,
-        content: currentContent,
-      );
+      final Map<String, dynamic> result;
+      if (useExisting) {
+        result = await api.enhanceProductPhoto(id,
+          name: currentName,
+          presentation: currentPresentation,
+          content: currentContent,
+        );
+      } else {
+        result = await api.generateProductImage(id,
+          name: currentName,
+          presentation: currentPresentation,
+          content: currentContent,
+        );
+      }
       final url = (result['photo_url'] ?? result['image_url']) as String?;
       if (url != null && mounted) {
         setState(() {
@@ -666,6 +759,8 @@ class _EditProductSheetState extends State<_EditProductSheet> {
       );
     }
   }
+
+  // (helper widgets below)
 
   Widget _photoPlaceholder() {
     return Column(
@@ -820,11 +915,11 @@ class _EditProductSheetState extends State<_EditProductSheet> {
                         _photoAction(
                           label: _enhancing
                               ? 'Generando...'
-                              : 'Generar con IA',
+                              : 'Imagen con IA',
                           icon: _enhancing ? null : Icons.auto_awesome_rounded,
                           color: const Color(0xFF7C3AED),
                           loading: _enhancing,
-                          onTap: _enhancing ? null : _enhanceOrGeneratePhoto,
+                          onTap: _enhancing ? null : _onAiPhotoTap,
                         ),
                       ],
                     ),
@@ -1015,4 +1110,68 @@ class _EditProductSheetState extends State<_EditProductSheet> {
         contentPadding:
             const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
       );
+}
+
+class _AiOptionTile extends StatelessWidget {
+  final IconData icon;
+  final Color color;
+  final String title;
+  final String subtitle;
+  final VoidCallback onTap;
+
+  const _AiOptionTile({
+    required this.icon,
+    required this.color,
+    required this.title,
+    required this.subtitle,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: () {
+        HapticFeedback.lightImpact();
+        onTap();
+      },
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+        decoration: BoxDecoration(
+          color: color.withValues(alpha: 0.06),
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: color.withValues(alpha: 0.2)),
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 52,
+              height: 52,
+              decoration: BoxDecoration(
+                color: color.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(16),
+              ),
+              child: Icon(icon, color: color, size: 26),
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(title,
+                      style: TextStyle(
+                          fontSize: 18, fontWeight: FontWeight.w700,
+                          color: color)),
+                  const SizedBox(height: 2),
+                  Text(subtitle,
+                      style: const TextStyle(
+                          fontSize: 14, color: AppTheme.textSecondary)),
+                ],
+              ),
+            ),
+            Icon(Icons.chevron_right_rounded, color: color, size: 26),
+          ],
+        ),
+      ),
+    );
+  }
 }
