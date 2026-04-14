@@ -1,5 +1,7 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:image_picker/image_picker.dart';
 import '../../theme/app_theme.dart';
 import '../../services/api_service.dart';
 import '../../services/auth_service.dart';
@@ -509,6 +511,9 @@ class _EditProductSheetState extends State<_EditProductSheet> {
   late final TextEditingController _skuCtrl;
   late String _presentation;
   bool _saving = false;
+  bool _enhancing = false;
+  String? _photoUrl;
+  String? _photoPath;
 
   final _presentations = [
     'Botella',
@@ -535,6 +540,9 @@ class _EditProductSheetState extends State<_EditProductSheet> {
     _skuCtrl =
         TextEditingController(text: p['barcode'] as String? ?? '');
     _presentation = p['presentation'] as String? ?? '';
+    final photo = p['photo_url'] as String?;
+    final image = p['image_url'] as String?;
+    _photoUrl = (photo != null && photo.isNotEmpty) ? photo : image;
   }
 
   @override
@@ -545,6 +553,56 @@ class _EditProductSheetState extends State<_EditProductSheet> {
     _contentCtrl.dispose();
     _skuCtrl.dispose();
     super.dispose();
+  }
+
+  Future<void> _takePhoto() async {
+    HapticFeedback.lightImpact();
+    final picker = ImagePicker();
+    final photo = await picker.pickImage(
+      source: ImageSource.camera,
+      imageQuality: 80,
+    );
+    if (photo != null && mounted) {
+      setState(() {
+        _photoPath = photo.path;
+        _photoUrl = null;
+      });
+    }
+  }
+
+  Future<void> _enhanceOrGeneratePhoto() async {
+    final id = widget.product['id'] as String? ?? '';
+    if (id.isEmpty) return;
+
+    HapticFeedback.lightImpact();
+    setState(() => _enhancing = true);
+    try {
+      final api = ApiService(AuthService());
+      final hasPhoto = _photoUrl != null && _photoUrl!.isNotEmpty;
+      final Map<String, dynamic> result;
+      if (hasPhoto) {
+        result = await api.enhanceProductPhoto(id);
+      } else {
+        result = await api.generateProductImage(id);
+      }
+      final url = (result['photo_url'] ?? result['image_url']) as String?;
+      if (url != null && mounted) {
+        setState(() {
+          _photoUrl = url;
+          _photoPath = null;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text('Error: $e', style: const TextStyle(fontSize: 16)),
+          backgroundColor: AppTheme.error,
+          behavior: SnackBarBehavior.floating,
+        ));
+      }
+    } finally {
+      if (mounted) setState(() => _enhancing = false);
+    }
   }
 
   Future<void> _save() async {
@@ -594,6 +652,58 @@ class _EditProductSheetState extends State<_EditProductSheet> {
     }
   }
 
+  Widget _photoPlaceholder() {
+    return Column(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        Icon(Icons.add_a_photo_rounded, size: 32,
+            color: AppTheme.primary.withValues(alpha: 0.4)),
+        const SizedBox(height: 4),
+        Text('Foto', style: TextStyle(fontSize: 12,
+            color: AppTheme.textSecondary.withValues(alpha: 0.6))),
+      ],
+    );
+  }
+
+  Widget _photoAction({
+    required String label,
+    IconData? icon,
+    required Color color,
+    bool loading = false,
+    VoidCallback? onTap,
+  }) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 14),
+        decoration: BoxDecoration(
+          color: color.withValues(alpha: 0.08),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: color.withValues(alpha: 0.2)),
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            if (loading)
+              SizedBox(width: 18, height: 18,
+                  child: CircularProgressIndicator(
+                      color: color, strokeWidth: 2))
+            else if (icon != null)
+              Icon(icon, color: color, size: 20),
+            const SizedBox(width: 8),
+            Flexible(
+              child: Text(label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600,
+                      color: color)),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   /// Generates an internal SKU based on the product name and presentation.
   /// Format: VND-{PRES}{3-letter-name}-{random4digits}
   /// e.g. VND-UNI-EMP-4821
@@ -626,10 +736,7 @@ class _EditProductSheetState extends State<_EditProductSheet> {
 
   @override
   Widget build(BuildContext context) {
-    final photoUrl = widget.product['photo_url'] as String?;
-    final imageUrl = widget.product['image_url'] as String?;
-    final imgSrc =
-        (photoUrl != null && photoUrl.isNotEmpty) ? photoUrl : imageUrl;
+    final hasPhoto = _photoPath != null || (_photoUrl != null && _photoUrl!.isNotEmpty);
 
     return Scaffold(
       backgroundColor: AppTheme.background,
@@ -656,20 +763,59 @@ class _EditProductSheetState extends State<_EditProductSheet> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Product image
-              if (imgSrc != null && imgSrc.isNotEmpty)
-                Center(
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(16),
-                    child: Image.network(
-                      imgSrc,
-                      width: 120,
-                      height: 120,
-                      fit: BoxFit.cover,
-                      errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+              // ── Photo + Actions ─────────────────────────────────────
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  GestureDetector(
+                    onTap: _takePhoto,
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(16),
+                      child: Container(
+                        width: 110,
+                        height: 110,
+                        decoration: BoxDecoration(
+                          color: AppTheme.surfaceGrey,
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                        child: _photoPath != null
+                            ? Image.file(File(_photoPath!),
+                                width: 110, height: 110, fit: BoxFit.cover)
+                            : (_photoUrl != null && _photoUrl!.isNotEmpty)
+                                ? Image.network(_photoUrl!,
+                                    width: 110, height: 110, fit: BoxFit.cover,
+                                    errorBuilder: (_, __, ___) =>
+                                        _photoPlaceholder())
+                                : _photoPlaceholder(),
+                      ),
                     ),
                   ),
-                ),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        _photoAction(
+                          label: 'Tomar foto',
+                          icon: Icons.camera_alt_rounded,
+                          color: AppTheme.primary,
+                          onTap: _takePhoto,
+                        ),
+                        const SizedBox(height: 8),
+                        _photoAction(
+                          label: _enhancing
+                              ? (hasPhoto ? 'Mejorando...' : 'Generando...')
+                              : (hasPhoto ? 'Mejorar con IA' : 'Generar con IA'),
+                          icon: _enhancing ? null : Icons.auto_awesome_rounded,
+                          color: const Color(0xFF7C3AED),
+                          loading: _enhancing,
+                          onTap: _enhancing ? null : _enhanceOrGeneratePhoto,
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
               const SizedBox(height: 20),
 
               // SKU / Barcode (editable + auto-generate)
