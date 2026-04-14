@@ -579,25 +579,27 @@ class _EditProductSheetState extends State<_EditProductSheet> {
     final currentPresentation = _presentation;
     final currentContent = _contentCtrl.text.trim();
 
+    if (currentName.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('Escriba el nombre del producto primero',
+            style: TextStyle(fontSize: 16)),
+        backgroundColor: AppTheme.warning,
+        behavior: SnackBarBehavior.floating,
+      ));
+      return;
+    }
+
     HapticFeedback.lightImpact();
     setState(() => _enhancing = true);
     try {
       final api = ApiService(AuthService());
-      final hasPhoto = _photoUrl != null && _photoUrl!.isNotEmpty;
-      final Map<String, dynamic> result;
-      if (hasPhoto) {
-        result = await api.enhanceProductPhoto(id,
-          name: currentName,
-          presentation: currentPresentation,
-          content: currentContent,
-        );
-      } else {
-        result = await api.generateProductImage(id,
-          name: currentName,
-          presentation: currentPresentation,
-          content: currentContent,
-        );
-      }
+      // Always generate from scratch using current description,
+      // never enhance the old photo (it may not match the new name/presentation)
+      final result = await api.generateProductImage(id,
+        name: currentName,
+        presentation: currentPresentation,
+        content: currentContent,
+      );
       final url = (result['photo_url'] ?? result['image_url']) as String?;
       if (url != null && mounted) {
         setState(() {
@@ -817,8 +819,8 @@ class _EditProductSheetState extends State<_EditProductSheet> {
                         const SizedBox(height: 8),
                         _photoAction(
                           label: _enhancing
-                              ? (hasPhoto ? 'Mejorando...' : 'Generando...')
-                              : (hasPhoto ? 'Mejorar con IA' : 'Generar con IA'),
+                              ? 'Generando...'
+                              : 'Generar con IA',
                           icon: _enhancing ? null : Icons.auto_awesome_rounded,
                           color: const Color(0xFF7C3AED),
                           loading: _enhancing,
