@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:uuid/uuid.dart';
 import '../../database/database_service.dart';
 import '../../database/collections/local_product.dart';
+import '../../services/margin_service.dart';
 import '../../theme/app_theme.dart';
 
 /// Colombian rounding: ceil to nearest $50 COP
@@ -35,8 +36,9 @@ class IaResultScreen extends StatefulWidget {
 
 class _IaResultScreenState extends State<IaResultScreen> {
   late List<_EditableProduct> _products;
-  double _marginPercent = 20.0; // Default global margin
+  double _marginPercent = 20.0;
   bool _saving = false;
+  bool _marginLoaded = false;
 
   @override
   void initState() {
@@ -52,6 +54,18 @@ class _IaResultScreenState extends State<IaResultScreen> {
         confidence: (p['confidence'] as num?)?.toDouble() ?? 0.9,
       );
     }).toList();
+    _loadMargin();
+  }
+
+  Future<void> _loadMargin() async {
+    final margin = await MarginService.getMargin();
+    if (mounted && margin != _marginPercent) {
+      _marginPercent = margin;
+      _recalculateAllPrices();
+      setState(() => _marginLoaded = true);
+    } else {
+      if (mounted) setState(() => _marginLoaded = true);
+    }
   }
 
   void _recalculateAllPrices() {

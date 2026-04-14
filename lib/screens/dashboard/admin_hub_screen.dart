@@ -10,6 +10,7 @@ import 'printer_config_screen.dart';
 import 'sync_screen.dart';
 import 'table_floor_plan_screen.dart';
 import 'employees_screen.dart';
+import '../../services/margin_service.dart';
 
 /// Admin Hub — Business configuration screen with Gerontodiseño.
 class AdminHubScreen extends StatefulWidget {
@@ -39,6 +40,7 @@ class _AdminHubScreenState extends State<AdminHubScreen> {
       setState(() {
         _enableFiados = data['enable_fiados'] as bool? ?? true;
         _defaultMargin = (data['default_margin'] as num?)?.toDouble() ?? 20;
+        MarginService.saveMargin(_defaultMargin);
         _configLoaded = true;
       });
     } catch (_) {
@@ -127,6 +129,7 @@ class _AdminHubScreenState extends State<AdminHubScreen> {
                     final value = double.tryParse(ctrl.text) ?? 20;
                     Navigator.of(ctx).pop();
                     setState(() => _defaultMargin = value);
+                    MarginService.saveMargin(value);
                     try {
                       await _api.updateStoreConfig({'default_margin': value});
                     } catch (_) {}
