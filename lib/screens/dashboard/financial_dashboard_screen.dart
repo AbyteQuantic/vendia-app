@@ -5,6 +5,7 @@ import '../../database/collections/local_sale.dart';
 import '../../services/api_service.dart';
 import '../../services/auth_service.dart';
 import '../../theme/app_theme.dart';
+import 'sales_ideas_screen.dart';
 
 class FinancialDashboardScreen extends StatefulWidget {
   const FinancialDashboardScreen({super.key});
@@ -334,8 +335,15 @@ class _FinancialDashboardScreenState extends State<FinancialDashboardScreen> {
                   ),
                   const SizedBox(height: 24),
 
-                  // ── AI Suggestions ─────────────────────────────────
-                  Container(
+                  // ── AI Suggestions (tap to navigate) ──────────────
+                  GestureDetector(
+                  onTap: () {
+                    HapticFeedback.lightImpact();
+                    Navigator.of(context).push(MaterialPageRoute(
+                      builder: (_) => const SalesIdeasScreen(),
+                    ));
+                  },
+                  child: Container(
                     padding: const EdgeInsets.all(20),
                     decoration: BoxDecoration(
                       gradient: LinearGradient(
@@ -358,11 +366,15 @@ class _FinancialDashboardScreenState extends State<FinancialDashboardScreen> {
                             Icon(Icons.auto_awesome_rounded,
                                 color: Color(0xFF7C3AED), size: 22),
                             SizedBox(width: 8),
-                            Text('Ideas para Vender Mas',
-                                style: TextStyle(
-                                    fontSize: 18,
-                                    fontWeight: FontWeight.w700,
-                                    color: Color(0xFF7C3AED))),
+                            Expanded(
+                              child: Text('Ideas para Vender Mas',
+                                  style: TextStyle(
+                                      fontSize: 18,
+                                      fontWeight: FontWeight.w700,
+                                      color: Color(0xFF7C3AED))),
+                            ),
+                            Icon(Icons.chevron_right_rounded,
+                                color: Color(0xFF7C3AED), size: 26),
                           ],
                         ),
                         const SizedBox(height: 12),
@@ -392,6 +404,7 @@ class _FinancialDashboardScreenState extends State<FinancialDashboardScreen> {
                           ],
                       ],
                     ),
+                  ),
                   ),
                   const SizedBox(height: 24),
 
@@ -482,7 +495,9 @@ class _FinancialDashboardScreenState extends State<FinancialDashboardScreen> {
                         fontWeight: FontWeight.w600,
                         color: AppTheme.textPrimary)),
                 Text(
-                  '${_methodLabel(sale.paymentMethod)} · ${_timeAgo(sale.createdAt)}',
+                  '${_methodLabel(sale.paymentMethod)}'
+                  '${sale.employeeName != null && sale.employeeName!.isNotEmpty ? ' · ${sale.employeeName}' : ''}'
+                  ' · ${_timeAgo(sale.createdAt)}',
                   style: const TextStyle(
                       fontSize: 14, color: AppTheme.textSecondary),
                 ),

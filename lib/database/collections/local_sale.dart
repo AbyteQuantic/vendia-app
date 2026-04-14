@@ -12,6 +12,7 @@ class LocalSale {
   late double total;
   late String paymentMethod;
   String? customerUuid;
+  String? employeeName;
   late bool isCreditSale;
   late List<SaleItemEmbed> items;
   late DateTime createdAt;
@@ -23,6 +24,7 @@ class LocalSale {
         'total': total,
         'payment_method': paymentMethod,
         'customer_uuid': customerUuid,
+        'employee_name': employeeName,
         'is_credit_sale': isCreditSale,
         'items': items.map((i) => i.toJson()).toList(),
         'created_at': createdAt.toIso8601String(),
@@ -35,6 +37,7 @@ class LocalSale {
       ..total = (json['total'] as num).toDouble()
       ..paymentMethod = json['payment_method'] as String? ?? 'cash'
       ..customerUuid = json['customer_uuid'] as String?
+      ..employeeName = json['employee_name'] as String?
       ..isCreditSale = json['is_credit_sale'] as bool? ?? false
       ..items = rawItems
           .map((e) => SaleItemEmbed.fromJson(e as Map<String, dynamic>))

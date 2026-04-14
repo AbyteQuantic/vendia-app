@@ -385,10 +385,12 @@ class _PosScreenBodyState extends State<_PosScreenBody> {
             ..isContainerCharge = false;
         }).toList();
 
+        final employeeName = await AuthService().getOwnerName() ?? '';
         final localSale = LocalSale()
           ..uuid = saleUuid
           ..total = saleTotal
           ..paymentMethod = result.paymentMethod
+          ..employeeName = employeeName
           ..isCreditSale = result.paymentMethod == 'credit'
           ..items = saleItems
           ..createdAt = DateTime.now()
