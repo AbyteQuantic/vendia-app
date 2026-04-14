@@ -386,6 +386,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   void _showFiadoHandshake() {
     final nameCtrl = TextEditingController();
     final phoneCtrl = TextEditingController();
+    final emailCtrl = TextEditingController();
 
     showModalBottomSheet(
       context: context,
@@ -437,6 +438,16 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                 decoration: const InputDecoration(
                   labelText: 'Celular / WhatsApp',
                   prefixIcon: Icon(Icons.phone_rounded),
+                ),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: emailCtrl,
+                keyboardType: TextInputType.emailAddress,
+                style: const TextStyle(fontSize: 20, color: Colors.black87),
+                decoration: const InputDecoration(
+                  labelText: 'Correo electrónico (opcional)',
+                  prefixIcon: Icon(Icons.email_rounded),
                 ),
               ),
               const SizedBox(height: 20),
