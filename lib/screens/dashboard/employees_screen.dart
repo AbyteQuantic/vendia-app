@@ -101,7 +101,7 @@ class _EmployeesScreenState extends State<EmployeesScreen> {
                     keyboardType: TextInputType.phone,
                     style: const TextStyle(fontSize: 20, color: Colors.black87),
                     decoration: const InputDecoration(
-                      labelText: 'Teléfono (opcional)',
+                      labelText: 'Teléfono',
                       prefixIcon: Icon(Icons.phone_rounded),
                     ),
                   ),
@@ -154,8 +154,10 @@ class _EmployeesScreenState extends State<EmployeesScreen> {
                     height: 60,
                     child: ElevatedButton.icon(
                       onPressed: () async {
-                        if (nameCtrl.text.trim().isEmpty || pinCtrl.text.length != 4
-                            || passCtrl.text.trim().isEmpty) return;
+                        if (nameCtrl.text.trim().isEmpty ||
+                            phoneCtrl.text.trim().length < 7 ||
+                            pinCtrl.text.length != 4 ||
+                            passCtrl.text.trim().isEmpty) return;
                         Navigator.of(ctx).pop();
                         try {
                           await _api.createEmployee({
