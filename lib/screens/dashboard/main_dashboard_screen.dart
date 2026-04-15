@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../../services/api_service.dart';
+import '../../services/auth_service.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/panic_button.dart';
 import '../../widgets/sync_status_banner.dart';
@@ -77,7 +79,7 @@ class _MainDashboardScreenState extends State<MainDashboardScreen> {
                           // Botón de pánico silencioso
                           PanicButton(
                             onPanicTriggered: () {
-                              // TODO: send SOS via API
+                              ApiService(AuthService()).triggerPanic();
                             },
                           ),
                           const SizedBox(width: 8),

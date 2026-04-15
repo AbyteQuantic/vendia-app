@@ -712,7 +712,9 @@ class _PosScreenBodyState extends State<_PosScreenBody> {
                         ),
                       ),
                       const Spacer(),
-                      PanicButton(onPanicTriggered: () {}),
+                      PanicButton(onPanicTriggered: () {
+                        ApiService(AuthService()).triggerPanic();
+                      }),
                       const SizedBox(width: 6),
                       _HeaderBadgeIcon(
                         icon: Icons.menu_book_rounded,

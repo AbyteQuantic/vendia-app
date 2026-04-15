@@ -11,6 +11,7 @@ import 'sync_screen.dart';
 import 'table_floor_plan_screen.dart';
 import 'employees_screen.dart';
 import '../../services/margin_service.dart';
+import 'panic_config_screen.dart';
 
 /// Admin Hub — Business configuration screen with Gerontodiseño.
 class AdminHubScreen extends StatefulWidget {
@@ -275,6 +276,20 @@ class _AdminHubScreenState extends State<AdminHubScreen> {
               subtitle: 'Estado del servidor y datos pendientes',
               onTap: () => Navigator.of(context).push(
                 MaterialPageRoute(builder: (_) => const SyncScreen()),
+              ),
+            ),
+
+            // ── Seguridad ───────────────────────────────────────────
+            const SizedBox(height: 20),
+            const _SectionHeader(title: 'Seguridad', icon: Icons.shield_rounded),
+            const SizedBox(height: 8),
+            _SettingsTile(
+              icon: Icons.emergency_rounded,
+              iconColor: AppTheme.error,
+              title: 'Boton de Panico',
+              subtitle: 'Contactos de emergencia y mensaje SOS',
+              onTap: () => Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const PanicConfigScreen()),
               ),
             ),
 

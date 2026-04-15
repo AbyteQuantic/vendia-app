@@ -1359,4 +1359,53 @@ class ApiService {
       throw AppError.fromDioException(e);
     }
   }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // PANIC BUTTON
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  Future<Map<String, dynamic>> fetchPanicConfig() async {
+    try {
+      final response = await _dio.get('/api/v1/store/panic-config');
+      return _extractData(response);
+    } on DioException catch (e) {
+      throw AppError.fromDioException(e);
+    }
+  }
+
+  Future<void> updatePanicMessage(String message) async {
+    try {
+      await _dio.patch('/api/v1/store/panic-config',
+          data: {'panic_message': message});
+    } on DioException catch (e) {
+      throw AppError.fromDioException(e);
+    }
+  }
+
+  Future<Map<String, dynamic>> createEmergencyContact(
+      Map<String, dynamic> data) async {
+    try {
+      final response =
+          await _dio.post('/api/v1/store/panic-config/contacts', data: data);
+      return _extractData(response);
+    } on DioException catch (e) {
+      throw AppError.fromDioException(e);
+    }
+  }
+
+  Future<void> deleteEmergencyContact(String id) async {
+    try {
+      await _dio.delete('/api/v1/store/panic-config/contacts/$id');
+    } on DioException catch (e) {
+      throw AppError.fromDioException(e);
+    }
+  }
+
+  Future<void> triggerPanic() async {
+    try {
+      await _dio.post('/api/v1/store/panic/trigger');
+    } on DioException catch (e) {
+      throw AppError.fromDioException(e);
+    }
+  }
 }
