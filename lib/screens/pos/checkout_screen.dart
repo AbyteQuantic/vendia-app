@@ -764,13 +764,35 @@ class _FiadoWaitingRoomState extends State<_FiadoWaitingRoom> {
               ],
             ),
             const SizedBox(height: 12),
+            const SizedBox(height: 4),
+            SizedBox(
+              width: double.infinity,
+              height: 48,
+              child: ElevatedButton.icon(
+                onPressed: () {
+                  _pollTimer?.cancel();
+                  Navigator.of(context).pop(); // close dialog
+                  Navigator.of(context).pop(); // back to POS
+                },
+                icon: const Icon(Icons.shopping_cart_rounded, size: 20),
+                label: const Text('Continuar vendiendo',
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppTheme.primary,
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14)),
+                ),
+              ),
+            ),
+            const SizedBox(height: 4),
             TextButton(
               onPressed: () {
                 _pollTimer?.cancel();
                 widget.onAccepted();
               },
-              child: const Text('Registrar sin firma',
-                  style: TextStyle(fontSize: 15,
+              child: const Text('Registrar venta sin firma',
+                  style: TextStyle(fontSize: 14,
                       color: AppTheme.textSecondary)),
             ),
           ],
