@@ -52,20 +52,28 @@ class _FinancialDashboardScreenState extends State<FinancialDashboardScreen> {
 
   Future<void> _load() async {
     setState(() => _loading = true);
-
-    if (_period == 'today') {
-      await _loadLocalToday();
-    } else {
-      await _loadFromServer();
-    }
-
+    await _loadLocal();
     _loadSuggestions();
     if (mounted) setState(() => _loading = false);
   }
 
-  /// "Hoy" uses Isar local data — same source as the Home dashboard
-  Future<void> _loadLocalToday() async {
-    final sales = await _db.getSalesToday();
+  /// All periods use Isar local data — single source of truth.
+  /// This guarantees the tendero always sees their data even offline.
+  Future<void> _loadLocal() async {
+    final now = DateTime.now();
+    DateTime since;
+    switch (_period) {
+      case 'week':
+        since = now.subtract(const Duration(days: 7));
+      case 'month':
+        since = DateTime(now.year, now.month - 1, now.day);
+      default: // today
+        since = DateTime(now.year, now.month, now.day);
+    }
+
+    final sales = _period == 'today'
+        ? await _db.getSalesToday()
+        : await _db.getSalesSince(since);
     sales.sort((a, b) => b.createdAt.compareTo(a.createdAt));
     final margin = await MarginService.getMargin();
 
@@ -124,28 +132,6 @@ class _FinancialDashboardScreenState extends State<FinancialDashboardScreen> {
         _localSales = sales;
         _employeePerf = perfList;
       });
-    }
-  }
-
-  /// Semana/Mes uses the backend aggregation endpoint
-  Future<void> _loadFromServer() async {
-    try {
-      final data = await _api.fetchFinancialSummary(period: _period);
-      if (mounted) {
-        setState(() {
-          _totalSales = (data['total_sales'] as num?)?.toDouble() ?? 0;
-          _txCount = (data['transaction_count'] as num?)?.toInt() ?? 0;
-          _cashInDrawer = (data['cash_in_drawer'] as num?)?.toDouble() ?? 0;
-          _digitalMoney = (data['digital_money'] as num?)?.toDouble() ?? 0;
-          _accountsReceivable =
-              (data['accounts_receivable'] as num?)?.toDouble() ?? 0;
-          _profit = (data['total_profit'] as num?)?.toDouble() ?? 0;
-          _dailyAvg = (data['daily_average'] as num?)?.toDouble() ?? 0;
-          _localSales = []; // No local data for historical periods
-        });
-      }
-    } catch (_) {
-      // If server fails for historical, show zeros
     }
   }
 

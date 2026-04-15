@@ -137,6 +137,10 @@ class DatabaseService {
     return isar.localSales.where().sortByCreatedAtDesc().limit(limit).findAll();
   }
 
+  Future<List<LocalSale>> getSalesSince(DateTime since) async {
+    return isar.localSales.filter().createdAtGreaterThan(since).findAll();
+  }
+
   Future<void> insertSale(LocalSale sale) async {
     await isar.writeTxn(() async {
       await isar.localSales.put(sale);
