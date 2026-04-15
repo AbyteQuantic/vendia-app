@@ -78,16 +78,35 @@ class SalesSyncService {
 
       for (final sale in unsynced) {
         try {
+          // Skip sales with non-UUID ids (legacy timestamp-based)
+          if (!sale.uuid.contains('-') || sale.uuid.length < 32) {
+            debugPrint('[SALES_SYNC] Skipping non-UUID sale: ${sale.uuid}');
+            // Mark as synced to avoid retrying forever
+            await db.isar.writeTxn(() async {
+              sale.synced = true;
+              await db.isar.localSales.put(sale);
+            });
+            continue;
+          }
+
+          final items = sale.items
+              .where((i) => !i.isContainerCharge && i.productUuid.isNotEmpty)
+              .map((i) => {'product_id': i.productUuid, 'quantity': i.quantity})
+              .toList();
+
+          if (items.isEmpty) {
+            debugPrint('[SALES_SYNC] Skipping sale with no valid items: ${sale.uuid}');
+            await db.isar.writeTxn(() async {
+              sale.synced = true;
+              await db.isar.localSales.put(sale);
+            });
+            continue;
+          }
+
           await api.createSale({
             'id': sale.uuid,
             'payment_method': sale.paymentMethod,
-            'items': sale.items
-                .where((i) => !i.isContainerCharge)
-                .map((i) => {
-                      'product_id': i.productUuid,
-                      'quantity': i.quantity,
-                    })
-                .toList(),
+            'items': items,
           });
 
           // Mark as synced

@@ -430,10 +430,13 @@ class _PosScreenBodyState extends State<_PosScreenBody> {
 
         await db.insertSaleAndDeductStock(localSale);
 
-        // Sync sale to backend (fire and forget — don't block UX)
-        _syncSaleToBackend(ctrl.activeCart, result.paymentMethod, saleUuid);
+        // Copy cart items BEFORE clearing (List is reference type)
+        final cartSnapshot = List<CartItem>.from(ctrl.activeCart);
 
         ctrl.clearActiveCart();
+
+        // Sync sale to backend (fire and forget — don't block UX)
+        _syncSaleToBackend(cartSnapshot, result.paymentMethod, saleUuid);
 
         if (!mounted) return;
         await Navigator.of(context).push(
