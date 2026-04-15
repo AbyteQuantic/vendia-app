@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:uuid/uuid.dart';
 import '../../models/cart_item.dart';
 import '../../models/product.dart';
 import '../../theme/app_theme.dart';
@@ -404,7 +405,7 @@ class _PosScreenBodyState extends State<_PosScreenBody> {
 
         // Process sale: save to Isar + deduct stock
         final db = DatabaseService.instance;
-        final saleUuid = DateTime.now().millisecondsSinceEpoch.toString();
+        final saleUuid = const Uuid().v4();
         final saleItems = ctrl.activeCart.map((item) {
           return SaleItemEmbed()
             ..productUuid = item.product.uuid.isNotEmpty
