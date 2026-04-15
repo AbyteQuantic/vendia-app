@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
+import '../../models/cart_item.dart';
 import '../../models/product.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/panic_button.dart';
@@ -356,6 +357,36 @@ class _PosScreenBodyState extends State<_PosScreenBody> {
     }
   }
 
+  Future<void> _syncSaleToBackend(
+      List<CartItem> cartItems, String paymentMethod, String saleUuid) async {
+    try {
+      final api = ApiService(AuthService());
+      await api.createSale({
+        'id': saleUuid,
+        'payment_method': paymentMethod,
+        'items': cartItems.map((item) => {
+                  'product_id': item.product.uuid.isNotEmpty
+                      ? item.product.uuid
+                      : item.product.id.toString(),
+                  'quantity': item.quantity,
+                })
+            .toList(),
+      });
+      // Mark as synced in Isar
+      final db = DatabaseService.instance;
+      final allSales = await db.getSalesToday();
+      final match = allSales.where((s) => s.uuid == saleUuid).toList();
+      if (match.isNotEmpty) {
+        await db.isar.writeTxn(() async {
+          match.first.synced = true;
+          await db.isar.localSales.put(match.first);
+        });
+      }
+    } catch (e) {
+      debugPrint('SALE SYNC ERROR (will retry later): $e');
+    }
+  }
+
   void _cobrarMostrador(CartController ctrl) {
     Navigator.of(context).push(
       MaterialPageRoute(
@@ -397,6 +428,10 @@ class _PosScreenBodyState extends State<_PosScreenBody> {
           ..synced = false;
 
         await db.insertSaleAndDeductStock(localSale);
+
+        // Sync sale to backend (fire and forget — don't block UX)
+        _syncSaleToBackend(ctrl.activeCart, result.paymentMethod, saleUuid);
+
         ctrl.clearActiveCart();
 
         if (!mounted) return;
