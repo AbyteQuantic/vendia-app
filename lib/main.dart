@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 import 'database/collections/local_catalog_product.dart';
 import 'database/database_service.dart';
 import 'database/sync/connectivity_monitor.dart';
+import 'database/sync/sales_sync.dart';
 import 'database/sync/sync_service.dart';
 import 'services/api_service.dart';
 import 'services/auth_service.dart';
@@ -48,6 +49,15 @@ class _VendIAAppState extends State<VendIAApp> {
     );
     _syncService.startBackgroundSync();
     _syncCatalogInBackground();
+    _syncSalesOnStart();
+  }
+
+  /// Sync sales bidirectionally: pull from server + push unsynced local sales.
+  Future<void> _syncSalesOnStart() async {
+    // Only sync if user has an active session
+    final hasSession = await AuthService().hasSession();
+    if (!hasSession) return;
+    await SalesSyncService.fullSync();
   }
 
   /// Sync the OFF catalog to Isar in background for offline-first autocomplete.
