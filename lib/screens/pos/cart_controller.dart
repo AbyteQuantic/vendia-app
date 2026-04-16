@@ -113,8 +113,14 @@ class CartController extends ChangeNotifier {
             .toList();
         await db.replaceAllProducts(serverProducts);
         _products = serverProducts.map(_localToProduct).toList();
+        // Debug: log products with images
+        for (final p in _products.where((p) => p.imageUrl != null && p.imageUrl!.isNotEmpty)) {
+          debugPrint('[PRODUCTS] ${p.name} → ${p.imageUrl!.substring(0, p.imageUrl!.length.clamp(0, 60))}...');
+        }
+        debugPrint('[PRODUCTS] Loaded ${_products.length} total, ${_products.where((p) => p.imageUrl != null && p.imageUrl!.isNotEmpty).length} with images');
         notifyListeners();
-      } catch (_) {
+      } catch (e) {
+        debugPrint('[PRODUCTS] Server fetch failed: $e');
         // Keep local data if server fails
       }
     } catch (_) {
