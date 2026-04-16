@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../../services/api_service.dart';
 import '../../services/auth_service.dart';
 import '../../theme/app_theme.dart';
@@ -59,24 +60,66 @@ class _PanicConfigScreenState extends State<PanicConfigScreen> {
     }
   }
 
-  String _buildPreview() {
+  static const _exampleMapsUrl = 'https://maps.google.com/?q=4.6097,-74.0817';
+
+  Widget _buildPreviewWidget() {
     final msg = _msgCtrl.text.trim().isNotEmpty
         ? _msgCtrl.text.trim()
         : 'EMERGENCIA en el local. Necesito ayuda inmediata.';
-    final parts = <String>[msg];
-    if (_includeAddress) parts.add('\nDireccion: Cra 5 #12-34, Bogota');
-    if (_includeGPS) {
-      parts.add('\nUbicacion: https://maps.google.com/?q=4.60,-74.08');
-    }
-    return parts.join('');
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(msg,
+            style: const TextStyle(
+                fontSize: 15, color: Colors.black87, height: 1.5)),
+        if (_includeAddress) ...[
+          const SizedBox(height: 8),
+          const Text('Direccion: Cra 5 #12-34, Bogota',
+              style: TextStyle(fontSize: 14, color: Colors.black54)),
+        ],
+        if (_includeGPS) ...[
+          const SizedBox(height: 6),
+          GestureDetector(
+            onTap: () => launchUrl(Uri.parse(_exampleMapsUrl),
+                mode: LaunchMode.externalApplication),
+            child: Row(
+              children: [
+                Icon(Icons.location_on_rounded,
+                    size: 16, color: Colors.blue.shade700),
+                const SizedBox(width: 4),
+                Expanded(
+                  child: Text(
+                    'Ver ubicacion en Google Maps',
+                    style: TextStyle(
+                      fontSize: 14,
+                      color: Colors.blue.shade700,
+                      fontWeight: FontWeight.w600,
+                      decoration: TextDecoration.underline,
+                      decorationColor: Colors.blue.shade700,
+                    ),
+                  ),
+                ),
+                Icon(Icons.open_in_new_rounded,
+                    size: 14, color: Colors.blue.shade700),
+              ],
+            ),
+          ),
+        ],
+      ],
+    );
   }
 
   Future<void> _saveAll() async {
     setState(() => _saving = true);
     HapticFeedback.mediumImpact();
     try {
+      // Always send a message (use default if empty)
+      final msg = _msgCtrl.text.trim().isNotEmpty
+          ? _msgCtrl.text.trim()
+          : 'EMERGENCIA en el local. Necesito ayuda inmediata.';
       await _api.updatePanicMessage(
-        _msgCtrl.text.trim().isEmpty ? null : _msgCtrl.text.trim(),
+        msg,
         includeAddress: _includeAddress,
         includeGPS: _includeGPS,
       );
@@ -84,8 +127,9 @@ class _PanicConfigScreenState extends State<PanicConfigScreen> {
         _showSnack('Configuracion de seguridad actualizada');
         Navigator.of(context).pop();
       }
-    } catch (_) {
-      if (mounted) _showSnack('Error al guardar', isError: true);
+    } catch (e) {
+      debugPrint('PANIC SAVE ERROR: $e');
+      if (mounted) _showSnack('Error al guardar: $e', isError: true);
     } finally {
       if (mounted) setState(() => _saving = false);
     }
@@ -394,11 +438,7 @@ class _PanicConfigScreenState extends State<PanicConfigScreen> {
                             color: Colors.white,
                             borderRadius: BorderRadius.circular(14),
                           ),
-                          child: Text(_buildPreview(),
-                              style: const TextStyle(
-                                  fontSize: 15,
-                                  color: Colors.black87,
-                                  height: 1.5)),
+                          child: _buildPreviewWidget(),
                         ),
                         const SizedBox(height: 6),
                         Text(
