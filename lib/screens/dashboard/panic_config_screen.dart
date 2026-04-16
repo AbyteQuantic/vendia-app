@@ -17,6 +17,8 @@ class _PanicConfigScreenState extends State<PanicConfigScreen> {
   List<Map<String, dynamic>> _contacts = [];
   bool _loading = true;
   bool _saving = false;
+  bool _includeAddress = true;
+  bool _includeGPS = true;
 
   static const _presetMessages = [
     'EMERGENCIA en el local. Necesito ayuda policial inmediata.',
@@ -43,6 +45,8 @@ class _PanicConfigScreenState extends State<PanicConfigScreen> {
       if (mounted) {
         setState(() {
           _msgCtrl.text = res['panic_message'] as String? ?? '';
+          _includeAddress = res['panic_include_address'] as bool? ?? true;
+          _includeGPS = res['panic_include_gps'] as bool? ?? true;
           _contacts = (res['contacts'] as List?)?.cast<Map<String, dynamic>>() ?? [];
           _loading = false;
         });
@@ -264,6 +268,56 @@ class _PanicConfigScreenState extends State<PanicConfigScreen> {
                   ),
                 ),
 
+                const SizedBox(height: 32),
+
+                // ── Location options ─────────────────────────────────
+                const Text('Opciones de ubicacion',
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700,
+                        color: AppTheme.textPrimary)),
+                const SizedBox(height: 8),
+                Container(
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(18),
+                    boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.03),
+                        blurRadius: 6, offset: const Offset(0, 2))],
+                  ),
+                  child: Column(children: [
+                    SwitchListTile.adaptive(
+                      value: _includeAddress,
+                      onChanged: (v) {
+                        setState(() => _includeAddress = v);
+                        _api.updatePanicMessage(
+                            _msgCtrl.text.trim().isEmpty ? null : _msgCtrl.text.trim(),
+                            includeAddress: v, includeGPS: _includeGPS);
+                      },
+                      title: const Text('Incluir direccion del negocio',
+                          style: TextStyle(fontSize: 17, fontWeight: FontWeight.w600,
+                              color: Colors.black87)),
+                      subtitle: const Text('Envia la direccion registrada en el perfil',
+                          style: TextStyle(fontSize: 14)),
+                      secondary: const Icon(Icons.home_rounded, color: AppTheme.error),
+                      activeColor: AppTheme.error,
+                    ),
+                    const Divider(height: 1, indent: 56),
+                    SwitchListTile.adaptive(
+                      value: _includeGPS,
+                      onChanged: (v) {
+                        setState(() => _includeGPS = v);
+                        _api.updatePanicMessage(
+                            _msgCtrl.text.trim().isEmpty ? null : _msgCtrl.text.trim(),
+                            includeAddress: _includeAddress, includeGPS: v);
+                      },
+                      title: const Text('Incluir ubicacion GPS en vivo',
+                          style: TextStyle(fontSize: 17, fontWeight: FontWeight.w600,
+                              color: Colors.black87)),
+                      subtitle: const Text('Envia un link de Google Maps con la ubicacion actual',
+                          style: TextStyle(fontSize: 14)),
+                      secondary: const Icon(Icons.gps_fixed_rounded, color: AppTheme.error),
+                      activeColor: AppTheme.error,
+                    ),
+                  ]),
+                ),
                 const SizedBox(height: 32),
 
                 // ── Contacts section ────────────────────────────────

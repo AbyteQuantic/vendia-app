@@ -18,6 +18,7 @@ import 'cuaderno_fiados_screen.dart';
 import '../../database/database_service.dart';
 import '../../services/api_service.dart';
 import '../../services/auth_service.dart';
+import '../../services/panic_trigger_service.dart';
 import '../../database/collections/local_sale.dart';
 import '../inventory/add_merchandise_screen.dart';
 
@@ -715,9 +716,7 @@ class _PosScreenBodyState extends State<_PosScreenBody> {
                         ),
                       ),
                       const Spacer(),
-                      PanicButton(onPanicTriggered: () {
-                        ApiService(AuthService()).triggerPanic();
-                      }),
+                      PanicButton(onPanicTriggered: PanicTriggerService.trigger),
                       const SizedBox(width: 6),
                       _HeaderBadgeIcon(
                         icon: Icons.menu_book_rounded,

@@ -1373,10 +1373,16 @@ class ApiService {
     }
   }
 
-  Future<void> updatePanicMessage(String message) async {
+  Future<void> updatePanicMessage(String? message, {
+    bool? includeAddress,
+    bool? includeGPS,
+  }) async {
     try {
-      await _dio.patch('/api/v1/store/panic-config',
-          data: {'panic_message': message});
+      final data = <String, dynamic>{};
+      if (message != null) data['panic_message'] = message;
+      if (includeAddress != null) data['panic_include_address'] = includeAddress;
+      if (includeGPS != null) data['panic_include_gps'] = includeGPS;
+      await _dio.patch('/api/v1/store/panic-config', data: data);
     } on DioException catch (e) {
       throw AppError.fromDioException(e);
     }
@@ -1401,9 +1407,15 @@ class ApiService {
     }
   }
 
-  Future<void> triggerPanic() async {
+  Future<void> triggerPanic({
+    double liveLatitude = 0,
+    double liveLongitude = 0,
+  }) async {
     try {
-      await _dio.post('/api/v1/store/panic/trigger');
+      await _dio.post('/api/v1/store/panic/trigger', data: {
+        'live_latitude': liveLatitude,
+        'live_longitude': liveLongitude,
+      });
     } on DioException catch (e) {
       throw AppError.fromDioException(e);
     }

@@ -1,6 +1,8 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:geolocator/geolocator.dart';
+import 'package:geocoding/geocoding.dart';
 import 'package:image_picker/image_picker.dart';
 import '../../services/api_service.dart';
 import '../../services/auth_service.dart';
@@ -19,6 +21,10 @@ class _BusinessProfileScreenState extends State<BusinessProfileScreen> {
   final _formKey = GlobalKey<FormState>();
   final _nameCtrl = TextEditingController();
   final _nitCtrl = TextEditingController();
+  final _addressCtrl = TextEditingController();
+  double _latitude = 0;
+  double _longitude = 0;
+  bool _gettingLocation = false;
 
   late final ApiService _api;
   bool _loading = true;
@@ -49,6 +55,7 @@ class _BusinessProfileScreenState extends State<BusinessProfileScreen> {
   void dispose() {
     _nameCtrl.dispose();
     _nitCtrl.dispose();
+    _addressCtrl.dispose();
     super.dispose();
   }
 
@@ -59,6 +66,9 @@ class _BusinessProfileScreenState extends State<BusinessProfileScreen> {
       setState(() {
         _nameCtrl.text = data['business_name'] ?? '';
         _nitCtrl.text = data['nit'] ?? '';
+        _addressCtrl.text = data['address'] ?? '';
+        _latitude = (data['latitude'] as num?)?.toDouble() ?? 0;
+        _longitude = (data['longitude'] as num?)?.toDouble() ?? 0;
         _logoUrl = (data['logo_url'] as String?)?.isNotEmpty == true
             ? data['logo_url']
             : null;
@@ -241,6 +251,55 @@ class _BusinessProfileScreenState extends State<BusinessProfileScreen> {
 
   // ── Save ───────────────────────────────────────────────────────────────────
 
+  Future<void> _captureLocation() async {
+    setState(() => _gettingLocation = true);
+    try {
+      LocationPermission perm = await Geolocator.checkPermission();
+      if (perm == LocationPermission.denied) {
+        perm = await Geolocator.requestPermission();
+      }
+      if (perm == LocationPermission.denied ||
+          perm == LocationPermission.deniedForever) {
+        if (mounted) {
+          _showSnack('Permiso de ubicacion denegado', isError: true);
+        }
+        return;
+      }
+
+      final pos = await Geolocator.getCurrentPosition(
+        desiredAccuracy: LocationAccuracy.high,
+      );
+
+      if (mounted) {
+        setState(() {
+          _latitude = pos.latitude;
+          _longitude = pos.longitude;
+        });
+      }
+
+      // Reverse geocode to fill address
+      try {
+        final placemarks = await placemarkFromCoordinates(
+            pos.latitude, pos.longitude);
+        if (placemarks.isNotEmpty && mounted) {
+          final p = placemarks.first;
+          final addr = [p.street, p.locality, p.administrativeArea]
+              .where((s) => s != null && s.isNotEmpty)
+              .join(', ');
+          if (addr.isNotEmpty && _addressCtrl.text.isEmpty) {
+            setState(() => _addressCtrl.text = addr);
+          }
+        }
+      } catch (_) {} // geocoding may fail, GPS coords still saved
+
+      if (mounted) _showSnack('Ubicacion capturada');
+    } catch (e) {
+      if (mounted) _showSnack('Error al obtener ubicacion: $e', isError: true);
+    } finally {
+      if (mounted) setState(() => _gettingLocation = false);
+    }
+  }
+
   Future<void> _saveProfile() async {
     if (!_formKey.currentState!.validate()) return;
 
@@ -252,6 +311,9 @@ class _BusinessProfileScreenState extends State<BusinessProfileScreen> {
         'business_name': _nameCtrl.text.trim(),
         'nit': _nitCtrl.text.trim(),
         'business_types': _selectedTypes.toList(),
+        'address': _addressCtrl.text.trim(),
+        if (_latitude != 0) 'latitude': _latitude,
+        if (_longitude != 0) 'longitude': _longitude,
       };
 
       await _api.updateBusinessProfile(updates);
@@ -349,6 +411,49 @@ class _BusinessProfileScreenState extends State<BusinessProfileScreen> {
               ),
               keyboardType: TextInputType.text,
               textInputAction: TextInputAction.done,
+            ),
+            const SizedBox(height: 24),
+
+            // ── Dirección del local ────────────────────────────────
+            _buildLabel('Dirección del local'),
+            const SizedBox(height: 8),
+            TextFormField(
+              controller: _addressCtrl,
+              style: const TextStyle(fontSize: 20, color: Colors.black87),
+              decoration: const InputDecoration(
+                hintText: 'Ej: Cra 5 #12-34, Bogotá',
+                prefixIcon: Icon(Icons.location_on_rounded, size: 24),
+              ),
+              textInputAction: TextInputAction.done,
+            ),
+            const SizedBox(height: 10),
+            SizedBox(
+              width: double.infinity,
+              height: 52,
+              child: OutlinedButton.icon(
+                onPressed: _gettingLocation ? null : _captureLocation,
+                icon: _gettingLocation
+                    ? const SizedBox(width: 20, height: 20,
+                        child: CircularProgressIndicator(strokeWidth: 2))
+                    : const Icon(Icons.my_location_rounded),
+                label: Text(
+                  _gettingLocation
+                      ? 'Obteniendo ubicacion...'
+                      : _latitude != 0
+                          ? 'Ubicacion capturada'
+                          : 'Capturar mi ubicacion actual',
+                  style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w600),
+                ),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: _latitude != 0
+                      ? AppTheme.success : AppTheme.primary,
+                  side: BorderSide(
+                    color: _latitude != 0
+                        ? AppTheme.success : AppTheme.primary),
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16)),
+                ),
+              ),
             ),
             const SizedBox(height: 24),
 
