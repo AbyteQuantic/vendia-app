@@ -30,6 +30,7 @@ class _PanicConfigScreenState extends State<PanicConfigScreen> {
   void initState() {
     super.initState();
     _api = ApiService(AuthService());
+    _msgCtrl.addListener(() => setState(() {})); // rebuild preview on text change
     _load();
   }
 
@@ -54,6 +55,23 @@ class _PanicConfigScreenState extends State<PanicConfigScreen> {
     } catch (_) {
       if (mounted) setState(() => _loading = false);
     }
+  }
+
+  String _buildPreviewMessage() {
+    final msg = _msgCtrl.text.trim().isNotEmpty
+        ? _msgCtrl.text.trim()
+        : 'EMERGENCIA en el local. Necesito ayuda inmediata.';
+
+    final parts = <String>[msg];
+
+    if (_includeAddress) {
+      parts.add('\nDireccion: Cra 5 #12-34, Bogota');
+    }
+    if (_includeGPS) {
+      parts.add('\nUbicacion: https://maps.google.com/?q=4.6097,-74.0817');
+    }
+
+    return parts.join('');
   }
 
   Future<void> _saveMessage() async {
@@ -317,6 +335,51 @@ class _PanicConfigScreenState extends State<PanicConfigScreen> {
                       activeColor: AppTheme.error,
                     ),
                   ]),
+                ),
+                const SizedBox(height: 24),
+
+                // ── Message Preview ─────────────────────────────────
+                const Text('Vista previa del mensaje',
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700,
+                        color: AppTheme.textPrimary)),
+                const SizedBox(height: 4),
+                const Text('Asi se vera el mensaje que recibiran sus contactos',
+                    style: TextStyle(fontSize: 14, color: AppTheme.textSecondary)),
+                const SizedBox(height: 10),
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF0FDF4),
+                    borderRadius: BorderRadius.circular(18),
+                    border: Border.all(color: AppTheme.success.withValues(alpha: 0.3)),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // Simulated chat bubble
+                      Container(
+                        padding: const EdgeInsets.all(14),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(14),
+                          boxShadow: [BoxShadow(
+                            color: Colors.black.withValues(alpha: 0.04),
+                            blurRadius: 4, offset: const Offset(0, 2))],
+                        ),
+                        child: Text(
+                          _buildPreviewMessage(),
+                          style: const TextStyle(fontSize: 15, color: Colors.black87, height: 1.5),
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        'Enviado a ${_contacts.isEmpty ? "0" : _contacts.length} contacto${_contacts.length != 1 ? "s" : ""}',
+                        style: TextStyle(fontSize: 13,
+                            color: AppTheme.success.withValues(alpha: 0.7)),
+                      ),
+                    ],
+                  ),
                 ),
                 const SizedBox(height: 32),
 
