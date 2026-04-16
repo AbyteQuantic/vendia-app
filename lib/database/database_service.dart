@@ -85,11 +85,12 @@ class DatabaseService {
     });
   }
 
-  /// Replace all local products with the server list (removes deleted products).
+  /// Sync products from server to local Isar (upsert by UUID).
+  /// Does NOT clear existing products — prevents data loss on partial fetches.
   Future<void> replaceAllProducts(List<LocalProduct> products) async {
+    if (products.isEmpty) return; // never wipe local data with empty response
     await isar.writeTxn(() async {
-      await isar.localProducts.clear();
-      await isar.localProducts.putAll(products);
+      await isar.localProducts.putAll(products); // unique index on uuid does upsert
     });
   }
 
