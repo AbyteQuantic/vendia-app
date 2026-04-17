@@ -1447,4 +1447,46 @@ class ApiService {
       throw AppError.fromDioException(e);
     }
   }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // NOTIFICATIONS
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  Future<Map<String, dynamic>> fetchNotifications() async {
+    try {
+      final response = await _dio.get('/api/v1/notifications');
+      return response.data as Map<String, dynamic>;
+    } on DioException catch (e) {
+      throw AppError.fromDioException(e);
+    }
+  }
+
+  Future<void> markNotificationsRead() async {
+    try {
+      await _dio.post('/api/v1/notifications/read');
+    } on DioException catch (e) {
+      throw AppError.fromDioException(e);
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // ONLINE ORDERS
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  Future<List<dynamic>> fetchOnlineOrders() async {
+    try {
+      final response = await _dio.get('/api/v1/online-orders');
+      return (response.data['data'] as List?) ?? [];
+    } on DioException catch (e) {
+      throw AppError.fromDioException(e);
+    }
+  }
+
+  Future<void> updateOnlineOrderStatus(String id, String status) async {
+    try {
+      await _dio.patch('/api/v1/online-orders/$id', data: {'status': status});
+    } on DioException catch (e) {
+      throw AppError.fromDioException(e);
+    }
+  }
 }

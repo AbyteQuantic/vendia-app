@@ -11,6 +11,7 @@ import 'sync_screen.dart';
 import 'table_floor_plan_screen.dart';
 import 'employees_screen.dart';
 import '../../services/margin_service.dart';
+import 'catalog_virtual_screen.dart';
 import 'panic_config_screen.dart';
 
 /// Admin Hub — Business configuration screen with Gerontodiseño.
@@ -276,6 +277,20 @@ class _AdminHubScreenState extends State<AdminHubScreen> {
               subtitle: 'Estado del servidor y datos pendientes',
               onTap: () => Navigator.of(context).push(
                 MaterialPageRoute(builder: (_) => const SyncScreen()),
+              ),
+            ),
+
+            // ── Catalogo Virtual ─────────────────────────────────────
+            const SizedBox(height: 20),
+            const _SectionHeader(title: 'Ventas Online', icon: Icons.public_rounded),
+            const SizedBox(height: 8),
+            _SettingsTile(
+              icon: Icons.storefront_rounded,
+              iconColor: const Color(0xFF7C3AED),
+              title: 'Catalogo Virtual',
+              subtitle: 'Pedidos en linea y link de tienda',
+              onTap: () => Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const CatalogVirtualScreen()),
               ),
             ),
 
