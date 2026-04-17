@@ -1420,4 +1420,31 @@ class ApiService {
       throw AppError.fromDioException(e);
     }
   }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // CREDITS (EL CUADERNO) - detail + abono
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  Future<Map<String, dynamic>> fetchCreditDetail(String id) async {
+    try {
+      final response = await _dio.get('/api/v1/credits/$id');
+      return _extractData(response);
+    } on DioException catch (e) {
+      throw AppError.fromDioException(e);
+    }
+  }
+
+  Future<Map<String, dynamic>> registerAbono(String creditId, {
+    required int amount,
+    String method = 'cash',
+    String note = '',
+  }) async {
+    try {
+      final response = await _dio.post('/api/v1/credits/$creditId/payments',
+          data: {'amount': amount, 'payment_method': method, 'note': note});
+      return _extractData(response);
+    } on DioException catch (e) {
+      throw AppError.fromDioException(e);
+    }
+  }
 }
