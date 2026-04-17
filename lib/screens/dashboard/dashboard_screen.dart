@@ -8,6 +8,7 @@ import '../../theme/app_theme.dart';
 import '../../widgets/stat_card.dart';
 import '../inventory/add_merchandise_screen.dart';
 import '../pos/pos_screen.dart';
+import '../../widgets/sync_status_banner.dart';
 import 'admin_hub_screen.dart';
 import 'financial_dashboard_screen.dart';
 
@@ -171,7 +172,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
       backgroundColor: AppTheme.background,
       body: SafeArea(
         bottom: false,
-        child: ScrollConfiguration(
+        child: Column(
+          children: [
+            const SyncStatusBanner(),
+            Expanded(child: ScrollConfiguration(
           behavior:
               ScrollConfiguration.of(context).copyWith(overscroll: false),
           child: RefreshIndicator.adaptive(
@@ -441,6 +445,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
               ],
             ),
           ),
+        )),
+          ],
         ),
       ),
       bottomNavigationBar: Container(
