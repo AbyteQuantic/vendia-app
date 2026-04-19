@@ -430,31 +430,63 @@ class _FiadoDetailScreenState extends State<_FiadoDetailScreen> {
             ),
           ),
           const SizedBox(height: 8),
-          SizedBox(
-            height: 54,
-            width: double.infinity,
-            child: OutlinedButton.icon(
-              onPressed: (phone.isEmpty && email.isEmpty && fiadoToken.isEmpty)
-                  ? null
-                  : () => _showResendChannelSheet(
-                        name: name,
-                        phone: phone,
-                        email: email,
-                        fiadoToken: fiadoToken,
-                        balance: balance,
-                      ),
-              icon: const Icon(Icons.share_rounded, size: 22),
-              label: const Text('🔗  Reenviar link al cliente',
-                  style:
-                      TextStyle(fontSize: 17, fontWeight: FontWeight.w700)),
-              style: OutlinedButton.styleFrom(
-                foregroundColor: const Color(0xFF25D366),
-                side:
-                    const BorderSide(color: Color(0xFF25D366), width: 1.5),
-                shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(16)),
+          Row(
+            children: [
+              Expanded(
+                child: SizedBox(
+                  height: 54,
+                  child: OutlinedButton.icon(
+                    onPressed:
+                        (phone.isEmpty && email.isEmpty && fiadoToken.isEmpty)
+                            ? null
+                            : () => _showResendChannelSheet(
+                                  name: name,
+                                  phone: phone,
+                                  email: email,
+                                  fiadoToken: fiadoToken,
+                                  balance: balance,
+                                ),
+                    icon: const Icon(Icons.share_rounded, size: 20),
+                    label: const Text('🔗  Reenviar',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                            fontSize: 15, fontWeight: FontWeight.w700)),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: const Color(0xFF25D366),
+                      side: const BorderSide(
+                          color: Color(0xFF25D366), width: 1.5),
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(16)),
+                    ),
+                  ),
+                ),
               ),
-            ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: SizedBox(
+                  height: 54,
+                  child: OutlinedButton.icon(
+                    onPressed: () => _showCloseAccountDialog(
+                      balance: balance,
+                      name: name,
+                    ),
+                    icon: const Icon(Icons.check_circle_outline_rounded,
+                        size: 20),
+                    label: const Text('✅  Cerrar cuenta',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                            fontSize: 15, fontWeight: FontWeight.w700)),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: const Color(0xFF6D28D9),
+                      side: const BorderSide(
+                          color: Color(0xFF6D28D9), width: 1.5),
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(16)),
+                    ),
+                  ),
+                ),
+              ),
+            ],
           ),
           const SizedBox(height: 6),
           // Gentle hint so cashiers know where to add to this debt from now on.
@@ -468,6 +500,114 @@ class _FiadoDetailScreenState extends State<_FiadoDetailScreen> {
         ],
       ),
     );
+  }
+
+  /// Confirm dialog before closing a fiado. Shows the residual balance
+  /// that would be written off. Optionally lets the cashier type a reason
+  /// (e.g. "Descuento por pago en efectivo") which is saved on the
+  /// write_off CreditPayment so the audit trail explains the zeroing-out.
+  Future<void> _showCloseAccountDialog({
+    required int balance,
+    required String name,
+  }) async {
+    final reasonCtrl = TextEditingController();
+    final confirmed = await showDialog<bool>(
+      context: context,
+      barrierDismissible: true,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Row(
+          children: [
+            Icon(Icons.check_circle_outline_rounded,
+                color: Color(0xFF6D28D9), size: 28),
+            SizedBox(width: 10),
+            Expanded(
+              child: Text('Cerrar cuenta',
+                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800)),
+            ),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(
+              balance > 0
+                  ? 'La cuenta de $name quedará marcada como pagada. '
+                      'El saldo pendiente de ${_fmt(balance)} se registrará '
+                      'como condonado.'
+                  : 'La cuenta de $name quedará marcada como pagada.',
+              style: const TextStyle(fontSize: 15, height: 1.4),
+            ),
+            const SizedBox(height: 14),
+            TextField(
+              controller: reasonCtrl,
+              textCapitalization: TextCapitalization.sentences,
+              style: const TextStyle(fontSize: 15),
+              maxLines: 2,
+              decoration: InputDecoration(
+                labelText: 'Motivo (opcional)',
+                hintText: 'Ej: Descuento por pago, acuerdo, etc.',
+                hintStyle: TextStyle(
+                    fontSize: 13, color: Colors.grey.shade400),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                contentPadding: const EdgeInsets.symmetric(
+                    horizontal: 12, vertical: 10),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('Cancelar',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF6D28D9),
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(14)),
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
+            ),
+            child: const Text('Cerrar cuenta',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true) return;
+    await _closeAccount(reason: reasonCtrl.text.trim());
+  }
+
+  Future<void> _closeAccount({required String reason}) async {
+    try {
+      await _api.closeFiado(widget.creditId, reason: reason);
+      if (!mounted) return;
+      HapticFeedback.mediumImpact();
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('Cuenta cerrada',
+            style: TextStyle(fontSize: 16)),
+        backgroundColor: Color(0xFF6D28D9),
+        behavior: SnackBarBehavior.floating,
+      ));
+      _load();
+    } catch (e) {
+      if (!mounted) return;
+      HapticFeedback.heavyImpact();
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text('No se pudo cerrar: $e',
+            style: const TextStyle(fontSize: 15)),
+        backgroundColor: AppTheme.error,
+        behavior: SnackBarBehavior.floating,
+      ));
+    }
   }
 
   Future<void> _showResendChannelSheet({
