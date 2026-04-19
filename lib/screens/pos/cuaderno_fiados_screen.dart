@@ -395,6 +395,7 @@ class _FiadoDetailScreenState extends State<_FiadoDetailScreen> {
     int balance,
   ) {
     final phone = customer['phone'] as String? ?? '';
+    final email = customer['email'] as String? ?? '';
     final name = customer['name'] as String? ?? '';
     final fiadoToken = credit['fiado_token'] as String? ?? '';
 
@@ -437,11 +438,12 @@ class _FiadoDetailScreenState extends State<_FiadoDetailScreen> {
                 child: SizedBox(
                   height: 56,
                   child: OutlinedButton.icon(
-                    onPressed: (phone.isEmpty && fiadoToken.isEmpty)
+                    onPressed: (phone.isEmpty && email.isEmpty && fiadoToken.isEmpty)
                         ? null
-                        : () => _resendLink(
+                        : () => _showResendChannelSheet(
                               name: name,
                               phone: phone,
+                              email: email,
                               fiadoToken: fiadoToken,
                               balance: balance,
                             ),
@@ -487,15 +489,15 @@ class _FiadoDetailScreenState extends State<_FiadoDetailScreen> {
     );
   }
 
-  Future<void> _resendLink({
+  Future<void> _showResendChannelSheet({
     required String name,
     required String phone,
+    required String email,
     required String fiadoToken,
     required int balance,
   }) async {
     HapticFeedback.lightImpact();
 
-    // WhatsApp is the primary channel; fall back to a plain share if no phone.
     if (fiadoToken.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
         content: Text('Esta cuenta no tiene link de aceptación',
@@ -505,18 +507,160 @@ class _FiadoDetailScreenState extends State<_FiadoDetailScreen> {
       ));
       return;
     }
+
     final acceptUrl = 'https://vendia-admin.vercel.app/fiado/$fiadoToken';
-    final msg =
+    final body =
         'Hola $name, este es el estado actualizado de tu cuenta. Saldo pendiente: ${_fmt(balance)}.\n\n$acceptUrl';
 
-    Uri target;
-    if (phone.isNotEmpty) {
-      final encoded = Uri.encodeComponent(msg);
-      target = Uri.parse('https://wa.me/57$phone?text=$encoded');
-    } else {
-      target = Uri.parse(acceptUrl);
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => SafeArea(
+        child: Container(
+          decoration: const BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+          ),
+          padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Center(
+                child: Container(
+                  width: 40,
+                  height: 4,
+                  margin: const EdgeInsets.only(bottom: 16),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFD6D0C8),
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+              ),
+              const Text(
+                '¿Por dónde quiere enviar el link?',
+                style: TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.w700,
+                    color: Colors.black87),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                'Al cliente $name',
+                style: const TextStyle(
+                    fontSize: 14, color: AppTheme.textSecondary),
+              ),
+              const SizedBox(height: 18),
+              _ResendChannelTile(
+                icon: Icons.chat_rounded,
+                color: const Color(0xFF25D366),
+                title: 'WhatsApp',
+                subtitle: phone.isNotEmpty
+                    ? phone
+                    : 'Agregue un celular al cliente para usar WhatsApp',
+                enabled: phone.isNotEmpty,
+                onTap: () {
+                  Navigator.of(ctx).pop();
+                  _launchWhatsApp(phone: phone, body: body);
+                },
+              ),
+              const SizedBox(height: 10),
+              _ResendChannelTile(
+                icon: Icons.sms_rounded,
+                color: const Color(0xFF3B82F6),
+                title: 'Mensaje de texto (SMS)',
+                subtitle: phone.isNotEmpty
+                    ? phone
+                    : 'Necesita un celular para enviar SMS',
+                enabled: phone.isNotEmpty,
+                onTap: () {
+                  Navigator.of(ctx).pop();
+                  _launchSms(phone: phone, body: body);
+                },
+              ),
+              const SizedBox(height: 10),
+              _ResendChannelTile(
+                icon: Icons.email_rounded,
+                color: const Color(0xFFEA580C),
+                title: 'Correo electrónico',
+                subtitle: email.isNotEmpty
+                    ? email
+                    : 'Agregue un correo al cliente para usar email',
+                enabled: email.isNotEmpty,
+                onTap: () {
+                  Navigator.of(ctx).pop();
+                  _launchEmail(email: email, name: name, body: body);
+                },
+              ),
+              const SizedBox(height: 8),
+              TextButton(
+                onPressed: () => Navigator.of(ctx).pop(),
+                child: const Text('Cancelar',
+                    style: TextStyle(
+                        fontSize: 16, fontWeight: FontWeight.w600)),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _launchWhatsApp({required String phone, required String body}) async {
+    final encoded = Uri.encodeComponent(body);
+    // Strip non-digits so "+57 300 123 4567" still works, then prepend 57 if
+    // the user saved a 10-digit Colombian number without country code.
+    final digits = phone.replaceAll(RegExp(r'\D'), '');
+    final full = digits.startsWith('57') ? digits : '57$digits';
+    final uri = Uri.parse('https://wa.me/$full?text=$encoded');
+    await _launch(uri, fallbackMessage: 'No se pudo abrir WhatsApp');
+  }
+
+  Future<void> _launchSms({required String phone, required String body}) async {
+    final digits = phone.replaceAll(RegExp(r'\D'), '');
+    final full = digits.startsWith('57') ? digits : '57$digits';
+    // sms: scheme — url_launcher normalizes ?body= across iOS/Android.
+    final uri = Uri(
+      scheme: 'sms',
+      path: '+$full',
+      queryParameters: {'body': body},
+    );
+    await _launch(uri, fallbackMessage: 'No se pudo abrir la app de mensajes');
+  }
+
+  Future<void> _launchEmail({
+    required String email,
+    required String name,
+    required String body,
+  }) async {
+    const subject = 'Estado de tu cuenta';
+    final uri = Uri(
+      scheme: 'mailto',
+      path: email,
+      queryParameters: {'subject': subject, 'body': body},
+    );
+    await _launch(uri, fallbackMessage: 'No se pudo abrir el correo');
+  }
+
+  Future<void> _launch(Uri uri, {required String fallbackMessage}) async {
+    try {
+      final ok = await launchUrl(uri, mode: LaunchMode.externalApplication);
+      if (!ok && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(fallbackMessage, style: const TextStyle(fontSize: 16)),
+          backgroundColor: AppTheme.error,
+          behavior: SnackBarBehavior.floating,
+        ));
+      }
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(fallbackMessage, style: const TextStyle(fontSize: 16)),
+        backgroundColor: AppTheme.error,
+        behavior: SnackBarBehavior.floating,
+      ));
     }
-    await launchUrl(target, mode: LaunchMode.externalApplication);
   }
 
   void _addToThisAccount(
@@ -570,5 +714,94 @@ class _FiadoDetailScreenState extends State<_FiadoDetailScreen> {
           ]))),
       ],
     ));
+  }
+}
+
+/// Row tile for the "Reenviar link" channel picker: icon badge + title +
+/// subtitle (usually the destination phone/email). Disabled rows are dimmed
+/// and show a hint explaining what data is missing. Gerontodiseño: 18px
+/// title, 64px min height, one tap target per row.
+class _ResendChannelTile extends StatelessWidget {
+  const _ResendChannelTile({
+    required this.icon,
+    required this.color,
+    required this.title,
+    required this.subtitle,
+    required this.enabled,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final Color color;
+  final String title;
+  final String subtitle;
+  final bool enabled;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final effectiveColor = enabled ? color : color.withValues(alpha: 0.35);
+    return Material(
+      color: enabled ? color.withValues(alpha: 0.08) : const Color(0xFFF4F3F0),
+      borderRadius: BorderRadius.circular(18),
+      child: InkWell(
+        onTap: enabled ? onTap : null,
+        borderRadius: BorderRadius.circular(18),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          child: Row(
+            children: [
+              Container(
+                width: 44,
+                height: 44,
+                decoration: BoxDecoration(
+                  color: effectiveColor.withValues(alpha: 0.18),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Icon(icon, color: effectiveColor, size: 24),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      title,
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w700,
+                        color: enabled
+                            ? Colors.black87
+                            : Colors.black.withValues(alpha: 0.35),
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      subtitle,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 14,
+                        color: enabled
+                            ? AppTheme.textSecondary
+                            : AppTheme.textSecondary.withValues(alpha: 0.6),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Icon(
+                enabled
+                    ? Icons.arrow_forward_ios_rounded
+                    : Icons.block_rounded,
+                size: 18,
+                color: effectiveColor,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 }
