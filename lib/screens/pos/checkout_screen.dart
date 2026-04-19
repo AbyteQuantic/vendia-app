@@ -15,7 +15,16 @@ import '../../widgets/owner_pin_dialog.dart';
 class CheckoutResult {
   final bool confirmed;
   final String paymentMethod;
-  const CheckoutResult({required this.confirmed, required this.paymentMethod});
+  /// When the cashier chose "Agregar a cuenta existente", this is the id
+  /// of the fiado we appended to. POS forwards it when syncing the sale
+  /// so the backend can link the sale to the account and the public
+  /// statement can show the itemized detail.
+  final String? creditAccountId;
+  const CheckoutResult({
+    required this.confirmed,
+    required this.paymentMethod,
+    this.creditAccountId,
+  });
 }
 
 class CheckoutScreen extends StatefulWidget {
@@ -387,7 +396,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       if (active.hasActive) {
         final accountId = active.accountId!;
         active.clear();
-        await _appendToFiadoById(accountId);
+        await _appendToFiadoById(accountId, customerName: active.customerName);
         return;
       }
 
@@ -539,7 +548,11 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       Navigator.of(context).pop(); // dismiss loader
       HapticFeedback.mediumImpact();
       Navigator.of(context).pop(
-        const CheckoutResult(confirmed: true, paymentMethod: 'credit'),
+        CheckoutResult(
+          confirmed: true,
+          paymentMethod: 'credit',
+          creditAccountId: accountId,
+        ),
       );
     } on AppError catch (e) {
       if (!mounted) return;

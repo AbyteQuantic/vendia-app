@@ -360,10 +360,14 @@ class _PosScreenBodyState extends State<_PosScreenBody> {
   }
 
   Future<void> _syncSaleToBackend(
-      List<CartItem> cartItems, String paymentMethod, String saleUuid) async {
+      List<CartItem> cartItems,
+      String paymentMethod,
+      String saleUuid, {
+      String? creditAccountId,
+      }) async {
     try {
       final api = ApiService(AuthService());
-      await api.createSale({
+      final payload = <String, dynamic>{
         'id': saleUuid,
         'payment_method': paymentMethod,
         'items': cartItems.map((item) => {
@@ -373,7 +377,11 @@ class _PosScreenBodyState extends State<_PosScreenBody> {
                   'quantity': item.quantity,
                 })
             .toList(),
-      });
+      };
+      if (creditAccountId != null && creditAccountId.isNotEmpty) {
+        payload['credit_account_id'] = creditAccountId;
+      }
+      await api.createSale(payload);
       // Mark as synced in Isar
       final db = DatabaseService.instance;
       final allSales = await db.getSalesToday();
@@ -436,8 +444,16 @@ class _PosScreenBodyState extends State<_PosScreenBody> {
 
         ctrl.clearActiveCart();
 
-        // Sync sale to backend (fire and forget — don't block UX)
-        _syncSaleToBackend(cartSnapshot, result.paymentMethod, saleUuid);
+        // Sync sale to backend (fire and forget — don't block UX). When
+        // the cashier appended to an existing fiado the checkout result
+        // carries the credit_account_id so the backend can link the sale
+        // to the debt for itemized display on the customer statement.
+        _syncSaleToBackend(
+          cartSnapshot,
+          result.paymentMethod,
+          saleUuid,
+          creditAccountId: result.creditAccountId,
+        );
 
         if (!mounted) return;
         await Navigator.of(context).push(
