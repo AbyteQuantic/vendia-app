@@ -1489,4 +1489,30 @@ class ApiService {
       throw AppError.fromDioException(e);
     }
   }
+
+  /// Owner sets the 4-digit PIN that cashiers will enter to unlock restricted
+  /// actions. Fails with 403 if the caller is not owner/admin.
+  Future<void> setOwnerPin(String pin) async {
+    try {
+      await _dio.post('/api/v1/tenant/owner-pin', data: {'pin': pin});
+    } on DioException catch (e) {
+      throw AppError.fromDioException(e);
+    }
+  }
+
+  /// Cashier submits the PIN dictated by the owner. Returns true on match.
+  /// Returns false on wrong PIN or if the owner has not yet set one.
+  Future<bool> verifyOwnerPin(String pin) async {
+    try {
+      final resp = await _dio.post(
+        '/api/v1/tenant/owner-pin/verify',
+        data: {'pin': pin},
+      );
+      final body = resp.data;
+      if (body is Map && body['ok'] == true) return true;
+      return false;
+    } on DioException {
+      return false;
+    }
+  }
 }

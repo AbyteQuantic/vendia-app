@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:provider/provider.dart';
 import '../../services/api_service.dart';
 import '../../services/app_error.dart';
 import '../../services/auth_service.dart';
+import '../../services/role_manager.dart';
 import '../../theme/app_theme.dart';
 import '../dashboard/dashboard_screen.dart';
 import '../onboarding/onboarding_stepper.dart';
@@ -102,6 +104,8 @@ class _LoginScreenState extends State<LoginScreen> {
         );
       }
 
+      if (!mounted) return;
+      await context.read<RoleManager>().refresh();
       if (!mounted) return;
 
       Navigator.of(context).pushReplacement(

@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:provider/provider.dart';
 import '../../services/api_service.dart';
 import '../../services/auth_service.dart';
+import '../../services/role_manager.dart';
 import '../../theme/app_theme.dart';
 import '../dashboard/dashboard_screen.dart';
 
@@ -100,6 +102,8 @@ class _WorkspaceSelectorScreenState extends State<WorkspaceSelectorScreen> {
         branchId: ws.branchId,
       );
 
+      if (!mounted) return;
+      await context.read<RoleManager>().refresh();
       if (!mounted) return;
 
       Navigator.of(context).pushReplacement(

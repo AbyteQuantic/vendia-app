@@ -1,11 +1,14 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../models/cart_item.dart';
 import '../../services/api_service.dart';
 import '../../services/auth_service.dart';
+import '../../services/role_manager.dart';
 import '../../theme/app_theme.dart';
+import '../../widgets/owner_pin_dialog.dart';
 
 class CheckoutResult {
   final bool confirmed;
@@ -371,10 +374,22 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     );
   }
 
-  void _confirmSale() {
+  Future<void> _confirmSale() async {
     HapticFeedback.mediumImpact();
 
     if (_selectedMethod == 'credit') {
+      // Cashiers cannot grant fiado to a new customer without the owner's
+      // 4-digit PIN. Owners/admins (or legacy tokens) bypass the gate.
+      final role = context.read<RoleManager>();
+      if (!role.canGrantFiadoWithoutPin) {
+        final ok = await askOwnerPin(
+          context,
+          subtitle:
+              'Para abrir un fiado nuevo, pida al propietario que ingrese su PIN de 4 dígitos.',
+        );
+        if (!ok) return;
+      }
+      if (!mounted) return;
       _showFiadoHandshake();
       return;
     }

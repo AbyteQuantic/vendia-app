@@ -1,10 +1,13 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:provider/provider.dart';
 import '../../database/database_service.dart';
 import '../../database/collections/local_sale.dart';
 import '../../database/collections/local_product.dart';
+import '../../services/role_manager.dart';
 import '../../theme/app_theme.dart';
+import '../../widgets/restricted_action.dart';
 import '../../widgets/stat_card.dart';
 import '../inventory/add_merchandise_screen.dart';
 import '../pos/pos_screen.dart';
@@ -255,28 +258,36 @@ class _DashboardScreenState extends State<DashboardScreen> {
                               flex: 3,
                               child: Material(
                                 color: Colors.transparent,
-                                child: InkWell(
-                                  borderRadius: BorderRadius.circular(20),
-                                  onTap: () {
-                                    HapticFeedback.lightImpact();
-                                    Navigator.of(context).push(MaterialPageRoute(
-                                      builder: (_) => const FinancialDashboardScreen(),
-                                    ));
-                                  },
-                                  child: StatCard(
-                                    label: 'Ventas de hoy',
-                                    value: _formatCOP(
-                                        _data.totalToday.round()),
-                                    icon: Icons.payments_rounded,
-                                    iconColor: AppTheme.primary,
-                                    backgroundColor: AppTheme.primary
-                                        .withValues(alpha: 0.06),
-                                    trend: _data.txCount > 0
-                                        ? '${_data.txCount} venta${_data.txCount > 1 ? 's' : ''}'
-                                        : 'primer día',
-                                    compact: true,
-                                  ),
-                                ),
+                                child: Builder(builder: (ctx) {
+                                  final canOpen = ctx
+                                      .watch<RoleManager>()
+                                      .canSeeFinances;
+                                  return RestrictedAction(
+                                    allowed: canOpen,
+                                    deniedMessage:
+                                        'La tarjeta de Finanzas y Rentabilidad solo la ve el propietario del negocio.',
+                                    onTap: () {
+                                      HapticFeedback.lightImpact();
+                                      Navigator.of(context).push(
+                                          MaterialPageRoute(
+                                              builder: (_) =>
+                                                  const FinancialDashboardScreen()));
+                                    },
+                                    child: StatCard(
+                                      label: 'Ventas de hoy',
+                                      value: _formatCOP(
+                                          _data.totalToday.round()),
+                                      icon: Icons.payments_rounded,
+                                      iconColor: AppTheme.primary,
+                                      backgroundColor: AppTheme.primary
+                                          .withValues(alpha: 0.06),
+                                      trend: _data.txCount > 0
+                                          ? '${_data.txCount} venta${_data.txCount > 1 ? 's' : ''}'
+                                          : 'primer día',
+                                      compact: true,
+                                    ),
+                                  );
+                                }),
                               ),
                             ),
                             const SizedBox(width: 12),
@@ -333,9 +344,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   ),
                 ),
 
-                // ── Settings Card ────────────────────────────────────
+                // ── Settings Card (owner/admin only) ─────────────────
                 SliverToBoxAdapter(
-                  child: Padding(
+                  child: !context
+                          .watch<RoleManager>()
+                          .canManageBusinessSettings
+                      ? const SizedBox.shrink()
+                      : Padding(
                     padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
                     child: Material(
                       color: Colors.transparent,

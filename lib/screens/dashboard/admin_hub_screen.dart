@@ -13,6 +13,7 @@ import 'employees_screen.dart';
 import '../../services/margin_service.dart';
 import 'catalog_virtual_screen.dart';
 import 'panic_config_screen.dart';
+import 'owner_pin_setup_screen.dart';
 
 /// Admin Hub — Business configuration screen with Gerontodiseño.
 class AdminHubScreen extends StatefulWidget {
@@ -305,6 +306,16 @@ class _AdminHubScreenState extends State<AdminHubScreen> {
               subtitle: 'Contactos de emergencia y mensaje SOS',
               onTap: () => Navigator.of(context).push(
                 MaterialPageRoute(builder: (_) => const PanicConfigScreen()),
+              ),
+            ),
+            const SizedBox(height: 8),
+            _SettingsTile(
+              icon: Icons.admin_panel_settings_rounded,
+              iconColor: AppTheme.primary,
+              title: 'PIN del propietario',
+              subtitle: 'Para autorizar acciones del cajero',
+              onTap: () => Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const OwnerPinSetupScreen()),
               ),
             ),
 
