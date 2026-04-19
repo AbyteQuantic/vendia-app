@@ -5,7 +5,6 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:uuid/uuid.dart';
 import '../../models/cart_item.dart';
 import '../../models/product.dart';
-import '../../services/active_fiado_service.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/panic_button.dart';
 import '../../widgets/sync_status_banner.dart';
@@ -751,7 +750,6 @@ class _PosScreenBodyState extends State<_PosScreenBody> {
                 ),
 
                 const SyncStatusBanner(),
-                const _ActiveFiadoBanner(),
 
                 // ── Cart tabs ──
                 _CartTabs(
@@ -2164,67 +2162,3 @@ class _EmptyInventoryGuide extends StatelessWidget {
   }
 }
 
-/// Visible reminder that the cashier is in "Agregar a esta cuenta" mode —
-/// the next credit-payment confirmation will be appended to the active
-/// fiado account instead of opening a new handshake. Tap the close icon to
-/// abandon the mode and return the POS to its normal flow.
-class _ActiveFiadoBanner extends StatelessWidget {
-  const _ActiveFiadoBanner();
-
-  @override
-  Widget build(BuildContext context) {
-    final active = context.watch<ActiveFiadoService>();
-    if (!active.hasActive) return const SizedBox.shrink();
-
-    final name = active.customerName?.trim();
-    final label = (name == null || name.isEmpty) ? 'una cuenta' : name;
-
-    return Container(
-      margin: const EdgeInsets.fromLTRB(16, 6, 16, 0),
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-      decoration: BoxDecoration(
-        color: const Color(0xFF6D28D9).withValues(alpha: 0.10),
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(
-            color: const Color(0xFF6D28D9).withValues(alpha: 0.35), width: 1),
-      ),
-      child: Row(
-        children: [
-          const Icon(Icons.menu_book_rounded,
-              color: Color(0xFF6D28D9), size: 22),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text(
-                  'Agregando a la cuenta de',
-                  style: TextStyle(fontSize: 12, color: Color(0xFF6D28D9)),
-                ),
-                Text(
-                  label,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w700,
-                    color: Color(0xFF4C1D95),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          IconButton(
-            icon: const Icon(Icons.close_rounded,
-                color: Color(0xFF6D28D9), size: 22),
-            tooltip: 'Cancelar',
-            onPressed: () {
-              HapticFeedback.lightImpact();
-              context.read<ActiveFiadoService>().clear();
-            },
-          ),
-        ],
-      ),
-    );
-  }
-}

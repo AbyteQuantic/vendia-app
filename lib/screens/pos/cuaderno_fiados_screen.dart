@@ -1,8 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
-import '../../services/active_fiado_service.dart';
 import '../../services/api_service.dart';
 import '../../services/auth_service.dart';
 import '../../theme/app_theme.dart';
@@ -432,57 +430,40 @@ class _FiadoDetailScreenState extends State<_FiadoDetailScreen> {
             ),
           ),
           const SizedBox(height: 8),
-          Row(
-            children: [
-              Expanded(
-                child: SizedBox(
-                  height: 56,
-                  child: OutlinedButton.icon(
-                    onPressed: (phone.isEmpty && email.isEmpty && fiadoToken.isEmpty)
-                        ? null
-                        : () => _showResendChannelSheet(
-                              name: name,
-                              phone: phone,
-                              email: email,
-                              fiadoToken: fiadoToken,
-                              balance: balance,
-                            ),
-                    icon: const Icon(Icons.share_rounded, size: 22),
-                    label: const Text('🔗  Reenviar link',
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                            fontSize: 15, fontWeight: FontWeight.w700)),
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: const Color(0xFF25D366),
-                      side: const BorderSide(
-                          color: Color(0xFF25D366), width: 1.5),
-                      shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(16)),
-                    ),
-                  ),
-                ),
+          SizedBox(
+            height: 54,
+            width: double.infinity,
+            child: OutlinedButton.icon(
+              onPressed: (phone.isEmpty && email.isEmpty && fiadoToken.isEmpty)
+                  ? null
+                  : () => _showResendChannelSheet(
+                        name: name,
+                        phone: phone,
+                        email: email,
+                        fiadoToken: fiadoToken,
+                        balance: balance,
+                      ),
+              icon: const Icon(Icons.share_rounded, size: 22),
+              label: const Text('🔗  Reenviar link al cliente',
+                  style:
+                      TextStyle(fontSize: 17, fontWeight: FontWeight.w700)),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: const Color(0xFF25D366),
+                side:
+                    const BorderSide(color: Color(0xFF25D366), width: 1.5),
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16)),
               ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: SizedBox(
-                  height: 56,
-                  child: ElevatedButton.icon(
-                    onPressed: () => _addToThisAccount(credit, customer),
-                    icon: const Icon(Icons.add_shopping_cart_rounded, size: 22),
-                    label: const Text('🛒  Agregar',
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                            fontSize: 15, fontWeight: FontWeight.w700)),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: AppTheme.primary,
-                      foregroundColor: Colors.white,
-                      shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(16)),
-                    ),
-                  ),
-                ),
-              ),
-            ],
+            ),
+          ),
+          const SizedBox(height: 6),
+          // Gentle hint so cashiers know where to add to this debt from now on.
+          Text(
+            'Para agregar una venta a esta cuenta, haga una venta normal y elija "Fiado" al cobrar.',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+                fontSize: 12,
+                color: AppTheme.textSecondary.withValues(alpha: 0.9)),
           ),
         ],
       ),
@@ -661,27 +642,6 @@ class _FiadoDetailScreenState extends State<_FiadoDetailScreen> {
         behavior: SnackBarBehavior.floating,
       ));
     }
-  }
-
-  void _addToThisAccount(
-    Map<String, dynamic> credit,
-    Map<String, dynamic> customer,
-  ) {
-    HapticFeedback.mediumImpact();
-    final balance = ((credit['total_amount'] as num?) ?? 0).toInt() -
-        ((credit['paid_amount'] as num?) ?? 0).toInt();
-
-    context.read<ActiveFiadoService>().activate(
-          accountId: credit['id'] as String,
-          customerName: customer['name'] as String?,
-          customerPhone: customer['phone'] as String?,
-          balance: balance,
-        );
-
-    // Pop to the POS screen — the user selects products normally. On
-    // checkout the Checkout screen reads ActiveFiadoService and skips the
-    // handshake, calling /credits/:id/append instead.
-    Navigator.of(context).popUntil((route) => route.isFirst);
   }
 
   Widget _entry(IconData icon, Color color, String title, String amount, String date) {

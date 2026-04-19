@@ -380,28 +380,19 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     HapticFeedback.mediumImpact();
 
     if (_selectedMethod == 'credit') {
-      // If the POS is in "Agregar a esta cuenta" mode (coming from the
-      // Cuaderno detail), skip the handshake entirely: the owner already
-      // authorized this line of credit when the customer accepted it.
+      // Legacy fast-path: if some upstream screen staged an active fiado
+      // before arriving here, honor it silently. In the new UX no screen
+      // sets this — the picker below handles both "new" and "existing".
       final active = context.read<ActiveFiadoService>();
       if (active.hasActive) {
-        await _appendToActiveFiado(active);
+        final accountId = active.accountId!;
+        active.clear();
+        await _appendToFiadoById(accountId);
         return;
       }
 
-      // Cashiers cannot grant fiado to a new customer without the owner's
-      // 4-digit PIN. Owners/admins (or legacy tokens) bypass the gate.
-      final role = context.read<RoleManager>();
-      if (!role.canGrantFiadoWithoutPin) {
-        final ok = await askOwnerPin(
-          context,
-          subtitle:
-              'Para abrir un fiado nuevo, pida al propietario que ingrese su PIN de 4 dígitos.',
-        );
-        if (!ok) return;
-      }
       if (!mounted) return;
-      _showFiadoHandshake();
+      await _showFiadoChoiceSheet();
       return;
     }
 
@@ -410,8 +401,129 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     );
   }
 
-  Future<void> _appendToActiveFiado(ActiveFiadoService active) async {
-    final accountId = active.accountId!;
+  /// Single entry point for the two fiado flows: open a brand-new account
+  /// (handshake) or append to one that's already open. Both choices are
+  /// presented with the same visual weight so the cashier can decide fast.
+  Future<void> _showFiadoChoiceSheet() async {
+    await showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (ctx) => SafeArea(
+        child: Container(
+          decoration: const BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+          ),
+          padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Center(
+                child: Container(
+                  width: 40,
+                  height: 4,
+                  margin: const EdgeInsets.only(bottom: 16),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFD6D0C8),
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+              ),
+              const Text('¿A quién se le fía?',
+                  style: TextStyle(
+                      fontSize: 22,
+                      fontWeight: FontWeight.w800,
+                      color: Colors.black87)),
+              const SizedBox(height: 4),
+              Text('Total: ${widget.formattedTotal}',
+                  style: const TextStyle(
+                      fontSize: 16, color: AppTheme.textSecondary)),
+              const SizedBox(height: 18),
+              _FiadoChoiceTile(
+                icon: Icons.person_add_rounded,
+                color: const Color(0xFFF59E0B),
+                title: 'Abrir cuenta nueva',
+                subtitle:
+                    'Para un cliente que nunca le ha fiado. Se envía un link para que acepte.',
+                onTap: () async {
+                  Navigator.of(ctx).pop();
+                  if (!mounted) return;
+                  // PIN gate applies only when opening a new line of credit.
+                  final role = context.read<RoleManager>();
+                  if (!role.canGrantFiadoWithoutPin) {
+                    final ok = await askOwnerPin(
+                      context,
+                      subtitle:
+                          'Para abrir un fiado nuevo, pida al propietario que ingrese su PIN de 4 dígitos.',
+                    );
+                    if (!ok) return;
+                  }
+                  if (!mounted) return;
+                  _showFiadoHandshake();
+                },
+              ),
+              const SizedBox(height: 10),
+              _FiadoChoiceTile(
+                icon: Icons.menu_book_rounded,
+                color: const Color(0xFF6D28D9),
+                title: 'Agregar a una cuenta ya abierta',
+                subtitle:
+                    'Para un cliente que ya le fiaba. Se suma a su deuda, sin nuevo link.',
+                onTap: () async {
+                  Navigator.of(ctx).pop();
+                  if (!mounted) return;
+                  await _showActiveFiadoPicker();
+                },
+              ),
+              const SizedBox(height: 6),
+              TextButton(
+                onPressed: () => Navigator.of(ctx).pop(),
+                child: const Text('Cancelar',
+                    style: TextStyle(
+                        fontSize: 16, fontWeight: FontWeight.w600)),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// Searchable list of every open fiado for this tenant. One tap appends
+  /// the current sale total to the selected account and closes checkout.
+  Future<void> _showActiveFiadoPicker() async {
+    await showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (ctx) => DraggableScrollableSheet(
+        initialChildSize: 0.75,
+        minChildSize: 0.5,
+        maxChildSize: 0.95,
+        expand: false,
+        builder: (_, scrollCtrl) => Container(
+          decoration: const BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+          ),
+          child: _ActiveFiadoPickerContent(
+            scrollController: scrollCtrl,
+            saleTotalFormatted: widget.formattedTotal,
+            onSelect: (accountId, customerName) async {
+              Navigator.of(ctx).pop();
+              if (!mounted) return;
+              await _appendToFiadoById(accountId, customerName: customerName);
+            },
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _appendToFiadoById(String accountId,
+      {String? customerName}) async {
     final total = widget.total.round();
     final api = ApiService(AuthService());
     showDialog(
@@ -425,9 +537,6 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       await api.appendToFiado(accountId, totalAmount: total);
       if (!mounted) return;
       Navigator.of(context).pop(); // dismiss loader
-      // Clear the active-fiado state so the next unrelated sale doesn't get
-      // accidentally appended to the same account.
-      active.clear();
       HapticFeedback.mediumImpact();
       Navigator.of(context).pop(
         const CheckoutResult(confirmed: true, paymentMethod: 'credit'),
@@ -436,8 +545,11 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       if (!mounted) return;
       Navigator.of(context).pop(); // dismiss loader
       HapticFeedback.heavyImpact();
+      final who = customerName == null || customerName.isEmpty
+          ? 'el fiado'
+          : 'el fiado de $customerName';
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text('No se pudo agregar al fiado: ${e.message}',
+        content: Text('No se pudo agregar a $who: ${e.message}',
             style: const TextStyle(fontSize: 16)),
         backgroundColor: AppTheme.error,
         behavior: SnackBarBehavior.floating,
@@ -930,5 +1042,326 @@ class _FiadoWaitingRoomState extends State<_FiadoWaitingRoom> {
     return Text(text,
         textAlign: TextAlign.center,
         style: const TextStyle(fontSize: 15, color: AppTheme.textSecondary));
+  }
+}
+
+/// Two-option card for the "¿A quién se le fía?" picker. Big icon, title,
+/// and a descriptive subtitle so the cashier can read the difference
+/// without having to think about "handshake vs append" — the business
+/// meaning is spelled out in Spanish.
+class _FiadoChoiceTile extends StatelessWidget {
+  const _FiadoChoiceTile({
+    required this.icon,
+    required this.color,
+    required this.title,
+    required this.subtitle,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final Color color;
+  final String title;
+  final String subtitle;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: color.withValues(alpha: 0.07),
+      borderRadius: BorderRadius.circular(20),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(20),
+        onTap: () {
+          HapticFeedback.lightImpact();
+          onTap();
+        },
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Row(
+            children: [
+              Container(
+                width: 52,
+                height: 52,
+                decoration: BoxDecoration(
+                  color: color.withValues(alpha: 0.18),
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: Icon(icon, color: color, size: 28),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(title,
+                        style: const TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.w800,
+                            color: Colors.black87)),
+                    const SizedBox(height: 4),
+                    Text(subtitle,
+                        style: const TextStyle(
+                            fontSize: 14,
+                            height: 1.3,
+                            color: AppTheme.textSecondary)),
+                  ],
+                ),
+              ),
+              Icon(Icons.arrow_forward_ios_rounded, color: color, size: 20),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Searchable list of active (open+accepted) fiados. Loads once on init
+/// from GET /api/v1/credits?status=open and filters client-side by name
+/// or phone. Tapping a row returns via onSelect(accountId, customerName).
+class _ActiveFiadoPickerContent extends StatefulWidget {
+  const _ActiveFiadoPickerContent({
+    required this.scrollController,
+    required this.saleTotalFormatted,
+    required this.onSelect,
+  });
+
+  final ScrollController scrollController;
+  final String saleTotalFormatted;
+  final void Function(String accountId, String customerName) onSelect;
+
+  @override
+  State<_ActiveFiadoPickerContent> createState() =>
+      _ActiveFiadoPickerContentState();
+}
+
+class _ActiveFiadoPickerContentState
+    extends State<_ActiveFiadoPickerContent> {
+  late final ApiService _api;
+  List<Map<String, dynamic>> _all = [];
+  bool _loading = true;
+  String _query = '';
+
+  @override
+  void initState() {
+    super.initState();
+    _api = ApiService(AuthService());
+    _load();
+  }
+
+  Future<void> _load() async {
+    try {
+      final res = await _api.fetchCredits(status: 'open', perPage: 200);
+      final list =
+          (res['data'] as List?)?.cast<Map<String, dynamic>>() ?? const [];
+      if (mounted) setState(() { _all = list; _loading = false; });
+    } catch (_) {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  String _fmt(num amount) {
+    final v = amount.round();
+    if (v == 0) return '\$0';
+    final s = v.abs().toString();
+    final buf = StringBuffer(v < 0 ? '-\$' : '\$');
+    final start = s.length % 3;
+    if (start > 0) buf.write(s.substring(0, start));
+    for (int i = start; i < s.length; i += 3) {
+      if (i > 0) buf.write('.');
+      buf.write(s.substring(i, i + 3));
+    }
+    return buf.toString();
+  }
+
+  List<Map<String, dynamic>> get _filtered {
+    if (_query.trim().isEmpty) return _all;
+    final q = _query.trim().toLowerCase();
+    return _all.where((c) {
+      final cust = (c['customer'] as Map<String, dynamic>?) ?? const {};
+      final name = (cust['name'] as String? ?? '').toLowerCase();
+      final phone = (cust['phone'] as String? ?? '').toLowerCase();
+      return name.contains(q) || phone.contains(q);
+    }).toList();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
+      child: Column(
+        children: [
+          const SizedBox(height: 10),
+          Container(
+            width: 40,
+            height: 4,
+            decoration: BoxDecoration(
+              color: const Color(0xFFD6D0C8),
+              borderRadius: BorderRadius.circular(2),
+            ),
+          ),
+          const SizedBox(height: 10),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 20),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                const Text('Elegir a quién agregar',
+                    style: TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.w800,
+                        color: Colors.black87)),
+                const SizedBox(height: 4),
+                Text(
+                    'Se sumará ${widget.saleTotalFormatted} al saldo del cliente.',
+                    style: const TextStyle(
+                        fontSize: 14, color: AppTheme.textSecondary)),
+                const SizedBox(height: 12),
+                TextField(
+                  autofocus: false,
+                  style: const TextStyle(fontSize: 18),
+                  onChanged: (v) => setState(() => _query = v),
+                  decoration: InputDecoration(
+                    hintText: 'Buscar cliente por nombre o celular',
+                    hintStyle: TextStyle(
+                        fontSize: 16, color: Colors.grey.shade500),
+                    prefixIcon: const Icon(Icons.search_rounded,
+                        color: AppTheme.primary),
+                    filled: true,
+                    fillColor: const Color(0xFFF8F7F5),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(14),
+                      borderSide: BorderSide.none,
+                    ),
+                    contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 14, vertical: 14),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 10),
+          Expanded(
+            child: _loading
+                ? const Center(
+                    child: CircularProgressIndicator(color: AppTheme.primary))
+                : _filtered.isEmpty
+                    ? _empty()
+                    : ListView.separated(
+                        controller: widget.scrollController,
+                        padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
+                        itemCount: _filtered.length,
+                        separatorBuilder: (_, __) => const SizedBox(height: 8),
+                        itemBuilder: (_, i) => _tile(_filtered[i]),
+                      ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _empty() {
+    final hasData = _all.isNotEmpty;
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.menu_book_outlined,
+                size: 52,
+                color: AppTheme.textSecondary.withValues(alpha: 0.4)),
+            const SizedBox(height: 10),
+            Text(
+              hasData
+                  ? 'Ningún cliente coincide con esa búsqueda'
+                  : 'Aún no hay cuentas abiertas. Use "Abrir cuenta nueva".',
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                  fontSize: 16, color: AppTheme.textSecondary, height: 1.3),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _tile(Map<String, dynamic> credit) {
+    final cust = (credit['customer'] as Map<String, dynamic>?) ?? const {};
+    final name = cust['name'] as String? ?? 'Sin nombre';
+    final phone = cust['phone'] as String? ?? '';
+    final total = (credit['total_amount'] as num?)?.toInt() ?? 0;
+    final paid = (credit['paid_amount'] as num?)?.toInt() ?? 0;
+    final balance = total - paid;
+    final accountId = credit['id'] as String;
+    final initial = name.trim().isNotEmpty ? name.trim()[0].toUpperCase() : '?';
+
+    return Material(
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(16),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(16),
+        onTap: () => widget.onSelect(accountId, name),
+        child: Container(
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            border: Border.all(
+                color: const Color(0xFFEDE8E0), width: 1),
+            borderRadius: BorderRadius.circular(16),
+          ),
+          child: Row(
+            children: [
+              CircleAvatar(
+                radius: 24,
+                backgroundColor:
+                    const Color(0xFF6D28D9).withValues(alpha: 0.12),
+                child: Text(initial,
+                    style: const TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.w800,
+                        color: Color(0xFF6D28D9))),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(name,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                            fontSize: 17,
+                            fontWeight: FontWeight.w700,
+                            color: Colors.black87)),
+                    const SizedBox(height: 2),
+                    Text(
+                      phone.isNotEmpty ? phone : 'Sin celular',
+                      style: const TextStyle(
+                          fontSize: 13, color: AppTheme.textSecondary),
+                    ),
+                  ],
+                ),
+              ),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Text('Debe',
+                      style: TextStyle(
+                          fontSize: 11, color: AppTheme.textSecondary)),
+                  Text(_fmt(balance),
+                      style: const TextStyle(
+                          fontSize: 17,
+                          fontWeight: FontWeight.w800,
+                          color: Color(0xFFEA580C))),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 }
