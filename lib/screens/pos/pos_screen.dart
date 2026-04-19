@@ -1894,10 +1894,20 @@ class _ProductDetailSheet extends StatelessWidget {
             child: ClipRRect(
               borderRadius: BorderRadius.circular(20),
               child: (product.imageUrl != null && product.imageUrl!.isNotEmpty)
-                  ? Image.network(product.imageUrl!,
+                  ? Image.network(
+                      product.imageUrl!,
                       height: 200,
                       width: double.infinity,
-                      fit: BoxFit.contain)
+                      fit: BoxFit.contain,
+                      errorBuilder: (_, __, ___) => Container(
+                        height: 200,
+                        color: const Color(0xFFF0F4FF),
+                        child: const Center(
+                          child: Icon(Icons.inventory_2_rounded,
+                              color: AppTheme.primary, size: 48),
+                        ),
+                      ),
+                    )
                   : Container(
                       height: 200,
                       color: const Color(0xFFF0F4FF),
