@@ -691,10 +691,18 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         customerEmail: email,
         totalAmount: widget.total.round(),
         idempotencyKey: idempotencyKey,
-        onAccepted: () {
+        // The waiting room propagates the backend credit_id so the Sale
+        // that's about to be created in Isar + synced to /sales can be
+        // attributed to this exact fiado. Without this link the public
+        // statement can't itemize the purchase.
+        onAccepted: (creditId) {
           Navigator.of(context).pop();
           Navigator.of(context).pop(
-            CheckoutResult(confirmed: true, paymentMethod: 'credit'),
+            CheckoutResult(
+              confirmed: true,
+              paymentMethod: 'credit',
+              creditAccountId: creditId,
+            ),
           );
         },
       ),
@@ -800,7 +808,11 @@ class _FiadoWaitingRoom extends StatefulWidget {
   final String customerEmail;
   final int totalAmount;
   final String idempotencyKey;
-  final VoidCallback onAccepted;
+  /// Called when the handshake completes (accepted) OR the cashier chose
+  /// "Registrar venta sin firma". Receives the credit_id returned by
+  /// /fiado/init so the resulting sale can be linked to the fiado. Null
+  /// if the init call errored before we got an id back.
+  final void Function(String? creditId) onAccepted;
 
   const _FiadoWaitingRoom({
     required this.total,
@@ -824,6 +836,7 @@ class _FiadoWaitingRoomState extends State<_FiadoWaitingRoom> {
   String? _emailUrl;
   String? _acceptUrl;
   String? _fiadoToken;
+  String? _creditId;
   Timer? _pollTimer;
 
   @override
@@ -855,6 +868,7 @@ class _FiadoWaitingRoomState extends State<_FiadoWaitingRoom> {
         _emailUrl = res['email_url'] as String?;
         _acceptUrl = res['accept_url'] as String?;
         _fiadoToken = res['fiado_token'] as String?;
+        _creditId = res['credit_id'] as String?;
       });
       // Open WhatsApp or Email automatically
       if (_waLink != null) {
@@ -887,7 +901,7 @@ class _FiadoWaitingRoomState extends State<_FiadoWaitingRoom> {
         _pollTimer?.cancel();
         HapticFeedback.heavyImpact();
         await Future.delayed(const Duration(milliseconds: 1500));
-        if (mounted) widget.onAccepted();
+        if (mounted) widget.onAccepted(_creditId);
       }
     } catch (_) {}
   }
@@ -975,7 +989,7 @@ class _FiadoWaitingRoomState extends State<_FiadoWaitingRoom> {
             TextButton(
               onPressed: () {
                 _pollTimer?.cancel();
-                widget.onAccepted();
+                widget.onAccepted(_creditId);
               },
               child: const Text('Registrar venta sin firma',
                   style: TextStyle(fontSize: 14,
