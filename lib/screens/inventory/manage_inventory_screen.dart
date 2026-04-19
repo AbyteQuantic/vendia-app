@@ -374,7 +374,7 @@ class _ProductTile extends StatelessWidget {
                   color: Colors.white,
                   child: imgSrc != null && imgSrc.isNotEmpty
                       ? Image.network(imgSrc,
-                          fit: BoxFit.cover,
+                          fit: BoxFit.contain,
                           errorBuilder: (_, __, ___) => const Icon(
                               Icons.image_not_supported_rounded,
                               size: 28,
@@ -890,10 +890,10 @@ class _EditProductSheetState extends State<_EditProductSheet> {
                         ),
                         child: _photoPath != null
                             ? Image.file(File(_photoPath!),
-                                width: 110, height: 110, fit: BoxFit.cover)
+                                width: 110, height: 110, fit: BoxFit.contain)
                             : (_photoUrl != null && _photoUrl!.isNotEmpty)
                                 ? Image.network(_photoUrl!,
-                                    width: 110, height: 110, fit: BoxFit.cover,
+                                    width: 110, height: 110, fit: BoxFit.contain,
                                     errorBuilder: (_, __, ___) =>
                                         _photoPlaceholder())
                                 : _photoPlaceholder(),

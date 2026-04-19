@@ -986,7 +986,7 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
                             child: ClipRRect(
                               borderRadius: BorderRadius.circular(10),
                               child: Image.network(url,
-                                  fit: BoxFit.cover,
+                                  fit: BoxFit.contain,
                                   errorBuilder: (_, __, ___) => const Icon(
                                       Icons.broken_image_rounded,
                                       size: 24,
@@ -1467,11 +1467,15 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
   }
 
   Widget _buildPhotoContent() {
+    // BoxFit.contain (not cover) so AI-generated product images that fill
+    // edge-to-edge don't get cropped past the rounded container. The
+    // Gemini prompt now reserves a 12% safe zone, but older generated
+    // assets or user-uploaded tight crops still need this fallback.
     if (_photoPath != null) {
-      return Image.file(File(_photoPath!), fit: BoxFit.cover);
+      return Image.file(File(_photoPath!), fit: BoxFit.contain);
     }
     if (_photoUrl != null) {
-      return Image.network(_photoUrl!, fit: BoxFit.cover,
+      return Image.network(_photoUrl!, fit: BoxFit.contain,
           errorBuilder: (_, __, ___) => _photoPlaceholder());
     }
     return _photoPlaceholder();
