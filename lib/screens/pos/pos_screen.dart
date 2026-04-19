@@ -5,6 +5,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:uuid/uuid.dart';
 import '../../models/cart_item.dart';
 import '../../models/product.dart';
+import '../../services/active_fiado_service.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/panic_button.dart';
 import '../../widgets/sync_status_banner.dart';
@@ -750,6 +751,7 @@ class _PosScreenBodyState extends State<_PosScreenBody> {
                 ),
 
                 const SyncStatusBanner(),
+                const _ActiveFiadoBanner(),
 
                 // ── Cart tabs ──
                 _CartTabs(
@@ -861,11 +863,14 @@ class _PosScreenBodyState extends State<_PosScreenBody> {
 
     return GridView.builder(
       padding: const EdgeInsets.fromLTRB(12, 4, 12, 12),
-      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: 2,
+      // Absolute card height via mainAxisExtent — prevents overflow on any
+      // screen width. maxCrossAxisExtent caps card width so phones get 2
+      // columns (~180 each) and tablets get 3+ without deforming the card.
+      gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+        maxCrossAxisExtent: 220,
         crossAxisSpacing: 12,
         mainAxisSpacing: 12,
-        childAspectRatio: 0.78,
+        mainAxisExtent: 260,
       ),
       itemCount: products.length,
       itemBuilder: (_, i) {
@@ -1022,55 +1027,72 @@ class _ProductCard extends StatelessWidget {
                           ),
                         ),
                         const SizedBox(height: 2),
-                        // Price row (fixed height)
+                        // Price + qty controls row. FittedBox guarantees the
+                        // whole row scales down on narrow devices so the
+                        // trash / minus / qty / plus never overflow the card.
                         SizedBox(
-                          height: 30,
+                          height: 32,
                           child: Row(
                             children: [
-                              Text(
-                                product.formattedPrice,
-                                style: const TextStyle(
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.bold,
-                                  color: AppTheme.primary,
-                                ),
-                              ),
-                              const Spacer(),
-                              if (inCart) ...[
-                                _miniButton(
-                                  icon: quantity == 1
-                                      ? Icons.delete_outline_rounded
-                                      : Icons.remove_rounded,
-                                  color: quantity == 1
-                                      ? AppTheme.error
-                                      : AppTheme.textPrimary,
-                                  bg: AppTheme.surfaceGrey,
-                                  onTap: onDecrement,
-                                ),
-                                Padding(
-                                  padding: const EdgeInsets.symmetric(
-                                      horizontal: 6),
-                                  child: Text(
-                                    '$quantity',
-                                    style: const TextStyle(
-                                      fontSize: 16,
-                                      fontWeight: FontWeight.bold,
-                                    ),
+                              Flexible(
+                                child: Text(
+                                  product.formattedPrice,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.bold,
+                                    color: AppTheme.primary,
                                   ),
                                 ),
-                                _miniButton(
-                                  icon: Icons.add_rounded,
-                                  color: Colors.white,
-                                  bg: AppTheme.primary,
-                                  onTap: onIncrement,
+                              ),
+                              const SizedBox(width: 6),
+                              Flexible(
+                                child: FittedBox(
+                                  fit: BoxFit.scaleDown,
+                                  alignment: Alignment.centerRight,
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      if (inCart) ...[
+                                        _miniButton(
+                                          icon: quantity == 1
+                                              ? Icons.delete_outline_rounded
+                                              : Icons.remove_rounded,
+                                          color: quantity == 1
+                                              ? AppTheme.error
+                                              : AppTheme.textPrimary,
+                                          bg: AppTheme.surfaceGrey,
+                                          onTap: onDecrement,
+                                        ),
+                                        Padding(
+                                          padding: const EdgeInsets.symmetric(
+                                              horizontal: 6),
+                                          child: Text(
+                                            '$quantity',
+                                            style: const TextStyle(
+                                              fontSize: 16,
+                                              fontWeight: FontWeight.bold,
+                                            ),
+                                          ),
+                                        ),
+                                        _miniButton(
+                                          icon: Icons.add_rounded,
+                                          color: Colors.white,
+                                          bg: AppTheme.primary,
+                                          onTap: onIncrement,
+                                        ),
+                                      ] else
+                                        _miniButton(
+                                          icon: Icons.add_rounded,
+                                          color: Colors.white,
+                                          bg: AppTheme.primary,
+                                          onTap: onTap,
+                                        ),
+                                    ],
+                                  ),
                                 ),
-                              ] else
-                                _miniButton(
-                                  icon: Icons.add_rounded,
-                                  color: Colors.white,
-                                  bg: AppTheme.primary,
-                                  onTap: onTap,
-                                ),
+                              ),
                             ],
                           ),
                         ),
@@ -2137,6 +2159,71 @@ class _EmptyInventoryGuide extends StatelessWidget {
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// Visible reminder that the cashier is in "Agregar a esta cuenta" mode —
+/// the next credit-payment confirmation will be appended to the active
+/// fiado account instead of opening a new handshake. Tap the close icon to
+/// abandon the mode and return the POS to its normal flow.
+class _ActiveFiadoBanner extends StatelessWidget {
+  const _ActiveFiadoBanner();
+
+  @override
+  Widget build(BuildContext context) {
+    final active = context.watch<ActiveFiadoService>();
+    if (!active.hasActive) return const SizedBox.shrink();
+
+    final name = active.customerName?.trim();
+    final label = (name == null || name.isEmpty) ? 'una cuenta' : name;
+
+    return Container(
+      margin: const EdgeInsets.fromLTRB(16, 6, 16, 0),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      decoration: BoxDecoration(
+        color: const Color(0xFF6D28D9).withValues(alpha: 0.10),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(
+            color: const Color(0xFF6D28D9).withValues(alpha: 0.35), width: 1),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.menu_book_rounded,
+              color: Color(0xFF6D28D9), size: 22),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Agregando a la cuenta de',
+                  style: TextStyle(fontSize: 12, color: Color(0xFF6D28D9)),
+                ),
+                Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w700,
+                    color: Color(0xFF4C1D95),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          IconButton(
+            icon: const Icon(Icons.close_rounded,
+                color: Color(0xFF6D28D9), size: 22),
+            tooltip: 'Cancelar',
+            onPressed: () {
+              HapticFeedback.lightImpact();
+              context.read<ActiveFiadoService>().clear();
+            },
+          ),
+        ],
       ),
     );
   }

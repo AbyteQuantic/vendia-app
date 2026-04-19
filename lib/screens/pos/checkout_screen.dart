@@ -4,7 +4,9 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../models/cart_item.dart';
+import '../../services/active_fiado_service.dart';
 import '../../services/api_service.dart';
+import '../../services/app_error.dart';
 import '../../services/auth_service.dart';
 import '../../services/role_manager.dart';
 import '../../theme/app_theme.dart';
@@ -378,6 +380,15 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     HapticFeedback.mediumImpact();
 
     if (_selectedMethod == 'credit') {
+      // If the POS is in "Agregar a esta cuenta" mode (coming from the
+      // Cuaderno detail), skip the handshake entirely: the owner already
+      // authorized this line of credit when the customer accepted it.
+      final active = context.read<ActiveFiadoService>();
+      if (active.hasActive) {
+        await _appendToActiveFiado(active);
+        return;
+      }
+
       // Cashiers cannot grant fiado to a new customer without the owner's
       // 4-digit PIN. Owners/admins (or legacy tokens) bypass the gate.
       final role = context.read<RoleManager>();
@@ -397,6 +408,41 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     Navigator.of(context).pop(
       CheckoutResult(confirmed: true, paymentMethod: _selectedMethod),
     );
+  }
+
+  Future<void> _appendToActiveFiado(ActiveFiadoService active) async {
+    final accountId = active.accountId!;
+    final total = widget.total.round();
+    final api = ApiService(AuthService());
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => const Center(
+        child: CircularProgressIndicator(color: AppTheme.primary),
+      ),
+    );
+    try {
+      await api.appendToFiado(accountId, totalAmount: total);
+      if (!mounted) return;
+      Navigator.of(context).pop(); // dismiss loader
+      // Clear the active-fiado state so the next unrelated sale doesn't get
+      // accidentally appended to the same account.
+      active.clear();
+      HapticFeedback.mediumImpact();
+      Navigator.of(context).pop(
+        const CheckoutResult(confirmed: true, paymentMethod: 'credit'),
+      );
+    } on AppError catch (e) {
+      if (!mounted) return;
+      Navigator.of(context).pop(); // dismiss loader
+      HapticFeedback.heavyImpact();
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text('No se pudo agregar al fiado: ${e.message}',
+            style: const TextStyle(fontSize: 16)),
+        backgroundColor: AppTheme.error,
+        behavior: SnackBarBehavior.floating,
+      ));
+    }
   }
 
   void _showFiadoHandshake() {

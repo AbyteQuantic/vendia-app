@@ -1448,6 +1448,22 @@ class ApiService {
     }
   }
 
+  /// Append an amount to an already-accepted open fiado. Skips the WhatsApp
+  /// handshake — the owner already authorized this line of credit when the
+  /// customer originally accepted it.
+  Future<Map<String, dynamic>> appendToFiado(String creditId, {
+    required int totalAmount,
+    String note = '',
+  }) async {
+    try {
+      final response = await _dio.post('/api/v1/credits/$creditId/append',
+          data: {'total_amount': totalAmount, 'note': note});
+      return _extractData(response);
+    } on DioException catch (e) {
+      throw AppError.fromDioException(e);
+    }
+  }
+
   // ═══════════════════════════════════════════════════════════════════════════
   // NOTIFICATIONS
   // ═══════════════════════════════════════════════════════════════════════════

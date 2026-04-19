@@ -7,6 +7,7 @@ import 'database/database_service.dart';
 import 'database/sync/connectivity_monitor.dart';
 import 'database/sync/sales_sync.dart';
 import 'database/sync/sync_service.dart';
+import 'services/active_fiado_service.dart';
 import 'services/api_service.dart';
 import 'services/auth_service.dart';
 import 'services/role_manager.dart';
@@ -39,6 +40,7 @@ class _VendIAAppState extends State<VendIAApp> {
   late final ConnectivityMonitor _connectivityMonitor;
   late final SyncService _syncService;
   late final RoleManager _roleManager;
+  late final ActiveFiadoService _activeFiado;
 
   @override
   void initState() {
@@ -51,6 +53,7 @@ class _VendIAAppState extends State<VendIAApp> {
     );
     _roleManager = RoleManager(AuthService());
     _roleManager.refresh();
+    _activeFiado = ActiveFiadoService();
     _syncService.startBackgroundSync();
     _syncCatalogInBackground();
     _syncSalesOnStart();
@@ -93,6 +96,7 @@ class _VendIAAppState extends State<VendIAApp> {
         ChangeNotifierProvider.value(value: _connectivityMonitor),
         ChangeNotifierProvider.value(value: _syncService),
         ChangeNotifierProvider.value(value: _roleManager),
+        ChangeNotifierProvider.value(value: _activeFiado),
       ],
       child: MaterialApp(
         title: 'VendIA',

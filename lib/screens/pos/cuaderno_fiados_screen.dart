@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
+import '../../services/active_fiado_service.dart';
 import '../../services/api_service.dart';
 import '../../services/auth_service.dart';
 import '../../theme/app_theme.dart';
@@ -379,21 +381,163 @@ class _FiadoDetailScreenState extends State<_FiadoDetailScreen> {
 
         const SizedBox(height: 80),
       ]),
-      bottomNavigationBar: status != 'paid' ? Container(
-        padding: EdgeInsets.fromLTRB(20, 12, 20, MediaQuery.of(context).padding.bottom + 12),
-        decoration: BoxDecoration(color: const Color(0xFFFFFBF7),
-          boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.06),
-              blurRadius: 12, offset: const Offset(0, -2))]),
-        child: SizedBox(height: 60, child: ElevatedButton.icon(
-          onPressed: _showAbonoModal,
-          icon: const Icon(Icons.payments_rounded, size: 24),
-          label: const Text('Registrar Abono', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
-          style: ElevatedButton.styleFrom(backgroundColor: AppTheme.success,
-              foregroundColor: Colors.white,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18))),
-        )),
-      ) : null,
+      bottomNavigationBar: status != 'paid'
+          ? _buildActionBar(c, customer, balance)
+          : null,
     );
+  }
+
+  /// Three primary actions visible on an open fiado account:
+  /// abono, reenviar link, y agregar productos a la misma cuenta.
+  Widget _buildActionBar(
+    Map<String, dynamic> credit,
+    Map<String, dynamic> customer,
+    int balance,
+  ) {
+    final phone = customer['phone'] as String? ?? '';
+    final name = customer['name'] as String? ?? '';
+    final fiadoToken = credit['fiado_token'] as String? ?? '';
+
+    return Container(
+      padding: EdgeInsets.fromLTRB(
+          16, 12, 16, MediaQuery.of(context).padding.bottom + 12),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFFFBF7),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.06),
+            blurRadius: 12,
+            offset: const Offset(0, -2),
+          ),
+        ],
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          SizedBox(
+            height: 60,
+            width: double.infinity,
+            child: ElevatedButton.icon(
+              onPressed: _showAbonoModal,
+              icon: const Icon(Icons.payments_rounded, size: 24),
+              label: const Text('💵  Registrar Abono',
+                  style: TextStyle(fontSize: 19, fontWeight: FontWeight.bold)),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppTheme.success,
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(18)),
+              ),
+            ),
+          ),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Expanded(
+                child: SizedBox(
+                  height: 56,
+                  child: OutlinedButton.icon(
+                    onPressed: (phone.isEmpty && fiadoToken.isEmpty)
+                        ? null
+                        : () => _resendLink(
+                              name: name,
+                              phone: phone,
+                              fiadoToken: fiadoToken,
+                              balance: balance,
+                            ),
+                    icon: const Icon(Icons.share_rounded, size: 22),
+                    label: const Text('🔗  Reenviar link',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                            fontSize: 15, fontWeight: FontWeight.w700)),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: const Color(0xFF25D366),
+                      side: const BorderSide(
+                          color: Color(0xFF25D366), width: 1.5),
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(16)),
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: SizedBox(
+                  height: 56,
+                  child: ElevatedButton.icon(
+                    onPressed: () => _addToThisAccount(credit, customer),
+                    icon: const Icon(Icons.add_shopping_cart_rounded, size: 22),
+                    label: const Text('🛒  Agregar',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                            fontSize: 15, fontWeight: FontWeight.w700)),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppTheme.primary,
+                      foregroundColor: Colors.white,
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(16)),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _resendLink({
+    required String name,
+    required String phone,
+    required String fiadoToken,
+    required int balance,
+  }) async {
+    HapticFeedback.lightImpact();
+
+    // WhatsApp is the primary channel; fall back to a plain share if no phone.
+    if (fiadoToken.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('Esta cuenta no tiene link de aceptación',
+            style: TextStyle(fontSize: 16)),
+        backgroundColor: AppTheme.warning,
+        behavior: SnackBarBehavior.floating,
+      ));
+      return;
+    }
+    final acceptUrl = 'https://vendia-admin.vercel.app/fiado/$fiadoToken';
+    final msg =
+        'Hola $name, este es el estado actualizado de tu cuenta. Saldo pendiente: ${_fmt(balance)}.\n\n$acceptUrl';
+
+    Uri target;
+    if (phone.isNotEmpty) {
+      final encoded = Uri.encodeComponent(msg);
+      target = Uri.parse('https://wa.me/57$phone?text=$encoded');
+    } else {
+      target = Uri.parse(acceptUrl);
+    }
+    await launchUrl(target, mode: LaunchMode.externalApplication);
+  }
+
+  void _addToThisAccount(
+    Map<String, dynamic> credit,
+    Map<String, dynamic> customer,
+  ) {
+    HapticFeedback.mediumImpact();
+    final balance = ((credit['total_amount'] as num?) ?? 0).toInt() -
+        ((credit['paid_amount'] as num?) ?? 0).toInt();
+
+    context.read<ActiveFiadoService>().activate(
+          accountId: credit['id'] as String,
+          customerName: customer['name'] as String?,
+          customerPhone: customer['phone'] as String?,
+          balance: balance,
+        );
+
+    // Pop to the POS screen — the user selects products normally. On
+    // checkout the Checkout screen reads ActiveFiadoService and skips the
+    // handshake, calling /credits/:id/append instead.
+    Navigator.of(context).popUntil((route) => route.isFirst);
   }
 
   Widget _entry(IconData icon, Color color, String title, String amount, String date) {
