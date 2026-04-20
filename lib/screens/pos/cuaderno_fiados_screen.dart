@@ -409,23 +409,26 @@ class _FiadoDetailScreenState extends State<_FiadoDetailScreen> {
 
         const SizedBox(height: 80),
       ]),
-      bottomNavigationBar: status != 'paid'
-          ? _buildActionBar(c, customer, balance)
-          : null,
+      bottomNavigationBar: (status == 'paid' || status == 'cancelled')
+          ? null
+          : _buildActionBar(c, customer, balance, status),
     );
   }
 
-  /// Three primary actions visible on an open fiado account:
-  /// abono, reenviar link, y agregar productos a la misma cuenta.
+  /// Action bar layout branches by status:
+  ///   pending  → Reenviar (primary) + Cancelar fiado (destructive)
+  ///   open / partial (accepted) → Abono + Reenviar + Cerrar
   Widget _buildActionBar(
     Map<String, dynamic> credit,
     Map<String, dynamic> customer,
     int balance,
+    String status,
   ) {
     final phone = customer['phone'] as String? ?? '';
     final email = customer['email'] as String? ?? '';
     final name = customer['name'] as String? ?? '';
     final fiadoToken = credit['fiado_token'] as String? ?? '';
+    final isPending = status == 'pending';
 
     return Container(
       padding: EdgeInsets.fromLTRB(
@@ -440,120 +443,211 @@ class _FiadoDetailScreenState extends State<_FiadoDetailScreen> {
           ),
         ],
       ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          SizedBox(
-            height: 60,
-            width: double.infinity,
-            child: ElevatedButton.icon(
-              onPressed: _showAbonoModal,
-              icon: const Icon(Icons.payments_rounded, size: 24),
-              label: const Text('💵  Registrar Abono',
-                  style: TextStyle(fontSize: 19, fontWeight: FontWeight.bold)),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppTheme.success,
-                foregroundColor: Colors.white,
-                shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(18)),
-              ),
+      child: isPending
+          ? _pendingActions(
+              name: name,
+              phone: phone,
+              email: email,
+              fiadoToken: fiadoToken,
+              balance: balance,
+            )
+          : _acceptedActions(
+              name: name,
+              phone: phone,
+              email: email,
+              fiadoToken: fiadoToken,
+              balance: balance,
+            ),
+    );
+  }
+
+  Widget _pendingActions({
+    required String name,
+    required String phone,
+    required String email,
+    required String fiadoToken,
+    required int balance,
+  }) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        SizedBox(
+          height: 58,
+          width: double.infinity,
+          child: ElevatedButton.icon(
+            onPressed: (phone.isEmpty && email.isEmpty && fiadoToken.isEmpty)
+                ? null
+                : () => _showResendChannelSheet(
+                      name: name,
+                      phone: phone,
+                      email: email,
+                      fiadoToken: fiadoToken,
+                      balance: balance,
+                    ),
+            icon: const Icon(Icons.share_rounded, size: 22),
+            label: const Text('🔗  Reenviar link al cliente',
+                style:
+                    TextStyle(fontSize: 17, fontWeight: FontWeight.bold)),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF25D366),
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16)),
             ),
           ),
-          const SizedBox(height: 8),
-          Row(
-            children: [
-              Expanded(
-                child: SizedBox(
-                  height: 54,
-                  child: OutlinedButton.icon(
-                    onPressed:
-                        (phone.isEmpty && email.isEmpty && fiadoToken.isEmpty)
-                            ? null
-                            : () => _showResendChannelSheet(
-                                  name: name,
-                                  phone: phone,
-                                  email: email,
-                                  fiadoToken: fiadoToken,
-                                  balance: balance,
-                                ),
-                    icon: const Icon(Icons.share_rounded, size: 20),
-                    label: const Text('🔗  Reenviar',
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                            fontSize: 15, fontWeight: FontWeight.w700)),
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: const Color(0xFF25D366),
-                      side: const BorderSide(
-                          color: Color(0xFF25D366), width: 1.5),
-                      shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(16)),
-                    ),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: SizedBox(
-                  height: 54,
-                  child: OutlinedButton.icon(
-                    // balance == 0: simple close. balance > 0: explicit
-                    // "Cerrar con descuento" flow — asks what the client
-                    // paid, records the abono, writes off the rest, and
-                    // closes. Both paths are auditable and opt-in.
-                    onPressed: balance > 0
-                        ? () => _showCloseWithDiscountDialog(
-                              balance: balance,
-                              name: name,
-                            )
-                        : () => _showCloseAccountDialog(
-                              balance: balance,
-                              name: name,
-                            ),
-                    icon: Icon(
-                      balance > 0
-                          ? Icons.local_offer_rounded
-                          : Icons.check_circle_outline_rounded,
-                      size: 20,
-                    ),
-                    label: Text(
-                      balance > 0 ? '🎁  Con descuento' : '✅  Cerrar cuenta',
-                      textAlign: TextAlign.center,
-                      style: const TextStyle(
-                          fontSize: 15, fontWeight: FontWeight.w700),
-                    ),
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: const Color(0xFF6D28D9),
-                      side: const BorderSide(
-                          color: Color(0xFF6D28D9), width: 1.5),
-                      shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(16)),
-                    ),
-                  ),
-                ),
-              ),
-            ],
+        ),
+        const SizedBox(height: 8),
+        SizedBox(
+          height: 52,
+          width: double.infinity,
+          child: OutlinedButton.icon(
+            onPressed: () => _showCancelFiadoDialog(
+              balance: balance,
+              name: name,
+            ),
+            icon: const Icon(Icons.cancel_outlined, size: 20),
+            label: const Text('✖  Cancelar fiado y devolver al stock',
+                style:
+                    TextStyle(fontSize: 14, fontWeight: FontWeight.w700)),
+            style: OutlinedButton.styleFrom(
+              foregroundColor: AppTheme.error,
+              side: const BorderSide(color: AppTheme.error, width: 1.5),
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16)),
+            ),
           ),
-          if (balance > 0) ...[
-            const SizedBox(height: 6),
-            Text(
-              'Cobre lo que acuerden con el cliente: el saldo restante se registra como descuento en el extracto.',
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                  fontSize: 12,
-                  color: AppTheme.textSecondary.withValues(alpha: 0.9)),
+        ),
+        const SizedBox(height: 6),
+        const Text(
+          'Si el cliente nunca aceptó, cancele para que los productos vuelvan a su inventario.',
+          textAlign: TextAlign.center,
+          style: TextStyle(fontSize: 12, color: AppTheme.textSecondary),
+        ),
+      ],
+    );
+  }
+
+  Widget _acceptedActions({
+    required String name,
+    required String phone,
+    required String email,
+    required String fiadoToken,
+    required int balance,
+  }) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        SizedBox(
+          height: 60,
+          width: double.infinity,
+          child: ElevatedButton.icon(
+            onPressed: _showAbonoModal,
+            icon: const Icon(Icons.payments_rounded, size: 24),
+            label: const Text('💵  Registrar Abono',
+                style: TextStyle(fontSize: 19, fontWeight: FontWeight.bold)),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppTheme.success,
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(18)),
+            ),
+          ),
+        ),
+        const SizedBox(height: 8),
+        Row(
+          children: [
+            Expanded(
+              child: SizedBox(
+                height: 54,
+                child: OutlinedButton.icon(
+                  onPressed: (phone.isEmpty &&
+                          email.isEmpty &&
+                          fiadoToken.isEmpty)
+                      ? null
+                      : () => _showResendChannelSheet(
+                            name: name,
+                            phone: phone,
+                            email: email,
+                            fiadoToken: fiadoToken,
+                            balance: balance,
+                          ),
+                  icon: const Icon(Icons.share_rounded, size: 20),
+                  label: const Text('🔗  Reenviar',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                          fontSize: 15, fontWeight: FontWeight.w700)),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: const Color(0xFF25D366),
+                    side: const BorderSide(
+                        color: Color(0xFF25D366), width: 1.5),
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(16)),
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: SizedBox(
+                height: 54,
+                child: OutlinedButton.icon(
+                  // balance == 0: simple close. balance > 0: explicit
+                  // "Cerrar con descuento" flow — asks what the client
+                  // paid, records the abono, writes off the rest, and
+                  // closes. Both paths are auditable and opt-in.
+                  onPressed: balance > 0
+                      ? () => _showCloseWithDiscountDialog(
+                            balance: balance,
+                            name: name,
+                          )
+                      : () => _showCloseAccountDialog(
+                            balance: balance,
+                            name: name,
+                          ),
+                  icon: Icon(
+                    balance > 0
+                        ? Icons.local_offer_rounded
+                        : Icons.check_circle_outline_rounded,
+                    size: 20,
+                  ),
+                  label: Text(
+                    balance > 0 ? '🎁  Con descuento' : '✅  Cerrar cuenta',
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                        fontSize: 15, fontWeight: FontWeight.w700),
+                  ),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: const Color(0xFF6D28D9),
+                    side: const BorderSide(
+                        color: Color(0xFF6D28D9), width: 1.5),
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(16)),
+                  ),
+                ),
+              ),
             ),
           ],
+        ),
+        if (balance > 0) ...[
           const SizedBox(height: 6),
-          // Gentle hint so cashiers know where to add to this debt from now on.
           Text(
-            'Para agregar una venta a esta cuenta, haga una venta normal y elija "Fiado" al cobrar.',
+            'Cobre lo que acuerden con el cliente: el saldo restante se registra como descuento en el extracto.',
             textAlign: TextAlign.center,
             style: TextStyle(
                 fontSize: 12,
                 color: AppTheme.textSecondary.withValues(alpha: 0.9)),
           ),
         ],
-      ),
+        const SizedBox(height: 6),
+        // Gentle hint so cashiers know where to add to this debt from now on.
+        Text(
+          'Para agregar una venta a esta cuenta, haga una venta normal y elija "Fiado" al cobrar.',
+          textAlign: TextAlign.center,
+          style: TextStyle(
+              fontSize: 12,
+              color: AppTheme.textSecondary.withValues(alpha: 0.9)),
+        ),
+      ],
     );
   }
 
@@ -850,6 +944,120 @@ class _FiadoDetailScreenState extends State<_FiadoDetailScreen> {
       HapticFeedback.heavyImpact();
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
         content: Text('No se pudo cerrar: $e',
+            style: const TextStyle(fontSize: 15)),
+        backgroundColor: AppTheme.error,
+        behavior: SnackBarBehavior.floating,
+      ));
+    }
+  }
+
+  /// Confirm dialog for cancelling a pending fiado. Explains that the
+  /// linked sale will be voided and the stock returned. Optional reason
+  /// goes into the notification body for audit.
+  Future<void> _showCancelFiadoDialog({
+    required int balance,
+    required String name,
+  }) async {
+    final reasonCtrl = TextEditingController();
+    final confirmed = await showDialog<bool>(
+      context: context,
+      barrierDismissible: true,
+      builder: (ctx) => AlertDialog(
+        shape:
+            RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Row(
+          children: [
+            Icon(Icons.cancel_outlined, color: AppTheme.error, size: 28),
+            SizedBox(width: 10),
+            Expanded(
+              child: Text('Cancelar fiado',
+                  style:
+                      TextStyle(fontSize: 20, fontWeight: FontWeight.w800)),
+            ),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(
+              'El fiado de $name por ${_fmt(balance)} se anulará. Los '
+              'productos volverán a su inventario y la venta se descartará.',
+              style: const TextStyle(fontSize: 15, height: 1.4),
+            ),
+            const SizedBox(height: 14),
+            TextField(
+              controller: reasonCtrl,
+              textCapitalization: TextCapitalization.sentences,
+              style: const TextStyle(fontSize: 15),
+              maxLines: 2,
+              decoration: InputDecoration(
+                labelText: 'Motivo (opcional)',
+                hintText: 'Ej: El cliente no aceptó, se fue sin pagar',
+                hintStyle: TextStyle(
+                    fontSize: 13, color: Colors.grey.shade400),
+                border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12)),
+                contentPadding: const EdgeInsets.symmetric(
+                    horizontal: 12, vertical: 10),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('No',
+                style:
+                    TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+          ),
+          ElevatedButton.icon(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            icon: const Icon(Icons.cancel_outlined, size: 18),
+            label: const Text('Sí, cancelar',
+                style: TextStyle(
+                    fontSize: 15, fontWeight: FontWeight.w700)),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppTheme.error,
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(14)),
+              padding: const EdgeInsets.symmetric(
+                  horizontal: 16, vertical: 10),
+            ),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true) return;
+    await _cancelFiado(reason: reasonCtrl.text.trim());
+  }
+
+  Future<void> _cancelFiado({required String reason}) async {
+    try {
+      final res = await _api.cancelFiado(widget.creditId, reason: reason);
+      if (!mounted) return;
+      HapticFeedback.mediumImpact();
+      final restored = (res['items_restored'] as num?)?.toInt() ?? 0;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(
+          restored > 0
+              ? 'Fiado cancelado. $restored producto${restored == 1 ? '' : 's'} vuelto al stock.'
+              : 'Fiado cancelado.',
+          style: const TextStyle(fontSize: 15),
+        ),
+        backgroundColor: AppTheme.error,
+        behavior: SnackBarBehavior.floating,
+      ));
+      // Pop back to the list — the cancelled fiado stops showing in
+      // "Pendientes" and the POS badge refreshes via the 20s poll.
+      if (mounted) Navigator.of(context).pop();
+    } catch (e) {
+      if (!mounted) return;
+      HapticFeedback.heavyImpact();
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text('No se pudo cancelar: $e',
             style: const TextStyle(fontSize: 15)),
         backgroundColor: AppTheme.error,
         behavior: SnackBarBehavior.floating,

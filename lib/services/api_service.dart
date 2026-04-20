@@ -1482,6 +1482,22 @@ class ApiService {
     }
   }
 
+  /// Cancel a pending fiado: linked sales are voided, stock is returned
+  /// to the products, and the account flips to status='cancelled'. Only
+  /// valid while the customer hasn't accepted the handshake (backend
+  /// rejects with 409 otherwise).
+  Future<Map<String, dynamic>> cancelFiado(String creditId, {
+    String reason = '',
+  }) async {
+    try {
+      final response = await _dio.post('/api/v1/credits/$creditId/cancel',
+          data: {'reason': reason});
+      return _extractData(response);
+    } on DioException catch (e) {
+      throw AppError.fromDioException(e);
+    }
+  }
+
   // ═══════════════════════════════════════════════════════════════════════════
   // NOTIFICATIONS
   // ═══════════════════════════════════════════════════════════════════════════
