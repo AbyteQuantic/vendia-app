@@ -863,6 +863,22 @@ class _FiadoWaitingRoomState extends State<_FiadoWaitingRoom> {
         idempotencyKey: widget.idempotencyKey,
       );
       if (!mounted) return;
+      // Backend short-circuited the handshake because this customer already
+      // has an accepted open fiado — the amount was merged into it. Skip
+      // the WhatsApp send + polling; mark accepted immediately so
+      // _cobrarMostrador can link the sale.
+      final merged = res['merged'] == true;
+      if (merged) {
+        HapticFeedback.mediumImpact();
+        setState(() {
+          _status = 'accepted';
+          _creditId = res['credit_id'] as String?;
+          _fiadoToken = res['fiado_token'] as String?;
+        });
+        await Future.delayed(const Duration(milliseconds: 800));
+        if (mounted) widget.onAccepted(_creditId);
+        return;
+      }
       setState(() {
         _status = 'link_sent';
         _waLink = res['whatsapp_url'] as String?;
