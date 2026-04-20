@@ -6,11 +6,17 @@ import '../../theme/app_theme.dart';
 class SaleSuccessScreen extends StatefulWidget {
   final String total;
   final String paymentMethod;
+  /// True when the sale was a fiado whose customer hasn't accepted the
+  /// link yet. Shifts the palette from celebratory green + "¡Venta
+  /// registrada!" to informational purple + "Venta guardada · Esperando
+  /// firma del cliente". No accidental auto-acceptance optics.
+  final bool fiadoPending;
 
   const SaleSuccessScreen({
     super.key,
     required this.total,
     required this.paymentMethod,
+    this.fiadoPending = false,
   });
 
   @override
@@ -161,6 +167,21 @@ class _SaleSuccessScreenState extends State<SaleSuccessScreen>
         _ => 'Efectivo',
       };
 
+  // Pending fiado => purple; otherwise the usual celebratory green.
+  Color get _accent =>
+      widget.fiadoPending ? const Color(0xFF6D28D9) : AppTheme.success;
+  Color get _accentSoft => widget.fiadoPending
+      ? const Color(0xFF6D28D9).withValues(alpha: 0.12)
+      : AppTheme.success.withValues(alpha: 0.12);
+  IconData get _statusIcon => widget.fiadoPending
+      ? Icons.hourglass_bottom_rounded
+      : Icons.check_circle_rounded;
+  String get _title =>
+      widget.fiadoPending ? 'Venta guardada' : '¡Venta registrada!';
+  String get _subtitle => widget.fiadoPending
+      ? 'Esperando firma del cliente'
+      : 'Pago con $_methodLabel';
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -182,9 +203,12 @@ class _SaleSuccessScreenState extends State<SaleSuccessScreen>
                   child: Stack(
                     alignment: Alignment.center,
                     children: [
-                      // Animated confetti
-                      ..._buildAnimatedConfetti(),
-                      // Check circle
+                      // Confetti only when the sale is fully closed —
+                      // no celebration dance while we're still waiting
+                      // for the customer to sign.
+                      if (!widget.fiadoPending) ..._buildAnimatedConfetti(),
+                      // Status icon — green check (normal) or purple
+                      // hourglass (fiado pending acceptance).
                       FadeTransition(
                         opacity: _checkFade,
                         child: ScaleTransition(
@@ -193,12 +217,12 @@ class _SaleSuccessScreenState extends State<SaleSuccessScreen>
                             width: 120,
                             height: 120,
                             decoration: BoxDecoration(
-                              color: AppTheme.success.withValues(alpha: 0.12),
+                              color: _accentSoft,
                               shape: BoxShape.circle,
                             ),
-                            child: const Icon(
-                              Icons.check_circle_rounded,
-                              color: AppTheme.success,
+                            child: Icon(
+                              _statusIcon,
+                              color: _accent,
                               size: 80,
                             ),
                           ),
@@ -214,9 +238,9 @@ class _SaleSuccessScreenState extends State<SaleSuccessScreen>
                   offset: Offset(0, _titleSlide.value),
                   child: Opacity(
                     opacity: _titleFade.value,
-                    child: const Text(
-                      '!Venta registrada!',
-                      style: TextStyle(
+                    child: Text(
+                      _title,
+                      style: const TextStyle(
                         fontSize: 28,
                         fontWeight: FontWeight.bold,
                         color: AppTheme.textPrimary,
@@ -234,23 +258,23 @@ class _SaleSuccessScreenState extends State<SaleSuccessScreen>
                     opacity: _totalFade.value,
                     child: Text(
                       widget.total,
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 44,
                         fontWeight: FontWeight.w800,
-                        color: AppTheme.success,
+                        color: _accent,
                       ),
                     ),
                   ),
                 ),
                 const SizedBox(height: 6),
 
-                // ── Payment method ───────────────────────────────
+                // ── Subtitle (payment method OR pending state) ───
                 Transform.translate(
                   offset: Offset(0, _methodSlide.value),
                   child: Opacity(
                     opacity: _methodFade.value,
                     child: Text(
-                      'Pago con $_methodLabel',
+                      _subtitle,
                       style: const TextStyle(
                         fontSize: 20,
                         color: AppTheme.textSecondary,
@@ -258,6 +282,29 @@ class _SaleSuccessScreenState extends State<SaleSuccessScreen>
                     ),
                   ),
                 ),
+                if (widget.fiadoPending) ...[
+                  const SizedBox(height: 10),
+                  Transform.translate(
+                    offset: Offset(0, _methodSlide.value),
+                    child: Opacity(
+                      opacity: _methodFade.value,
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 32),
+                        child: Text(
+                          'Ya puedes seguir vendiendo. Te avisaremos '
+                          'cuando el cliente acepte el fiado.',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            fontSize: 14,
+                            height: 1.4,
+                            color:
+                                AppTheme.textSecondary.withValues(alpha: 0.8),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
 
                 const Spacer(flex: 3),
 
@@ -277,13 +324,21 @@ class _SaleSuccessScreenState extends State<SaleSuccessScreen>
                             height: 64,
                             child: DecoratedBox(
                               decoration: BoxDecoration(
-                                gradient: const LinearGradient(
-                                  colors: [Color(0xFF0D9668), Color(0xFF10B981)],
+                                gradient: LinearGradient(
+                                  colors: widget.fiadoPending
+                                      ? const [
+                                          Color(0xFF5B21B6),
+                                          Color(0xFF7C3AED),
+                                        ]
+                                      : const [
+                                          Color(0xFF0D9668),
+                                          Color(0xFF10B981),
+                                        ],
                                 ),
                                 borderRadius: BorderRadius.circular(20),
                                 boxShadow: [
                                   BoxShadow(
-                                    color: AppTheme.success.withValues(alpha: 0.3),
+                                    color: _accent.withValues(alpha: 0.3),
                                     blurRadius: 16,
                                     offset: const Offset(0, 6),
                                   ),

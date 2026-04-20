@@ -705,6 +705,7 @@ class _PosScreenBodyState extends State<_PosScreenBody> {
             builder: (_) => SaleSuccessScreen(
               total: saleTotalFormatted,
               paymentMethod: result.paymentMethod,
+              fiadoPending: result.fiadoPending,
             ),
           ),
         );

@@ -20,10 +20,17 @@ class CheckoutResult {
   /// so the backend can link the sale to the account and the public
   /// statement can show the itemized detail.
   final String? creditAccountId;
+  /// True when the fiado link is still awaiting customer acceptance — the
+  /// cashier hit "Seguir vendiendo" before polling saw the accept. The
+  /// success screen uses this to show "Venta guardada · Esperando firma"
+  /// instead of the full-green "¡Venta registrada!" so nothing looks
+  /// like it was silently auto-accepted.
+  final bool fiadoPending;
   const CheckoutResult({
     required this.confirmed,
     required this.paymentMethod,
     this.creditAccountId,
+    this.fiadoPending = false,
   });
 }
 
@@ -695,13 +702,14 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         // that's about to be created in Isar + synced to /sales can be
         // attributed to this exact fiado. Without this link the public
         // statement can't itemize the purchase.
-        onAccepted: (creditId) {
+        onAccepted: (creditId, acceptedByCustomer) {
           Navigator.of(context).pop();
           Navigator.of(context).pop(
             CheckoutResult(
               confirmed: true,
               paymentMethod: 'credit',
               creditAccountId: creditId,
+              fiadoPending: !acceptedByCustomer,
             ),
           );
         },
@@ -808,11 +816,13 @@ class _FiadoWaitingRoom extends StatefulWidget {
   final String customerEmail;
   final int totalAmount;
   final String idempotencyKey;
-  /// Called when the handshake completes (accepted) OR the cashier chose
-  /// "Registrar venta sin firma". Receives the credit_id returned by
-  /// /fiado/init so the resulting sale can be linked to the fiado. Null
-  /// if the init call errored before we got an id back.
-  final void Function(String? creditId) onAccepted;
+  /// Called when the handshake completes OR the cashier closes the
+  /// waiting room via "Seguir vendiendo". Receives (credit_id,
+  /// acceptedByCustomer). acceptedByCustomer is true when polling saw
+  /// the accept or when the backend merged into an already-accepted
+  /// account; false when the cashier walked away before acceptance —
+  /// the UI uses this to show pending vs confirmed success variants.
+  final void Function(String? creditId, bool acceptedByCustomer) onAccepted;
 
   const _FiadoWaitingRoom({
     required this.total,
@@ -881,7 +891,9 @@ class _FiadoWaitingRoomState extends State<_FiadoWaitingRoom> {
               );
               if (!mounted) return;
               HapticFeedback.mediumImpact();
-              widget.onAccepted(existingId);
+              // The merge path appends to an already-accepted account —
+              // the customer authorized this line of credit earlier.
+              widget.onAccepted(existingId, true);
               return;
             } catch (e) {
               if (!mounted) return;
@@ -1059,7 +1071,8 @@ class _FiadoWaitingRoomState extends State<_FiadoWaitingRoom> {
         _pollTimer?.cancel();
         HapticFeedback.heavyImpact();
         await Future.delayed(const Duration(milliseconds: 1500));
-        if (mounted) widget.onAccepted(_creditId);
+        // Polling saw the customer accept.
+        if (mounted) widget.onAccepted(_creditId, true);
       }
     } catch (_) {}
   }
@@ -1187,7 +1200,9 @@ class _FiadoWaitingRoomState extends State<_FiadoWaitingRoom> {
                 // tab + a badge on the POS Cuaderno icon.
                 onPressed: () {
                   _pollTimer?.cancel();
-                  widget.onAccepted(_creditId);
+                  // Cashier walks away before the customer accepted —
+                  // fiado stays pending until the accept endpoint fires.
+                  widget.onAccepted(_creditId, false);
                 },
                 icon: const Icon(Icons.shopping_cart_rounded, size: 20),
                 label: const Text('Seguir vendiendo',
