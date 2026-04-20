@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../../services/api_service.dart';
+import '../../services/auth_service.dart';
 import '../../services/panic_trigger_service.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/panic_button.dart';
@@ -8,6 +10,7 @@ import '../../widgets/sync_status_banner.dart';
 import '../admin/admin_hub_screen.dart';
 import '../fiar/fiar_screen.dart';
 import '../inventory/add_merchandise_screen.dart';
+import '../inventory/expiring_products_screen.dart';
 import '../tables/tables_screen.dart';
 
 class MainDashboardScreen extends StatefulWidget {
@@ -19,17 +22,42 @@ class MainDashboardScreen extends StatefulWidget {
 
 class _MainDashboardScreenState extends State<MainDashboardScreen> {
   String _chargeMode = 'pre_payment';
+  int _expiringCount = 0;
 
   @override
   void initState() {
     super.initState();
     _loadChargeMode();
+    _loadExpiringCount();
   }
 
   Future<void> _loadChargeMode() async {
     final prefs = await SharedPreferences.getInstance();
     final mode = prefs.getString('vendia_charge_mode') ?? 'pre_payment';
     if (mounted) setState(() => _chargeMode = mode);
+  }
+
+  /// Loads the count of products expiring within the backend's warning
+  /// window (currently 7 days). Non-blocking — failures degrade silently
+  /// so the dashboard still renders when offline.
+  Future<void> _loadExpiringCount() async {
+    try {
+      final api = ApiService(AuthService());
+      final list = await api.fetchExpiringProducts();
+      if (mounted) setState(() => _expiringCount = list.length);
+    } catch (_) {
+      // Offline / not configured — keep count at 0.
+    }
+  }
+
+  void _openExpiringList() {
+    HapticFeedback.lightImpact();
+    Navigator.of(context)
+        .push(
+          MaterialPageRoute(
+              builder: (_) => const ExpiringProductsScreen()),
+        )
+        .then((_) => _loadExpiringCount());
   }
 
   @override
@@ -152,6 +180,13 @@ class _MainDashboardScreenState extends State<MainDashboardScreen> {
                         style: TextStyle(
                             fontSize: 18, color: AppTheme.textSecondary),
                       ),
+                      if (_expiringCount > 0) ...[
+                        const SizedBox(height: 16),
+                        _ExpiringAlertCard(
+                          count: _expiringCount,
+                          onTap: _openExpiringList,
+                        ),
+                      ],
                       const SizedBox(height: 32),
                       Expanded(
                         child: Column(
@@ -321,6 +356,80 @@ class _DashButton extends StatelessWidget {
                   letterSpacing: 0.5,
                 ),
               ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Red/orange alert card shown on the dashboard when at least one
+/// product is close to expiring. Large tap target and gradient styling
+/// match the dashboard's existing visual language (buttons use the same
+/// gradient idiom) so it reads as a first-class action, not decoration.
+class _ExpiringAlertCard extends StatelessWidget {
+  final int count;
+  final VoidCallback onTap;
+
+  const _ExpiringAlertCard({required this.count, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    final label = count == 1
+        ? 'Tiene 1 producto a punto de vencer'
+        : 'Tiene $count productos a punto de vencer';
+    return Semantics(
+      button: true,
+      label: label,
+      child: GestureDetector(
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+          decoration: BoxDecoration(
+            gradient: const LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [Color(0xFFEF4444), Color(0xFFF59E0B)],
+            ),
+            borderRadius: BorderRadius.circular(18),
+            boxShadow: [
+              BoxShadow(
+                color: const Color(0xFFEF4444).withValues(alpha: 0.28),
+                blurRadius: 14,
+                offset: const Offset(0, 6),
+              ),
+            ],
+          ),
+          child: Row(
+            children: [
+              const Text('⚠️', style: TextStyle(fontSize: 28)),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      label,
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.white,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    const Text(
+                      'Tóquelo para ver la lista',
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: Colors.white,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const Icon(Icons.chevron_right_rounded,
+                  color: Colors.white, size: 28),
             ],
           ),
         ),

@@ -20,6 +20,11 @@ class LocalProduct {
   String? presentation;
   String? content;
 
+  /// Expiration date (YYYY-MM-DD resolution). Nullable because non-perishable
+  /// SKUs (cleaning supplies, stationery, liquor) never carry an expiration.
+  @Index()
+  DateTime? expiryDate;
+
   late DateTime clientUpdatedAt;
   int? serverId;
 
@@ -35,6 +40,13 @@ class LocalProduct {
         'barcode': barcode,
         'presentation': presentation,
         'content': content,
+        // ISO-8601 date (YYYY-MM-DD). Backend column is DATE, so we strip
+        // the time component to avoid day-boundary surprises near midnight.
+        'expiry_date': expiryDate == null
+            ? null
+            : '${expiryDate!.year.toString().padLeft(4, '0')}-'
+                '${expiryDate!.month.toString().padLeft(2, '0')}-'
+                '${expiryDate!.day.toString().padLeft(2, '0')}',
         'client_updated_at': clientUpdatedAt.toIso8601String(),
       };
 
@@ -45,6 +57,12 @@ class LocalProduct {
     final photoUrl = json['photo_url'] as String?;
     final imageUrl = json['image_url'] as String?;
     final bestImage = (photoUrl != null && photoUrl.isNotEmpty) ? photoUrl : imageUrl;
+
+    DateTime? parsedExpiry;
+    final rawExpiry = json['expiry_date'];
+    if (rawExpiry is String && rawExpiry.isNotEmpty) {
+      parsedExpiry = DateTime.tryParse(rawExpiry);
+    }
 
     return LocalProduct()
       ..uuid = uuid
@@ -58,6 +76,7 @@ class LocalProduct {
       ..barcode = json['barcode'] as String?
       ..presentation = json['presentation'] as String?
       ..content = json['content'] as String?
+      ..expiryDate = parsedExpiry
       ..clientUpdatedAt = json['client_updated_at'] != null
           ? DateTime.parse(json['client_updated_at'] as String)
           : DateTime.now();

@@ -42,6 +42,7 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
   bool _lookingUp = false;
   bool _dataFromCatalog = false; // shows "datos cargados" indicator
   String _presentation = ''; // botella, lata, bolsa, etc.
+  DateTime? _expiryDate; // optional — only perishables carry one
   final _skuCtrl = TextEditingController();
 
   // Autocomplete (local Isar + backend catalog)
@@ -591,6 +592,53 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
     }
   }
 
+  // ── Expiry date ────────────────────────────────────────────────────────────
+
+  /// Formats a DateTime as ISO `YYYY-MM-DD` for wire transport (backend
+  /// Postgres DATE column + local Isar). Kept as a local helper to avoid
+  /// the `intl` dependency for a single-purpose format.
+  String _isoDate(DateTime d) =>
+      '${d.year.toString().padLeft(4, '0')}-'
+      '${d.month.toString().padLeft(2, '0')}-'
+      '${d.day.toString().padLeft(2, '0')}';
+
+  /// Human-facing display: "31 dic 2026". Adults 50+ audience — the full
+  /// abbreviation beats a numeric DD/MM/YY that people mis-read.
+  String _displayExpiry(DateTime d) {
+    const months = [
+      'ene', 'feb', 'mar', 'abr', 'may', 'jun',
+      'jul', 'ago', 'sep', 'oct', 'nov', 'dic',
+    ];
+    return '${d.day} ${months[d.month - 1]} ${d.year}';
+  }
+
+  Future<void> _pickExpiryDate() async {
+    HapticFeedback.lightImpact();
+    final now = DateTime.now();
+    final initial = _expiryDate ?? DateTime(now.year, now.month + 3, now.day);
+    // Intentionally no `locale:` — the app has no localizationsDelegates
+    // configured, so forcing 'es' throws. System default is fine on CO
+    // devices; the cancel/confirm strings below keep the CTA in Spanish.
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: initial,
+      firstDate: DateTime(now.year - 1, now.month, now.day),
+      lastDate: DateTime(now.year + 10, now.month, now.day),
+      helpText: 'Fecha de vencimiento',
+      cancelText: 'Cancelar',
+      confirmText: 'Listo',
+      fieldLabelText: 'Fecha (día/mes/año)',
+    );
+    if (picked != null && mounted) {
+      setState(() => _expiryDate = picked);
+    }
+  }
+
+  void _clearExpiryDate() {
+    HapticFeedback.lightImpact();
+    setState(() => _expiryDate = null);
+  }
+
   // ── Save ───────────────────────────────────────────────────────────────────
 
   Future<void> _save() async {
@@ -610,6 +658,7 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
       final stock = int.tryParse(_quantityCtrl.text.trim()) ?? 1;
 
       final api = ApiService(AuthService());
+      final expiryIso = _expiryDate == null ? null : _isoDate(_expiryDate!);
       if (_pendingUuid != null) {
         // Product was already created by enhance — update it
         await api.updateProduct(id, {
@@ -620,6 +669,9 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
           'barcode': _skuCtrl.text.trim(),
           'presentation': _presentation,
           'content': _contentCtrl.text.trim(),
+          // Always send the field (even empty) so the user can clear a
+          // previously-set date on a re-save.
+          'expiry_date': expiryIso ?? '',
           if (_pendingCatalogImageId != null)
             'catalog_image_id': _pendingCatalogImageId,
         });
@@ -635,6 +687,7 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
           'barcode': _skuCtrl.text.trim(),
           'presentation': _presentation,
           'content': _contentCtrl.text.trim(),
+          if (expiryIso != null) 'expiry_date': expiryIso,
           if (_pendingCatalogImageId != null)
             'catalog_image_id': _pendingCatalogImageId,
         });
@@ -653,6 +706,7 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
         ..barcode = _skuCtrl.text.trim()
         ..presentation = _presentation
         ..content = _contentCtrl.text.trim()
+        ..expiryDate = _expiryDate
         ..clientUpdatedAt = DateTime.now();
       await DatabaseService.instance.upsertProduct(product);
     } catch (_) {
@@ -1373,6 +1427,10 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
                   ),
                   children: [
                     _card(children: [
+                      _fieldLabel('Fecha de vencimiento'),
+                      const SizedBox(height: 6),
+                      _expiryDateField(),
+                      const SizedBox(height: 14),
                       _fieldLabel('Categoría'),
                       const SizedBox(height: 6),
                       TextFormField(
@@ -1506,6 +1564,63 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
         fontSize: 17,
         fontWeight: FontWeight.w600,
         color: AppTheme.textPrimary,
+      ),
+    );
+  }
+
+  Widget _expiryDateField() {
+    final hasDate = _expiryDate != null;
+    // Large tap target (56px) per gerontodesign guideline — older adults
+    // need forgiving hit areas. The calendar icon + Spanish label keeps
+    // the purpose obvious without requiring the user to tap to discover it.
+    return InkWell(
+      onTap: _pickExpiryDate,
+      borderRadius: BorderRadius.circular(12),
+      child: Container(
+        height: 56,
+        padding: const EdgeInsets.symmetric(horizontal: 12),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: hasDate ? AppTheme.primary : AppTheme.borderColor,
+            width: hasDate ? 1.5 : 1,
+          ),
+          color: hasDate
+              ? AppTheme.primary.withValues(alpha: 0.04)
+              : Colors.white,
+        ),
+        child: Row(
+          children: [
+            Icon(
+              Icons.event_rounded,
+              size: 22,
+              color: hasDate ? AppTheme.primary : AppTheme.textSecondary,
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                hasDate
+                    ? _displayExpiry(_expiryDate!)
+                    : 'Opcional — toque para elegir',
+                style: TextStyle(
+                  fontSize: 17,
+                  fontWeight: hasDate ? FontWeight.w600 : FontWeight.w400,
+                  fontStyle: hasDate ? FontStyle.normal : FontStyle.italic,
+                  color: hasDate
+                      ? AppTheme.textPrimary
+                      : Colors.grey.shade500,
+                ),
+              ),
+            ),
+            if (hasDate)
+              IconButton(
+                onPressed: _clearExpiryDate,
+                icon: const Icon(Icons.close_rounded,
+                    size: 22, color: AppTheme.textSecondary),
+                tooltip: 'Quitar fecha',
+              ),
+          ],
+        ),
       ),
     );
   }

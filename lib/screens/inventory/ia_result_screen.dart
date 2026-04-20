@@ -45,6 +45,11 @@ class _IaResultScreenState extends State<IaResultScreen> {
     super.initState();
     _products = widget.extractedProducts.map((p) {
       final purchasePrice = (p['unit_price'] as num?)?.toDouble() ?? 0;
+      final rawExpiry = p['expiry_date'];
+      DateTime? parsedExpiry;
+      if (rawExpiry is String && rawExpiry.isNotEmpty) {
+        parsedExpiry = DateTime.tryParse(rawExpiry);
+      }
       return _EditableProduct(
         name: p['name'] as String? ?? '',
         presentation: p['presentation'] as String? ?? '',
@@ -52,6 +57,7 @@ class _IaResultScreenState extends State<IaResultScreen> {
         purchasePrice: purchasePrice,
         sellPrice: suggestPrice(purchasePrice, _marginPercent).toDouble(),
         confidence: (p['confidence'] as num?)?.toDouble() ?? 0.9,
+        expiryDate: parsedExpiry,
       );
     }).toList();
     _loadMargin();
@@ -96,6 +102,7 @@ class _IaResultScreenState extends State<IaResultScreen> {
           ..presentation = p.presentation
           ..barcode = ''
           ..content = ''
+          ..expiryDate = p.expiryDate
           ..clientUpdatedAt = DateTime.now();
         await db.upsertProduct(product);
       }
@@ -133,6 +140,33 @@ class _IaResultScreenState extends State<IaResultScreen> {
     setState(() => _products.removeAt(index));
   }
 
+  static const _monthAbbr = [
+    'ene', 'feb', 'mar', 'abr', 'may', 'jun',
+    'jul', 'ago', 'sep', 'oct', 'nov', 'dic',
+  ];
+
+  static String _displayExpiry(DateTime d) =>
+      '${d.day} ${_monthAbbr[d.month - 1]} ${d.year}';
+
+  Future<DateTime?> _pickExpiry(
+    BuildContext ctx, {
+    DateTime? current,
+  }) async {
+    HapticFeedback.lightImpact();
+    final now = DateTime.now();
+    final initial = current ?? DateTime(now.year, now.month + 3, now.day);
+    return showDatePicker(
+      context: ctx,
+      initialDate: initial,
+      firstDate: DateTime(now.year - 1, now.month, now.day),
+      lastDate: DateTime(now.year + 10, now.month, now.day),
+      helpText: 'Fecha de vencimiento',
+      cancelText: 'Cancelar',
+      confirmText: 'Listo',
+      fieldLabelText: 'Fecha (día/mes/año)',
+    );
+  }
+
   void _editProduct(int index) {
     final p = _products[index];
     final nameCtrl = TextEditingController(text: p.name);
@@ -140,6 +174,7 @@ class _IaResultScreenState extends State<IaResultScreen> {
     final qtyCtrl = TextEditingController(text: p.quantity.toString());
     final buyCtrl = TextEditingController(text: p.purchasePrice.round().toString());
     final sellCtrl = TextEditingController(text: p.sellPrice.round().toString());
+    DateTime? draftExpiry = p.expiryDate;
 
     showModalBottomSheet(
       context: context,
@@ -204,6 +239,80 @@ class _IaResultScreenState extends State<IaResultScreen> {
                       fontSize: 14, color: AppTheme.success,
                       fontWeight: FontWeight.w600),
                 ),
+                const SizedBox(height: 14),
+                // Expiry date (optional). Pre-filled when Gemini detected
+                // a date on the invoice — shopkeeper just confirms.
+                const Text('Fecha de vencimiento',
+                    style: TextStyle(
+                        fontSize: 15, fontWeight: FontWeight.w600,
+                        color: AppTheme.textSecondary)),
+                const SizedBox(height: 6),
+                StatefulBuilder(
+                  builder: (sbCtx, sbSet) => InkWell(
+                    onTap: () async {
+                      final picked = await _pickExpiry(sbCtx,
+                          current: draftExpiry);
+                      if (picked != null) {
+                        sbSet(() => draftExpiry = picked);
+                      }
+                    },
+                    borderRadius: BorderRadius.circular(12),
+                    child: Container(
+                      height: 56,
+                      padding: const EdgeInsets.symmetric(horizontal: 14),
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: draftExpiry != null
+                              ? AppTheme.primary
+                              : AppTheme.borderColor,
+                          width: draftExpiry != null ? 1.5 : 1,
+                        ),
+                        color: draftExpiry != null
+                            ? AppTheme.primary.withValues(alpha: 0.04)
+                            : Colors.white,
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(Icons.event_rounded,
+                              size: 22,
+                              color: draftExpiry != null
+                                  ? AppTheme.primary
+                                  : AppTheme.textSecondary),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Text(
+                              draftExpiry != null
+                                  ? _displayExpiry(draftExpiry!)
+                                  : 'Opcional — toque para elegir',
+                              style: TextStyle(
+                                fontSize: 17,
+                                fontWeight: draftExpiry != null
+                                    ? FontWeight.w600
+                                    : FontWeight.w400,
+                                fontStyle: draftExpiry != null
+                                    ? FontStyle.normal
+                                    : FontStyle.italic,
+                                color: draftExpiry != null
+                                    ? AppTheme.textPrimary
+                                    : Colors.grey.shade500,
+                              ),
+                            ),
+                          ),
+                          if (draftExpiry != null)
+                            IconButton(
+                              onPressed: () =>
+                                  sbSet(() => draftExpiry = null),
+                              icon: const Icon(Icons.close_rounded,
+                                  size: 22,
+                                  color: AppTheme.textSecondary),
+                              tooltip: 'Quitar fecha',
+                            ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
                 const SizedBox(height: 20),
                 SizedBox(
                   height: 60,
@@ -216,6 +325,7 @@ class _IaResultScreenState extends State<IaResultScreen> {
                         p.quantity = int.tryParse(qtyCtrl.text) ?? p.quantity;
                         p.purchasePrice = double.tryParse(buyCtrl.text) ?? p.purchasePrice;
                         p.sellPrice = double.tryParse(sellCtrl.text) ?? p.sellPrice;
+                        p.expiryDate = draftExpiry;
                       });
                       Navigator.of(ctx).pop();
                     },
@@ -474,6 +584,34 @@ class _ProductCard extends StatelessWidget {
                   style: const TextStyle(
                       fontSize: 14, color: AppTheme.textSecondary)),
             ),
+          if (product.expiryDate != null)
+            Padding(
+              padding: const EdgeInsets.only(top: 6),
+              child: Container(
+                padding: const EdgeInsets.symmetric(
+                    horizontal: 10, vertical: 4),
+                decoration: BoxDecoration(
+                  color: AppTheme.warning.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.event_rounded,
+                        size: 14, color: AppTheme.warning),
+                    const SizedBox(width: 4),
+                    Text(
+                      'Vence: ${_IaResultScreenState._displayExpiry(product.expiryDate!)}',
+                      style: const TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                        color: AppTheme.warning,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
           const SizedBox(height: 8),
 
           // Prices row
@@ -658,6 +796,7 @@ class _EditableProduct {
   double purchasePrice;
   double sellPrice;
   double confidence;
+  DateTime? expiryDate;
 
   _EditableProduct({
     required this.name,
@@ -666,5 +805,6 @@ class _EditableProduct {
     required this.purchasePrice,
     required this.sellPrice,
     required this.confidence,
+    this.expiryDate,
   });
 }
