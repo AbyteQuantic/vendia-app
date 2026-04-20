@@ -6,6 +6,7 @@ import '../../theme/app_theme.dart';
 import '../auth/login_screen.dart';
 import 'business_profile_screen.dart';
 import 'payment_methods_screen.dart';
+import 'payment_quick_setup_screen.dart';
 import 'printer_config_screen.dart';
 import 'sync_screen.dart';
 import 'table_floor_plan_screen.dart';
@@ -235,10 +236,20 @@ class _AdminHubScreenState extends State<AdminHubScreen> {
               onTap: _showMarginConfig,
             ),
             _SettingsTile(
+              icon: Icons.bolt_rounded,
+              iconColor: const Color(0xFF6D28D9),
+              title: 'Cobro Digital',
+              subtitle: 'Configurar Nequi, Daviplata o Bancolombia en 30 seg',
+              onTap: () => Navigator.of(context).push(
+                MaterialPageRoute(
+                    builder: (_) => const PaymentQuickSetupScreen()),
+              ),
+            ),
+            _SettingsTile(
               icon: Icons.receipt_long_rounded,
               iconColor: const Color(0xFFEA580C),
-              title: 'Métodos de Pago',
-              subtitle: 'Nequi, Daviplata y transferencias',
+              title: 'Otros medios de pago',
+              subtitle: 'Cuentas adicionales (avanzado)',
               onTap: () => Navigator.of(context).push(
                 MaterialPageRoute(builder: (_) => const PaymentMethodsScreen()),
               ),

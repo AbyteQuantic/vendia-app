@@ -1498,6 +1498,28 @@ class ApiService {
     }
   }
 
+  /// Express payment setup — writes the tenant's primary method (name,
+  /// account number, holder) in one PATCH. The public fiado portal
+  /// reads these three fields and renders the two copy buttons.
+  /// Any omitted field is left untouched on the server.
+  Future<Map<String, dynamic>> updatePaymentConfig({
+    String? methodName,
+    String? accountNumber,
+    String? accountHolder,
+  }) async {
+    final data = <String, dynamic>{};
+    if (methodName != null) data['payment_method_name'] = methodName;
+    if (accountNumber != null) data['payment_account_number'] = accountNumber;
+    if (accountHolder != null) data['payment_account_holder'] = accountHolder;
+    try {
+      final response =
+          await _dio.patch('/api/v1/store/payment-config', data: data);
+      return _extractData(response);
+    } on DioException catch (e) {
+      throw AppError.fromDioException(e);
+    }
+  }
+
   /// Ask the backend to build a dynamic-QR payload for the current
   /// tenant + amount. Used by the "Transferencia" checkout flow so the
   /// cashier can show a QR where the amount is locked and the customer
