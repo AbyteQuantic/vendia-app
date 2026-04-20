@@ -1467,12 +1467,15 @@ class ApiService {
   /// Close a fiado manually — writes off any residual balance with a
   /// CreditPayment of method='write_off' and marks the account as paid.
   /// Used when the tendero negotiates a discount or forgives a leftover.
+  /// When the account still has a positive balance, the backend refuses
+  /// unless [force] is true (protects against accidental closures).
   Future<Map<String, dynamic>> closeFiado(String creditId, {
     String reason = '',
+    bool force = false,
   }) async {
     try {
       final response = await _dio.post('/api/v1/credits/$creditId/close',
-          data: {'reason': reason});
+          data: {'reason': reason, 'force': force});
       return _extractData(response);
     } on DioException catch (e) {
       throw AppError.fromDioException(e);

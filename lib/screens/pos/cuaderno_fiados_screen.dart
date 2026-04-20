@@ -466,34 +466,35 @@ class _FiadoDetailScreenState extends State<_FiadoDetailScreen> {
                 child: SizedBox(
                   height: 54,
                   child: OutlinedButton.icon(
-                    // Closing a fiado with a positive balance is a
-                    // write-off (condonación). Keep that hidden behind a
-                    // confirm flow — the default UX only allows closing
-                    // when the account is fully paid. If the cashier
-                    // wants a discount, they register abonos until it's
-                    // saldada, or (future) use an explicit "Cerrar con
-                    // descuento" action that opts into force=true.
+                    // balance == 0: simple close. balance > 0: explicit
+                    // "Cerrar con descuento" flow — asks what the client
+                    // paid, records the abono, writes off the rest, and
+                    // closes. Both paths are auditable and opt-in.
                     onPressed: balance > 0
-                        ? null
+                        ? () => _showCloseWithDiscountDialog(
+                              balance: balance,
+                              name: name,
+                            )
                         : () => _showCloseAccountDialog(
                               balance: balance,
                               name: name,
                             ),
-                    icon: const Icon(Icons.check_circle_outline_rounded,
-                        size: 20),
-                    label: const Text('✅  Cerrar cuenta',
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                            fontSize: 15, fontWeight: FontWeight.w700)),
+                    icon: Icon(
+                      balance > 0
+                          ? Icons.local_offer_rounded
+                          : Icons.check_circle_outline_rounded,
+                      size: 20,
+                    ),
+                    label: Text(
+                      balance > 0 ? '🎁  Con descuento' : '✅  Cerrar cuenta',
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(
+                          fontSize: 15, fontWeight: FontWeight.w700),
+                    ),
                     style: OutlinedButton.styleFrom(
                       foregroundColor: const Color(0xFF6D28D9),
-                      disabledForegroundColor:
-                          const Color(0xFF6D28D9).withValues(alpha: 0.35),
-                      side: BorderSide(
-                          color: balance > 0
-                              ? const Color(0xFF6D28D9).withValues(alpha: 0.35)
-                              : const Color(0xFF6D28D9),
-                          width: 1.5),
+                      side: const BorderSide(
+                          color: Color(0xFF6D28D9), width: 1.5),
                       shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(16)),
                     ),
@@ -505,10 +506,11 @@ class _FiadoDetailScreenState extends State<_FiadoDetailScreen> {
           if (balance > 0) ...[
             const SizedBox(height: 6),
             Text(
-              'Para cerrar la cuenta, registre abonos hasta saldar los ${_fmt(balance)}.',
+              'Cobre lo que acuerden con el cliente: el saldo restante se registra como descuento en el extracto.',
               textAlign: TextAlign.center,
-              style: const TextStyle(
-                  fontSize: 12, color: Color(0xFF6D28D9)),
+              style: TextStyle(
+                  fontSize: 12,
+                  color: AppTheme.textSecondary.withValues(alpha: 0.9)),
             ),
           ],
           const SizedBox(height: 6),
@@ -618,6 +620,198 @@ class _FiadoDetailScreenState extends State<_FiadoDetailScreen> {
         content: Text('Cuenta cerrada',
             style: TextStyle(fontSize: 16)),
         backgroundColor: Color(0xFF6D28D9),
+        behavior: SnackBarBehavior.floating,
+      ));
+      _load();
+    } catch (e) {
+      if (!mounted) return;
+      HapticFeedback.heavyImpact();
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text('No se pudo cerrar: $e',
+            style: const TextStyle(fontSize: 15)),
+        backgroundColor: AppTheme.error,
+        behavior: SnackBarBehavior.floating,
+      ));
+    }
+  }
+
+  /// Close with an agreed discount: the cashier enters what the client
+  /// actually paid, we record that as a normal abono, then close the
+  /// account with force=true so the remainder is written off as
+  /// "Saldo condonado". Customer's public extract shows both entries —
+  /// full audit trail.
+  Future<void> _showCloseWithDiscountDialog({
+    required int balance,
+    required String name,
+  }) async {
+    final paidCtrl = TextEditingController(text: balance.toString());
+    int paid = balance;
+    final result = await showDialog<int>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (ctx, setSt) {
+            final discount = balance - paid;
+            final isValid = paid > 0 && paid <= balance;
+            return AlertDialog(
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(20)),
+              title: const Row(
+                children: [
+                  Icon(Icons.local_offer_rounded,
+                      color: Color(0xFF6D28D9), size: 28),
+                  SizedBox(width: 10),
+                  Expanded(
+                    child: Text('Cerrar con descuento',
+                        style: TextStyle(
+                            fontSize: 20,
+                            fontWeight: FontWeight.w800)),
+                  ),
+                ],
+              ),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Text(
+                    '$name debe ${_fmt(balance)}. ¿Cuánto le cobra hoy?',
+                    style: const TextStyle(fontSize: 15, height: 1.4),
+                  ),
+                  const SizedBox(height: 14),
+                  TextField(
+                    controller: paidCtrl,
+                    autofocus: true,
+                    keyboardType: TextInputType.number,
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                        fontSize: 28,
+                        fontWeight: FontWeight.w800,
+                        color: Colors.black87),
+                    inputFormatters: [
+                      FilteringTextInputFormatter.digitsOnly
+                    ],
+                    onChanged: (v) =>
+                        setSt(() => paid = int.tryParse(v) ?? 0),
+                    decoration: InputDecoration(
+                      prefixText: '\$ ',
+                      prefixStyle: TextStyle(
+                          fontSize: 28,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.grey.shade500),
+                      hintText: '0',
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF6D28D9).withValues(alpha: 0.08),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Column(
+                      children: [
+                        _row('Saldo actual', _fmt(balance),
+                            color: const Color(0xFFEA580C)),
+                        const SizedBox(height: 4),
+                        _row('Cliente paga', _fmt(paid),
+                            color: const Color(0xFF059669)),
+                        const Divider(height: 18),
+                        _row(
+                            'Descuento (condonado)',
+                            _fmt(discount < 0 ? 0 : discount),
+                            color: const Color(0xFF6D28D9),
+                            bold: true),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(ctx).pop(null),
+                  child: const Text('Cancelar',
+                      style: TextStyle(
+                          fontSize: 16, fontWeight: FontWeight.w600)),
+                ),
+                ElevatedButton(
+                  onPressed: isValid
+                      ? () => Navigator.of(ctx).pop(paid)
+                      : null,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF6D28D9),
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(14)),
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 18, vertical: 10),
+                  ),
+                  child: const Text('Cerrar cuenta',
+                      style: TextStyle(
+                          fontSize: 16, fontWeight: FontWeight.w700)),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+
+    if (result == null) return;
+    await _closeWithDiscount(paidAmount: result, balance: balance);
+  }
+
+  Widget _row(String label, String value,
+      {required Color color, bool bold = false}) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        Text(label,
+            style: const TextStyle(
+                fontSize: 14, color: AppTheme.textSecondary)),
+        Text(value,
+            style: TextStyle(
+                fontSize: bold ? 18 : 15,
+                fontWeight: bold ? FontWeight.w800 : FontWeight.w700,
+                color: color)),
+      ],
+    );
+  }
+
+  Future<void> _closeWithDiscount({
+    required int paidAmount,
+    required int balance,
+  }) async {
+    try {
+      // If the client paid the full balance, no discount — just record
+      // the abono; RegisterPaymentWithActor auto-closes when paid == total.
+      if (paidAmount >= balance) {
+        await _api.registerAbono(widget.creditId, amount: balance);
+      } else {
+        // Record what the client actually paid, THEN force-close so the
+        // remaining is written off. Two timeline entries (abono +
+        // write_off) keep the audit trail honest on the public page.
+        await _api.registerAbono(widget.creditId, amount: paidAmount);
+        final discount = balance - paidAmount;
+        await _api.closeFiado(
+          widget.creditId,
+          force: true,
+          reason: 'Descuento de ${_fmt(discount)} acordado con el cliente',
+        );
+      }
+      if (!mounted) return;
+      HapticFeedback.mediumImpact();
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(
+          paidAmount >= balance
+              ? 'Cuenta saldada'
+              : 'Cuenta cerrada con descuento',
+          style: const TextStyle(fontSize: 16),
+        ),
+        backgroundColor: const Color(0xFF6D28D9),
         behavior: SnackBarBehavior.floating,
       ));
       _load();
