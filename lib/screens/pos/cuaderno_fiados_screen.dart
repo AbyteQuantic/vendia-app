@@ -466,10 +466,19 @@ class _FiadoDetailScreenState extends State<_FiadoDetailScreen> {
                 child: SizedBox(
                   height: 54,
                   child: OutlinedButton.icon(
-                    onPressed: () => _showCloseAccountDialog(
-                      balance: balance,
-                      name: name,
-                    ),
+                    // Closing a fiado with a positive balance is a
+                    // write-off (condonación). Keep that hidden behind a
+                    // confirm flow — the default UX only allows closing
+                    // when the account is fully paid. If the cashier
+                    // wants a discount, they register abonos until it's
+                    // saldada, or (future) use an explicit "Cerrar con
+                    // descuento" action that opts into force=true.
+                    onPressed: balance > 0
+                        ? null
+                        : () => _showCloseAccountDialog(
+                              balance: balance,
+                              name: name,
+                            ),
                     icon: const Icon(Icons.check_circle_outline_rounded,
                         size: 20),
                     label: const Text('✅  Cerrar cuenta',
@@ -478,8 +487,13 @@ class _FiadoDetailScreenState extends State<_FiadoDetailScreen> {
                             fontSize: 15, fontWeight: FontWeight.w700)),
                     style: OutlinedButton.styleFrom(
                       foregroundColor: const Color(0xFF6D28D9),
-                      side: const BorderSide(
-                          color: Color(0xFF6D28D9), width: 1.5),
+                      disabledForegroundColor:
+                          const Color(0xFF6D28D9).withValues(alpha: 0.35),
+                      side: BorderSide(
+                          color: balance > 0
+                              ? const Color(0xFF6D28D9).withValues(alpha: 0.35)
+                              : const Color(0xFF6D28D9),
+                          width: 1.5),
                       shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(16)),
                     ),
@@ -488,6 +502,15 @@ class _FiadoDetailScreenState extends State<_FiadoDetailScreen> {
               ),
             ],
           ),
+          if (balance > 0) ...[
+            const SizedBox(height: 6),
+            Text(
+              'Para cerrar la cuenta, registre abonos hasta saldar los ${_fmt(balance)}.',
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                  fontSize: 12, color: Color(0xFF6D28D9)),
+            ),
+          ],
           const SizedBox(height: 6),
           // Gentle hint so cashiers know where to add to this debt from now on.
           Text(
