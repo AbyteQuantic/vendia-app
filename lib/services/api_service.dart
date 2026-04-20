@@ -1498,6 +1498,28 @@ class ApiService {
     }
   }
 
+  /// Ask the backend to build a dynamic-QR payload for the current
+  /// tenant + amount. Used by the "Transferencia" checkout flow so the
+  /// cashier can show a QR where the amount is locked and the customer
+  /// cannot edit it. Zero merchant fees — the Nequi/Daviplata/
+  /// Bancolombia app confirms to the tendero via SMS.
+  Future<Map<String, dynamic>> generateDynamicQR({
+    required int amount,
+    String? paymentMethodId,
+  }) async {
+    try {
+      final data = <String, dynamic>{'amount': amount};
+      if (paymentMethodId != null && paymentMethodId.isNotEmpty) {
+        data['payment_method_id'] = paymentMethodId;
+      }
+      final response =
+          await _dio.post('/api/v1/payments/generate-dynamic-qr', data: data);
+      return _extractData(response);
+    } on DioException catch (e) {
+      throw AppError.fromDioException(e);
+    }
+  }
+
   // ═══════════════════════════════════════════════════════════════════════════
   // NOTIFICATIONS
   // ═══════════════════════════════════════════════════════════════════════════

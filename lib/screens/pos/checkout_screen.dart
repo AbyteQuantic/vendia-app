@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
+import 'package:qr_flutter/qr_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../models/cart_item.dart';
 import '../../services/active_fiado_service.dart';
@@ -26,11 +27,17 @@ class CheckoutResult {
   /// instead of the full-green "¡Venta registrada!" so nothing looks
   /// like it was silently auto-accepted.
   final bool fiadoPending;
+  /// For "Transferencia" (Plan B zero-fee QR) flows: the raw QR payload
+  /// that was shown to the customer. Persisted on the Sale row so the
+  /// tenant keeps an audit trail and a future webhook reconciler can
+  /// match Nequi/Daviplata SMS notifications to the sale.
+  final String? dynamicQrPayload;
   const CheckoutResult({
     required this.confirmed,
     required this.paymentMethod,
     this.creditAccountId,
     this.fiadoPending = false,
+    this.dynamicQrPayload,
   });
 }
 
@@ -412,9 +419,87 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       return;
     }
 
+    // "Transferencia" (zero-fee QR). Ask the backend for the QR payload,
+    // open the QR modal, and only resolve the sale once the cashier
+    // visually confirms receipt of the Nequi/Daviplata/Bancolombia SMS.
+    if (_selectedMethod == 'transfer') {
+      await _startDynamicQRPayment();
+      return;
+    }
+
     Navigator.of(context).pop(
       CheckoutResult(confirmed: true, paymentMethod: _selectedMethod),
     );
+  }
+
+  Future<void> _startDynamicQRPayment() async {
+    // Loader while we ask the backend for the QR payload.
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => const Center(
+        child: CircularProgressIndicator(color: AppTheme.primary),
+      ),
+    );
+    Map<String, dynamic>? data;
+    String? errorMsg;
+    try {
+      data = await ApiService(AuthService())
+          .generateDynamicQR(amount: widget.total.round());
+    } on AppError catch (e) {
+      errorMsg = e.message;
+    } catch (e) {
+      errorMsg = e.toString();
+    }
+    if (!mounted) return;
+    Navigator.of(context).pop(); // dismiss loader
+
+    if (data == null) {
+      HapticFeedback.heavyImpact();
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(
+          errorMsg ?? 'No se pudo generar el QR',
+          style: const TextStyle(fontSize: 15),
+        ),
+        backgroundColor: AppTheme.error,
+        behavior: SnackBarBehavior.floating,
+      ));
+      return;
+    }
+
+    final qrString = data['qr_string'] as String? ?? '';
+    final accountNumber = data['account_number'] as String? ?? '';
+    final holder = data['account_holder'] as String? ?? '';
+    final walletName = data['wallet_name'] as String? ?? 'Transferencia';
+    final walletType = data['wallet_type'] as String? ?? 'transfer';
+    final instructions = data['instructions'] as String? ?? '';
+
+    final confirmed = await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      enableDrag: false,
+      isDismissible: false,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => _DynamicQRSheet(
+        qrString: qrString,
+        accountNumber: accountNumber,
+        holderName: holder,
+        walletName: walletName,
+        walletType: walletType,
+        instructions: instructions,
+        formattedTotal: widget.formattedTotal,
+      ),
+    );
+
+    if (!mounted) return;
+    if (confirmed == true) {
+      HapticFeedback.mediumImpact();
+      Navigator.of(context).pop(CheckoutResult(
+        confirmed: true,
+        paymentMethod: 'transfer',
+        dynamicQrPayload: qrString,
+      ));
+    }
   }
 
   /// Single entry point for the two fiado flows: open a brand-new account
@@ -1610,6 +1695,337 @@ class _ActiveFiadoPickerContentState
               ),
             ],
           ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Full-screen sheet that shows the dynamic QR to the customer + asks
+/// the cashier to manually confirm receipt of the Nequi/Daviplata SMS.
+/// Pops `true` on "Confirmar que recibí la plata", `false`/null on
+/// "Cancelar y volver". Because there's no real webhook yet, this is a
+/// visual-confirmation contract: only the cashier can close the sale.
+class _DynamicQRSheet extends StatefulWidget {
+  const _DynamicQRSheet({
+    required this.qrString,
+    required this.accountNumber,
+    required this.holderName,
+    required this.walletName,
+    required this.walletType,
+    required this.instructions,
+    required this.formattedTotal,
+  });
+
+  final String qrString;
+  final String accountNumber;
+  final String holderName;
+  final String walletName;
+  final String walletType;
+  final String instructions;
+  final String formattedTotal;
+
+  @override
+  State<_DynamicQRSheet> createState() => _DynamicQRSheetState();
+}
+
+class _DynamicQRSheetState extends State<_DynamicQRSheet> {
+  bool _confirming = false;
+
+  Color get _walletColor {
+    switch (widget.walletType) {
+      case 'nequi':
+        return const Color(0xFFE5007E);
+      case 'daviplata':
+        return const Color(0xFFE2001A);
+      case 'bancolombia':
+        return const Color(0xFFFDDA24);
+      case 'davivienda':
+        return const Color(0xFFED1C24);
+      case 'bbva':
+        return const Color(0xFF004481);
+      default:
+        return AppTheme.primary;
+    }
+  }
+
+  IconData get _walletIcon {
+    switch (widget.walletType) {
+      case 'nequi':
+      case 'daviplata':
+        return Icons.smartphone_rounded;
+      default:
+        return Icons.account_balance_rounded;
+    }
+  }
+
+  Future<void> _copyAccount() async {
+    await Clipboard.setData(ClipboardData(text: widget.accountNumber));
+    HapticFeedback.lightImpact();
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text('Cuenta ${widget.accountNumber} copiada',
+          style: const TextStyle(fontSize: 15)),
+      backgroundColor: AppTheme.success,
+      behavior: SnackBarBehavior.floating,
+      duration: const Duration(seconds: 2),
+    ));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return DraggableScrollableSheet(
+      initialChildSize: 0.95,
+      minChildSize: 0.7,
+      maxChildSize: 0.98,
+      expand: false,
+      builder: (_, scrollCtrl) => Container(
+        decoration: const BoxDecoration(
+          color: Color(0xFFFFFBF7),
+          borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+        ),
+        child: Column(
+          children: [
+            const SizedBox(height: 12),
+            Container(
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: const Color(0xFFD6D0C8),
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            const SizedBox(height: 14),
+            Expanded(
+              child: SingleChildScrollView(
+                controller: scrollCtrl,
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 20, vertical: 4),
+                child: Column(
+                  children: [
+                    // Wallet chip ───────────────────────────────────────
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 14, vertical: 8),
+                      decoration: BoxDecoration(
+                        color: _walletColor.withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(999),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(_walletIcon,
+                              color: _walletColor, size: 20),
+                          const SizedBox(width: 8),
+                          Text(widget.walletName,
+                              style: TextStyle(
+                                  fontSize: 15,
+                                  fontWeight: FontWeight.w700,
+                                  color: _walletColor)),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    // Title ─────────────────────────────────────────────
+                    const Text(
+                      'Escanee para pagar',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontSize: 30,
+                        fontWeight: FontWeight.w800,
+                        color: AppTheme.textPrimary,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    // Locked-amount banner — the whole point of this UX.
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 14, vertical: 10),
+                      decoration: BoxDecoration(
+                        color: AppTheme.success.withValues(alpha: 0.10),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                            color: AppTheme.success.withValues(alpha: 0.35),
+                            width: 1),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(Icons.lock_rounded,
+                              color: AppTheme.success, size: 20),
+                          const SizedBox(width: 8),
+                          Flexible(
+                            child: Text(
+                              'El valor de ${widget.formattedTotal} está bloqueado. El cliente no puede cambiarlo.',
+                              style: const TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w600,
+                                color: AppTheme.success,
+                                height: 1.3,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+                    // QR code ───────────────────────────────────────────
+                    Container(
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(20),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withValues(alpha: 0.08),
+                            blurRadius: 16,
+                            offset: const Offset(0, 4),
+                          ),
+                        ],
+                      ),
+                      child: QrImageView(
+                        data: widget.qrString,
+                        version: QrVersions.auto,
+                        size: 260,
+                        backgroundColor: Colors.white,
+                        errorCorrectionLevel: QrErrorCorrectLevel.M,
+                        eyeStyle: const QrEyeStyle(
+                          eyeShape: QrEyeShape.square,
+                          color: Colors.black,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    // Account details (fallback for customers who can't scan)
+                    Container(
+                      padding: const EdgeInsets.all(14),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(
+                            color: const Color(0xFFEDE8E0), width: 1),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text('Si no puede escanear:',
+                              style: TextStyle(
+                                  fontSize: 13,
+                                  color: AppTheme.textSecondary
+                                      .withValues(alpha: 0.9))),
+                          const SizedBox(height: 6),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment:
+                                      CrossAxisAlignment.start,
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Text(widget.accountNumber,
+                                        style: const TextStyle(
+                                            fontSize: 22,
+                                            fontWeight: FontWeight.w800,
+                                            letterSpacing: 1.1,
+                                            color: AppTheme.textPrimary)),
+                                    if (widget.holderName.isNotEmpty)
+                                      Text(
+                                        'A nombre de ${widget.holderName}',
+                                        style: const TextStyle(
+                                            fontSize: 13,
+                                            color: AppTheme.textSecondary),
+                                      ),
+                                  ],
+                                ),
+                              ),
+                              TextButton.icon(
+                                onPressed: _copyAccount,
+                                icon: const Icon(Icons.copy_rounded,
+                                    size: 18),
+                                label: const Text('Copiar',
+                                    style: TextStyle(
+                                        fontSize: 14,
+                                        fontWeight: FontWeight.w700)),
+                                style: TextButton.styleFrom(
+                                  foregroundColor: _walletColor,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    if (widget.instructions.isNotEmpty)
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 8),
+                        child: Text(
+                          widget.instructions,
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(
+                              fontSize: 13,
+                              color: AppTheme.textSecondary,
+                              height: 1.35),
+                        ),
+                      ),
+                    const SizedBox(height: 80),
+                  ],
+                ),
+              ),
+            ),
+            // Fixed footer — primary confirm CTA + secondary cancel.
+            SafeArea(
+              top: false,
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(20, 8, 20, 12),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    SizedBox(
+                      width: double.infinity,
+                      height: 64,
+                      child: ElevatedButton.icon(
+                        onPressed: _confirming
+                            ? null
+                            : () {
+                                setState(() => _confirming = true);
+                                HapticFeedback.heavyImpact();
+                                Navigator.of(context).pop(true);
+                              },
+                        icon: const Icon(Icons.check_circle_rounded,
+                            size: 26),
+                        label: const Text(
+                            '✅  Confirmar que recibí la plata',
+                            style: TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.w800)),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: AppTheme.success,
+                          foregroundColor: Colors.white,
+                          shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(18)),
+                          elevation: 6,
+                          shadowColor:
+                              AppTheme.success.withValues(alpha: 0.35),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    TextButton(
+                      onPressed: _confirming
+                          ? null
+                          : () => Navigator.of(context).pop(false),
+                      child: const Text('Cancelar y volver',
+                          style: TextStyle(
+                              fontSize: 15,
+                              fontWeight: FontWeight.w600,
+                              color: AppTheme.textSecondary)),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
         ),
       ),
     );

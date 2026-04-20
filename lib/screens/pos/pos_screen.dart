@@ -587,6 +587,7 @@ class _PosScreenBodyState extends State<_PosScreenBody> {
       String paymentMethod,
       String saleUuid, {
       String? creditAccountId,
+      String? dynamicQrPayload,
       }) async {
     try {
       final api = ApiService(AuthService());
@@ -603,6 +604,10 @@ class _PosScreenBodyState extends State<_PosScreenBody> {
       };
       if (creditAccountId != null && creditAccountId.isNotEmpty) {
         payload['credit_account_id'] = creditAccountId;
+      }
+      if (dynamicQrPayload != null && dynamicQrPayload.isNotEmpty) {
+        payload['dynamic_qr_payload'] = dynamicQrPayload;
+        payload['payment_status'] = 'COMPLETED';
       }
       await api.createSale(payload);
       debugPrint('[SALE_SYNC] ok uuid=$saleUuid credit=${creditAccountId ?? "-"}');
@@ -694,6 +699,7 @@ class _PosScreenBodyState extends State<_PosScreenBody> {
           result.paymentMethod,
           saleUuid,
           creditAccountId: result.creditAccountId,
+          dynamicQrPayload: result.dynamicQrPayload,
         );
         // Credit sales can leave a fiado in pending state; refresh the
         // badge so the cashier sees it in the Cuaderno indicator.
