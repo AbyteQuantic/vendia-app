@@ -91,11 +91,17 @@ class _CuadernoFiadosScreenState extends State<CuadernoFiadosScreen> {
         ),
         const SizedBox(height: 12),
 
-        // Filters
-        Padding(
+        // Filters — horizontal scroll so 4 tabs fit on narrow screens.
+        SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
           padding: const EdgeInsets.symmetric(horizontal: 20),
           child: Row(children: [
-            for (final f in [('open', 'Activos'), ('partial', 'Parcial'), ('paid', 'Pagados')])
+            for (final f in const [
+              ('open', 'Activos'),
+              ('pending', 'Pendientes'),
+              ('partial', 'Parcial'),
+              ('paid', 'Pagados'),
+            ])
               Padding(
                 padding: const EdgeInsets.only(right: 8),
                 child: GestureDetector(
@@ -149,6 +155,22 @@ class _CuadernoFiadosScreenState extends State<CuadernoFiadosScreen> {
     final paid = (credit['paid_amount'] as num?)?.toInt() ?? 0;
     final balance = total - paid;
     final status = credit['status'] as String? ?? 'open';
+    final fiadoStatus = credit['fiado_status'] as String? ?? '';
+    final isPending = status == 'pending' || fiadoStatus == 'link_sent' || fiadoStatus == 'link_opened';
+
+    final avatarColor = isPending
+        ? const Color(0xFF6D28D9)
+        : const Color(0xFFF59E0B);
+    final statusLabel = status == 'paid'
+        ? 'Pagado'
+        : isPending
+            ? 'Esperando aceptación · ${_fmt(balance)}'
+            : 'Debe ${_fmt(balance)}';
+    final statusColor = status == 'paid'
+        ? AppTheme.success
+        : isPending
+            ? const Color(0xFF6D28D9)
+            : const Color(0xFFEA580C);
 
     return GestureDetector(
       onTap: () async {
@@ -161,24 +183,32 @@ class _CuadernoFiadosScreenState extends State<CuadernoFiadosScreen> {
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
           color: Colors.white, borderRadius: BorderRadius.circular(18),
+          border: isPending
+              ? Border.all(
+                  color: const Color(0xFF6D28D9).withValues(alpha: 0.35),
+                  width: 1.2)
+              : null,
           boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.03),
               blurRadius: 6, offset: const Offset(0, 2))],
         ),
         child: Row(children: [
           CircleAvatar(
             radius: 24,
-            backgroundColor: const Color(0xFFF59E0B).withValues(alpha: 0.12),
-            child: Text(name.isNotEmpty ? name[0].toUpperCase() : '?',
-                style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold,
-                    color: Color(0xFFF59E0B))),
+            backgroundColor: avatarColor.withValues(alpha: 0.12),
+            child: Icon(
+              isPending
+                  ? Icons.hourglass_bottom_rounded
+                  : Icons.person_rounded,
+              color: avatarColor,
+              size: 22,
+            ),
           ),
           const SizedBox(width: 14),
           Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Text(name, style: const TextStyle(fontSize: 18,
                 fontWeight: FontWeight.w600, color: Colors.black87)),
-            Text(status == 'paid' ? 'Pagado' : 'Debe ${_fmt(balance)}',
-                style: TextStyle(fontSize: 15,
-                    color: status == 'paid' ? AppTheme.success : const Color(0xFFEA580C))),
+            Text(statusLabel,
+                style: TextStyle(fontSize: 14, color: statusColor)),
           ])),
           Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
             Text(_fmt(total), style: const TextStyle(fontSize: 17,

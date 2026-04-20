@@ -1144,20 +1144,55 @@ class _FiadoWaitingRoomState extends State<_FiadoWaitingRoom> {
                     AppTheme.primary, _copyLink),
               ],
             ),
+            const SizedBox(height: 16),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: const Color(0xFF6D28D9).withValues(alpha: 0.08),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(
+                    color: const Color(0xFF6D28D9).withValues(alpha: 0.25),
+                    width: 1),
+              ),
+              child: const Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Icon(Icons.info_outline_rounded,
+                      color: Color(0xFF6D28D9), size: 22),
+                  SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      'Puedes seguir vendiendo. Cuando el cliente acepte, '
+                      'te llegará una notificación y podrás confirmarlo '
+                      'en el Cuaderno.',
+                      style: TextStyle(
+                          fontSize: 13,
+                          height: 1.35,
+                          color: Color(0xFF4C1D95)),
+                    ),
+                  ),
+                ],
+              ),
+            ),
             const SizedBox(height: 12),
-            const SizedBox(height: 4),
             SizedBox(
               width: double.infinity,
               height: 48,
               child: ElevatedButton.icon(
+                // Cashier walks away to attend other clients — items were
+                // already given, so the sale is real. Register it now
+                // linked to the pending fiado. The credit_account stays
+                // in status='pending' until the customer accepts. The
+                // pending fiado is visible in the Cuaderno's "Pendientes"
+                // tab + a badge on the POS Cuaderno icon.
                 onPressed: () {
                   _pollTimer?.cancel();
-                  Navigator.of(context).pop(); // close dialog
-                  Navigator.of(context).pop(); // back to POS
+                  widget.onAccepted(_creditId);
                 },
                 icon: const Icon(Icons.shopping_cart_rounded, size: 20),
-                label: const Text('Continuar vendiendo',
-                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                label: const Text('Seguir vendiendo',
+                    style: TextStyle(
+                        fontSize: 16, fontWeight: FontWeight.bold)),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: AppTheme.primary,
                   foregroundColor: Colors.white,
@@ -1165,16 +1200,6 @@ class _FiadoWaitingRoomState extends State<_FiadoWaitingRoom> {
                       borderRadius: BorderRadius.circular(14)),
                 ),
               ),
-            ),
-            const SizedBox(height: 4),
-            TextButton(
-              onPressed: () {
-                _pollTimer?.cancel();
-                widget.onAccepted(_creditId);
-              },
-              child: const Text('Registrar venta sin firma',
-                  style: TextStyle(fontSize: 14,
-                      color: AppTheme.textSecondary)),
             ),
           ],
 

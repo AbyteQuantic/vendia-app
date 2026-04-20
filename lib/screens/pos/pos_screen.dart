@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
@@ -46,11 +47,25 @@ class _PosScreenBody extends StatefulWidget {
 class _PosScreenBodyState extends State<_PosScreenBody> {
   final _searchCtrl = TextEditingController();
   List<Map<String, dynamic>> _tables = [];
+  int _pendingFiados = 0;
+  List<Map<String, dynamic>> _notifications = [];
+  int _unreadNotifications = 0;
+  Timer? _notificationsTimer;
 
   @override
   void initState() {
     super.initState();
     _loadTables();
+    _loadPendingFiados();
+    _loadNotifications();
+    // Poll every 20s while the POS is foregrounded so the bell badge
+    // reacts to fiado acceptances / new online orders without the
+    // cashier needing to pull-to-refresh. Stopped on dispose.
+    _notificationsTimer =
+        Timer.periodic(const Duration(seconds: 20), (_) {
+      _loadNotifications();
+      _loadPendingFiados();
+    });
   }
 
   Future<void> _loadTables() async {
@@ -61,8 +76,216 @@ class _PosScreenBodyState extends State<_PosScreenBody> {
     } catch (_) {}
   }
 
+  /// Count credits awaiting customer acceptance. Surfaced as a badge on
+  /// the Cuaderno icon so the cashier can spot abandoned handshakes.
+  Future<void> _loadPendingFiados() async {
+    try {
+      final api = ApiService(AuthService());
+      final res = await api.fetchCredits(status: 'pending', perPage: 200);
+      final list = (res['data'] as List?) ?? const [];
+      if (mounted) setState(() => _pendingFiados = list.length);
+    } catch (_) {}
+  }
+
+  /// Poll the backend notifications feed. The bell badge shows unread
+  /// count. When the cashier taps the bell they see the list and the
+  /// whole batch is marked as read.
+  Future<void> _loadNotifications() async {
+    try {
+      final api = ApiService(AuthService());
+      final res = await api.fetchNotifications();
+      final list = ((res['data'] as List?) ?? const [])
+          .cast<Map<String, dynamic>>();
+      final unread =
+          list.where((n) => n['is_read'] != true).length;
+      if (mounted) {
+        setState(() {
+          _notifications = list;
+          _unreadNotifications = unread;
+        });
+      }
+    } catch (_) {}
+  }
+
+  Future<void> _showNotificationsSheet() async {
+    // Mark everything read as soon as the sheet opens — matches how
+    // e-mail clients clear the badge. Do it fire-and-forget so the UI
+    // reflects immediately; backend confirms eventually.
+    final hadUnread = _unreadNotifications > 0;
+    if (hadUnread) {
+      setState(() {
+        _unreadNotifications = 0;
+        _notifications = _notifications
+            .map((n) => {...n, 'is_read': true})
+            .toList();
+      });
+      ApiService(AuthService()).markNotificationsRead().catchError((_) {});
+    }
+
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => DraggableScrollableSheet(
+        initialChildSize: 0.7,
+        minChildSize: 0.4,
+        maxChildSize: 0.95,
+        expand: false,
+        builder: (_, scrollCtrl) => Container(
+          decoration: const BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+          ),
+          child: Column(
+            children: [
+              const SizedBox(height: 10),
+              Container(
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: const Color(0xFFD6D0C8),
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              const SizedBox(height: 14),
+              const Padding(
+                padding: EdgeInsets.symmetric(horizontal: 20),
+                child: Row(
+                  children: [
+                    Icon(Icons.notifications_rounded,
+                        color: Color(0xFFFF6B6B), size: 24),
+                    SizedBox(width: 10),
+                    Text('Notificaciones',
+                        style: TextStyle(
+                            fontSize: 22,
+                            fontWeight: FontWeight.w800,
+                            color: Colors.black87)),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 12),
+              Expanded(
+                child: _notifications.isEmpty
+                    ? Center(
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.notifications_none_rounded,
+                                size: 60,
+                                color: AppTheme.textSecondary
+                                    .withValues(alpha: 0.3)),
+                            const SizedBox(height: 10),
+                            const Text('Sin notificaciones',
+                                style: TextStyle(
+                                    fontSize: 16,
+                                    color: AppTheme.textSecondary)),
+                          ],
+                        ),
+                      )
+                    : ListView.separated(
+                        controller: scrollCtrl,
+                        padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
+                        itemCount: _notifications.length,
+                        separatorBuilder: (_, __) =>
+                            const SizedBox(height: 10),
+                        itemBuilder: (_, i) =>
+                            _buildNotificationTile(_notifications[i]),
+                      ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildNotificationTile(Map<String, dynamic> n) {
+    final type = n['type'] as String? ?? 'info';
+    final title = n['title'] as String? ?? '';
+    final body = n['body'] as String? ?? '';
+    final createdAt = n['created_at'] as String? ?? '';
+    final isFiadoAccepted = type == 'fiado_accepted';
+
+    String ago = '';
+    if (createdAt.isNotEmpty) {
+      final dt = DateTime.tryParse(createdAt);
+      if (dt != null) {
+        final d = DateTime.now().difference(dt);
+        if (d.inMinutes < 1) {
+          ago = 'hace segundos';
+        } else if (d.inMinutes < 60) {
+          ago = 'hace ${d.inMinutes} min';
+        } else if (d.inHours < 24) {
+          ago = 'hace ${d.inHours}h';
+        } else {
+          ago = 'hace ${d.inDays}d';
+        }
+      }
+    }
+
+    final iconColor =
+        isFiadoAccepted ? const Color(0xFF6D28D9) : AppTheme.primary;
+    final iconData = isFiadoAccepted
+        ? Icons.check_circle_rounded
+        : Icons.info_outline_rounded;
+
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border:
+            Border.all(color: const Color(0xFFEDE8E0), width: 1),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 44,
+            height: 44,
+            decoration: BoxDecoration(
+              color: iconColor.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Icon(iconData, color: iconColor, size: 24),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(title,
+                    style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w700,
+                        color: Colors.black87)),
+                if (body.isNotEmpty) ...[
+                  const SizedBox(height: 4),
+                  Text(body,
+                      style: const TextStyle(
+                          fontSize: 14,
+                          height: 1.3,
+                          color: AppTheme.textSecondary)),
+                ],
+                if (ago.isNotEmpty) ...[
+                  const SizedBox(height: 6),
+                  Text(ago,
+                      style: TextStyle(
+                          fontSize: 12,
+                          color: AppTheme.textSecondary
+                              .withValues(alpha: 0.7))),
+                ],
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   void dispose() {
+    _notificationsTimer?.cancel();
     _searchCtrl.dispose();
     super.dispose();
   }
@@ -472,6 +695,9 @@ class _PosScreenBodyState extends State<_PosScreenBody> {
           saleUuid,
           creditAccountId: result.creditAccountId,
         );
+        // Credit sales can leave a fiado in pending state; refresh the
+        // badge so the cashier sees it in the Cuaderno indicator.
+        if (result.paymentMethod == 'credit') _loadPendingFiados();
 
         if (!mounted) return;
         await Navigator.of(context).push(
@@ -754,7 +980,7 @@ class _PosScreenBodyState extends State<_PosScreenBody> {
                       const SizedBox(width: 6),
                       _HeaderBadgeIcon(
                         icon: Icons.menu_book_rounded,
-                        badgeCount: 0,
+                        badgeCount: _pendingFiados,
                         badgeColor: const Color(0xFF6D28D9),
                         onPressed: () async {
                           HapticFeedback.lightImpact();
@@ -763,6 +989,8 @@ class _PosScreenBodyState extends State<_PosScreenBody> {
                               builder: (_) => const CuadernoFiadosScreen(),
                             ),
                           );
+                          // Refresh pending count whenever we come back.
+                          _loadPendingFiados();
                           // Handle "Fiar más" return
                           if (result != null && result['action'] == 'fiar_mas') {
                             ctrl.assignFiadoToTab(
@@ -775,9 +1003,12 @@ class _PosScreenBodyState extends State<_PosScreenBody> {
                       const SizedBox(width: 6),
                       _HeaderBadgeIcon(
                         icon: Icons.notifications_rounded,
-                        badgeCount: 2,
+                        badgeCount: _unreadNotifications,
                         badgeColor: const Color(0xFFFF6B6B),
-                        onPressed: () => HapticFeedback.lightImpact(),
+                        onPressed: () {
+                          HapticFeedback.lightImpact();
+                          _showNotificationsSheet();
+                        },
                       ),
                     ],
                   ),
