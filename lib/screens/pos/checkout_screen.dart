@@ -863,20 +863,38 @@ class _FiadoWaitingRoomState extends State<_FiadoWaitingRoom> {
         idempotencyKey: widget.idempotencyKey,
       );
       if (!mounted) return;
-      // Backend short-circuited the handshake because this customer already
-      // has an accepted open fiado — the amount was merged into it. Skip
-      // the WhatsApp send + polling; mark accepted immediately so
-      // _cobrarMostrador can link the sale.
-      final merged = res['merged'] == true;
-      if (merged) {
-        HapticFeedback.mediumImpact();
-        setState(() {
-          _status = 'accepted';
-          _creditId = res['credit_id'] as String?;
-          _fiadoToken = res['fiado_token'] as String?;
-        });
-        await Future.delayed(const Duration(milliseconds: 800));
-        if (mounted) widget.onAccepted(_creditId);
+      // Backend detected an accepted open fiado for this customer and
+      // asks the cashier to confirm the append (instead of silently
+      // merging). Show a dialog with the current balance and let them
+      // decide. On confirm, call /credits/:id/append; on cancel, close
+      // the handshake — the cashier can pick a different option.
+      if (res['needs_confirmation'] == true) {
+        final confirmed = await _confirmAppendToExisting(res);
+        if (!mounted) return;
+        if (confirmed == true) {
+          final existingId = res['existing_credit_id'] as String?;
+          if (existingId != null) {
+            try {
+              await _api.appendToFiado(
+                existingId,
+                totalAmount: widget.totalAmount,
+              );
+              if (!mounted) return;
+              HapticFeedback.mediumImpact();
+              widget.onAccepted(existingId);
+              return;
+            } catch (e) {
+              if (!mounted) return;
+              setState(() {
+                _status = 'error';
+                _errorMsg = e.toString();
+              });
+              return;
+            }
+          }
+        }
+        // User cancelled — close the waiting room with no sale.
+        Navigator.of(context).pop();
         return;
       }
       setState(() {
@@ -904,6 +922,124 @@ class _FiadoWaitingRoomState extends State<_FiadoWaitingRoom> {
         });
       }
     }
+  }
+
+  /// Confirm dialog shown when the customer already has an accepted open
+  /// fiado and the cashier tried to open a new one. Makes the "line of
+  /// credit" semantics visible — nothing happens silently.
+  Future<bool?> _confirmAppendToExisting(Map<String, dynamic> res) {
+    final name = (res['customer_name'] as String?) ?? widget.customerName;
+    final balance = (res['existing_balance'] as num?)?.toInt() ?? 0;
+    final added = (res['requested_amount'] as num?)?.toInt() ?? widget.totalAmount;
+    final newTotal = (res['projected_new_total'] as num?)?.toInt() ?? (balance + added);
+    String fmt(int v) {
+      if (v == 0) return '\$0';
+      final s = v.abs().toString();
+      final buf = StringBuffer(v < 0 ? '-\$' : '\$');
+      final start = s.length % 3;
+      if (start > 0) buf.write(s.substring(0, start));
+      for (int i = start; i < s.length; i += 3) {
+        if (i > 0) buf.write('.');
+        buf.write(s.substring(i, i + 3));
+      }
+      return buf.toString();
+    }
+
+    return showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        shape:
+            RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Row(
+          children: [
+            Icon(Icons.menu_book_rounded,
+                color: Color(0xFF6D28D9), size: 28),
+            SizedBox(width: 10),
+            Expanded(
+              child: Text('Cuenta ya abierta',
+                  style: TextStyle(
+                      fontSize: 20, fontWeight: FontWeight.w800)),
+            ),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(
+              '$name ya tiene una cuenta abierta que fue aceptada.',
+              style: const TextStyle(fontSize: 15, height: 1.4),
+            ),
+            const SizedBox(height: 14),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: const Color(0xFF6D28D9).withValues(alpha: 0.08),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _row('Saldo actual', fmt(balance),
+                      color: const Color(0xFFEA580C)),
+                  const SizedBox(height: 4),
+                  _row('Esta venta', '+ ${fmt(added)}',
+                      color: Colors.black87),
+                  const Divider(height: 18),
+                  _row('Nuevo total', fmt(newTotal),
+                      color: const Color(0xFF6D28D9), bold: true),
+                ],
+              ),
+            ),
+            const SizedBox(height: 12),
+            const Text(
+              'Al confirmar, la venta se suma a su cuenta sin enviarle un link nuevo (ya había autorizado esta línea de crédito).',
+              style: TextStyle(fontSize: 13, color: AppTheme.textSecondary),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('Cancelar',
+                style:
+                    TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF6D28D9),
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(14)),
+              padding: const EdgeInsets.symmetric(
+                  horizontal: 18, vertical: 10),
+            ),
+            child: const Text('Sumar a su cuenta',
+                style:
+                    TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _row(String label, String value,
+      {required Color color, bool bold = false}) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        Text(label,
+            style: const TextStyle(
+                fontSize: 14, color: AppTheme.textSecondary)),
+        Text(value,
+            style: TextStyle(
+                fontSize: bold ? 18 : 15,
+                fontWeight: bold ? FontWeight.w800 : FontWeight.w700,
+                color: color)),
+      ],
+    );
   }
 
   void _startPolling() {
