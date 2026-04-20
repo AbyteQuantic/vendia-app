@@ -1071,6 +1071,25 @@ class _FiadoWaitingRoomState extends State<_FiadoWaitingRoom> {
     }
   }
 
+  /// Launch the device SMS app with the accept-URL prefilled. Phone is
+  /// normalized (non-digits stripped, +57 prepended for 10-digit Colombian
+  /// locals) to maximize chance the default SMS app resolves a recipient.
+  void _resendSms() {
+    if (_acceptUrl == null || widget.customerPhone.isEmpty) return;
+    HapticFeedback.lightImpact();
+    final digits = widget.customerPhone.replaceAll(RegExp(r'\D'), '');
+    final full = digits.startsWith('57') ? digits : '57$digits';
+    final body =
+        'Hola ${widget.customerName}, ${widget.total} le fue fiado. '
+        'Acepte aquí: $_acceptUrl';
+    final uri = Uri(
+      scheme: 'sms',
+      path: '+$full',
+      queryParameters: {'body': body},
+    );
+    launchUrl(uri, mode: LaunchMode.externalApplication);
+  }
+
   void _copyLink() {
     if (_acceptUrl != null) {
       Clipboard.setData(ClipboardData(text: _acceptUrl!));
@@ -1106,13 +1125,17 @@ class _FiadoWaitingRoomState extends State<_FiadoWaitingRoom> {
             Wrap(
               spacing: 8,
               runSpacing: 8,
+              alignment: WrapAlignment.center,
               children: [
                 if (_waLink != null)
                   _resendBtn(Icons.chat_rounded, 'WhatsApp',
                       const Color(0xFF25D366), _resendWhatsApp),
+                if (widget.customerPhone.isNotEmpty && _acceptUrl != null)
+                  _resendBtn(Icons.sms_rounded, 'SMS',
+                      const Color(0xFF3B82F6), _resendSms),
                 if (_emailUrl != null)
                   _resendBtn(Icons.email_rounded, 'Correo',
-                      const Color(0xFF3B82F6), () {
+                      const Color(0xFFEA580C), () {
                     HapticFeedback.lightImpact();
                     launchUrl(Uri.parse(_emailUrl!),
                         mode: LaunchMode.externalApplication);
