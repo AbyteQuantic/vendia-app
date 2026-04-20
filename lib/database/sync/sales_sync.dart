@@ -103,11 +103,16 @@ class SalesSyncService {
             continue;
           }
 
-          await api.createSale({
+          final payload = <String, dynamic>{
             'id': sale.uuid,
             'payment_method': sale.paymentMethod,
             'items': items,
-          });
+          };
+          if (sale.creditAccountId != null &&
+              sale.creditAccountId!.isNotEmpty) {
+            payload['credit_account_id'] = sale.creditAccountId;
+          }
+          await api.createSale(payload);
 
           // Mark as synced
           await db.isar.writeTxn(() async {

@@ -382,6 +382,7 @@ class _PosScreenBodyState extends State<_PosScreenBody> {
         payload['credit_account_id'] = creditAccountId;
       }
       await api.createSale(payload);
+      debugPrint('[SALE_SYNC] ok uuid=$saleUuid credit=${creditAccountId ?? "-"}');
       // Mark as synced in Isar
       final db = DatabaseService.instance;
       final allSales = await db.getSalesToday();
@@ -393,7 +394,23 @@ class _PosScreenBodyState extends State<_PosScreenBody> {
         });
       }
     } catch (e) {
-      debugPrint('SALE SYNC ERROR (will retry later): $e');
+      // Non-blocking: keep the UX flowing. The sale stays in Isar with
+      // synced=false, and SalesSyncService.pushToServer retries on next
+      // app start + every background tick. Show a subtle banner so the
+      // cashier knows to reopen the app when online.
+      debugPrint('[SALE_SYNC] failed uuid=$saleUuid: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          duration: const Duration(seconds: 5),
+          behavior: SnackBarBehavior.floating,
+          backgroundColor: AppTheme.warning,
+          content: Text(
+            'Venta guardada localmente — no se pudo enviar al servidor: '
+            '${e.toString().length > 80 ? '${e.toString().substring(0, 80)}…' : e}',
+            style: const TextStyle(fontSize: 14),
+          ),
+        ));
+      }
     }
   }
 
@@ -433,6 +450,7 @@ class _PosScreenBodyState extends State<_PosScreenBody> {
           ..paymentMethod = result.paymentMethod
           ..employeeName = employeeName
           ..isCreditSale = result.paymentMethod == 'credit'
+          ..creditAccountId = result.creditAccountId
           ..items = saleItems
           ..createdAt = DateTime.now()
           ..synced = false;

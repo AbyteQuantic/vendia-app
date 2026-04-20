@@ -14,6 +14,13 @@ class LocalSale {
   String? customerUuid;
   String? employeeName;
   late bool isCreditSale;
+  /// Set when the sale was appended to an existing open fiado at checkout
+  /// (either via the "Agregar a cuenta existente" picker or via the fresh
+  /// handshake flow). Sent to the backend so the Sale row gets linked to
+  /// the CreditAccount and the customer statement can show itemized
+  /// detail. Persisted so retries from SalesSyncService.pushToServer
+  /// don't lose the link when the first sync fails.
+  String? creditAccountId;
   late List<SaleItemEmbed> items;
   late DateTime createdAt;
   late bool synced;
@@ -26,6 +33,7 @@ class LocalSale {
         'customer_uuid': customerUuid,
         'employee_name': employeeName,
         'is_credit_sale': isCreditSale,
+        'credit_account_id': creditAccountId,
         'items': items.map((i) => i.toJson()).toList(),
         'created_at': createdAt.toIso8601String(),
       };
@@ -39,6 +47,7 @@ class LocalSale {
       ..customerUuid = json['customer_uuid'] as String?
       ..employeeName = json['employee_name'] as String?
       ..isCreditSale = json['is_credit_sale'] as bool? ?? false
+      ..creditAccountId = json['credit_account_id'] as String?
       ..items = rawItems
           .map((e) => SaleItemEmbed.fromJson(e as Map<String, dynamic>))
           .toList()
