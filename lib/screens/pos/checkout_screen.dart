@@ -837,6 +837,7 @@ class _FiadoWaitingRoomState extends State<_FiadoWaitingRoom> {
   String? _acceptUrl;
   String? _fiadoToken;
   String? _creditId;
+  String? _errorMsg;
   Timer? _pollTimer;
 
   @override
@@ -880,7 +881,12 @@ class _FiadoWaitingRoomState extends State<_FiadoWaitingRoom> {
       _startPolling();
     } catch (e) {
       debugPrint('FIADO INIT ERROR: $e');
-      if (mounted) setState(() => _status = 'error');
+      if (mounted) {
+        setState(() {
+          _status = 'error';
+          _errorMsg = e.toString();
+        });
+      }
     }
   }
 
@@ -1064,11 +1070,13 @@ class _FiadoWaitingRoomState extends State<_FiadoWaitingRoom> {
       'link_opened' =>
           '${widget.customerName} esta revisando los terminos del fiado',
       'accepted' => 'Puede entregar los productos',
-      _ => 'Intente de nuevo o registre sin firma',
+      _ => _errorMsg != null && _errorMsg!.isNotEmpty
+          ? 'Detalle: $_errorMsg\nIntente de nuevo o registre sin firma'
+          : 'Intente de nuevo o registre sin firma',
     };
     return Text(text,
         textAlign: TextAlign.center,
-        style: const TextStyle(fontSize: 15, color: AppTheme.textSecondary));
+        style: const TextStyle(fontSize: 13, color: AppTheme.textSecondary));
   }
 }
 
