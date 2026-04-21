@@ -5,6 +5,7 @@ import 'package:image_picker/image_picker.dart';
 import '../../theme/app_theme.dart';
 import '../../services/api_service.dart';
 import '../../services/auth_service.dart';
+import '../../widgets/stock_badge.dart';
 
 class ManageInventoryScreen extends StatefulWidget {
   const ManageInventoryScreen({super.key});
@@ -422,26 +423,7 @@ class _ProductTile extends StatelessWidget {
                           ),
                         ),
                         const SizedBox(width: 12),
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 8, vertical: 2),
-                          decoration: BoxDecoration(
-                            color: stock > 0
-                                ? AppTheme.success.withValues(alpha: 0.12)
-                                : AppTheme.error.withValues(alpha: 0.12),
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          child: Text(
-                            'Stock: $stock',
-                            style: TextStyle(
-                              fontSize: 13,
-                              fontWeight: FontWeight.w600,
-                              color: stock > 0
-                                  ? AppTheme.success
-                                  : AppTheme.error,
-                            ),
-                          ),
-                        ),
+                        StockBadge(stock: stock, size: StockBadgeSize.medium),
                       ],
                     ),
                   ],

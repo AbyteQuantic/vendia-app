@@ -8,6 +8,7 @@ import '../../models/cart_item.dart';
 import '../../models/product.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/panic_button.dart';
+import '../../widgets/stock_badge.dart';
 import '../../widgets/sync_status_banner.dart';
 import 'cart_controller.dart';
 import 'account_qr_screen.dart';
@@ -1293,6 +1294,11 @@ class _ProductCard extends StatelessWidget {
                                     height: 1.3,
                                   ),
                                 ),
+                              const SizedBox(height: 4),
+                              Align(
+                                alignment: Alignment.centerLeft,
+                                child: StockBadge(stock: product.stock),
+                              ),
                             ],
                           ),
                         ),
