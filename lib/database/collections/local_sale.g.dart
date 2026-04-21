@@ -22,49 +22,54 @@ const LocalSaleSchema = CollectionSchema(
       name: r'createdAt',
       type: IsarType.dateTime,
     ),
-    r'customerUuid': PropertySchema(
+    r'creditAccountId': PropertySchema(
       id: 1,
+      name: r'creditAccountId',
+      type: IsarType.string,
+    ),
+    r'customerUuid': PropertySchema(
+      id: 2,
       name: r'customerUuid',
       type: IsarType.string,
     ),
     r'employeeName': PropertySchema(
-      id: 2,
+      id: 3,
       name: r'employeeName',
       type: IsarType.string,
     ),
     r'isCreditSale': PropertySchema(
-      id: 3,
+      id: 4,
       name: r'isCreditSale',
       type: IsarType.bool,
     ),
     r'items': PropertySchema(
-      id: 4,
+      id: 5,
       name: r'items',
       type: IsarType.objectList,
       target: r'SaleItemEmbed',
     ),
     r'paymentMethod': PropertySchema(
-      id: 5,
+      id: 6,
       name: r'paymentMethod',
       type: IsarType.string,
     ),
     r'serverId': PropertySchema(
-      id: 6,
+      id: 7,
       name: r'serverId',
       type: IsarType.long,
     ),
     r'synced': PropertySchema(
-      id: 7,
+      id: 8,
       name: r'synced',
       type: IsarType.bool,
     ),
     r'total': PropertySchema(
-      id: 8,
+      id: 9,
       name: r'total',
       type: IsarType.double,
     ),
     r'uuid': PropertySchema(
-      id: 9,
+      id: 10,
       name: r'uuid',
       type: IsarType.string,
     )
@@ -104,6 +109,12 @@ int _localSaleEstimateSize(
 ) {
   var bytesCount = offsets.last;
   {
+    final value = object.creditAccountId;
+    if (value != null) {
+      bytesCount += 3 + value.length * 3;
+    }
+  }
+  {
     final value = object.customerUuid;
     if (value != null) {
       bytesCount += 3 + value.length * 3;
@@ -136,20 +147,21 @@ void _localSaleSerialize(
   Map<Type, List<int>> allOffsets,
 ) {
   writer.writeDateTime(offsets[0], object.createdAt);
-  writer.writeString(offsets[1], object.customerUuid);
-  writer.writeString(offsets[2], object.employeeName);
-  writer.writeBool(offsets[3], object.isCreditSale);
+  writer.writeString(offsets[1], object.creditAccountId);
+  writer.writeString(offsets[2], object.customerUuid);
+  writer.writeString(offsets[3], object.employeeName);
+  writer.writeBool(offsets[4], object.isCreditSale);
   writer.writeObjectList<SaleItemEmbed>(
-    offsets[4],
+    offsets[5],
     allOffsets,
     SaleItemEmbedSchema.serialize,
     object.items,
   );
-  writer.writeString(offsets[5], object.paymentMethod);
-  writer.writeLong(offsets[6], object.serverId);
-  writer.writeBool(offsets[7], object.synced);
-  writer.writeDouble(offsets[8], object.total);
-  writer.writeString(offsets[9], object.uuid);
+  writer.writeString(offsets[6], object.paymentMethod);
+  writer.writeLong(offsets[7], object.serverId);
+  writer.writeBool(offsets[8], object.synced);
+  writer.writeDouble(offsets[9], object.total);
+  writer.writeString(offsets[10], object.uuid);
 }
 
 LocalSale _localSaleDeserialize(
@@ -160,22 +172,23 @@ LocalSale _localSaleDeserialize(
 ) {
   final object = LocalSale();
   object.createdAt = reader.readDateTime(offsets[0]);
-  object.customerUuid = reader.readStringOrNull(offsets[1]);
-  object.employeeName = reader.readStringOrNull(offsets[2]);
-  object.isCreditSale = reader.readBool(offsets[3]);
+  object.creditAccountId = reader.readStringOrNull(offsets[1]);
+  object.customerUuid = reader.readStringOrNull(offsets[2]);
+  object.employeeName = reader.readStringOrNull(offsets[3]);
+  object.isCreditSale = reader.readBool(offsets[4]);
   object.isarId = id;
   object.items = reader.readObjectList<SaleItemEmbed>(
-        offsets[4],
+        offsets[5],
         SaleItemEmbedSchema.deserialize,
         allOffsets,
         SaleItemEmbed(),
       ) ??
       [];
-  object.paymentMethod = reader.readString(offsets[5]);
-  object.serverId = reader.readLongOrNull(offsets[6]);
-  object.synced = reader.readBool(offsets[7]);
-  object.total = reader.readDouble(offsets[8]);
-  object.uuid = reader.readString(offsets[9]);
+  object.paymentMethod = reader.readString(offsets[6]);
+  object.serverId = reader.readLongOrNull(offsets[7]);
+  object.synced = reader.readBool(offsets[8]);
+  object.total = reader.readDouble(offsets[9]);
+  object.uuid = reader.readString(offsets[10]);
   return object;
 }
 
@@ -193,8 +206,10 @@ P _localSaleDeserializeProp<P>(
     case 2:
       return (reader.readStringOrNull(offset)) as P;
     case 3:
-      return (reader.readBool(offset)) as P;
+      return (reader.readStringOrNull(offset)) as P;
     case 4:
+      return (reader.readBool(offset)) as P;
+    case 5:
       return (reader.readObjectList<SaleItemEmbed>(
             offset,
             SaleItemEmbedSchema.deserialize,
@@ -202,15 +217,15 @@ P _localSaleDeserializeProp<P>(
             SaleItemEmbed(),
           ) ??
           []) as P;
-    case 5:
-      return (reader.readString(offset)) as P;
     case 6:
-      return (reader.readLongOrNull(offset)) as P;
+      return (reader.readString(offset)) as P;
     case 7:
-      return (reader.readBool(offset)) as P;
+      return (reader.readLongOrNull(offset)) as P;
     case 8:
-      return (reader.readDouble(offset)) as P;
+      return (reader.readBool(offset)) as P;
     case 9:
+      return (reader.readDouble(offset)) as P;
+    case 10:
       return (reader.readString(offset)) as P;
     default:
       throw IsarError('Unknown property with id $propertyId');
@@ -461,6 +476,160 @@ extension LocalSaleQueryFilter
         includeLower: includeLower,
         upper: upper,
         includeUpper: includeUpper,
+      ));
+    });
+  }
+
+  QueryBuilder<LocalSale, LocalSale, QAfterFilterCondition>
+      creditAccountIdIsNull() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(const FilterCondition.isNull(
+        property: r'creditAccountId',
+      ));
+    });
+  }
+
+  QueryBuilder<LocalSale, LocalSale, QAfterFilterCondition>
+      creditAccountIdIsNotNull() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(const FilterCondition.isNotNull(
+        property: r'creditAccountId',
+      ));
+    });
+  }
+
+  QueryBuilder<LocalSale, LocalSale, QAfterFilterCondition>
+      creditAccountIdEqualTo(
+    String? value, {
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.equalTo(
+        property: r'creditAccountId',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<LocalSale, LocalSale, QAfterFilterCondition>
+      creditAccountIdGreaterThan(
+    String? value, {
+    bool include = false,
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.greaterThan(
+        include: include,
+        property: r'creditAccountId',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<LocalSale, LocalSale, QAfterFilterCondition>
+      creditAccountIdLessThan(
+    String? value, {
+    bool include = false,
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.lessThan(
+        include: include,
+        property: r'creditAccountId',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<LocalSale, LocalSale, QAfterFilterCondition>
+      creditAccountIdBetween(
+    String? lower,
+    String? upper, {
+    bool includeLower = true,
+    bool includeUpper = true,
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.between(
+        property: r'creditAccountId',
+        lower: lower,
+        includeLower: includeLower,
+        upper: upper,
+        includeUpper: includeUpper,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<LocalSale, LocalSale, QAfterFilterCondition>
+      creditAccountIdStartsWith(
+    String value, {
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.startsWith(
+        property: r'creditAccountId',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<LocalSale, LocalSale, QAfterFilterCondition>
+      creditAccountIdEndsWith(
+    String value, {
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.endsWith(
+        property: r'creditAccountId',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<LocalSale, LocalSale, QAfterFilterCondition>
+      creditAccountIdContains(String value, {bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.contains(
+        property: r'creditAccountId',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<LocalSale, LocalSale, QAfterFilterCondition>
+      creditAccountIdMatches(String pattern, {bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.matches(
+        property: r'creditAccountId',
+        wildcard: pattern,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<LocalSale, LocalSale, QAfterFilterCondition>
+      creditAccountIdIsEmpty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.equalTo(
+        property: r'creditAccountId',
+        value: '',
+      ));
+    });
+  }
+
+  QueryBuilder<LocalSale, LocalSale, QAfterFilterCondition>
+      creditAccountIdIsNotEmpty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.greaterThan(
+        property: r'creditAccountId',
+        value: '',
       ));
     });
   }
@@ -1354,6 +1523,18 @@ extension LocalSaleQuerySortBy on QueryBuilder<LocalSale, LocalSale, QSortBy> {
     });
   }
 
+  QueryBuilder<LocalSale, LocalSale, QAfterSortBy> sortByCreditAccountId() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'creditAccountId', Sort.asc);
+    });
+  }
+
+  QueryBuilder<LocalSale, LocalSale, QAfterSortBy> sortByCreditAccountIdDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'creditAccountId', Sort.desc);
+    });
+  }
+
   QueryBuilder<LocalSale, LocalSale, QAfterSortBy> sortByCustomerUuid() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'customerUuid', Sort.asc);
@@ -1462,6 +1643,18 @@ extension LocalSaleQuerySortThenBy
   QueryBuilder<LocalSale, LocalSale, QAfterSortBy> thenByCreatedAtDesc() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'createdAt', Sort.desc);
+    });
+  }
+
+  QueryBuilder<LocalSale, LocalSale, QAfterSortBy> thenByCreditAccountId() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'creditAccountId', Sort.asc);
+    });
+  }
+
+  QueryBuilder<LocalSale, LocalSale, QAfterSortBy> thenByCreditAccountIdDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'creditAccountId', Sort.desc);
     });
   }
 
@@ -1582,6 +1775,14 @@ extension LocalSaleQueryWhereDistinct
     });
   }
 
+  QueryBuilder<LocalSale, LocalSale, QDistinct> distinctByCreditAccountId(
+      {bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addDistinctBy(r'creditAccountId',
+          caseSensitive: caseSensitive);
+    });
+  }
+
   QueryBuilder<LocalSale, LocalSale, QDistinct> distinctByCustomerUuid(
       {bool caseSensitive = true}) {
     return QueryBuilder.apply(this, (query) {
@@ -1647,6 +1848,12 @@ extension LocalSaleQueryProperty
   QueryBuilder<LocalSale, DateTime, QQueryOperations> createdAtProperty() {
     return QueryBuilder.apply(this, (query) {
       return query.addPropertyName(r'createdAt');
+    });
+  }
+
+  QueryBuilder<LocalSale, String?, QQueryOperations> creditAccountIdProperty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addPropertyName(r'creditAccountId');
     });
   }
 

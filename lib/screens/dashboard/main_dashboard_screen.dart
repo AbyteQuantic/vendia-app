@@ -23,18 +23,28 @@ class MainDashboardScreen extends StatefulWidget {
 class _MainDashboardScreenState extends State<MainDashboardScreen> {
   String _chargeMode = 'pre_payment';
   int _expiringCount = 0;
+  // Feature flags drive which cards the dashboard renders (MESAS, KDS,
+  // service-first modules). Resolved once on mount because the blob
+  // only changes across a fresh login.
+  FeatureFlags _flags = const FeatureFlags();
 
   @override
   void initState() {
     super.initState();
     _loadChargeMode();
     _loadExpiringCount();
+    _loadFeatureFlags();
   }
 
   Future<void> _loadChargeMode() async {
     final prefs = await SharedPreferences.getInstance();
     final mode = prefs.getString('vendia_charge_mode') ?? 'pre_payment';
     if (mounted) setState(() => _chargeMode = mode);
+  }
+
+  Future<void> _loadFeatureFlags() async {
+    final flags = await AuthService().getFeatureFlags();
+    if (mounted) setState(() => _flags = flags);
   }
 
   /// Loads the count of products expiring within the backend's warning
@@ -62,7 +72,13 @@ class _MainDashboardScreenState extends State<MainDashboardScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final isPostPayment = _chargeMode == 'post_payment';
+    // MESAS shows when the tenant enabled tables in onboarding (food
+    // stack: restaurante / comidas_rapidas / bar) OR the legacy
+    // post_payment charge_mode is active. The feature flag is the
+    // authoritative signal; charge_mode is kept as a fallback so
+    // pre-migration-021 tenants still see their Mesas button.
+    final isPostPayment =
+        _flags.enableTables || _chargeMode == 'post_payment';
 
     return Scaffold(
       backgroundColor: AppTheme.background,
@@ -107,8 +123,13 @@ class _MainDashboardScreenState extends State<MainDashboardScreen> {
                           PanicButton(
                             onPanicTriggered: PanicTriggerService.trigger,
                           ),
-                          const SizedBox(width: 8),
-                          // KDS Notification bell
+                          if (_flags.enableKDS) const SizedBox(width: 8),
+                          // KDS Notification bell — only rendered for
+                          // food-stack tenants (enable_kds). Retail
+                          // tiendas never need a pedidos panel so we
+                          // drop the bell entirely instead of showing a
+                          // "proximamente" snackbar.
+                          if (_flags.enableKDS)
                           Semantics(
                             button: true,
                             label: 'Pedidos pendientes, 2 notificaciones',

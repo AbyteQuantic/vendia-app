@@ -89,11 +89,22 @@ class _LoginScreenState extends State<LoginScreen> {
       }
 
       // ── Single workspace or legacy response: save session + go to dashboard
+      // feature_flags + business_types ride on the root response (migration
+      // 021). Fold them into the tenant map / legacy-save call so the
+      // dashboard can pick them up on first render.
+      final featureFlags = data['feature_flags'] as Map<String, dynamic>?;
+      final businessTypes =
+          (data['business_types'] as List?)?.whereType<String>().toList();
+
       if (data.containsKey('access_token')) {
+        final tenant = Map<String, dynamic>.from(
+            (data['tenant'] as Map<String, dynamic>?) ?? {});
+        if (featureFlags != null) tenant['feature_flags'] = featureFlags;
+        if (businessTypes != null) tenant['business_types'] = businessTypes;
         await _auth.saveSession(
           accessToken: data['access_token'] as String,
           refreshToken: data['refresh_token'] as String? ?? '',
-          tenant: (data['tenant'] as Map<String, dynamic>?) ?? {},
+          tenant: tenant,
         );
       } else {
         await _auth.saveLegacySession(
@@ -101,6 +112,8 @@ class _LoginScreenState extends State<LoginScreen> {
           tenantId: data['tenant_id'].toString(),
           ownerName: data['owner_name'] as String? ?? '',
           businessName: data['business_name'] as String? ?? '',
+          featureFlags: featureFlags,
+          businessTypes: businessTypes,
         );
       }
 

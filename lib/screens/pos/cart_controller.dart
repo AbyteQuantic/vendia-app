@@ -203,6 +203,37 @@ class CartController extends ChangeNotifier {
     return base.where((p) => p.name.toLowerCase().contains(q)).toList();
   }
 
+  /// Add an ad-hoc service line to the cart (feature flag: enable_services).
+  /// The synthetic `Product` carries the description so existing cart
+  /// widgets render it like any other line; the sale payload branches
+  /// on [CartItem.isService] to send `is_service=true` without a
+  /// `product_id`. Each call creates a distinct line — even when the
+  /// description matches — because services are inherently one-off.
+  void addServiceCharge({
+    required String description,
+    required double unitPrice,
+    int quantity = 1,
+  }) {
+    final cleanDesc = description.trim();
+    if (cleanDesc.isEmpty || unitPrice <= 0 || quantity < 1) return;
+    final synthetic = Product(
+      id: -DateTime.now().microsecondsSinceEpoch,
+      uuid: 'service_${DateTime.now().microsecondsSinceEpoch}',
+      name: cleanDesc,
+      price: unitPrice,
+      stock: 999,
+    );
+    activeCart.add(CartItem(
+      product: synthetic,
+      quantity: quantity,
+      isService: true,
+      customDescription: cleanDesc,
+      customUnitPrice: unitPrice,
+    ));
+    notifyListeners();
+    _persistCarts();
+  }
+
   /// Add a container charge item for a product that requires a returnable container.
   void addContainerCharge(Product product) {
     final chargeProduct = Product(

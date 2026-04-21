@@ -52,6 +52,10 @@ class _PosScreenBodyState extends State<_PosScreenBody> {
   List<Map<String, dynamic>> _notifications = [];
   int _unreadNotifications = 0;
   Timer? _notificationsTimer;
+  // Cached per-session. The feature flag is resolved once on mount because
+  // it can only change across a login and we don't want to rebuild the POS
+  // tree chasing storage reads.
+  FeatureFlags _flags = const FeatureFlags();
 
   @override
   void initState() {
@@ -59,6 +63,7 @@ class _PosScreenBodyState extends State<_PosScreenBody> {
     _loadTables();
     _loadPendingFiados();
     _loadNotifications();
+    _loadFeatureFlags();
     // Poll every 20s while the POS is foregrounded so the bell badge
     // reacts to fiado acceptances / new online orders without the
     // cashier needing to pull-to-refresh. Stopped on dispose.
@@ -67,6 +72,11 @@ class _PosScreenBodyState extends State<_PosScreenBody> {
       _loadNotifications();
       _loadPendingFiados();
     });
+  }
+
+  Future<void> _loadFeatureFlags() async {
+    final flags = await AuthService().getFeatureFlags();
+    if (mounted) setState(() => _flags = flags);
   }
 
   Future<void> _loadTables() async {
@@ -595,13 +605,24 @@ class _PosScreenBodyState extends State<_PosScreenBody> {
       final payload = <String, dynamic>{
         'id': saleUuid,
         'payment_method': paymentMethod,
-        'items': cartItems.map((item) => {
-                  'product_id': item.product.uuid.isNotEmpty
-                      ? item.product.uuid
-                      : item.product.id.toString(),
-                  'quantity': item.quantity,
-                })
-            .toList(),
+        'items': cartItems.map((item) {
+          if (item.isService) {
+            return {
+              'quantity': item.quantity,
+              'is_service': true,
+              'custom_description':
+                  item.customDescription ?? item.product.name,
+              'custom_unit_price':
+                  item.customUnitPrice ?? item.product.price,
+            };
+          }
+          return {
+            'product_id': item.product.uuid.isNotEmpty
+                ? item.product.uuid
+                : item.product.id.toString(),
+            'quantity': item.quantity,
+          };
+        }).toList(),
       };
       if (creditAccountId != null && creditAccountId.isNotEmpty) {
         payload['credit_account_id'] = creditAccountId;
@@ -730,6 +751,38 @@ class _PosScreenBodyState extends State<_PosScreenBody> {
       buffer.write(s.substring(i, i + 3));
     }
     return buffer.toString();
+  }
+
+  /// Show the ad-hoc service charge modal. Only called when the
+  /// `enable_services` feature flag is true (reparacion_muebles,
+  /// manufactura, emprendimiento_general). The returned tuple is pushed
+  /// into the cart as a non-inventory line.
+  Future<void> _showServiceChargeSheet(CartController ctrl) async {
+    HapticFeedback.lightImpact();
+    final result = await showModalBottomSheet<_ServiceChargeResult>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => Padding(
+        padding: EdgeInsets.only(
+          bottom: MediaQuery.of(context).viewInsets.bottom,
+        ),
+        child: const _ServiceChargeSheet(),
+      ),
+    );
+    if (result == null || !mounted) return;
+    ctrl.addServiceCharge(
+      description: result.description,
+      unitPrice: result.unitPrice,
+    );
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        duration: const Duration(seconds: 2),
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        content: Text('🛠️ ${result.description} agregado al carrito'),
+      ),
+    );
   }
 
   void _sendOrder(CartController ctrl) {
@@ -1088,6 +1141,15 @@ class _PosScreenBodyState extends State<_PosScreenBody> {
                     ),
                   ),
                 ),
+
+                // ── Cobrar Servicio (feature flag: enable_services) ──
+                if (_flags.enableServices)
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                    child: _ServiceChargeButton(
+                      onPressed: () => _showServiceChargeSheet(ctrl),
+                    ),
+                  ),
 
                 // ── Product Grid (full width!) ──
                 Expanded(
@@ -2434,6 +2496,180 @@ class _EmptyInventoryGuide extends StatelessWidget {
               const Spacer(),
             ],
           ),
+        ),
+      ),
+    );
+  }
+}
+
+// ── Service Charge (feature flag: enable_services) ───────────────────────────
+
+/// Result of the service-charge bottom sheet. Simple record-like class
+/// to avoid dragging in a full-blown domain model for a modal output.
+class _ServiceChargeResult {
+  final String description;
+  final double unitPrice;
+  const _ServiceChargeResult(this.description, this.unitPrice);
+}
+
+/// Accent-colored tile rendered above the product grid for service-first
+/// businesses (repair shops, manufacturing, emprendimientos). Deliberately
+/// uses a different color than primary so the cashier can spot it at a
+/// glance amid the product-heavy POS.
+class _ServiceChargeButton extends StatelessWidget {
+  final VoidCallback onPressed;
+  const _ServiceChargeButton({required this.onPressed});
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: double.infinity,
+      child: ElevatedButton.icon(
+        key: const Key('btn_cobrar_servicio'),
+        onPressed: onPressed,
+        style: ElevatedButton.styleFrom(
+          backgroundColor: const Color(0xFF7C3AED),
+          foregroundColor: Colors.white,
+          padding: const EdgeInsets.symmetric(vertical: 14),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+          elevation: 0,
+        ),
+        icon: const Icon(Icons.build_rounded, size: 22),
+        label: const Text(
+          '🛠️ Cobrar Servicio / Ítem Personalizado',
+          style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700),
+        ),
+      ),
+    );
+  }
+}
+
+/// Stateful bottom sheet that collects a description + price for an
+/// ad-hoc charge. Validation mirrors the backend's validateSaleItemRequest
+/// (non-empty description, price > 0) so the sheet never produces a
+/// payload that would 400 from the API.
+class _ServiceChargeSheet extends StatefulWidget {
+  const _ServiceChargeSheet();
+
+  @override
+  State<_ServiceChargeSheet> createState() => _ServiceChargeSheetState();
+}
+
+class _ServiceChargeSheetState extends State<_ServiceChargeSheet> {
+  final _formKey = GlobalKey<FormState>();
+  final _descCtrl = TextEditingController();
+  final _priceCtrl = TextEditingController();
+
+  @override
+  void dispose() {
+    _descCtrl.dispose();
+    _priceCtrl.dispose();
+    super.dispose();
+  }
+
+  void _submit() {
+    if (!_formKey.currentState!.validate()) return;
+    final price = double.tryParse(_priceCtrl.text.replaceAll(',', '.')) ?? 0;
+    Navigator.of(context).pop(
+      _ServiceChargeResult(_descCtrl.text.trim(), price),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+      ),
+      padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
+      child: Form(
+        key: _formKey,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Center(
+              child: Container(
+                width: 40,
+                height: 4,
+                margin: const EdgeInsets.only(bottom: 16),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFD6D0C8),
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+            ),
+            const Text(
+              'Cobrar servicio o ítem personalizado',
+              style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              'No descuenta inventario. Se agrega directamente al carrito.',
+              style: TextStyle(fontSize: 15, color: Colors.grey.shade600),
+            ),
+            const SizedBox(height: 20),
+            TextFormField(
+              key: const Key('svc_desc_input'),
+              controller: _descCtrl,
+              autofocus: true,
+              textCapitalization: TextCapitalization.sentences,
+              maxLength: 120,
+              decoration: const InputDecoration(
+                labelText: 'Descripción',
+                hintText: 'Ej: Reparación de mesa de centro',
+                border: OutlineInputBorder(),
+              ),
+              validator: (v) {
+                if (v == null || v.trim().isEmpty) {
+                  return 'Descripción requerida';
+                }
+                return null;
+              },
+            ),
+            const SizedBox(height: 12),
+            TextFormField(
+              key: const Key('svc_price_input'),
+              controller: _priceCtrl,
+              keyboardType:
+                  const TextInputType.numberWithOptions(decimal: true),
+              inputFormatters: [
+                FilteringTextInputFormatter.allow(RegExp(r'[0-9.,]')),
+              ],
+              decoration: const InputDecoration(
+                labelText: 'Valor a cobrar',
+                prefixText: r'$ ',
+                hintText: '50000',
+                border: OutlineInputBorder(),
+              ),
+              validator: (v) {
+                final parsed =
+                    double.tryParse((v ?? '').replaceAll(',', '.'));
+                if (parsed == null || parsed <= 0) {
+                  return 'Ingrese un valor mayor a 0';
+                }
+                return null;
+              },
+            ),
+            const SizedBox(height: 20),
+            ElevatedButton.icon(
+              key: const Key('svc_submit'),
+              onPressed: _submit,
+              icon: const Icon(Icons.add_shopping_cart_rounded),
+              label: const Text('Agregar al carrito'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF7C3AED),
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(vertical: 14),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(14),
+                ),
+              ),
+            ),
+          ],
         ),
       ),
     );

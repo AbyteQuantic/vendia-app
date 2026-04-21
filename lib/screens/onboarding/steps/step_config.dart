@@ -9,13 +9,44 @@ import '../onboarding_stepper_controller.dart';
 class StepConfig extends StatelessWidget {
   const StepConfig({super.key});
 
+  // Values must match the backend whitelist (models.ValidBusinessTypes /
+  // migration 020 CHECK). Changing a value here without a migration will
+  // cause /register to reject the tenant with HTTP 400.
   static const _types = [
     _BusinessTypeOption(
       key: Key('btype_tienda'),
       value: 'tienda_barrio',
-      label: 'Tienda /\nMinimercado',
+      label: 'Tienda de\nBarrio',
       icon: Icons.store_rounded,
       description: 'Víveres, abarrotes\ny productos del día',
+    ),
+    _BusinessTypeOption(
+      key: Key('btype_minimercado'),
+      value: 'minimercado',
+      label: 'Minimercado',
+      icon: Icons.local_grocery_store_rounded,
+      description: 'Mayor variedad\ny productos frescos',
+    ),
+    _BusinessTypeOption(
+      key: Key('btype_deposito'),
+      value: 'deposito_construccion',
+      label: 'Depósito\nConstrucción',
+      icon: Icons.inventory_2_rounded,
+      description: 'Materiales y\nunidades fraccionadas',
+    ),
+    _BusinessTypeOption(
+      key: Key('btype_restaurante'),
+      value: 'restaurante',
+      label: 'Restaurante',
+      icon: Icons.restaurant_rounded,
+      description: 'Cocina, mesas\ny recetas',
+    ),
+    _BusinessTypeOption(
+      key: Key('btype_comidas'),
+      value: 'comidas_rapidas',
+      label: 'Comidas\nRápidas',
+      icon: Icons.fastfood_rounded,
+      description: 'Turnos, domicilios\ny despacho de pedidos',
     ),
     _BusinessTypeOption(
       key: Key('btype_bar'),
@@ -25,27 +56,6 @@ class StepConfig extends StatelessWidget {
       description: 'Bebidas, licores\ny entretenimiento',
     ),
     _BusinessTypeOption(
-      key: Key('btype_comidas'),
-      value: 'comidas_rapidas',
-      label: 'Restaurante /\nComidas',
-      icon: Icons.restaurant_rounded,
-      description: 'Cocina, recetas\ny despacho de pedidos',
-    ),
-    _BusinessTypeOption(
-      key: Key('btype_miscelanea'),
-      value: 'miscelanea',
-      label: 'Miscelánea /\nPapelería',
-      icon: Icons.edit_note_rounded,
-      description: 'Papelería, recargas\ny servicios varios',
-    ),
-    _BusinessTypeOption(
-      key: Key('btype_muebles'),
-      value: 'muebles',
-      label: 'Mueblería /\nDecoración',
-      icon: Icons.chair_rounded,
-      description: 'Muebles, colchones\ny artículos del hogar',
-    ),
-    _BusinessTypeOption(
       key: Key('btype_manufactura'),
       value: 'manufactura',
       label: 'Fábrica /\nManufactura',
@@ -53,11 +63,18 @@ class StepConfig extends StatelessWidget {
       description: 'Producción, insumos\ny control de costos',
     ),
     _BusinessTypeOption(
-      key: Key('btype_reparacion'),
-      value: 'reparacion',
-      label: 'Reparación /\nRemodelación',
+      key: Key('btype_reparacion_muebles'),
+      value: 'reparacion_muebles',
+      label: 'Reparación /\nMueblería',
       icon: Icons.build_rounded,
-      description: 'Servicios técnicos,\nrepuestos y presupuestos',
+      description: 'Servicios técnicos\ny facturación por ítem',
+    ),
+    _BusinessTypeOption(
+      key: Key('btype_emprendimiento'),
+      value: 'emprendimiento_general',
+      label: 'Emprendimiento\nGeneral',
+      icon: Icons.rocket_launch_rounded,
+      description: 'Servicios varios,\npapelería y más',
     ),
   ];
 

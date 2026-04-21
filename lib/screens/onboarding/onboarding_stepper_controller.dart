@@ -55,14 +55,17 @@ class OnboardingStepperController extends ChangeNotifier {
       businessTypes.isNotEmpty ? businessTypes.first : '';
 
   /// Human-readable labels for selected business types (for AI prompts & UI).
+  /// Keys MUST match the backend whitelist (models.ValidBusinessTypes).
   static const _typeLabels = {
-    'tienda_barrio': 'Tienda/Minimercado',
+    'tienda_barrio': 'Tienda de Barrio',
+    'minimercado': 'Minimercado',
+    'deposito_construccion': 'Depósito de Construcción',
+    'restaurante': 'Restaurante',
+    'comidas_rapidas': 'Comidas Rápidas',
     'bar': 'Bar/Licorera',
-    'comidas_rapidas': 'Restaurante/Comidas Rápidas',
-    'miscelanea': 'Miscelánea/Papelería',
-    'muebles': 'Mueblería/Decoración',
     'manufactura': 'Fábrica/Manufactura',
-    'reparacion': 'Reparación/Remodelación',
+    'reparacion_muebles': 'Reparación/Mueblería',
+    'emprendimiento_general': 'Emprendimiento General',
   };
 
   /// Returns readable labels for all selected business types.
@@ -109,14 +112,12 @@ class OnboardingStepperController extends ChangeNotifier {
     } else {
       businessTypes.add(type);
     }
-    // Auto-activar mesas si tiene bar
-    if (businessTypes.contains('bar')) hasTables = true;
-    notifyListeners();
-  }
-
-  // Legacy single-select (usado por step_business_type viejo)
-  void selectBusinessType(String type) {
-    businessTypes = [type];
+    // Auto-activar mesas si tiene bar/restaurante/comidas (los 3 gatillos
+    // de enable_tables en el backend — migration 021).
+    if (businessTypes.any(
+        {'bar', 'restaurante', 'comidas_rapidas'}.contains)) {
+      hasTables = true;
+    }
     notifyListeners();
   }
 
