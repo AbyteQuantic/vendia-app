@@ -1,7 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import '../../database/database_service.dart';
+import '../../database/collections/local_product.dart';
 import '../../services/api_service.dart';
 import '../../services/auth_service.dart';
 import '../../theme/app_theme.dart';
+import '../promotions/promo_builder_screen.dart';
 
 /// Detailed list of products whose expiration date falls within the
 /// backend's warning window. Read-only for now — the shopkeeper uses
@@ -92,6 +96,53 @@ class _ExpiringProductsScreenState extends State<ExpiringProductsScreen> {
       body: RefreshIndicator(
         onRefresh: _load,
         child: _buildBody(),
+      ),
+      bottomNavigationBar: _items.isEmpty
+          ? null
+          : SafeArea(
+              child: Padding(
+                padding: const EdgeInsets.all(12),
+                child: SizedBox(
+                  height: 56,
+                  child: ElevatedButton.icon(
+                    onPressed: _items.isEmpty ? null : _buildPromoFromList,
+                    icon: const Icon(Icons.local_offer_rounded, size: 22),
+                    label: const Text(
+                      'Crear promo con estos productos',
+                      style: TextStyle(
+                          fontSize: 16, fontWeight: FontWeight.w700),
+                    ),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppTheme.primary,
+                      foregroundColor: Colors.white,
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(14)),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+    );
+  }
+
+  /// Deep-link entry point. Pulls the local LocalProduct rows for each
+  /// server-returned UUID and passes them as seed into PromoBuilder so
+  /// Step 1 starts pre-populated with the urgent (expiring) stock.
+  Future<void> _buildPromoFromList() async {
+    HapticFeedback.lightImpact();
+    final db = DatabaseService.instance;
+    final all = await db.getAllProducts();
+    final byUuid = {for (final p in all) p.uuid: p};
+    final seeds = <LocalProduct>[];
+    for (final row in _items) {
+      final id = row['id'] as String? ?? row['uuid'] as String? ?? '';
+      final match = byUuid[id];
+      if (match != null) seeds.add(match);
+    }
+    if (!mounted) return;
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => PromoBuilderScreen(seedProducts: seeds),
       ),
     );
   }

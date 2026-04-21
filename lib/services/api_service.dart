@@ -779,6 +779,30 @@ class ApiService {
     }
   }
 
+  /// Calls the AI banner generator. Returns the public URL of the
+  /// generated banner (or a data: URL when storage is not configured).
+  Future<Map<String, dynamic>> generatePromoBanner({
+    required String promoName,
+    required List<String> productNames,
+    String discountText = '',
+    String tone = 'vibrante',
+  }) async {
+    try {
+      final response = await _dio.post(
+        '/api/v1/marketing/generate-banner',
+        data: {
+          'promo_name': promoName,
+          'products': productNames,
+          'discount_text': discountText,
+          'tone': tone,
+        },
+      );
+      return _extractData(response);
+    } on DioException catch (e) {
+      throw AppError.fromDioException(e);
+    }
+  }
+
   // ═══════════════════════════════════════════════════════════════════════════
   // 12. ONLINE STORE / CATALOG
   // ═══════════════════════════════════════════════════════════════════════════
