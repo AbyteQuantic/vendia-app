@@ -21,20 +21,20 @@ import 'package:vendia_pos/screens/inventory/voice_inventory_screen.dart';
 /// simulation library.
 
 class _FakeRecorder implements AudioRecorder {
-  _FakeRecorder({
-    this.grantPermission = true,
-    this.stopPath = '/tmp/fake.m4a',
-  });
+  _FakeRecorder({this.grantPermission = true});
 
   final bool grantPermission;
-  String? stopPath;
+  String stopPath = '/tmp/fake.m4a';
 
   bool started = false;
   bool stopped = false;
   bool disposed = false;
 
+  // record 6.x introduced the `request` named param; override the full
+  // signature so the analyzer is happy on both current and future
+  // releases that keep the same call shape.
   @override
-  Future<bool> hasPermission() async => grantPermission;
+  Future<bool> hasPermission({bool request = true}) async => grantPermission;
 
   @override
   Future<void> start(RecordConfig config, {required String path}) async {

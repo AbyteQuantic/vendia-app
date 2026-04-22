@@ -6,6 +6,9 @@
 	<!-- Permiso de ubicación GPS -->
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>VendIA necesita su ubicación para encontrar la dirección de su negocio automáticamente.</string>
+	<!-- Inventario por voz: grabación del audio que se manda a Gemini -->
+	<key>NSMicrophoneUsageDescription</key>
+	<string>VendIA usa el micrófono para que dictes los productos que llegaron y los registre por ti.</string>
 	<key>NSAppTransportSecurity</key>
 	<dict>
 		<key>NSAllowsArbitraryLoads</key>
