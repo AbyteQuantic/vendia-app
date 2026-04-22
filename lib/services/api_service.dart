@@ -416,6 +416,33 @@ class ApiService {
     }
   }
 
+  /// Phase-4 Voice-to-Catalog: ships the tendero's recorded note to
+  /// Gemini multimodal and returns the parsed `[{name, quantity,
+  /// price}]` array. The backend gates the endpoint behind
+  /// PremiumAuth — an expired trial returns 403 premium_expired and
+  /// bubbles up through the existing soft-paywall interceptor.
+  Future<List<Map<String, dynamic>>> voiceInventory({
+    required File audioFile,
+    required String mimeType,
+  }) async {
+    try {
+      final formData = FormData.fromMap({
+        'audio_file': await MultipartFile.fromFile(
+          audioFile.path,
+          contentType: DioMediaType.parse(mimeType),
+        ),
+      });
+      final response = await _dio.post(
+        '/api/v1/ai/voice-inventory',
+        data: formData,
+        options: Options(receiveTimeout: const Duration(seconds: 60)),
+      );
+      return _extractList(response);
+    } on DioException catch (e) {
+      throw AppError.fromDioException(e);
+    }
+  }
+
   Future<List<Map<String, dynamic>>> fetchInventoryAlerts() async {
     try {
       final response = await _dio.get('/api/v1/inventory/alerts');

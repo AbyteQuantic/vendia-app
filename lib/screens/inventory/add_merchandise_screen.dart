@@ -5,6 +5,7 @@ import '../../theme/app_theme.dart';
 import 'ia_loading_screen.dart';
 import 'create_product_screen.dart';
 import 'manage_inventory_screen.dart';
+import 'voice_inventory_screen.dart';
 import '../pos/scan_screen.dart';
 
 /// Agregar Mercancia — entry point for the inventory IA module.
@@ -167,6 +168,38 @@ class AddMerchandiseScreen extends StatelessWidget {
               ),
 
               const SizedBox(height: 20),
+
+              // Voice-to-Catalog (Phase 4 killer feature). Sits above
+              // the manual entry so tenderos see it as the "modern"
+              // alternative to camera OCR; press-and-hold UX lives
+              // inside VoiceInventoryScreen.
+              SizedBox(
+                height: 64,
+                width: double.infinity,
+                child: ElevatedButton.icon(
+                  key: const Key('btn_voice_inventory'),
+                  onPressed: () {
+                    HapticFeedback.lightImpact();
+                    Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) => const VoiceInventoryScreen(),
+                      ),
+                    );
+                  },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF2563EB),
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(18),
+                    ),
+                  ),
+                  icon: const Icon(Icons.mic_rounded, size: 26),
+                  label: const Text('🎤 Dictar inventario por voz',
+                      style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
+                ),
+              ),
+
+              const SizedBox(height: 12),
 
               // Secondary: manual product
               SizedBox(
