@@ -221,6 +221,66 @@ void main() {
     });
   });
 
+  // ── Items de servicio (migration 020) ──────────────────────────────────────
+  //
+  // The cart now supports two kinds of lines. Physical products set
+  // `isService=false` + carry a real uuid. Ad-hoc service lines set
+  // `isService=true` and serialise with `custom_description` +
+  // `custom_unit_price` instead of `product_id`. The backend CHECK
+  // constraint enforces this XOR at the DB layer — the cart needs to
+  // produce the right shape on its side.
+
+  group('Servicios ad-hoc (isService)', () {
+    test('línea de producto físico marca isService=false', () {
+      final p = CartController.mockProducts.first;
+      ctrl.addProduct(p);
+      final line = ctrl.activeCart.single;
+      expect(line.isService, isFalse);
+      expect(line.customDescription, isNull);
+      expect(line.customUnitPrice, isNull);
+    });
+
+    test('línea de servicio marca isService=true sin inventario', () {
+      ctrl.addServiceCharge(
+          description: 'Reparación mesa de centro', unitPrice: 50000);
+      final line = ctrl.activeCart.single;
+      expect(line.isService, isTrue);
+      expect(line.customDescription, equals('Reparación mesa de centro'));
+      expect(line.customUnitPrice, equals(50000));
+    });
+
+    test(
+        'subtotal mezcla físicos + servicios correctamente',
+        () {
+      final p = CartController.mockProducts[0]; // 2500 c/u
+      ctrl.addProduct(p);
+      ctrl.addProduct(p); // qty=2 → 5000
+      ctrl.addServiceCharge(
+          description: 'Instalación', unitPrice: 30000);
+      expect(ctrl.activeTotal, closeTo((2500 * 2) + 30000, 0.01));
+    });
+
+    test('toJson de línea de servicio omite product_id y expone is_service',
+        () {
+      ctrl.addServiceCharge(description: 'Visita técnica', unitPrice: 40000);
+      final json = ctrl.activeCart.single.toJson();
+      expect(json['is_service'], isTrue);
+      expect(json['custom_description'], equals('Visita técnica'));
+      expect(json['custom_unit_price'], equals(40000));
+      // product_id NO aparece en el payload de servicio — el backend
+      // rechaza la combinación via validateSaleItemRequest.
+      expect(json.containsKey('product_id'), isFalse);
+    });
+
+    test('toJson de línea física NO lleva is_service ni custom_*', () {
+      ctrl.addProduct(CartController.mockProducts.first);
+      final json = ctrl.activeCart.single.toJson();
+      expect(json.containsKey('is_service'), isFalse);
+      expect(json.containsKey('custom_description'), isFalse);
+      expect(json.containsKey('custom_unit_price'), isFalse);
+    });
+  });
+
   // ── Búsqueda ───────────────────────────────────────────────────────────────
 
   group('Filtrado de productos', () {

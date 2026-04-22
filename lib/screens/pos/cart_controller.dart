@@ -80,18 +80,42 @@ class CartController extends ChangeNotifier {
     _loadProducts();
   }
 
+  // Mock products carry explicit uuids so addProduct's uuid-based dedupe
+  // distinguishes them. Empty-uuid mocks collapse every distinct line
+  // into one because the existence check keys on product.uuid.
   static final List<Product> mockProducts = [
     const Product(
         id: 1,
+        uuid: 'mock-gaseosa-cola-350ml',
         name: 'Gaseosa Cola 350ml',
         price: 2500,
         stock: 50,
         requiresContainer: true,
         containerPrice: 500),
-    const Product(id: 2, name: 'Agua Cristal 500ml', price: 1800, stock: 80),
-    const Product(id: 3, name: 'Papas Margarita 80g', price: 3200, stock: 30),
-    const Product(id: 4, name: 'Arroz Diana 500g', price: 2900, stock: 100),
-    const Product(id: 5, name: 'Aceite Girasol 250ml', price: 6500, stock: 20),
+    const Product(
+        id: 2,
+        uuid: 'mock-agua-cristal-500ml',
+        name: 'Agua Cristal 500ml',
+        price: 1800,
+        stock: 80),
+    const Product(
+        id: 3,
+        uuid: 'mock-papas-margarita-80g',
+        name: 'Papas Margarita 80g',
+        price: 3200,
+        stock: 30),
+    const Product(
+        id: 4,
+        uuid: 'mock-arroz-diana-500g',
+        name: 'Arroz Diana 500g',
+        price: 2900,
+        stock: 100),
+    const Product(
+        id: 5,
+        uuid: 'mock-aceite-girasol-250ml',
+        name: 'Aceite Girasol 250ml',
+        price: 6500,
+        stock: 20),
   ];
 
   Future<void> _loadProducts() async {

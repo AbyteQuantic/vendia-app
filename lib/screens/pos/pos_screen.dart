@@ -1146,7 +1146,7 @@ class _PosScreenBodyState extends State<_PosScreenBody> {
                 if (_flags.enableServices)
                   Padding(
                     padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-                    child: _ServiceChargeButton(
+                    child: ServiceChargeButton(
                       onPressed: () => _showServiceChargeSheet(ctrl),
                     ),
                   ),
@@ -2516,9 +2516,9 @@ class _ServiceChargeResult {
 /// businesses (repair shops, manufacturing, emprendimientos). Deliberately
 /// uses a different color than primary so the cashier can spot it at a
 /// glance amid the product-heavy POS.
-class _ServiceChargeButton extends StatelessWidget {
+class ServiceChargeButton extends StatelessWidget {
   final VoidCallback onPressed;
-  const _ServiceChargeButton({required this.onPressed});
+  const ServiceChargeButton({super.key, required this.onPressed});
 
   @override
   Widget build(BuildContext context) {

@@ -1,34 +1,41 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:provider/provider.dart';
 
 import 'package:vendia_pos/screens/dashboard/main_dashboard_screen.dart';
-import 'package:vendia_pos/screens/pos/pos_screen.dart';
-import 'package:vendia_pos/screens/admin/admin_screen.dart';
-import 'package:vendia_pos/screens/pos/cart_controller.dart';
 
-Widget buildDashboard() => MaterialApp(
-      routes: {
-        '/pos': (_) => ChangeNotifierProvider(
-              create: (_) => CartController(),
-              child: const PosScreen(),
-            ),
-        '/admin': (_) => const AdminScreen(),
-      },
-      home: const MainDashboardScreen(),
-    );
+// ── Helpers ───────────────────────────────────────────────────────────────────
+//
+// The dashboard renders 4 action buttons for a retail (pre_payment) tenant:
+// VENDER + FIAR in the top row (flex 3) and INVENTARIO + ADMINISTRAR in
+// the second row (flex 2). ADMINISTRAR pushes AdminHubScreen. Tests scoped
+// to smoke-check keys and label text — flow navigation beyond the
+// dashboard is covered by the Flow A/B/C certification tests.
+//
+// The SharedPreferences + SecureStorage plugins are not mocked here —
+// the dashboard's async loaders fail silently (they already wrap in
+// try/catch or rely on sensible defaults), so the first-frame render is
+// all we assert on.
+
+Widget _buildDashboard() => const MaterialApp(home: MainDashboardScreen());
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+
   group('MainDashboardScreen', () {
-    testWidgets('muestra exactamente 2 botones principales', (tester) async {
-      await tester.pumpWidget(buildDashboard());
+    testWidgets('muestra los 4 botones principales (retail por defecto)',
+        (tester) async {
+      await tester.pumpWidget(_buildDashboard());
+      await tester.pump();
 
       expect(find.byKey(const Key('btn_vender')), findsOneWidget);
+      expect(find.byKey(const Key('btn_fiar')), findsOneWidget);
+      expect(find.byKey(const Key('btn_inventario')), findsOneWidget);
       expect(find.byKey(const Key('btn_administrar')), findsOneWidget);
     });
 
     testWidgets('botón VENDER contiene texto "VENDER"', (tester) async {
-      await tester.pumpWidget(buildDashboard());
+      await tester.pumpWidget(_buildDashboard());
+      await tester.pump();
 
       expect(
         find.descendant(
@@ -41,7 +48,8 @@ void main() {
 
     testWidgets('botón ADMINISTRAR contiene texto "ADMINISTRAR"',
         (tester) async {
-      await tester.pumpWidget(buildDashboard());
+      await tester.pumpWidget(_buildDashboard());
+      await tester.pump();
 
       expect(
         find.descendant(
@@ -52,34 +60,31 @@ void main() {
       );
     });
 
-    testWidgets('los 2 botones ocupan proporciones iguales (Expanded)',
+    testWidgets('VENDER y FIAR comparten ancho (misma fila flex 3)',
         (tester) async {
-      await tester.pumpWidget(buildDashboard());
+      await tester.pumpWidget(_buildDashboard());
+      await tester.pump();
 
-      // Ambos botones deben existir con el mismo ancho (dentro de Expanded)
       final vender = tester.getSize(find.byKey(const Key('btn_vender')));
-      final admin = tester.getSize(find.byKey(const Key('btn_administrar')));
+      final fiar = tester.getSize(find.byKey(const Key('btn_fiar')));
 
-      expect(vender.height, closeTo(admin.height, 4),
-          reason: 'Ambos botones deben tener la misma altura');
+      expect(vender.width, closeTo(fiar.width, 4),
+          reason: 'VENDER y FIAR son Expanded en la misma Row → mismo ancho');
+      expect(vender.height, closeTo(fiar.height, 4),
+          reason: 'VENDER y FIAR viven en la misma Row → misma altura');
     });
 
-    testWidgets('VENDER navega a PosScreen', (tester) async {
-      await tester.pumpWidget(buildDashboard());
+    testWidgets('INVENTARIO y ADMINISTRAR comparten ancho (misma fila flex 2)',
+        (tester) async {
+      await tester.pumpWidget(_buildDashboard());
+      await tester.pump();
 
-      await tester.tap(find.byKey(const Key('btn_vender')));
-      await tester.pumpAndSettle();
+      final inv = tester.getSize(find.byKey(const Key('btn_inventario')));
+      final adm = tester.getSize(find.byKey(const Key('btn_administrar')));
 
-      expect(find.byType(PosScreen), findsOneWidget);
-    });
-
-    testWidgets('ADMINISTRAR navega a AdminScreen', (tester) async {
-      await tester.pumpWidget(buildDashboard());
-
-      await tester.tap(find.byKey(const Key('btn_administrar')));
-      await tester.pumpAndSettle();
-
-      expect(find.byType(AdminScreen), findsOneWidget);
+      expect(inv.width, closeTo(adm.width, 4),
+          reason: 'Inventario y Administrar comparten la misma Row Expanded');
+      expect(inv.height, closeTo(adm.height, 4));
     });
   });
 }
