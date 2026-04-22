@@ -182,7 +182,66 @@ class ApiService {
   }
 
   // ═══════════════════════════════════════════════════════════════════════════
-  // 2. EMPLOYEES
+  // 2. BRANCHES (Sucursales)
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  /// Returns all branches for the authenticated tenant.
+  Future<List<Map<String, dynamic>>> fetchBranches() async {
+    try {
+      final response = await _dio.get('/api/v1/store/branches');
+      return _extractList(response);
+    } on DioException catch (e) {
+      throw AppError.fromDioException(e);
+    }
+  }
+
+  /// Returns a single branch by its UUID.
+  Future<Map<String, dynamic>> fetchBranch(String id) async {
+    try {
+      final response = await _dio.get('/api/v1/store/branches/$id');
+      return _extractData(response);
+    } on DioException catch (e) {
+      throw AppError.fromDioException(e);
+    }
+  }
+
+  /// Creates a new branch (sucursal). Required fields: `name`.
+  /// Optional: `address`, `latitude`, `longitude`.
+  Future<Map<String, dynamic>> createBranch(
+      Map<String, dynamic> data) async {
+    try {
+      final response =
+          await _dio.post('/api/v1/store/branches', data: data);
+      return _extractData(response);
+    } on DioException catch (e) {
+      throw AppError.fromDioException(e);
+    }
+  }
+
+  /// Updates an existing branch (name, address, coords, is_active).
+  Future<Map<String, dynamic>> updateBranch(
+      String id, Map<String, dynamic> data) async {
+    try {
+      final response =
+          await _dio.patch('/api/v1/store/branches/$id', data: data);
+      return _extractData(response);
+    } on DioException catch (e) {
+      throw AppError.fromDioException(e);
+    }
+  }
+
+  /// Soft-deletes a branch. The backend prevents deleting the default
+  /// branch (returns 422) and any branch that still has active employees.
+  Future<void> deleteBranch(String id) async {
+    try {
+      await _dio.delete('/api/v1/store/branches/$id');
+    } on DioException catch (e) {
+      throw AppError.fromDioException(e);
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // 3. EMPLOYEES
   // ═══════════════════════════════════════════════════════════════════════════
 
   Future<List<Map<String, dynamic>>> fetchEmployees() async {
@@ -864,6 +923,37 @@ class ApiService {
       Map<String, dynamic> data) async {
     try {
       final response = await _dio.patch('/api/v1/store/config', data: data);
+      return _extractData(response);
+    } on DioException catch (e) {
+      throw AppError.fromDioException(e);
+    }
+  }
+
+  /// Fetches the store slug and the public catalog URL. The backend
+  /// auto-provisions a slug from the business name the first time it
+  /// is called, so this endpoint is safe to hit from the Marketing
+  /// Hub without a previous setup step.
+  ///
+  /// Returns `{slug, base_url, public_url}`. Throws [AppError] on
+  /// network or 5xx failures — the caller decides how to degrade.
+  Future<Map<String, dynamic>> fetchStoreSlug() async {
+    try {
+      final response = await _dio.get('/api/v1/store/slug');
+      return _extractData(response);
+    } on DioException catch (e) {
+      throw AppError.fromDioException(e);
+    }
+  }
+
+  /// Updates the tenant's store slug. Surfaces the backend's 409
+  /// Conflict as [AppError.statusCode] == 409 so the UI can show a
+  /// specific "ya está en uso" message instead of a generic error.
+  Future<Map<String, dynamic>> updateStoreSlug(String slug) async {
+    try {
+      final response = await _dio.patch(
+        '/api/v1/store/slug',
+        data: {'slug': slug},
+      );
       return _extractData(response);
     } on DioException catch (e) {
       throw AppError.fromDioException(e);

@@ -51,6 +51,9 @@ dependencies:
   # Deep links (WhatsApp)
   url_launcher: ^6.2.0
 
+  # Native share sheet (WhatsApp, Messages, etc. for the Marketing Hub)
+  share_plus: ^10.1.4
+
   # Variables de entorno
   flutter_dotenv: ^5.2.1
 

@@ -5,11 +5,14 @@ import 'package:provider/provider.dart';
 import '../../database/database_service.dart';
 import '../../database/collections/local_sale.dart';
 import '../../database/collections/local_product.dart';
+import '../../services/api_service.dart';
+import '../../services/auth_service.dart';
 import '../../services/role_manager.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/restricted_action.dart';
 import '../../widgets/stat_card.dart';
 import '../inventory/add_merchandise_screen.dart';
+import '../online_store/promo_management_screen.dart';
 import '../pos/pos_screen.dart';
 import '../../widgets/sync_status_banner.dart';
 import 'admin_hub_screen.dart';
@@ -61,10 +64,15 @@ class _DashboardScreenState extends State<DashboardScreen> {
     totalToday: 0, txCount: 0, topProduct: '—', prodCount: 0, recentSales: [],
   );
 
+  // Marketing Hub badge. Loaded lazily from the backend; failures
+  // degrade silently (keep 0) so the dashboard still renders offline.
+  int _activePromosCount = 0;
+
   @override
   void initState() {
     super.initState();
     _loadData(); // Initial load
+    _loadActivePromosCount();
 
     final isar = _db.isar;
 
@@ -76,6 +84,23 @@ class _DashboardScreenState extends State<DashboardScreen> {
     _productsSub = isar.localProducts
         .watchLazy(fireImmediately: false)
         .listen((_) => _loadData());
+  }
+
+  /// Best-effort fetch of active promotions for the Marketing Hub badge.
+  /// Non-blocking: any failure (offline, 401, backend not configured)
+  /// keeps the count at 0 and the badge hidden.
+  Future<void> _loadActivePromosCount() async {
+    try {
+      final api = ApiService(AuthService());
+      final promos = await api.fetchPromotions();
+      final active = promos.where((p) {
+        final v = p['active'] ?? p['is_active'] ?? p['enabled'];
+        return v is bool ? v : true;
+      }).length;
+      if (mounted) setState(() => _activePromosCount = active);
+    } catch (_) {
+      // Offline / not configured — keep badge hidden.
+    }
   }
 
   @override
@@ -406,6 +431,27 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   ),
                 ),
 
+                // ── Marketing Hub Card ──────────────────────────────
+                // Full-width entry point for the SaaS Phase 1 marketing
+                // module (combos, AI banners, online catalog share).
+                // Mirrors the "Ajustes de mi Negocio" card styling so
+                // the dashboard reads as a coherent stack of hubs.
+                SliverToBoxAdapter(
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
+                    child: _MarketingHubCard(
+                      activePromos: _activePromosCount,
+                      onTap: () async {
+                        HapticFeedback.lightImpact();
+                        await Navigator.of(context).push(MaterialPageRoute(
+                          builder: (_) => const PromoManagementScreen(),
+                        ));
+                        _loadActivePromosCount();
+                      },
+                    ),
+                  ),
+                ),
+
                 // ── Recent Sales Header ─────────────────────────────
                 const SliverToBoxAdapter(
                   child: Padding(
@@ -629,6 +675,126 @@ class _InventoryCardCompact extends StatelessWidget {
                     fontWeight: FontWeight.bold,
                     color: AppTheme.textPrimary)),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// MARKETING HUB CARD
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/// Full-width entry point for the SaaS Phase 1 marketing module.
+///
+/// Styled to mirror the "Ajustes de mi Negocio" card (same padding,
+/// radius, chevron, subtitle hierarchy) but tinted in the accent
+/// purple so it reads as a distinct, higher-energy hub over a neutral
+/// settings row. Badge surfaces the count of active promotions when
+/// the backend is reachable; stays hidden when count is 0.
+class _MarketingHubCard extends StatelessWidget {
+  final int activePromos;
+  final VoidCallback onTap;
+
+  const _MarketingHubCard({
+    required this.activePromos,
+    required this.onTap,
+  });
+
+  // Accent purple — intentionally different from AppTheme.primary so
+  // this hub stands apart from the settings card above it.
+  static const Color _accent = Color(0xFF7C3AED);
+
+  @override
+  Widget build(BuildContext context) {
+    final badgeLabel = activePromos == 1
+        ? '1 promo activa'
+        : '$activePromos promos activas';
+
+    return Semantics(
+      button: true,
+      label: 'Catálogo y Promos. $badgeLabel',
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          key: const Key('btn_marketing_hub'),
+          borderRadius: BorderRadius.circular(20),
+          onTap: onTap,
+          child: Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: _accent.withValues(alpha: 0.08),
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(color: _accent.withValues(alpha: 0.18)),
+            ),
+            child: Row(
+              children: [
+                Container(
+                  width: 48,
+                  height: 48,
+                  decoration: BoxDecoration(
+                    color: _accent.withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  child: const Icon(Icons.campaign_rounded,
+                      color: _accent, size: 26),
+                ),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          const Flexible(
+                            child: Text(
+                              '📢 Catálogo y Promos',
+                              style: TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.bold,
+                                color: AppTheme.textPrimary,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          if (activePromos > 0) ...[
+                            const SizedBox(width: 8),
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 8, vertical: 2),
+                              decoration: BoxDecoration(
+                                color: _accent,
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                              child: Text(
+                                badgeLabel,
+                                style: const TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w700,
+                                  color: Colors.white,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
+                      const SizedBox(height: 2),
+                      const Text(
+                        'Cree combos, banners con IA y comparta su tienda online.',
+                        style: TextStyle(
+                          fontSize: 14,
+                          color: AppTheme.textSecondary,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const Icon(Icons.chevron_right_rounded,
+                    color: _accent, size: 26),
+              ],
+            ),
+          ),
         ),
       ),
     );
