@@ -4,6 +4,7 @@ import '../../theme/app_theme.dart';
 import 'analytics_screen.dart';
 import 'suppliers_screen.dart';
 import '../security/sos_contacts_screen.dart';
+import '../support/support_screen.dart';
 
 class AdminHubScreen extends StatelessWidget {
   const AdminHubScreen({super.key});
@@ -271,6 +272,25 @@ class AdminHubScreen extends StatelessWidget {
                       },
                     ),
                   ),
+                  const SizedBox(height: 10),
+                  // Support — Phase 3 SaaS hub entry
+                  SizedBox(
+                    width: double.infinity,
+                    child: _QuickActionButton(
+                      key: const Key('btn_soporte_tecnico'),
+                      icon: Icons.support_agent_rounded,
+                      label: '🆘 Soporte Técnico',
+                      gradient: const [Color(0xFF2563EB), Color(0xFF1D4ED8)],
+                      onTap: () {
+                        HapticFeedback.lightImpact();
+                        Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (_) => const SupportScreen(),
+                          ),
+                        );
+                      },
+                    ),
+                  ),
                 ],
               ),
             ),
@@ -512,6 +532,7 @@ class _QuickActionButton extends StatelessWidget {
   final VoidCallback onTap;
 
   const _QuickActionButton({
+    super.key,
     required this.icon,
     required this.label,
     required this.gradient,

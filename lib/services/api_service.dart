@@ -1651,6 +1651,24 @@ class ApiService {
     }
   }
 
+  /// Creates a support ticket for the current tenant. The backend is
+  /// the source of truth for subject-length clipping (160 chars) and
+  /// whitespace rejection — we pass user input through verbatim so
+  /// server-side error messages stay authoritative.
+  Future<void> createSupportTicket({
+    required String subject,
+    required String message,
+  }) async {
+    try {
+      await _dio.post('/api/v1/support', data: {
+        'subject': subject,
+        'message': message,
+      });
+    } on DioException catch (e) {
+      throw AppError.fromDioException(e);
+    }
+  }
+
   // ── Error envelope helpers ───────────────────────────────────────────────
   //
   // The Go backend returns `{ "error": "...", "error_code": "..." }` for
