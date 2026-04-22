@@ -31,18 +31,38 @@ class _BusinessProfileScreenState extends State<BusinessProfileScreen> {
   bool _saving = false;
   bool _uploadingLogo = false;
   String? _logoUrl;
-  final Set<String> _selectedTypes = {};
+  // Selección ÚNICA — el backend acepta un array pero la UX enforce
+  // una sola categoría para evitar combinaciones ambiguas de feature
+  // flags. Se persiste como lista de 1 en el payload para no romper
+  // el contrato del wire.
+  String? _selectedType;
 
+  // 1:1 con la whitelist del backend (models.ValidBusinessTypes,
+  // migración 020). Cada entry es (valor_snake_case, ícono, etiqueta).
+  // Cualquier cambio en la columna de valor debe ir acompañado de una
+  // migración — handlers.validateBusinessTypes rechaza cualquier otro
+  // string con HTTP 400 antes de que llegue al DB CHECK.
   static const _businessTypes = [
-    ('tienda_barrio', 'Tienda / Minimarket'),
-    ('bar', 'Restaurante / Bar'),
-    ('comidas_rapidas', 'Comidas Rápidas'),
-    ('miscelanea', 'Panadería / Miscelánea'),
-    ('muebles', 'Ferretería / Muebles'),
-    ('manufactura', 'Manufactura'),
-    ('reparacion', 'Reparación'),
-    ('minimercado', 'Minimercado'),
+    ('tienda_barrio', Icons.store_rounded, 'Tienda de Barrio'),
+    ('minimercado', Icons.local_grocery_store_rounded, 'Minimercado'),
+    ('deposito_construccion', Icons.inventory_2_rounded, 'Depósito / Ferretería'),
+    ('restaurante', Icons.restaurant_rounded, 'Restaurante'),
+    ('comidas_rapidas', Icons.fastfood_rounded, 'Comidas Rápidas'),
+    ('bar', Icons.local_bar_rounded, 'Bar / Discoteca'),
+    ('manufactura', Icons.precision_manufacturing_rounded, 'Manufactura'),
+    ('reparacion_muebles', Icons.build_rounded, 'Reparación / Servicios'),
+    ('emprendimiento_general', Icons.rocket_launch_rounded, 'Emprendimiento General'),
   ];
+
+  // Legacy values that early-2026 tenants still carry in storage.
+  // Maps each deprecated value to its new canonical one so the screen
+  // can render a valid selection even before the user saves the new
+  // choice (which would then overwrite the legacy string server-side).
+  static const _legacyTypeRemap = {
+    'muebles': 'reparacion_muebles',
+    'reparacion': 'reparacion_muebles',
+    'miscelanea': 'emprendimiento_general',
+  };
 
   @override
   void initState() {
@@ -73,15 +93,22 @@ class _BusinessProfileScreenState extends State<BusinessProfileScreen> {
             ? data['logo_url']
             : null;
 
-        // Support both legacy single type and new array
+        // Pick the first valid type out of the backend payload. The
+        // column is still an array so the server can keep a history
+        // of changes, but the UI shows a single choice — we promote
+        // whatever is in position 0 (falling back to the scalar
+        // `business_type` field for pre-migration-020 tenants) and
+        // remap deprecated values to their canonical equivalents.
+        String? initial;
         final types = data['business_types'];
-        if (types is List) {
-          _selectedTypes.addAll(types.cast<String>());
+        if (types is List && types.isNotEmpty && types.first is String) {
+          initial = types.first as String;
+        } else if (data['business_type'] is String &&
+            (data['business_type'] as String).isNotEmpty) {
+          initial = data['business_type'] as String;
         }
-        // Fallback for legacy single value
-        final legacyType = data['business_type'];
-        if (legacyType is String && legacyType.isNotEmpty && _selectedTypes.isEmpty) {
-          _selectedTypes.add(legacyType);
+        if (initial != null) {
+          _selectedType = _legacyTypeRemap[initial] ?? initial;
         }
         _loading = false;
       });
@@ -179,22 +206,23 @@ class _BusinessProfileScreenState extends State<BusinessProfileScreen> {
 
   Future<void> _generateLogoWithAI() async {
     final name = _nameCtrl.text.trim();
+    final selected = _selectedType;
 
-    if (name.isEmpty || _selectedTypes.isEmpty) {
+    if (name.isEmpty || selected == null) {
       _showSnack(
-        'Por favor, escriba el nombre y seleccione al menos un tipo de negocio para que la IA sepa qué dibujar.',
+        'Por favor, escriba el nombre y seleccione el tipo de negocio para que la IA sepa qué dibujar.',
         isError: true,
       );
       return;
     }
 
-    // Use first selected type's friendly label for the prompt
-    final firstType = _selectedTypes.first;
+    // Use the friendly label for the prompt so Gemini sees Spanish
+    // copy instead of the snake_case enum value.
     final typeLabel = _businessTypes
-            .where((t) => t.$1 == firstType)
-            .map((t) => t.$2)
+            .where((t) => t.$1 == selected)
+            .map((t) => t.$3)
             .firstOrNull ??
-        firstType;
+        selected;
 
     if (!mounted) return;
     showDialog(
@@ -302,6 +330,11 @@ class _BusinessProfileScreenState extends State<BusinessProfileScreen> {
 
   Future<void> _saveProfile() async {
     if (!_formKey.currentState!.validate()) return;
+    if (_selectedType == null) {
+      _showSnack('Seleccione la categoría principal de su negocio',
+          isError: true);
+      return;
+    }
 
     setState(() => _saving = true);
     HapticFeedback.mediumImpact();
@@ -310,7 +343,9 @@ class _BusinessProfileScreenState extends State<BusinessProfileScreen> {
       final updates = <String, dynamic>{
         'business_name': _nameCtrl.text.trim(),
         'nit': _nitCtrl.text.trim(),
-        'business_types': _selectedTypes.toList(),
+        // Array de 1 para mantener el contrato del endpoint aunque la
+        // UX sea single-select.
+        'business_types': [_selectedType],
         'address': _addressCtrl.text.trim(),
         if (_latitude != 0) 'latitude': _latitude,
         if (_longitude != 0) 'longitude': _longitude,
@@ -457,10 +492,10 @@ class _BusinessProfileScreenState extends State<BusinessProfileScreen> {
             ),
             const SizedBox(height: 24),
 
-            // ── Tipos de Negocio (Multi-Select) ───────────────────
-            _buildLabel('Tipo de Negocio (seleccione uno o más)'),
+            // ── Categoría principal (Selección ÚNICA) ─────────────
+            _buildLabel('Seleccione la categoría principal de su negocio'),
             const SizedBox(height: 12),
-            _buildBusinessTypeChips(),
+            _buildBusinessTypeRadioGrid(),
 
             const SizedBox(height: 40),
           ],
@@ -469,60 +504,97 @@ class _BusinessProfileScreenState extends State<BusinessProfileScreen> {
     );
   }
 
-  Widget _buildBusinessTypeChips() {
-    return Wrap(
-      spacing: 10,
-      runSpacing: 10,
+  Widget _buildBusinessTypeRadioGrid() {
+    // Single-select grid mapped 1:1 to models.ValidBusinessTypes.
+    // We use a GridView instead of Wrap so every card is the same
+    // size (the Wrap variant produced a jagged layout as labels
+    // scaled with Gerontodiseño font sizes).
+    return GridView.count(
+      crossAxisCount: 2,
+      crossAxisSpacing: 10,
+      mainAxisSpacing: 10,
+      childAspectRatio: 2.6,
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
       children: _businessTypes.map((t) {
-        final key = t.$1;
-        final label = t.$2;
-        final selected = _selectedTypes.contains(key);
-        return GestureDetector(
-          onTap: () {
-            HapticFeedback.lightImpact();
-            setState(() {
-              if (selected) {
-                _selectedTypes.remove(key);
-              } else {
-                _selectedTypes.add(key);
-              }
-            });
-          },
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 200),
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-            decoration: BoxDecoration(
-              color: selected
-                  ? AppTheme.primary.withValues(alpha: 0.12)
-                  : Colors.white,
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(
+        final value = t.$1;
+        final icon = t.$2;
+        final label = t.$3;
+        final selected = _selectedType == value;
+        return Semantics(
+          button: true,
+          selected: selected,
+          label: label,
+          child: GestureDetector(
+            key: Key('profile_btype_$value'),
+            onTap: () {
+              HapticFeedback.lightImpact();
+              setState(() => _selectedType = value);
+            },
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 180),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              decoration: BoxDecoration(
                 color: selected
-                    ? AppTheme.primary
-                    : const Color(0xFFD6D0C8),
-                width: selected ? 2 : 1,
+                    ? AppTheme.primary.withValues(alpha: 0.12)
+                    : Colors.white,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(
+                  color: selected
+                      ? AppTheme.primary
+                      : const Color(0xFFD6D0C8),
+                  width: selected ? 2 : 1,
+                ),
               ),
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(
-                  selected
-                      ? Icons.check_circle_rounded
-                      : Icons.circle_outlined,
-                  color: selected ? AppTheme.primary : const Color(0xFFB0A99A),
-                  size: 22,
-                ),
-                const SizedBox(width: 8),
-                Text(
-                  label,
-                  style: TextStyle(
-                    fontSize: 17,
-                    fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
-                    color: Colors.black87,
+              child: Row(
+                children: [
+                  // Radio indicator — filled dot inside outlined
+                  // circle when selected.
+                  Container(
+                    width: 22,
+                    height: 22,
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      shape: BoxShape.circle,
+                      border: Border.all(
+                        color: selected
+                            ? AppTheme.primary
+                            : const Color(0xFFB0A99A),
+                        width: 2,
+                      ),
+                    ),
+                    child: selected
+                        ? const Center(
+                            child: Icon(
+                              Icons.circle,
+                              size: 10,
+                              color: AppTheme.primary,
+                            ),
+                          )
+                        : null,
                   ),
-                ),
-              ],
+                  const SizedBox(width: 8),
+                  Icon(
+                    icon,
+                    size: 20,
+                    color: selected ? AppTheme.primary : const Color(0xFF6B6B6B),
+                  ),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      label,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 15,
+                        fontWeight:
+                            selected ? FontWeight.w700 : FontWeight.w500,
+                        color: Colors.black87,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
         );

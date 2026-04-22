@@ -298,8 +298,11 @@ void main() {
     });
 
     testWidgets(
-        'selección múltiple: tienda_barrio + reparacion_muebles se persisten',
+        'selección única: tocar otra tarjeta reemplaza el valor anterior',
         (tester) async {
+      // Multi-select was retired to kill ambiguous feature-flag
+      // combos (bar+manufactura enabling both mesas and services).
+      // Second tap REPLACES — never accumulates.
       await tester.pumpWidget(buildTestWidget());
       await fillAndAdvanceStep1(tester);
       await fillAndAdvanceStep2(tester);
@@ -313,16 +316,18 @@ void main() {
       await tester.tap(tienda, warnIfMissed: false);
       await tester.pumpAndSettle();
 
+      final ctrl = tester
+          .element(find.byType(OnboardingStepper))
+          .read<OnboardingStepperController>();
+      expect(ctrl.businessTypes, equals(['tienda_barrio']));
+
       await tester.ensureVisible(reparacion);
       await tester.pumpAndSettle();
       await tester.tap(reparacion, warnIfMissed: false);
       await tester.pumpAndSettle();
 
-      final ctrl = tester
-          .element(find.byType(OnboardingStepper))
-          .read<OnboardingStepperController>();
-      expect(ctrl.businessTypes,
-          containsAll(['tienda_barrio', 'reparacion_muebles']));
+      expect(ctrl.businessTypes, equals(['reparacion_muebles']),
+          reason: 'el segundo tap reemplaza, no acumula');
     });
   });
 

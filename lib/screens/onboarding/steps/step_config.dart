@@ -4,14 +4,20 @@ import 'package:provider/provider.dart';
 import '../../../theme/app_theme.dart';
 import '../onboarding_stepper_controller.dart';
 
-/// Paso 4 — Portafolios: selección MÚLTIPLE de tipos de negocio.
-/// Chips gigantes con ícono + etiqueta (Gerontodiseño).
+/// Paso 4 — Categoría principal del negocio: SELECCIÓN ÚNICA.
+///
+/// Multi-select caused ambiguous feature-flag combinations in the
+/// wild (e.g. bar + manufactura → enable_tables and enable_services
+/// both on, which renders conflicting CTAs on the POS). A radio-style
+/// grid mapped 1:1 to the 9 backend enums removes the ambiguity at
+/// the source.
 class StepConfig extends StatelessWidget {
   const StepConfig({super.key});
 
-  // Values must match the backend whitelist (models.ValidBusinessTypes /
-  // migration 020 CHECK). Changing a value here without a migration will
-  // cause /register to reject the tenant with HTTP 400.
+  // Values are the EXACT strings the backend whitelists
+  // (models.ValidBusinessTypes / migration 020 CHECK). Labels follow
+  // the Phase-4 brief. Changing a value here without a migration
+  // breaks /register with HTTP 400 via handlers.validateBusinessTypes.
   static const _types = [
     _BusinessTypeOption(
       key: Key('btype_tienda'),
@@ -30,7 +36,7 @@ class StepConfig extends StatelessWidget {
     _BusinessTypeOption(
       key: Key('btype_deposito'),
       value: 'deposito_construccion',
-      label: 'Depósito\nConstrucción',
+      label: 'Depósito /\nFerretería',
       icon: Icons.inventory_2_rounded,
       description: 'Materiales y\nunidades fraccionadas',
     ),
@@ -51,21 +57,21 @@ class StepConfig extends StatelessWidget {
     _BusinessTypeOption(
       key: Key('btype_bar'),
       value: 'bar',
-      label: 'Bar /\nLicorera',
+      label: 'Bar /\nDiscoteca',
       icon: Icons.local_bar_rounded,
       description: 'Bebidas, licores\ny entretenimiento',
     ),
     _BusinessTypeOption(
       key: Key('btype_manufactura'),
       value: 'manufactura',
-      label: 'Fábrica /\nManufactura',
+      label: 'Manufactura',
       icon: Icons.precision_manufacturing_rounded,
       description: 'Producción, insumos\ny control de costos',
     ),
     _BusinessTypeOption(
       key: Key('btype_reparacion_muebles'),
       value: 'reparacion_muebles',
-      label: 'Reparación /\nMueblería',
+      label: 'Reparación /\nServicios',
       icon: Icons.build_rounded,
       description: 'Servicios técnicos\ny facturación por ítem',
     ),
@@ -82,6 +88,8 @@ class StepConfig extends StatelessWidget {
   Widget build(BuildContext context) {
     return Consumer<OnboardingStepperController>(
       builder: (_, ctrl, __) {
+        final selectedValue =
+            ctrl.businessTypes.isEmpty ? null : ctrl.businessTypes.first;
         return SingleChildScrollView(
           child: Container(
             key: const Key('step_config'),
@@ -90,7 +98,7 @@ class StepConfig extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 const Text(
-                  '¿Qué vende en su negocio?',
+                  'Seleccione la categoría principal de su negocio',
                   style: TextStyle(
                     fontSize: 22,
                     fontWeight: FontWeight.bold,
@@ -99,7 +107,7 @@ class StepConfig extends StatelessWidget {
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  'Puede elegir varios si su negocio es mixto.',
+                  'Elija una sola — la que mejor describa lo que vende la mayor parte del tiempo.',
                   style: TextStyle(
                     fontSize: 18,
                     color: Colors.grey.shade600,
@@ -108,7 +116,7 @@ class StepConfig extends StatelessWidget {
                 ),
                 const SizedBox(height: 24),
 
-                // Grid 2x2 de tarjetas multi-selección
+                // Radio-style grid: tap replaces the previous selection.
                 GridView.count(
                   crossAxisCount: 2,
                   crossAxisSpacing: 16,
@@ -117,19 +125,19 @@ class StepConfig extends StatelessWidget {
                   shrinkWrap: true,
                   physics: const NeverScrollableScrollPhysics(),
                   children: _types.map((opt) {
-                    final selected = ctrl.businessTypes.contains(opt.value);
+                    final selected = selectedValue == opt.value;
                     return _TypeCard(
                       option: opt,
                       selected: selected,
-                      onTap: () => ctrl.toggleBusinessType(opt.value),
+                      onTap: () => ctrl.setPrimaryBusinessType(opt.value),
                     );
                   }).toList(),
                 ),
 
-                // Resumen de selección
-                if (ctrl.businessTypes.isNotEmpty) ...[
+                if (selectedValue != null) ...[
                   const SizedBox(height: 20),
                   Container(
+                    key: const Key('step_config_summary'),
                     width: double.infinity,
                     padding: const EdgeInsets.all(14),
                     decoration: BoxDecoration(
@@ -149,9 +157,7 @@ class StepConfig extends StatelessWidget {
                         const SizedBox(width: 10),
                         Expanded(
                           child: Text(
-                            ctrl.businessTypes.length == 1
-                                ? '1 portafolio seleccionado'
-                                : '${ctrl.businessTypes.length} portafolios seleccionados',
+                            'Categoría: ${_labelFor(selectedValue)}',
                             style: const TextStyle(
                               fontSize: 18,
                               fontWeight: FontWeight.w600,
@@ -164,8 +170,9 @@ class StepConfig extends StatelessWidget {
                   ),
                 ],
 
-                // Error inline si intenta avanzar sin seleccionar
-                if (ctrl.businessTypes.isEmpty && ctrl.currentStep == 3)
+                // Inline error when the user tries to advance without
+                // picking a category.
+                if (selectedValue == null && ctrl.currentStep == 3)
                   const Padding(
                     padding: EdgeInsets.only(top: 12),
                     child: Text(
@@ -179,6 +186,16 @@ class StepConfig extends StatelessWidget {
         );
       },
     );
+  }
+
+  static String _labelFor(String value) {
+    return _types
+        .firstWhere(
+          (o) => o.value == value,
+          orElse: () => _types.first,
+        )
+        .label
+        .replaceAll('\n', ' ');
   }
 }
 
@@ -195,100 +212,104 @@ class _TypeCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      key: option.key,
-      onTap: () {
-        HapticFeedback.lightImpact();
-        onTap();
-      },
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 200),
-        decoration: BoxDecoration(
-          color: selected ? AppTheme.primary : AppTheme.surfaceGrey,
-          borderRadius: BorderRadius.circular(24),
-          border: Border.all(
-            color: selected ? AppTheme.primary : AppTheme.borderColor,
-            width: selected ? 2.5 : 1.5,
+    return Semantics(
+      button: true,
+      selected: selected,
+      label: option.label.replaceAll('\n', ' '),
+      child: GestureDetector(
+        key: option.key,
+        onTap: () {
+          HapticFeedback.lightImpact();
+          onTap();
+        },
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 200),
+          decoration: BoxDecoration(
+            color: selected ? AppTheme.primary : AppTheme.surfaceGrey,
+            borderRadius: BorderRadius.circular(24),
+            border: Border.all(
+              color: selected ? AppTheme.primary : AppTheme.borderColor,
+              width: selected ? 2.5 : 1.5,
+            ),
+            boxShadow: selected
+                ? [
+                    BoxShadow(
+                      color: AppTheme.primary.withValues(alpha: 0.25),
+                      blurRadius: 12,
+                      offset: const Offset(0, 4),
+                    )
+                  ]
+                : [],
           ),
-          boxShadow: selected
-              ? [
-                  BoxShadow(
-                    color: AppTheme.primary.withValues(alpha: 0.25),
-                    blurRadius: 12,
-                    offset: const Offset(0, 4),
-                  )
-                ]
-              : [],
-        ),
-        child: Stack(
-          children: [
-            // Checkbox indicator
-            Positioned(
-              top: 12,
-              right: 12,
-              child: AnimatedContainer(
-                duration: const Duration(milliseconds: 200),
-                width: 30,
-                height: 30,
-                decoration: BoxDecoration(
-                  color: selected
-                      ? Colors.white
-                      : Colors.transparent,
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(
-                    color: selected
-                        ? Colors.white
-                        : AppTheme.borderColor,
-                    width: 2,
+          child: Stack(
+            children: [
+              // Radio indicator — a filled dot inside an outlined
+              // circle when selected. Communicates "single choice"
+              // without changing the card's footprint.
+              Positioned(
+                top: 12,
+                right: 12,
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 200),
+                  width: 28,
+                  height: 28,
+                  decoration: BoxDecoration(
+                    color: selected ? Colors.white : Colors.transparent,
+                    shape: BoxShape.circle,
+                    border: Border.all(
+                      color: selected ? Colors.white : AppTheme.borderColor,
+                      width: 2,
+                    ),
                   ),
+                  child: selected
+                      ? const Center(
+                          child: Icon(
+                            Icons.circle,
+                            size: 12,
+                            color: AppTheme.primary,
+                          ),
+                        )
+                      : null,
                 ),
-                child: selected
-                    ? const Icon(
-                        Icons.check_rounded,
-                        size: 20,
-                        color: AppTheme.primary,
-                      )
-                    : null,
               ),
-            ),
-            // Content
-            Padding(
-              padding: const EdgeInsets.fromLTRB(12, 16, 12, 12),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(
-                    option.icon,
-                    size: 44,
-                    color: selected ? Colors.white : AppTheme.primary,
-                  ),
-                  const SizedBox(height: 10),
-                  Text(
-                    option.label,
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                      height: 1.2,
-                      color: selected ? Colors.white : AppTheme.textPrimary,
+              Padding(
+                padding: const EdgeInsets.fromLTRB(12, 16, 12, 12),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(
+                      option.icon,
+                      size: 44,
+                      color: selected ? Colors.white : AppTheme.primary,
                     ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    option.description,
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      fontSize: 16,
-                      height: 1.3,
-                      color: selected
-                          ? Colors.white.withValues(alpha: 0.85)
-                          : Colors.grey.shade500,
+                    const SizedBox(height: 10),
+                    Text(
+                      option.label,
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                        height: 1.2,
+                        color: selected ? Colors.white : AppTheme.textPrimary,
+                      ),
                     ),
-                  ),
-                ],
+                    const SizedBox(height: 4),
+                    Text(
+                      option.description,
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontSize: 16,
+                        height: 1.3,
+                        color: selected
+                            ? Colors.white.withValues(alpha: 0.85)
+                            : Colors.grey.shade500,
+                      ),
+                    ),
+                  ],
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );

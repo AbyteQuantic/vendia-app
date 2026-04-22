@@ -106,18 +106,20 @@ class OnboardingStepperController extends ChangeNotifier {
     }
   }
 
-  void toggleBusinessType(String type) {
-    if (businessTypes.contains(type)) {
-      businessTypes.remove(type);
-    } else {
-      businessTypes.add(type);
-    }
-    // Auto-activar mesas si tiene bar/restaurante/comidas (los 3 gatillos
-    // de enable_tables en el backend — migration 021).
-    if (businessTypes.any(
-        {'bar', 'restaurante', 'comidas_rapidas'}.contains)) {
-      hasTables = true;
-    }
+  /// Sets the tenant's primary business type. The backend schema still
+  /// takes an array (`business_types`) because migration 020 modelled
+  /// it that way, but the onboarding UX now enforces single selection
+  /// to avoid ambiguous feature-flag combos (e.g. a tenant flagged as
+  /// both "bar" and "manufactura" would receive enable_tables=true
+  /// AND enable_services=true and the POS would render conflicting
+  /// CTAs). We write a 1-element array so the wire format stays
+  /// stable.
+  void setPrimaryBusinessType(String type) {
+    businessTypes = [type];
+    // enable_tables in the backend fires when the type is in the food
+    // stack — mirror it here so the branches/config step defaults are
+    // sensible even before the backend recomputes feature_flags.
+    hasTables = {'bar', 'restaurante', 'comidas_rapidas'}.contains(type);
     notifyListeners();
   }
 
