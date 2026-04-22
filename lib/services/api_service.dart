@@ -1,8 +1,10 @@
+import 'dart:async';
 import 'dart:io';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import '../config/api_config.dart';
 import '../theme/app_theme.dart';
+import '../widgets/premium_upsell_sheet.dart';
 import 'app_error.dart';
 import 'auth_service.dart';
 
@@ -48,6 +50,21 @@ class ApiService {
         handler.next(options);
       },
       onError: (error, handler) async {
+        // Soft paywall: the backend returns 403 with error_code =
+        // "premium_expired" when a tenant's trial lapses and they
+        // haven't upgraded to PRO_ACTIVE. Surface the upsell sheet
+        // instead of letting the error bubble up as a generic alert;
+        // basic endpoints (auth, sales, inventory) remain open so the
+        // cashier can keep working while the owner considers the
+        // upgrade. See migration 022 + middleware.PremiumAuth in Go.
+        if (error.response?.statusCode == 403 &&
+            _extractErrorCode(error) == 'premium_expired') {
+          final reason = _extractErrorMessage(error);
+          unawaited(PremiumUpsellController.notifyBlocked(reason: reason));
+          handler.next(error);
+          return;
+        }
+
         if (error.response?.statusCode == 401 &&
             !error.requestOptions.path.contains('/auth/refresh') &&
             !error.requestOptions.path.contains('/login')) {
@@ -1632,5 +1649,28 @@ class ApiService {
     } on DioException {
       return false;
     }
+  }
+
+  // ── Error envelope helpers ───────────────────────────────────────────────
+  //
+  // The Go backend returns `{ "error": "...", "error_code": "..." }` for
+  // soft-paywall and token-expiry responses. These helpers narrow the
+  // dynamic Dio response body safely — wrapping in try/catch so a
+  // malformed payload never takes down the interceptor chain.
+
+  String? _extractErrorCode(DioException error) {
+    final data = error.response?.data;
+    if (data is Map && data['error_code'] is String) {
+      return data['error_code'] as String;
+    }
+    return null;
+  }
+
+  String? _extractErrorMessage(DioException error) {
+    final data = error.response?.data;
+    if (data is Map && data['error'] is String) {
+      return data['error'] as String;
+    }
+    return null;
   }
 }

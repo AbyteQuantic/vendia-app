@@ -13,6 +13,7 @@ import 'services/auth_service.dart';
 import 'services/role_manager.dart';
 import 'theme/app_theme.dart';
 import 'screens/splash/animated_splash_screen.dart';
+import 'widgets/premium_upsell_sheet.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -101,6 +102,7 @@ class _VendIAAppState extends State<VendIAApp> {
       child: MaterialApp(
         title: 'VendIA',
         debugShowCheckedModeBanner: false,
+        navigatorKey: PremiumUpsellController.navigatorKey,
         scaffoldMessengerKey: ApiService.scaffoldKey,
         theme: AppTheme.light,
         // Force light mode — dark mode not yet supported for Gerontodiseño
