@@ -2,10 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:share_plus/share_plus.dart';
 
+import '../../database/collections/local_product.dart';
+import '../../database/database_service.dart';
 import '../../services/api_service.dart';
 import '../../services/app_error.dart';
 import '../../services/auth_service.dart';
 import '../../theme/app_theme.dart';
+import '../promotions/promo_builder_screen.dart';
 
 /// Marketing Hub — lista de promociones reales del tenant + link
 /// público del catálogo y acciones de compartir (WhatsApp / share
@@ -26,7 +29,23 @@ class PromoManagementScreen extends StatefulWidget {
   /// a partir del [AuthService] por defecto.
   final ApiService? apiService;
 
-  const PromoManagementScreen({super.key, this.apiService});
+  /// Loader opcional de productos próximos a vencer. En tests se
+  /// inyecta para no depender del endpoint real. Devuelve la lista de
+  /// filas tal como las entrega `ApiService.fetchExpiringProducts`
+  /// (shape: `[{id|uuid, ...}]`).
+  final Future<List<Map<String, dynamic>>> Function()? expiringLoader;
+
+  /// Loader opcional de productos "seed" para precargar el
+  /// `PromoBuilderScreen`. En tests se inyecta para no tocar Isar.
+  final Future<List<LocalProduct>> Function(List<Map<String, dynamic>> rows)?
+      seedProductsLoader;
+
+  const PromoManagementScreen({
+    super.key,
+    this.apiService,
+    this.expiringLoader,
+    this.seedProductsLoader,
+  });
 
   @override
   State<PromoManagementScreen> createState() => _PromoManagementScreenState();
@@ -117,6 +136,14 @@ class _PromoManagementScreenState extends State<PromoManagementScreen> {
   String? _publicUrl;
   String? _slugError;
 
+  /// Filas crudas de productos próximos a vencer (como las entrega el
+  /// backend). Mantenemos el JSON completo para poder construir
+  /// `seedProducts` para el PromoBuilder sin tener que re-consultar.
+  /// - `null`  → aún cargando
+  /// - `[]`    → carga OK, inventario sano
+  /// - `[...]` → hay productos por vencer
+  List<Map<String, dynamic>>? _expiring;
+
   @override
   void initState() {
     super.initState();
@@ -125,7 +152,22 @@ class _PromoManagementScreenState extends State<PromoManagementScreen> {
   }
 
   Future<void> _loadAll() async {
-    await Future.wait([_loadSlug(), _loadPromos()]);
+    await Future.wait([_loadSlug(), _loadPromos(), _loadExpiring()]);
+  }
+
+  Future<void> _loadExpiring() async {
+    try {
+      final loader = widget.expiringLoader ?? _api.fetchExpiringProducts;
+      final list = await loader();
+      if (!mounted) return;
+      setState(() => _expiring = list);
+    } catch (_) {
+      // Una tarjeta de sugerencia no debe romper la pantalla: si falla
+      // la consulta, simplemente tratamos el inventario como "sano"
+      // (no mostramos la alerta naranja).
+      if (!mounted) return;
+      setState(() => _expiring = const []);
+    }
   }
 
   Future<void> _loadSlug() async {
@@ -234,6 +276,55 @@ class _PromoManagementScreenState extends State<PromoManagementScreen> {
     }
   }
 
+  // ── PromoBuilder navigation ─────────────────────────────────────────────────
+
+  /// Abre el PromoBuilder sin productos precargados (CTA principal).
+  Future<void> _openPromoBuilder() async {
+    HapticFeedback.lightImpact();
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => const PromoBuilderScreen(),
+      ),
+    );
+    // Al volver del builder, recargamos para reflejar la promoción
+    // recién creada sin que el usuario tenga que hacer pull-to-refresh.
+    if (mounted) _loadPromos();
+  }
+
+  /// Abre el PromoBuilder precargado con los productos por vencer
+  /// (botón "Ver sugerencias" de la tarjeta FEFO).
+  Future<void> _openPromoBuilderFromExpiring() async {
+    HapticFeedback.lightImpact();
+    final rows = _expiring ?? const [];
+    final loader = widget.seedProductsLoader ?? _defaultSeedLoader;
+    final seeds = await loader(rows);
+    if (!mounted) return;
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => PromoBuilderScreen(seedProducts: seeds),
+      ),
+    );
+    if (mounted) _loadPromos();
+  }
+
+  /// Implementación real del seed loader: cruza los UUIDs recibidos del
+  /// backend contra los productos locales de Isar. Mismo patrón que
+  /// usa `ExpiringProductsScreen._buildPromoFromList`.
+  static Future<List<LocalProduct>> _defaultSeedLoader(
+    List<Map<String, dynamic>> rows,
+  ) async {
+    final db = DatabaseService.instance;
+    final all = await db.getAllProducts();
+    final byUuid = {for (final p in all) p.uuid: p};
+    final seeds = <LocalProduct>[];
+    for (final row in rows) {
+      final id = row['id'] as String? ?? row['uuid'] as String? ?? '';
+      final match = byUuid[id];
+      if (match != null) seeds.add(match);
+    }
+    return seeds;
+  }
+
   // ── Build ───────────────────────────────────────────────────────────────────
 
   @override
@@ -250,22 +341,61 @@ class _PromoManagementScreenState extends State<PromoManagementScreen> {
                 onRefresh: _loadAll,
                 child: SingleChildScrollView(
                   physics: const AlwaysScrollableScrollPhysics(),
-                  padding: const EdgeInsets.all(24),
+                  // Padding inferior generoso: el FAB extendido se
+                  // superpone al scroll; queremos que la última card
+                  // siga siendo visible por encima del botón.
+                  padding: const EdgeInsets.fromLTRB(24, 24, 24, 120),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       _buildCatalogCard(),
                       const SizedBox(height: 20),
                       _buildVisibilityCard(),
+                      const SizedBox(height: 16),
+                      _buildSuggestionCard(),
                       const SizedBox(height: 24),
                       _buildPromosSection(),
-                      const SizedBox(height: 80),
                     ],
                   ),
                 ),
               ),
             ),
           ],
+        ),
+      ),
+      floatingActionButton: _buildCreatePromoFab(),
+      floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
+    );
+  }
+
+  /// CTA principal — botón gigante, brillante, pinneado abajo.
+  /// Se mantiene siempre visible (no desaparece con el scroll) para
+  /// que el usuario no-técnico sepa cuál es "el botón" de esta vista.
+  Widget _buildCreatePromoFab() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: SizedBox(
+        width: double.infinity,
+        height: 64,
+        child: FloatingActionButton.extended(
+          key: const Key('btn_create_promo'),
+          heroTag: 'btn_create_promo',
+          onPressed: _openPromoBuilder,
+          backgroundColor: AppTheme.primary,
+          foregroundColor: Colors.white,
+          elevation: 6,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+          ),
+          icon: const Icon(Icons.auto_awesome_rounded, size: 24),
+          label: const Text(
+            '✨ Crear Nueva Promoción',
+            style: TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.w700,
+              letterSpacing: 0.2,
+            ),
+          ),
         ),
       ),
     );
@@ -438,22 +568,29 @@ class _PromoManagementScreenState extends State<PromoManagementScreen> {
                 ),
               ),
               const SizedBox(width: 12),
+              // Share — CTA secundario más pesado visualmente
+              // (gerontodiseño): usa el color primario de la app,
+              // icono grande y elevación para que quede obvio que es
+              // el botón que manda el catálogo al cliente por
+              // WhatsApp/etc.
               Expanded(
+                flex: 2,
                 child: ElevatedButton.icon(
                   key: const Key('btn_share_catalog'),
                   onPressed: _publicUrl == null ? null : _shareCatalog,
-                  icon: const Icon(Icons.ios_share_rounded, size: 18),
+                  icon: const Icon(Icons.ios_share_rounded, size: 22),
                   label: const Text('Compartir'),
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF7C3AED),
+                    backgroundColor: AppTheme.primary,
                     foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    elevation: 3,
+                    padding: const EdgeInsets.symmetric(vertical: 18),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(14),
                     ),
                     textStyle: const TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w700,
+                      fontSize: 18,
+                      fontWeight: FontWeight.w800,
                     ),
                   ),
                 ),
@@ -506,6 +643,47 @@ class _PromoManagementScreenState extends State<PromoManagementScreen> {
           ),
         ],
       ),
+    );
+  }
+
+  /// Tarjeta de sugerencia contextual. Tres estados:
+  ///
+  ///   * Cargando / expiring desconocido  → no se muestra (evita flicker).
+  ///   * Hay N productos por vencer       → alerta naranja (condición A).
+  ///   * Inventario sano y cero promos    → tip de IA (condición B).
+  ///   * Inventario sano con promos       → no se muestra (no cansar al usuario).
+  Widget _buildSuggestionCard() {
+    final expiring = _expiring;
+    if (expiring == null) return const SizedBox.shrink();
+
+    if (expiring.isNotEmpty) {
+      return _SmartSuggestionCard(
+        key: const Key('suggestion_expiring'),
+        tone: _SuggestionTone.warning,
+        icon: Icons.warning_amber_rounded,
+        title: 'Productos a punto de vencer',
+        body:
+            'Tienes ${expiring.length} ${expiring.length == 1 ? "producto" : "productos"} a punto de vencer. '
+            '¡Crea un combo rápido con ${expiring.length == 1 ? "él" : "ellos"} para no perder dinero!',
+        actionLabel: 'Ver sugerencias',
+        onAction: _openPromoBuilderFromExpiring,
+      );
+    }
+
+    // Inventario sano. Solo recomendamos crear una promo si aún no hay
+    // ninguna — si ya las hay, el CTA inferior es suficiente.
+    final hasPromos = _promos != null && _promos!.isNotEmpty;
+    if (hasPromos) return const SizedBox.shrink();
+
+    return _SmartSuggestionCard(
+      key: const Key('suggestion_idea'),
+      tone: _SuggestionTone.idea,
+      icon: Icons.lightbulb_outline_rounded,
+      title: 'Sugerencia de IA',
+      body:
+          'Revisa qué productos se venden menos y arma una promoción para moverlos rápido.',
+      actionLabel: 'Crear promoción',
+      onAction: _openPromoBuilder,
     );
   }
 
@@ -827,6 +1005,9 @@ class _EditSlugSheetState extends State<_EditSlugSheet> {
 // EMPTY / ERROR STATES
 // ═══════════════════════════════════════════════════════════════════════════════
 
+/// Empty state educativo. Reemplaza el ícono vacío por una mini-guía
+/// que explica QUÉ es una promoción en términos del tendero (combo
+/// Pan+Leche) y deja a la vista el CTA inferior como siguiente paso.
 class _EmptyPromosCard extends StatelessWidget {
   const _EmptyPromosCard();
 
@@ -837,29 +1018,93 @@ class _EmptyPromosCard extends StatelessWidget {
       width: double.infinity,
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
-        color: Colors.white,
+        gradient: LinearGradient(
+          colors: [
+            AppTheme.primary.withValues(alpha: 0.06),
+            AppTheme.primary.withValues(alpha: 0.015),
+          ],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: Colors.grey.shade200),
+        border: Border.all(color: AppTheme.primary.withValues(alpha: 0.2)),
       ),
       child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Icon(Icons.local_offer_rounded,
-              size: 48, color: AppTheme.textSecondary),
-          const SizedBox(height: 12),
+          Row(
+            children: [
+              Container(
+                width: 44,
+                height: 44,
+                decoration: BoxDecoration(
+                  color: AppTheme.primary.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: const Icon(Icons.auto_awesome_rounded,
+                    color: AppTheme.primary, size: 24),
+              ),
+              const SizedBox(width: 12),
+              const Expanded(
+                child: Text(
+                  '¿Qué es una promoción?',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                    color: AppTheme.textPrimary,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
           const Text(
-            'Aún no tienes promociones',
+            'Atrae más clientes a tu catálogo agrupando productos.',
             style: TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.w600,
+              fontSize: 16,
+              height: 1.35,
               color: AppTheme.textPrimary,
             ),
           ),
-          const SizedBox(height: 6),
+          const SizedBox(height: 10),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: Colors.grey.shade200),
+            ),
+            child: const Row(
+              children: [
+                Text('🍞', style: TextStyle(fontSize: 22)),
+                SizedBox(width: 6),
+                Text('+', style: TextStyle(fontSize: 18, color: AppTheme.textSecondary)),
+                SizedBox(width: 6),
+                Text('🥛', style: TextStyle(fontSize: 22)),
+                SizedBox(width: 10),
+                Text('=', style: TextStyle(fontSize: 18, color: AppTheme.textSecondary)),
+                SizedBox(width: 10),
+                Flexible(
+                  child: Text(
+                    'Combo Desayuno',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w700,
+                      color: AppTheme.textPrimary,
+                    ),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 12),
           Text(
-            'Crea tu primer combo para verlo aquí.',
+            'Usa el botón "Crear Nueva Promoción" de abajo para armar tu primer combo.',
             style: TextStyle(
               fontSize: 14,
-              color: Colors.grey.shade600,
+              height: 1.35,
+              color: Colors.grey.shade700,
             ),
           ),
         ],
@@ -900,6 +1145,114 @@ class _ErrorStateCard extends StatelessWidget {
             onPressed: onRetry,
             icon: const Icon(Icons.refresh_rounded),
             label: const Text('Reintentar'),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+enum _SuggestionTone { warning, idea }
+
+/// Tarjeta reutilizable para las sugerencias contextuales (FEFO o
+/// idea de IA). No hace networking — solo presentación + callback.
+class _SmartSuggestionCard extends StatelessWidget {
+  final _SuggestionTone tone;
+  final IconData icon;
+  final String title;
+  final String body;
+  final String actionLabel;
+  final VoidCallback onAction;
+
+  const _SmartSuggestionCard({
+    super.key,
+    required this.tone,
+    required this.icon,
+    required this.title,
+    required this.body,
+    required this.actionLabel,
+    required this.onAction,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    // Paleta derivada del tono — warning usa el naranja del theme,
+    // idea usa un dorado suave para diferenciarlo sin chocar con el
+    // rojo de "error" ni el verde de "success".
+    final accent = tone == _SuggestionTone.warning
+        ? AppTheme.warning
+        : const Color(0xFFB8860B);
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: accent.withValues(alpha: 0.06),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: accent.withValues(alpha: 0.45), width: 1.5),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
+                  color: accent.withValues(alpha: 0.15),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Icon(icon, color: accent, size: 24),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: const TextStyle(
+                        fontSize: 17,
+                        fontWeight: FontWeight.w700,
+                        color: AppTheme.textPrimary,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      body,
+                      style: const TextStyle(
+                        fontSize: 15,
+                        height: 1.35,
+                        color: AppTheme.textPrimary,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Align(
+            alignment: Alignment.centerRight,
+            child: TextButton.icon(
+              key: Key(
+                tone == _SuggestionTone.warning
+                    ? 'btn_suggestion_expiring'
+                    : 'btn_suggestion_idea',
+              ),
+              onPressed: onAction,
+              icon: const Icon(Icons.arrow_forward_rounded, size: 18),
+              label: Text(actionLabel),
+              style: TextButton.styleFrom(
+                foregroundColor: accent,
+                textStyle: const TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
           ),
         ],
       ),
