@@ -18,6 +18,17 @@ class ApiService {
   static final GlobalKey<ScaffoldMessengerState> scaffoldKey =
       GlobalKey<ScaffoldMessengerState>();
 
+  /// Active sede id (Phase-6 branch isolation). Updated by
+  /// [BranchProvider.selectBranch] so every operational read / write
+  /// can attach `?branch_id=` (GETs) or `branch_id` in the body
+  /// (createSale) without each widget wiring through Provider.
+  ///
+  /// Null means "mono-sede tenant / context not loaded yet" — the
+  /// backend returns the legacy tenant-wide response in that case
+  /// so nothing regresses. Tests set this directly to simulate the
+  /// branch selector.
+  static String? currentBranchId;
+
   ApiService(this._auth) {
     _dio = Dio(BaseOptions(
       baseUrl: ApiConfig.baseUrl,
@@ -304,10 +315,14 @@ class ApiService {
   Future<Map<String, dynamic>> fetchProducts({
     int page = 1,
     int perPage = 20,
+    String? branchId,
   }) async {
     try {
+      final params = <String, dynamic>{'page': page, 'per_page': perPage};
+      final bid = branchId ?? currentBranchId;
+      if (bid != null && bid.isNotEmpty) params['branch_id'] = bid;
       final response = await _dio.get('/api/v1/products',
-          queryParameters: {'page': page, 'per_page': perPage});
+          queryParameters: params);
       return response.data as Map<String, dynamic>;
     } on DioException catch (e) {
       throw AppError.fromDioException(e);
@@ -526,7 +541,18 @@ class ApiService {
 
   Future<Map<String, dynamic>> createSale(Map<String, dynamic> data) async {
     try {
-      final response = await _dio.post('/api/v1/sales', data: data);
+      // Phase-6 isolation: the backend scopes stock decrement to
+      // the sede in the payload. We inject currentBranchId only
+      // when the caller didn't already set it, so explicit payloads
+      // (e.g. the register "Sede Principal" bootstrap) keep priority.
+      final payload = Map<String, dynamic>.from(data);
+      final bid = currentBranchId;
+      if (bid != null &&
+          bid.isNotEmpty &&
+          (payload['branch_id'] == null || payload['branch_id'] == '')) {
+        payload['branch_id'] = bid;
+      }
+      final response = await _dio.post('/api/v1/sales', data: payload);
       return _extractData(response);
     } on DioException catch (e) {
       throw AppError.fromDioException(e);
@@ -536,10 +562,14 @@ class ApiService {
   Future<Map<String, dynamic>> fetchSales({
     int page = 1,
     int perPage = 20,
+    String? branchId,
   }) async {
     try {
+      final params = <String, dynamic>{'page': page, 'per_page': perPage};
+      final bid = branchId ?? currentBranchId;
+      if (bid != null && bid.isNotEmpty) params['branch_id'] = bid;
       final response = await _dio.get('/api/v1/sales',
-          queryParameters: {'page': page, 'per_page': perPage});
+          queryParameters: params);
       return response.data as Map<String, dynamic>;
     } on DioException catch (e) {
       throw AppError.fromDioException(e);
@@ -648,13 +678,16 @@ class ApiService {
     String? status,
     int page = 1,
     int perPage = 20,
+    String? branchId,
   }) async {
     try {
+      final bid = branchId ?? currentBranchId;
       final params = <String, dynamic>{
         'page': page,
         'per_page': perPage,
       };
       if (status != null) params['status'] = status;
+      if (bid != null && bid.isNotEmpty) params['branch_id'] = bid;
       final response =
           await _dio.get('/api/v1/credits', queryParameters: params);
       return response.data as Map<String, dynamic>;

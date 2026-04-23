@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 import '../models/branch.dart';
+import 'api_service.dart';
 
 /// ChangeNotifier that holds the **currently active branch** for the
 /// authenticated session. All reads (Inventory, Sales, KDS, Employees)
@@ -63,6 +64,7 @@ class BranchProvider extends ChangeNotifier {
         orElse: () => branches.isNotEmpty ? branches.first : _currentBranch!,
       );
     }
+    _syncApiBranch();
     notifyListeners();
   }
 
@@ -71,7 +73,16 @@ class BranchProvider extends ChangeNotifier {
   void selectBranch(Branch branch) {
     if (_currentBranch?.id == branch.id) return;
     _currentBranch = branch;
+    _syncApiBranch();
     notifyListeners();
+  }
+
+  /// Mirror the current selection onto ApiService.currentBranchId so
+  /// every subsequent fetchProducts / createSale / fetchCredits
+  /// attaches the sede scope without threading Provider through every
+  /// call site.
+  void _syncApiBranch() {
+    ApiService.currentBranchId = _currentBranch?.id;
   }
 
   /// Select a branch by its UUID (safe for deep links / push notifications).
@@ -111,6 +122,7 @@ class BranchProvider extends ChangeNotifier {
         (b) => b.isDefault,
         orElse: () => _branches.isNotEmpty ? _branches.first : _currentBranch!,
       );
+      _syncApiBranch();
     }
     notifyListeners();
   }
@@ -121,6 +133,7 @@ class BranchProvider extends ChangeNotifier {
     _currentBranch = null;
     _error = null;
     _loading = false;
+    _syncApiBranch();
     notifyListeners();
   }
 }

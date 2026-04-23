@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../services/api_service.dart';
 import '../../services/auth_service.dart';
+import '../../services/branch_provider.dart';
 import '../../services/panic_trigger_service.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/panic_button.dart';
@@ -12,6 +14,7 @@ import '../fiar/fiar_screen.dart';
 import '../inventory/add_merchandise_screen.dart';
 import '../inventory/expiring_products_screen.dart';
 import '../tables/tables_screen.dart';
+import 'branches_list_screen.dart';
 
 class MainDashboardScreen extends StatefulWidget {
   const MainDashboardScreen({super.key});
@@ -201,6 +204,13 @@ class _MainDashboardScreenState extends State<MainDashboardScreen> {
                         style: TextStyle(
                             fontSize: 18, color: AppTheme.textSecondary),
                       ),
+                      // Phase-6 branch indicator. The chip reads from
+                      // BranchProvider which is kept in sync with
+                      // ApiService.currentBranchId, so whatever the
+                      // user sees here is exactly the scope the next
+                      // inventory/sales/fiado call will use.
+                      const SizedBox(height: 10),
+                      const _CurrentBranchChip(),
                       if (_expiringCount > 0) ...[
                         const SizedBox(height: 16),
                         _ExpiringAlertCard(
@@ -451,6 +461,91 @@ class _ExpiringAlertCard extends StatelessWidget {
               ),
               const Icon(Icons.chevron_right_rounded,
                   color: Colors.white, size: 28),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Chip showing the currently-active sede right under the dashboard
+/// greeting. The widget's job is visibility + navigation: tap sends
+/// the user to BranchesListScreen where multi-sede tenants can pick
+/// another sede. Single-sede tenants see the chip too but the tap
+/// lands on the same list (which is perfectly usable for them).
+///
+/// The chip reads from BranchProvider — the same source of truth
+/// ApiService.currentBranchId mirrors — so whatever label the user
+/// sees here is exactly the scope the next /products / /sales /
+/// /credits call will carry.
+class _CurrentBranchChip extends StatelessWidget {
+  const _CurrentBranchChip();
+
+  @override
+  Widget build(BuildContext context) {
+    // The Provider may not be installed in every test tree. Guard
+    // with a try so `MainDashboardScreen` still renders cleanly in
+    // the `main_dashboard_test.dart` smoke tests that don't inject
+    // a BranchProvider above it.
+    BranchProvider? provider;
+    try {
+      provider = context.watch<BranchProvider>();
+    } catch (_) {
+      return const SizedBox.shrink();
+    }
+
+    final current = provider.currentBranch;
+    if (current == null) {
+      // No sede loaded yet — the dashboard just mounted and the
+      // branches fetch is still in flight. Render nothing rather
+      // than a "Sin sede" label that would blink for a split second.
+      return const SizedBox.shrink();
+    }
+
+    return Semantics(
+      button: true,
+      label: 'Operando en ${current.name}. Toque para cambiar de sede.',
+      child: GestureDetector(
+        key: const Key('dashboard_branch_chip'),
+        onTap: () {
+          HapticFeedback.lightImpact();
+          Navigator.of(context).push(
+            MaterialPageRoute(
+              builder: (_) => const BranchesListScreen(),
+            ),
+          );
+        },
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+          decoration: BoxDecoration(
+            color: AppTheme.primary.withValues(alpha: 0.08),
+            borderRadius: BorderRadius.circular(999),
+            border: Border.all(
+              color: AppTheme.primary.withValues(alpha: 0.25),
+            ),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text('📍', style: TextStyle(fontSize: 16)),
+              const SizedBox(width: 8),
+              Flexible(
+                child: Text(
+                  'Operando en: ${current.name}',
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w600,
+                    color: AppTheme.primary,
+                  ),
+                ),
+              ),
+              if (provider.isMultiBranch) ...[
+                const SizedBox(width: 6),
+                const Icon(Icons.swap_horiz_rounded,
+                    size: 18, color: AppTheme.primary),
+              ],
             ],
           ),
         ),
