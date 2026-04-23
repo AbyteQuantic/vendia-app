@@ -1,19 +1,49 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../../models/branch.dart';
 import '../../models/employee.dart';
 
 class EmployeeListScreen extends StatelessWidget {
   final List<Employee> employees;
+
+  /// Sedes to group employees under. When non-empty (multi-branch
+  /// tenant, typical PRO plan), the body switches to an ExpansionTile
+  /// per sede. Empty list falls back to the legacy flat list — keeps
+  /// brand-new tenants with a single "Sede Principal" looking the
+  /// same as before the Phase-5 refactor.
+  final List<Branch> branches;
+
   final VoidCallback? onAddEmployee;
+
+  /// Fired when the user taps "Agregar empleado" inside a specific
+  /// sede group. Passing the branch id lets the caller pre-select
+  /// the sede on the form — one less tap in the happy path.
+  final ValueChanged<String>? onAddEmployeeToBranch;
+
   final ValueChanged<Employee>? onEmployeeTap;
 
   const EmployeeListScreen({
     super.key,
     required this.employees,
+    this.branches = const [],
     this.onAddEmployee,
+    this.onAddEmployeeToBranch,
     this.onEmployeeTap,
   });
+
+  /// Groups employees by branch id, returning a map keyed by branch
+  /// (null = unassigned). Exported as a public static so the widget
+  /// tests can assert on grouping without rendering the tree.
+  static Map<String?, List<Employee>> groupByBranch(
+    List<Employee> employees,
+  ) {
+    final map = <String?, List<Employee>>{};
+    for (final e in employees) {
+      map.putIfAbsent(e.branchId, () => []).add(e);
+    }
+    return map;
+  }
 
   // ─── Gradient constants ───
   static const _headerGradient = LinearGradient(
@@ -46,21 +76,166 @@ class EmployeeListScreen extends StatelessWidget {
       body: Column(
         children: [
           _buildHeader(context),
-          Expanded(
-            child: employees.isEmpty
-                ? _buildEmptyState(context)
-                : ListView.separated(
-                    padding: const EdgeInsets.fromLTRB(20, 16, 20, 100),
-                    itemCount: employees.length,
-                    separatorBuilder: (_, __) => const SizedBox(height: 12),
-                    itemBuilder: (context, index) =>
-                        _buildEmployeeCard(context, employees[index]),
-                  ),
-          ),
+          Expanded(child: _buildBody(context)),
         ],
       ),
       floatingActionButton: _buildFAB(context),
       floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
+    );
+  }
+
+  Widget _buildBody(BuildContext context) {
+    if (employees.isEmpty) return _buildEmptyState(context);
+
+    // Single-branch tenants (or callers that haven't loaded branches
+    // yet) get the legacy flat list — grouping adds a collapsed tile
+    // header that feels heavy for a solo sede.
+    if (branches.length <= 1) {
+      return ListView.separated(
+        padding: const EdgeInsets.fromLTRB(20, 16, 20, 100),
+        itemCount: employees.length,
+        separatorBuilder: (_, __) => const SizedBox(height: 12),
+        itemBuilder: (context, index) =>
+            _buildEmployeeCard(context, employees[index]),
+      );
+    }
+
+    // Multi-branch: ExpansionTile per sede.
+    final grouped = groupByBranch(employees);
+    final sections = <Widget>[];
+
+    for (final branch in branches) {
+      sections.add(_buildBranchSection(
+        context,
+        branch,
+        grouped[branch.id] ?? const [],
+      ));
+    }
+    // Empleados sin sucursal asignada (rows que predatan la
+    // migración 025). Dejarlos visibles para que el operador pueda
+    // reasignarlos manualmente en vez de esconderlos.
+    final orphans = grouped[null] ?? const [];
+    if (orphans.isNotEmpty) {
+      sections.add(_buildOrphanSection(context, orphans));
+    }
+
+    return ListView(
+      key: const Key('employees_grouped_list'),
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 100),
+      children: sections,
+    );
+  }
+
+  Widget _buildBranchSection(
+    BuildContext context,
+    Branch branch,
+    List<Employee> branchEmployees,
+  ) {
+    return Card(
+      key: Key('employees_branch_section_${branch.id}'),
+      margin: const EdgeInsets.only(bottom: 12),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: ExpansionTile(
+        initiallyExpanded: true,
+        shape: const Border(),
+        collapsedShape: const Border(),
+        leading: const Icon(Icons.store_mall_directory_rounded,
+            color: Color(0xFF764BA2), size: 26),
+        title: Text(
+          branch.name,
+          style: const TextStyle(
+            fontFamily: 'Inter',
+            fontSize: 18,
+            fontWeight: FontWeight.w700,
+            color: Color(0xFF1A1A1A),
+          ),
+        ),
+        subtitle: Text(
+          branchEmployees.length == 1
+              ? '1 empleado'
+              : '${branchEmployees.length} empleados',
+          style: TextStyle(
+            fontFamily: 'Inter',
+            fontSize: 14,
+            color: Colors.grey.shade600,
+          ),
+        ),
+        children: [
+          for (final e in branchEmployees)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+              child: _buildEmployeeCard(context, e),
+            ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
+            child: OutlinedButton.icon(
+              key: Key('add_employee_to_${branch.id}'),
+              onPressed: () {
+                HapticFeedback.lightImpact();
+                (onAddEmployeeToBranch ?? (_) {})(branch.id);
+              },
+              icon: const Icon(Icons.person_add_alt_1_rounded),
+              label: Text(
+                branchEmployees.isEmpty
+                    ? 'Agregar empleado a esta sede'
+                    : 'Agregar otro empleado',
+                style: const TextStyle(fontSize: 15),
+              ),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: const Color(0xFF764BA2),
+                side: const BorderSide(color: Color(0xFF764BA2)),
+                minimumSize: const Size.fromHeight(48),
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16)),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildOrphanSection(
+    BuildContext context,
+    List<Employee> orphans,
+  ) {
+    return Card(
+      key: const Key('employees_orphan_section'),
+      margin: const EdgeInsets.only(bottom: 12),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: ExpansionTile(
+        initiallyExpanded: false,
+        shape: const Border(),
+        collapsedShape: const Border(),
+        leading: const Icon(Icons.warning_amber_rounded,
+            color: Color(0xFFD97706), size: 26),
+        title: const Text(
+          'Sin sucursal asignada',
+          style: TextStyle(
+              fontFamily: 'Inter',
+              fontSize: 18,
+              fontWeight: FontWeight.w700,
+              color: Color(0xFF92400E)),
+        ),
+        subtitle: Text(
+          '${orphans.length} empleado${orphans.length == 1 ? '' : 's'} por reasignar',
+          style: TextStyle(
+              fontFamily: 'Inter',
+              fontSize: 14,
+              color: Colors.grey.shade600),
+        ),
+        children: [
+          for (final e in orphans)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+              child: _buildEmployeeCard(context, e),
+            ),
+        ],
+      ),
     );
   }
 

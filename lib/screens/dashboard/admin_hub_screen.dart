@@ -5,6 +5,7 @@ import '../../services/auth_service.dart';
 import '../../theme/app_theme.dart';
 import '../auth/login_screen.dart';
 import 'business_profile_screen.dart';
+import 'branches_list_screen.dart';
 import 'payment_methods_screen.dart';
 import 'payment_quick_setup_screen.dart';
 import 'printer_config_screen.dart';
@@ -186,7 +187,24 @@ class _AdminHubScreenState extends State<AdminHubScreen> {
         child: ListView(
           padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
           children: [
+            // ── Sucursales y Ubicaciones ─────────────────────────────
+            const _SectionHeader(
+                title: 'Sucursales y Ubicaciones',
+                icon: Icons.store_mall_directory_rounded),
+            const SizedBox(height: 8),
+            _SettingsTile(
+              icon: Icons.store_mall_directory_rounded,
+              iconColor: const Color(0xFF5A67D8),
+              title: 'Mis Sucursales',
+              subtitle: 'Gestionar sedes, agregar o editar ubicaciones',
+              onTap: () => Navigator.of(context).push(
+                MaterialPageRoute(
+                    builder: (_) => const BranchesListScreen()),
+              ),
+            ),
+
             // ── Perfil ──────────────────────────────────────────────
+            const SizedBox(height: 20),
             const _SectionHeader(title: 'Perfil', icon: Icons.storefront_rounded),
             const SizedBox(height: 8),
             _SettingsTile(

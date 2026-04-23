@@ -1,5 +1,6 @@
 /// Employee model for VendIA POS system.
 /// Supports 2 roles: admin (owner) and cashier (employee).
+/// [branchId] ties each employee to a specific Sucursal (branch).
 class Employee {
   final String uuid;
   final String name;
@@ -9,6 +10,11 @@ class Employee {
   final bool isOwner;
   final DateTime createdAt;
   final int? serverId;
+  /// UUID of the branch this employee belongs to. Required for new employees;
+  /// null only for legacy records created before multi-branch migration.
+  final String? branchId;
+  /// Display-only branch name, resolved by the API; not stored locally.
+  final String? branchName;
 
   Employee({
     required this.uuid,
@@ -19,6 +25,8 @@ class Employee {
     this.isOwner = false,
     DateTime? createdAt,
     this.serverId,
+    this.branchId,
+    this.branchName,
   }) : createdAt = createdAt ?? DateTime.now();
 
   /// Initials for avatar display (e.g., "PM" for "Pedro Martínez")
@@ -50,6 +58,8 @@ class Employee {
           ? DateTime.parse(json['created_at'] as String)
           : DateTime.now(),
       serverId: json['id'] as int?,
+      branchId: json['branch_id'] as String?,
+      branchName: json['branch_name'] as String?,
     );
   }
 
@@ -60,6 +70,7 @@ class Employee {
         'role': role == EmployeeRole.admin ? 'admin' : 'cashier',
         'is_active': isActive,
         'is_owner': isOwner,
+        if (branchId != null) 'branch_id': branchId,
       };
 
   Employee copyWith({
@@ -67,6 +78,8 @@ class Employee {
     String? pin,
     EmployeeRole? role,
     bool? isActive,
+    String? branchId,
+    String? branchName,
   }) {
     return Employee(
       uuid: uuid,
@@ -77,6 +90,8 @@ class Employee {
       isOwner: isOwner,
       createdAt: createdAt,
       serverId: serverId,
+      branchId: branchId ?? this.branchId,
+      branchName: branchName ?? this.branchName,
     );
   }
 }
