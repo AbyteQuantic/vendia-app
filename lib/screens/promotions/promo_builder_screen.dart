@@ -30,6 +30,25 @@ class PromoBuilderScreen extends StatefulWidget {
 
 enum _Validity { today, untilStockOut, customDate }
 
+/// Fuente de las imágenes de producto que el backend usará como
+/// referencia multimodal al generar el banner. Se mapea 1:1 a los
+/// strings que espera `POST /api/v1/marketing/generate-banner` en el
+/// campo `image_source_type`.
+enum _ImageSource {
+  /// Usa las fotos reales del catálogo del tenant como anclas
+  /// visuales (multimodal). Ideal cuando los productos tienen
+  /// empaques/marcas reconocibles que la IA no debería reinterpretar.
+  catalog('CATALOG_PHOTOS'),
+
+  /// Gemini genera las fotos desde cero como "foodie photography".
+  /// Ideal cuando el tendero aún no tiene fotos en el catálogo o
+  /// quiere un estilo publicitario más limpio.
+  aiGenerated('AI_GENERATED');
+
+  const _ImageSource(this.wire);
+  final String wire;
+}
+
 /// Tipo de promoción. Afecta el Paso 1 (cuántos productos se pueden
 /// elegir), el Paso 2 (editor financiero) y la serialización a la API
 /// (`promo_type`).
@@ -147,6 +166,12 @@ class _PromoBuilderScreenState extends State<PromoBuilderScreen> {
   String? _bannerUrl;
   bool _generatingBanner = false;
   String _tone = 'vibrante';
+
+  /// Fuente de imágenes que el backend enviará a Gemini. Default AI
+  /// porque la mayoría de tenderos aún no tienen fotos subidas; si
+  /// el catálogo tiene fotos, el selector queda pre-seleccionado
+  /// en AI igualmente y el tendero elige.
+  _ImageSource _imageSource = _ImageSource.aiGenerated;
 
   int _currentStep = 0; // 0..3
   bool _saving = false;
@@ -410,6 +435,19 @@ class _PromoBuilderScreenState extends State<PromoBuilderScreen> {
       final discountStr =
           discountPctRounded > 0 ? '$discountPctRounded% OFF' : '';
 
+      // Cuando el tendero eligió "usar mis fotos reales", mandamos
+      // las URLs de las fotos de los productos que ya están en el
+      // combo. El backend las descarga y se las pasa a Gemini como
+      // anclas multimodales (inlineData). Si no hay fotos disponibles
+      // el backend cae silenciosamente al modo AI_GENERATED.
+      List<String>? catalogImageUrls;
+      if (_imageSource == _ImageSource.catalog) {
+        catalogImageUrls = _lines
+            .map((l) => l.product.imageUrl ?? '')
+            .where((u) => u.startsWith('http://') || u.startsWith('https://'))
+            .toList(growable: false);
+      }
+
       final res = await api.generatePromoBanner(
         promoName: comboTitle,
         productNames: _lines.map((l) => l.product.name).toList(),
@@ -421,6 +459,8 @@ class _PromoBuilderScreenState extends State<PromoBuilderScreen> {
         promoPriceStr: promoPriceStr,
         discountStr: discountStr,
         savingsStr: savingsStr,
+        imageSourceType: _imageSource.wire,
+        catalogImageUrls: catalogImageUrls,
       );
       final url = res['banner_url'] as String?;
       if (url != null && mounted) {
@@ -1644,7 +1684,13 @@ class _PromoBuilderScreenState extends State<PromoBuilderScreen> {
         _toneCarousel(),
         const SizedBox(height: 14),
 
-        // 2. Main focus: el banner preview cuadrado.
+        // 2. Selector de fuente de imágenes. Decide si Gemini recibe
+        //    las fotos reales del catálogo como ancla multimodal, o
+        //    si genera las fotos desde cero en modo "foodie".
+        _imageSourceSelector(),
+        const SizedBox(height: 14),
+
+        // 3. Main focus: el banner preview cuadrado.
         _bannerPreview(),
         const SizedBox(height: 14),
 
@@ -1739,6 +1785,129 @@ class _PromoBuilderScreenState extends State<PromoBuilderScreen> {
       ),
       visualDensity: VisualDensity.compact,
       materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+    );
+  }
+
+  /// ¿Hay al menos un producto en el combo con foto subida al catálogo?
+  /// Si no, la opción "Mis fotos del catálogo" se deshabilita porque
+  /// no tendría nada que enviar como ancla a Gemini.
+  bool get _hasCatalogPhotos => _lines.any((l) {
+        final url = l.product.imageUrl?.trim() ?? '';
+        return url.startsWith('http://') || url.startsWith('https://');
+      });
+
+  Widget _imageSourceSelector() {
+    final catalogEnabled = _hasCatalogPhotos;
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: AppTheme.surfaceGrey,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppTheme.borderColor),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            '¿Qué imágenes usar en el banner?',
+            style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700),
+          ),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Expanded(
+                child: _sourceCard(
+                  emoji: '📸',
+                  title: 'Mis fotos',
+                  subtitle: catalogEnabled
+                      ? 'Usa las fotos reales\nde tu catálogo'
+                      : 'Sube fotos primero\nen Inventario',
+                  selected: _imageSource == _ImageSource.catalog &&
+                      catalogEnabled,
+                  enabled: catalogEnabled,
+                  onTap: () {
+                    HapticFeedback.selectionClick();
+                    setState(() => _imageSource = _ImageSource.catalog);
+                  },
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: _sourceCard(
+                  emoji: '🪄',
+                  title: 'Fotos con IA',
+                  subtitle: 'Fotos apetitosas\ngeneradas por IA',
+                  selected: _imageSource == _ImageSource.aiGenerated ||
+                      !catalogEnabled,
+                  enabled: true,
+                  onTap: () {
+                    HapticFeedback.selectionClick();
+                    setState(
+                        () => _imageSource = _ImageSource.aiGenerated);
+                  },
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _sourceCard({
+    required String emoji,
+    required String title,
+    required String subtitle,
+    required bool selected,
+    required bool enabled,
+    required VoidCallback onTap,
+  }) {
+    return Opacity(
+      opacity: enabled ? 1 : 0.45,
+      child: InkWell(
+        onTap: enabled ? onTap : null,
+        borderRadius: BorderRadius.circular(14),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 150),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          decoration: BoxDecoration(
+            color: selected
+                ? AppTheme.primary.withValues(alpha: 0.10)
+                : Colors.white,
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(
+              color: selected ? AppTheme.primary : AppTheme.borderColor,
+              width: selected ? 2 : 1,
+            ),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(emoji, style: const TextStyle(fontSize: 22)),
+              const SizedBox(height: 4),
+              Text(
+                title,
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w700,
+                  color:
+                      selected ? AppTheme.primary : AppTheme.textPrimary,
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                subtitle,
+                style: const TextStyle(
+                  fontSize: 12,
+                  color: AppTheme.textSecondary,
+                  height: 1.25,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 

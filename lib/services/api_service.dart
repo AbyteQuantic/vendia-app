@@ -936,6 +936,11 @@ class ApiService {
     String? promoPriceStr,
     String? discountStr,
     String? savingsStr,
+    // V3 — image sourcing. "CATALOG_PHOTOS" pasa las fotos reales del
+    // tenant a Gemini como anclas visuales; "AI_GENERATED" las manda
+    // a generar desde cero. Null/vacío → backend decide default.
+    String? imageSourceType,
+    List<String>? catalogImageUrls,
   }) async {
     try {
       final data = <String, dynamic>{
@@ -955,6 +960,17 @@ class ApiService {
       addIfPresent('promo_price_str', promoPriceStr);
       addIfPresent('discount_str', discountStr);
       addIfPresent('savings_str', savingsStr);
+      addIfPresent('image_source_type', imageSourceType);
+      if (catalogImageUrls != null && catalogImageUrls.isNotEmpty) {
+        // Filtramos vacíos/null antes de enviar: el backend sólo usará
+        // las URLs que pueda descargar, pero evitamos pasarle basura.
+        final clean = catalogImageUrls
+            .where((u) => u.trim().isNotEmpty)
+            .toList(growable: false);
+        if (clean.isNotEmpty) {
+          data['catalog_image_urls'] = clean;
+        }
+      }
 
       final response = await _dio.post(
         '/api/v1/marketing/generate-banner',
