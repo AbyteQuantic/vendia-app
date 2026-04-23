@@ -119,6 +119,10 @@ class _PromoBuilderScreenState extends State<PromoBuilderScreen> {
   final _nameCtrl = TextEditingController();
   final _searchCtrl = TextEditingController();
   final _customDiscountCtrl = TextEditingController();
+  /// Controller del input "¿En cuánto va a vender este combo?".
+  /// Es el ÚNICO lugar donde el usuario escribe precio en modo combo:
+  /// los precios por ítem se recalculan automáticamente en el payload.
+  final _comboTotalCtrl = TextEditingController();
   Timer? _searchDebounce;
 
   List<LocalProduct> _allProducts = [];
@@ -160,8 +164,50 @@ class _PromoBuilderScreenState extends State<PromoBuilderScreen> {
     _nameCtrl.dispose();
     _searchCtrl.dispose();
     _customDiscountCtrl.dispose();
+    _comboTotalCtrl.dispose();
     super.dispose();
   }
+
+  /// Parsea el input del combo total ignorando puntos/comas/espacios
+  /// — el tendero puede escribir "8.000", "8,000" o "8000".
+  int? get _comboTotalValue {
+    final raw = _comboTotalCtrl.text.replaceAll(RegExp(r'[^0-9]'), '');
+    if (raw.isEmpty) return null;
+    return int.tryParse(raw);
+  }
+
+  /// Sugiere un precio combo inicial — 15 % de descuento sobre el total
+  /// regular, redondeado a los $50 más cercanos (look-and-feel
+  /// colombiano). Se usa para pre-poblar el campo al entrar al Paso 2.
+  int get _suggestedComboTotal {
+    if (_totalRegularBase <= 0) return 0;
+    final v = ((_totalRegularBase * 0.85) / 50).ceil() * 50;
+    return v.toInt();
+  }
+
+  /// Avanza al siguiente paso del wizard. Antes de entrar al Paso 2
+  /// (combo), pre-poblamos el input "¿En cuánto va a vender este
+  /// combo?" con el precio sugerido si el usuario aún no ha escrito
+  /// nada. De este modo la tarjeta financiera muestra un número
+  /// razonable de entrada en lugar de ceros.
+  void _goNextStep() {
+    if (_currentStep == 0 &&
+        _promoType == _PromoType.combo &&
+        _comboTotalCtrl.text.trim().isEmpty &&
+        _suggestedComboTotal > 0) {
+      _comboTotalCtrl.text = _suggestedComboTotal.toString();
+    }
+    setState(() => _currentStep++);
+  }
+
+  /// Suma price*qty de cada línea (la del combo "sin descuento") —
+  /// base para calcular el total normal y distribuir el descuento.
+  /// Nota: no usamos _totalRegular porque ese ya cubre también el
+  /// escenario BxPy; aquí sólo nos interesa el combo clásico.
+  double get _totalRegularBase => _lines.fold(
+        0.0,
+        (sum, l) => sum + (l.product.price * l.quantity),
+      );
 
   Future<void> _loadProducts() async {
     final all = await DatabaseService.instance.getAllProducts();
@@ -292,13 +338,18 @@ class _PromoBuilderScreenState extends State<PromoBuilderScreen> {
     );
   }
 
+  /// Precio final que paga el cliente.
+  ///   * BxPy: price * payQty (siempre derivado de los steppers).
+  ///   * Combo: valor del input "¿En cuánto va a vender este combo?".
+  ///     Si el usuario aún no ha escrito nada, cae al precio sugerido
+  ///     (85 % del total regular). Las líneas individuales ya no
+  ///     exponen precio — se distribuye proporcionalmente al guardar.
   double get _totalPromo {
     final bxp = _buyPayFinancials;
     if (bxp != null) return bxp.totalPromo;
-    return _lines.fold(
-      0.0,
-      (sum, l) => sum + (l.promoPriceEach * l.quantity).toDouble(),
-    );
+    final typed = _comboTotalValue;
+    if (typed != null) return typed.toDouble();
+    return _suggestedComboTotal.toDouble();
   }
 
   double get _discountAmount => _totalRegular - _totalPromo;
@@ -416,13 +467,37 @@ class _PromoBuilderScreenState extends State<PromoBuilderScreen> {
             ? userDesc
             : 'Lleva $_buyQty, paga $_payQty';
       } else {
-        items = _lines
-            .map((l) => {
-                  'product_id': l.product.uuid,
-                  'quantity': l.quantity,
-                  'promo_price': l.promoPriceEach,
+        // Combo "Tendero-Speak": el usuario sólo escribió el
+        // TOTAL del combo en _comboTotalCtrl. Distribuimos ese total
+        // proporcionalmente al peso (price * quantity) de cada línea.
+        // Así el backend sigue recibiendo promo_price por ítem y no
+        // hay que tocar schemas; el último ítem absorbe el redondeo
+        // para que la suma cuadre exacto con lo que escribió el
+        // usuario.
+        final totalCombo = _comboTotalValue ?? _suggestedComboTotal;
+        final distributed = distributeComboTotal(
+          lines: _lines
+              .map((l) => ComboLineInput(
+                    productId: l.product.uuid,
+                    unitPrice: l.product.price,
+                    quantity: l.quantity,
+                  ))
+              .toList(),
+          totalComboPrice: totalCombo,
+        );
+        items = distributed
+            .map((d) => {
+                  'product_id': d.productId,
+                  'quantity': d.quantity,
+                  'promo_price': d.promoPriceEach,
                 })
             .toList();
+        // Sincronizamos también las líneas en memoria para que la
+        // Step 2 refleje el precio real que se va a guardar (por si el
+        // usuario vuelve a editar sin salir de la pantalla).
+        for (var i = 0; i < _lines.length; i++) {
+          _lines[i].promoPriceEach = distributed[i].promoPriceEach;
+        }
         promoType = 'combo';
         description = _customDiscountCtrl.text.trim();
       }
@@ -783,14 +858,107 @@ class _PromoBuilderScreenState extends State<PromoBuilderScreen> {
         Text(
           isBuyPay
               ? 'Define cuántas unidades se lleva y cuántas paga'
-              : 'Ajusta cantidad y precio de cada producto',
+              : 'Ajuste la cantidad de cada producto',
           style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w600),
         ),
         const SizedBox(height: 12),
-        if (isBuyPay) _buyXPayYEditor() else ..._lines.map(_lineEditor),
+        if (isBuyPay)
+          _buyXPayYEditor()
+        else ...[
+          ..._lines.map(_lineEditor),
+          const SizedBox(height: 18),
+          _comboTotalField(),
+        ],
         const SizedBox(height: 16),
         _summaryCard(),
       ],
+    );
+  }
+
+  /// Input gigante "¿En cuánto va a vender este combo?" — el ÚNICO
+  /// campo de precio en modo combo. La distribución proporcional por
+  /// ítem ocurre al guardar (ver [distributeComboTotal]).
+  Widget _comboTotalField() {
+    return Container(
+      key: const Key('combo_total_field'),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: AppTheme.primary.withValues(alpha: 0.05),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: AppTheme.primary, width: 2),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Row(
+            children: [
+              Icon(Icons.local_offer_rounded,
+                  color: AppTheme.primary, size: 22),
+              SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  '¿En cuánto va a vender este combo?',
+                  style: TextStyle(
+                    fontSize: 17,
+                    fontWeight: FontWeight.w800,
+                    color: AppTheme.textPrimary,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          const Padding(
+            padding: EdgeInsets.only(left: 30),
+            child: Text(
+              'Usted solo pone el precio total. Nosotros hacemos las cuentas.',
+              style: TextStyle(fontSize: 13, color: AppTheme.textSecondary),
+            ),
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: _comboTotalCtrl,
+            keyboardType: TextInputType.number,
+            inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+            onChanged: (_) => setState(() {}),
+            style: const TextStyle(
+              fontSize: 34,
+              fontWeight: FontWeight.w900,
+              color: AppTheme.textPrimary,
+              letterSpacing: 0.5,
+            ),
+            textAlign: TextAlign.center,
+            decoration: InputDecoration(
+              prefixText: '\$ ',
+              prefixStyle: const TextStyle(
+                fontSize: 28,
+                fontWeight: FontWeight.w800,
+                color: AppTheme.primary,
+              ),
+              hintText: _suggestedComboTotal > 0
+                  ? _suggestedComboTotal.toString()
+                  : '0',
+              hintStyle: TextStyle(
+                fontSize: 32,
+                color: Colors.grey.shade400,
+              ),
+              filled: true,
+              fillColor: Colors.white,
+              contentPadding: const EdgeInsets.symmetric(
+                  vertical: 12, horizontal: 12),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(14),
+                borderSide: BorderSide(color: Colors.grey.shade300),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(14),
+                borderSide:
+                    const BorderSide(color: AppTheme.primary, width: 2),
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -1008,157 +1176,141 @@ class _PromoBuilderScreenState extends State<PromoBuilderScreen> {
     );
   }
 
+  /// Tarjeta individual del combo. SÓLO muestra nombre, precio normal
+  /// y ajustador de cantidad grande. El precio por unidad ya no se
+  /// edita aquí — se distribuye proporcionalmente a partir del input
+  /// global "¿En cuánto va a vender este combo?".
   Widget _lineEditor(_PromoLine l) {
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(14),
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(16),
         border: Border.all(color: AppTheme.borderColor),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      child: Row(
         children: [
-          Text(l.product.name,
-              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
-          const SizedBox(height: 2),
-          Text('Normal: ${_cop(l.product.price)}',
-              style: const TextStyle(
-                  fontSize: 13, color: AppTheme.textSecondary)),
-          const SizedBox(height: 10),
-          Row(
-            children: [
-              Expanded(
-                child: _stepper(
-                  label: 'Cantidad',
-                  value: l.quantity,
-                  onChanged: (v) => setState(() => l.quantity = v),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  l.product.name,
+                  style: const TextStyle(
+                      fontSize: 17, fontWeight: FontWeight.w700),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
                 ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                flex: 2,
-                child: _priceInput(
-                  label: 'Precio combo c/u',
-                  value: l.promoPriceEach,
-                  onChanged: (v) =>
-                      setState(() => l.promoPriceEach = v),
+                const SizedBox(height: 6),
+                Text(
+                  'Precio normal: ${_cop(l.product.price)}',
+                  style: const TextStyle(
+                      fontSize: 14, color: AppTheme.textSecondary),
                 ),
-              ),
-            ],
+              ],
+            ),
+          ),
+          const SizedBox(width: 12),
+          _bigSquareStepper(
+            value: l.quantity,
+            onChanged: (v) => setState(() => l.quantity = v),
           ),
         ],
       ),
     );
   }
 
-  Widget _stepper({
-    required String label,
+  /// Stepper cuadrado grande (gerontodiseño): botones de 56×56, número
+  /// central en `HeadlineMedium`, feedback háptico. Mismo look & feel
+  /// en combo y en BxPy.
+  Widget _bigSquareStepper({
     required int value,
     required ValueChanged<int> onChanged,
+    int min = 1,
   }) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+    return Row(
+      mainAxisSize: MainAxisSize.min,
       children: [
-        Text(label,
-            style: const TextStyle(fontSize: 13, color: AppTheme.textSecondary)),
-        const SizedBox(height: 4),
-        Container(
-          height: 48,
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: AppTheme.borderColor),
-          ),
-          child: Row(
-            children: [
-              InkWell(
-                onTap: () {
-                  if (value > 1) {
-                    HapticFeedback.lightImpact();
-                    onChanged(value - 1);
-                  }
-                },
-                child: const SizedBox(
-                  width: 44,
-                  child: Icon(Icons.remove_rounded),
-                ),
-              ),
-              Expanded(
-                child: Center(
-                  child: Text('$value',
-                      style: const TextStyle(
-                          fontSize: 18, fontWeight: FontWeight.bold)),
-                ),
-              ),
-              InkWell(
-                onTap: () {
-                  HapticFeedback.lightImpact();
-                  onChanged(value + 1);
-                },
-                child: Container(
-                  width: 44,
-                  decoration: const BoxDecoration(
-                    color: AppTheme.primary,
-                    borderRadius: BorderRadius.horizontal(
-                        right: Radius.circular(11)),
-                  ),
-                  child: const Icon(Icons.add_rounded, color: Colors.white),
-                ),
-              ),
-            ],
-          ),
+        _squareStepperBtn(
+          icon: Icons.remove_rounded,
+          onTap: () {
+            if (value > min) {
+              HapticFeedback.lightImpact();
+              onChanged(value - 1);
+            }
+          },
+          enabled: value > min,
         ),
-      ],
-    );
-  }
-
-  Widget _priceInput({
-    required String label,
-    required int value,
-    required ValueChanged<int> onChanged,
-  }) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(label,
-            style: const TextStyle(fontSize: 13, color: AppTheme.textSecondary)),
-        const SizedBox(height: 4),
         SizedBox(
-          height: 48,
-          child: TextFormField(
-            initialValue: value.toString(),
-            keyboardType: TextInputType.number,
-            inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-            style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w600),
-            decoration: const InputDecoration(
-              prefixText: '\$ ',
-              contentPadding: EdgeInsets.symmetric(horizontal: 12),
+          width: 56,
+          child: Center(
+            child: Text(
+              '$value',
+              style: const TextStyle(
+                fontSize: 30,
+                fontWeight: FontWeight.w800,
+                color: AppTheme.textPrimary,
+              ),
             ),
-            onChanged: (v) {
-              final parsed = int.tryParse(v);
-              if (parsed != null) onChanged(parsed);
-            },
           ),
+        ),
+        _squareStepperBtn(
+          icon: Icons.add_rounded,
+          onTap: () {
+            HapticFeedback.lightImpact();
+            onChanged(value + 1);
+          },
+          enabled: true,
         ),
       ],
     );
   }
 
+  Widget _squareStepperBtn({
+    required IconData icon,
+    required VoidCallback onTap,
+    required bool enabled,
+  }) {
+    return Material(
+      color: enabled
+          ? AppTheme.primary
+          : AppTheme.primary.withValues(alpha: 0.3),
+      borderRadius: BorderRadius.circular(12),
+      child: InkWell(
+        onTap: enabled ? onTap : null,
+        borderRadius: BorderRadius.circular(12),
+        child: SizedBox(
+          width: 56,
+          height: 56,
+          child: Icon(icon, color: Colors.white, size: 28),
+        ),
+      ),
+    );
+  }
+
+  /// Tarjeta financiera estilo "recibo de tienda" — gerontodiseño:
+  /// frases coloquiales, 4 líneas semánticas, sin porcentajes.
+  ///
+  ///   Línea 1 (gris):   Precio normal por separado
+  ///   Línea 2 (gris):   Costo de su mercancía
+  ///   Línea 3 (naranja):Usted le rebaja al cliente
+  ///   Línea 4 (verde):  Plata libre para su bolsillo  (XL bold)
   Widget _summaryCard() {
     final profitColor =
         _isProfitable ? AppTheme.success : AppTheme.error;
     return Container(
-      padding: const EdgeInsets.all(16),
+      key: const Key('summary_receipt_card'),
+      padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(18),
         border: Border.all(
-            color: profitColor.withValues(alpha: 0.4), width: 2),
+            color: profitColor.withValues(alpha: 0.5), width: 2),
         boxShadow: [
           BoxShadow(
-            color: profitColor.withValues(alpha: 0.1),
-            blurRadius: 12,
+            color: profitColor.withValues(alpha: 0.12),
+            blurRadius: 14,
             offset: const Offset(0, 4),
           ),
         ],
@@ -1166,42 +1318,93 @@ class _PromoBuilderScreenState extends State<PromoBuilderScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          const Text('Resumen financiero',
-              style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
-          const SizedBox(height: 10),
-          _summaryRow('Precio normal total', _cop(_totalRegular),
-              color: AppTheme.textSecondary),
-          _summaryRow('Costo estimado', _cop(_estimatedCost),
-              color: AppTheme.textSecondary,
-              small: true,
-              hint: '*aprox. 70% del precio normal'),
-          _summaryRow('Precio promo', _cop(_totalPromo),
-              color: AppTheme.primary, bold: true),
-          const Divider(height: 18),
-          _summaryRow('Descuento otorgado',
-              '${_cop(_discountAmount)}  (${_discountPercent.toStringAsFixed(1)}%)',
-              color: AppTheme.warning, bold: true),
-          _summaryRow(
-            _isProfitable ? 'Utilidad neta' : '⚠️ Pérdida',
-            _cop(_netProfit),
-            color: profitColor,
+          const Row(
+            children: [
+              Icon(Icons.receipt_long_rounded,
+                  color: AppTheme.textSecondary, size: 20),
+              SizedBox(width: 8),
+              Text(
+                'La cuenta rápida',
+                style: TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w700,
+                  color: AppTheme.textSecondary,
+                  letterSpacing: 0.3,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          _receiptRow(
+            label: 'Precio normal por separado:',
+            value: _cop(_totalRegular),
+            color: AppTheme.textSecondary,
+          ),
+          const SizedBox(height: 6),
+          _receiptRow(
+            label: 'Costo de su mercancía:',
+            value: _cop(_estimatedCost),
+            color: AppTheme.textSecondary,
+          ),
+          const Padding(
+            padding: EdgeInsets.symmetric(vertical: 12),
+            child: DashedDivider(),
+          ),
+          _receiptRow(
+            label: 'Usted le rebaja al cliente:',
+            value: _cop(_discountAmount),
+            color: AppTheme.warning,
             bold: true,
-            big: true,
+          ),
+          const SizedBox(height: 14),
+          Container(
+            padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 14),
+            decoration: BoxDecoration(
+              color: profitColor.withValues(alpha: 0.08),
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(
+                  color: profitColor.withValues(alpha: 0.4), width: 1.5),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  _isProfitable
+                      ? 'Plata libre para su bolsillo:'
+                      : 'Está perdiendo plata:',
+                  style: TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w700,
+                    color: profitColor,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  _cop(_netProfit),
+                  style: TextStyle(
+                    fontSize: 34,
+                    fontWeight: FontWeight.w900,
+                    color: profitColor,
+                    letterSpacing: 0.5,
+                  ),
+                ),
+              ],
+            ),
           ),
           if (!_isProfitable) ...[
-            const SizedBox(height: 8),
+            const SizedBox(height: 10),
             Container(
-              padding: const EdgeInsets.all(10),
+              padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
                 color: AppTheme.error.withValues(alpha: 0.08),
-                borderRadius: BorderRadius.circular(10),
+                borderRadius: BorderRadius.circular(12),
               ),
               child: const Text(
-                '⚠️ Esta promo te haría perder plata. Ajusta el precio hacia arriba o quita algún producto.',
+                '⚠️ Con este precio usted pierde plata. Suba el precio del combo o quite algún producto.',
                 style: TextStyle(
-                    fontSize: 13,
+                    fontSize: 14,
                     color: AppTheme.error,
-                    fontWeight: FontWeight.w600),
+                    fontWeight: FontWeight.w700),
               ),
             ),
           ],
@@ -1210,45 +1413,34 @@ class _PromoBuilderScreenState extends State<PromoBuilderScreen> {
     );
   }
 
-  Widget _summaryRow(
-    String label,
-    String value, {
+  /// Fila tipo recibo: etiqueta a la izquierda, valor a la derecha
+  /// alineado, mismo color semántico en ambos. Sin porcentajes.
+  Widget _receiptRow({
+    required String label,
+    required String value,
     required Color color,
     bool bold = false,
-    bool big = false,
-    bool small = false,
-    String? hint,
   }) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 3),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.center,
-        children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(label,
-                    style: TextStyle(
-                      fontSize: small ? 13 : 15,
-                      color: color,
-                      fontWeight: bold ? FontWeight.w700 : FontWeight.w500,
-                    )),
-                if (hint != null)
-                  Text(hint,
-                      style: const TextStyle(
-                          fontSize: 11, color: AppTheme.textSecondary)),
-              ],
-            ),
+    final weight = bold ? FontWeight.w800 : FontWeight.w500;
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.baseline,
+      textBaseline: TextBaseline.alphabetic,
+      children: [
+        Expanded(
+          child: Text(
+            label,
+            style: TextStyle(fontSize: 16, color: color, fontWeight: weight),
           ),
-          Text(value,
-              style: TextStyle(
-                fontSize: big ? 22 : (small ? 13 : 16),
-                color: color,
-                fontWeight: bold ? FontWeight.w800 : FontWeight.w600,
-              )),
-        ],
-      ),
+        ),
+        Text(
+          value,
+          style: TextStyle(
+            fontSize: bold ? 19 : 17,
+            color: color,
+            fontWeight: bold ? FontWeight.w900 : FontWeight.w700,
+          ),
+        ),
+      ],
     );
   }
 
@@ -1563,7 +1755,7 @@ class _PromoBuilderScreenState extends State<PromoBuilderScreen> {
                     ? null
                     : (_currentStep == 3
                         ? (_saving ? null : _save)
-                        : () => setState(() => _currentStep++)),
+                        : _goNextStep),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: AppTheme.primary,
                   foregroundColor: Colors.white,
@@ -1582,6 +1774,130 @@ class _PromoBuilderScreenState extends State<PromoBuilderScreen> {
           ),
         ],
       ),
+    );
+  }
+}
+
+/// Entrada para [distributeComboTotal]: un producto del combo en su
+/// forma mínima (id + precio unitario normal + cantidad).
+///
+/// `unitPrice` se acepta como `num` para aceptar tanto `int` como
+/// `double` (LocalProduct.price es double en la app, los tests usan
+/// ints).
+class ComboLineInput {
+  final String productId;
+  final num unitPrice;
+  final int quantity;
+  const ComboLineInput({
+    required this.productId,
+    required this.unitPrice,
+    required this.quantity,
+  });
+}
+
+/// Resultado: cuánto pagará el cliente por cada UNIDAD de ese
+/// producto dentro del combo.
+class ComboLineDistribution {
+  final String productId;
+  final int quantity;
+  final int promoPriceEach;
+  const ComboLineDistribution({
+    required this.productId,
+    required this.quantity,
+    required this.promoPriceEach,
+  });
+}
+
+/// Distribuye el precio TOTAL del combo proporcionalmente entre sus
+/// ítems, respetando el peso original (price * quantity) de cada
+/// línea. Función pura — testeable sin widget.
+///
+/// Contrato:
+///   * Si la suma de precios regulares es 0 (edge case con productos
+///     de precio 0), se reparte uniformemente por unidad.
+///   * El último ítem absorbe el residuo de redondeo para garantizar
+///     `Σ promoPriceEach*quantity == totalComboPrice`.
+///   * `promoPriceEach` nunca es negativo (piso en 0).
+List<ComboLineDistribution> distributeComboTotal({
+  required List<ComboLineInput> lines,
+  required int totalComboPrice,
+}) {
+  if (lines.isEmpty) return const [];
+  final safeTotal = totalComboPrice < 0 ? 0 : totalComboPrice;
+
+  final totalRegular = lines.fold<double>(
+    0,
+    (sum, l) => sum + l.unitPrice.toDouble() * l.quantity,
+  );
+
+  final result = <ComboLineDistribution>[];
+  int allocated = 0;
+
+  if (totalRegular <= 0) {
+    final totalUnits = lines.fold<int>(0, (s, l) => s + l.quantity);
+    if (totalUnits == 0) return const [];
+    final perUnit = (safeTotal / totalUnits).floor();
+    for (var i = 0; i < lines.length; i++) {
+      final l = lines[i];
+      final isLast = i == lines.length - 1;
+      final lineTotal =
+          isLast ? safeTotal - allocated : perUnit * l.quantity;
+      final perEach = l.quantity == 0 ? 0 : (lineTotal / l.quantity).round();
+      allocated += perEach * l.quantity;
+      result.add(ComboLineDistribution(
+        productId: l.productId,
+        quantity: l.quantity,
+        promoPriceEach: perEach < 0 ? 0 : perEach,
+      ));
+    }
+    return result;
+  }
+
+  for (var i = 0; i < lines.length; i++) {
+    final l = lines[i];
+    final weight = l.unitPrice.toDouble() * l.quantity;
+    final isLast = i == lines.length - 1;
+    final lineTotal = isLast
+        ? safeTotal - allocated
+        : ((safeTotal * weight) / totalRegular).round();
+    final perEach =
+        l.quantity == 0 ? 0 : (lineTotal / l.quantity).round();
+    final lineActual = perEach * l.quantity;
+    allocated += lineActual;
+    result.add(ComboLineDistribution(
+      productId: l.productId,
+      quantity: l.quantity,
+      promoPriceEach: perEach < 0 ? 0 : perEach,
+    ));
+  }
+  return result;
+}
+
+/// Separador punteado horizontal estilo recibo de caja — reproduce la
+/// sensación de "tirilla" para reforzar la metáfora financiera.
+class DashedDivider extends StatelessWidget {
+  const DashedDivider({super.key, this.color = const Color(0xFFBDBDBD)});
+
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        const dash = 4.0;
+        const gap = 4.0;
+        final count = (constraints.maxWidth / (dash + gap)).floor();
+        return Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: List.generate(count, (_) {
+            return SizedBox(
+              width: dash,
+              height: 1,
+              child: DecoratedBox(decoration: BoxDecoration(color: color)),
+            );
+          }),
+        );
+      },
     );
   }
 }
