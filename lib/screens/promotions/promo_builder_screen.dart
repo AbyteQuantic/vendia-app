@@ -118,7 +118,6 @@ class BuyXPayYFinancials {
 class _PromoBuilderScreenState extends State<PromoBuilderScreen> {
   final _nameCtrl = TextEditingController();
   final _searchCtrl = TextEditingController();
-  final _customDiscountCtrl = TextEditingController();
   /// Controller del input "¿En cuánto va a vender este combo?".
   /// Es el ÚNICO lugar donde el usuario escribe precio en modo combo:
   /// los precios por ítem se recalculan automáticamente en el payload.
@@ -163,7 +162,6 @@ class _PromoBuilderScreenState extends State<PromoBuilderScreen> {
     _searchDebounce?.cancel();
     _nameCtrl.dispose();
     _searchCtrl.dispose();
-    _customDiscountCtrl.dispose();
     _comboTotalCtrl.dispose();
     super.dispose();
   }
@@ -393,29 +391,32 @@ class _PromoBuilderScreenState extends State<PromoBuilderScreen> {
       final api = ApiService(auth);
 
       // V2 payload: empaquetamos la "propuesta de valor" completa para
-      // que el backend se la pase al prompt imperativo de Gemini. El
-      // prompt antiguo sólo recibía %OFF y Gemini devolvía banners
-      // estilo "foto de menú" sin números legibles.
+      // que el backend se la pase al prompt imperativo de Gemini.
+      //
+      // DRY: el "Texto grande del banner" YA NO lo pide el Paso 4 —
+      // se hereda del nombre del combo capturado en el Paso 1
+      // (_nameCtrl), y el descuento se deriva automáticamente del
+      // porcentaje calculado en el Paso 2. No le preguntamos al
+      // tendero dos veces lo mismo.
       final discountPctRounded = _discountPercent.round();
-      final discountText = _customDiscountCtrl.text.trim().isNotEmpty
-          ? _customDiscountCtrl.text.trim()
-          : '$discountPctRounded% OFF';
       final tenantName = (await auth.getBusinessName())?.trim();
+      final comboTitle = _nameCtrl.text.trim();
       final normalPriceStr = _cop(_totalRegular);
       final promoPriceStr = _cop(_totalPromo);
-      final savingsAmount = (_totalRegular - _totalPromo).clamp(0, double.infinity);
-      final savingsStr = savingsAmount > 0 ? 'Ahorras ${_cop(savingsAmount)}' : '';
-      final discountStr = discountPctRounded > 0
-          ? '$discountPctRounded% OFF'
-          : discountText;
+      final savingsAmount =
+          (_totalRegular - _totalPromo).clamp(0, double.infinity);
+      final savingsStr =
+          savingsAmount > 0 ? 'Ahorras ${_cop(savingsAmount)}' : '';
+      final discountStr =
+          discountPctRounded > 0 ? '$discountPctRounded% OFF' : '';
 
       final res = await api.generatePromoBanner(
-        promoName: _nameCtrl.text.trim(),
+        promoName: comboTitle,
         productNames: _lines.map((l) => l.product.name).toList(),
-        discountText: discountText,
+        discountText: discountStr, // ← deriva del % calculado, no de un input manual
         tone: _tone,
         tenantName: tenantName,
-        comboTitle: _nameCtrl.text.trim(),
+        comboTitle: comboTitle,
         normalPriceStr: normalPriceStr,
         promoPriceStr: promoPriceStr,
         discountStr: discountStr,
@@ -484,10 +485,9 @@ class _PromoBuilderScreenState extends State<PromoBuilderScreen> {
           },
         ];
         promoType = 'buy_x_get_y';
-        final userDesc = _customDiscountCtrl.text.trim();
-        description = userDesc.isNotEmpty
-            ? userDesc
-            : 'Lleva $_buyQty, paga $_payQty';
+        // La descripción se deriva automáticamente de las cantidades
+        // del Paso 2 — ya no hay un input libre que mantener en sync.
+        description = 'Lleva $_buyQty, paga $_payQty';
       } else {
         // Combo "Tendero-Speak": el usuario sólo escribió el
         // TOTAL del combo en _comboTotalCtrl. Distribuimos ese total
@@ -521,7 +521,10 @@ class _PromoBuilderScreenState extends State<PromoBuilderScreen> {
           _lines[i].promoPriceEach = distributed[i].promoPriceEach;
         }
         promoType = 'combo';
-        description = _customDiscountCtrl.text.trim();
+        // Description se hereda silenciosamente del nombre del combo
+        // (Paso 1). No queremos pedirle al tendero un "texto del
+        // banner" redundante en el Paso 4.
+        description = _nameCtrl.text.trim();
       }
 
       final payload = <String, dynamic>{
@@ -1608,42 +1611,44 @@ class _PromoBuilderScreenState extends State<PromoBuilderScreen> {
   // ── Step 4: Creative Studio ────────────────────────────────────────────
 
   Widget _stepCreative() {
+    // Layout redesign (2026-04): el Paso 4 tenía 3 problemas graves:
+    //  1. Un TextField de "Texto grande del banner" DUPLICABA el nombre
+    //     del combo ya ingresado en el Paso 1. El tendero tecleaba lo
+    //     mismo dos veces. Eliminado → el título se hereda de _nameCtrl.
+    //  2. Los chips de tono ocupaban hasta 2 renglones en celulares de
+    //     360 dp y empujaban al CTA principal fuera de la vista.
+    //  3. El botón morado "Generar con IA" quedaba debajo del fold.
+    //
+    // Nueva jerarquía (de arriba hacia abajo):
+    //    [carrusel horizontal de tonos — 56 dp]
+    //    [preview cuadrado del banner — AspectRatio 1:1]
+    //    [CTA principal: "✨ Generar con IA" — 56 dp morado]
+    //    [CTA secundario: "Subir foto desde galería" — 52 dp outlined]
+    // Así el usuario abre el paso y ve de un golpe: qué estilo elegir,
+    // cómo va quedando, y el botón mágico.
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
       children: [
         const Text('Estudio creativo',
             style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700)),
-        const SizedBox(height: 8),
+        const SizedBox(height: 4),
         const Text(
-          'Genera un banner publicitario con IA o súbelo desde tu galería.',
-          style: TextStyle(fontSize: 14, color: AppTheme.textSecondary),
+          'Elige un estilo y genera un banner publicitario con IA.',
+          style: TextStyle(fontSize: 13, color: AppTheme.textSecondary),
         ),
+        const SizedBox(height: 12),
+
+        // 1. Carrusel horizontal de estilos. Altura fija (56 dp) para
+        //    que NUNCA empuje al CTA, y scrolleable para soportar más
+        //    tonos sin rediseñar.
+        _toneCarousel(),
         const SizedBox(height: 14),
-        TextField(
-          controller: _customDiscountCtrl,
-          style: const TextStyle(fontSize: 16),
-          decoration: const InputDecoration(
-            labelText: 'Texto grande del banner',
-            hintText: 'Ej: 2x1 · Solo hoy · 30% OFF',
-          ),
-        ),
-        const SizedBox(height: 10),
-        // Wrap en vez de Row: en pantallas angostas (≤360 dp como
-        // muchos androides de gama baja) la suma de los 3 chips con
-        // emoji se desborda lateralmente. Wrap hace que bajen de
-        // línea automáticamente sin cortar el diseño.
-        Wrap(
-          spacing: 8,
-          runSpacing: 8,
-          children: [
-            _toneChip('vibrante', '🎨 Vibrante'),
-            _toneChip('elegante', '✨ Elegante'),
-            _toneChip('urgente', '🔥 Urgente'),
-          ],
-        ),
-        const SizedBox(height: 16),
+
+        // 2. Main focus: el banner preview cuadrado.
         _bannerPreview(),
         const SizedBox(height: 14),
+
+        // 3. CTA principal inmediatamente pegado al preview.
         SizedBox(
           height: 56,
           child: ElevatedButton.icon(
@@ -1670,6 +1675,9 @@ class _PromoBuilderScreenState extends State<PromoBuilderScreen> {
           ),
         ),
         const SizedBox(height: 10),
+
+        // 4. CTA secundario. Siempre disponible como fallback si la
+        //    IA no entrega un resultado a gusto del tendero.
         SizedBox(
           height: 52,
           child: OutlinedButton.icon(
@@ -1689,18 +1697,48 @@ class _PromoBuilderScreenState extends State<PromoBuilderScreen> {
     );
   }
 
+  /// Carrusel horizontal de chips de tono. Altura fija de 56 dp para
+  /// que sea predecible en el layout y jamás empuje al CTA fuera de
+  /// la vista. Scrollea en horizontal (estilo barra de filtros de
+  /// Instagram) para soportar más tonos a futuro sin rediseñar.
+  Widget _toneCarousel() {
+    const tones = <(String, String)>[
+      ('vibrante', '🎨 Vibrante'),
+      ('elegante', '✨ Elegante'),
+      ('urgente', '🔥 Urgente'),
+    ];
+    return SizedBox(
+      height: 56,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.symmetric(vertical: 4),
+        itemCount: tones.length,
+        separatorBuilder: (_, __) => const SizedBox(width: 8),
+        itemBuilder: (_, i) => _toneChip(tones[i].$1, tones[i].$2),
+      ),
+    );
+  }
+
   Widget _toneChip(String value, String label) {
     final selected = _tone == value;
-    // Sin Padding propio — el spacing lo maneja el Wrap padre.
+    // Compacto: padding reducido para que el carrusel se vea como una
+    // barra de filtros de Instagram, no como botones enormes.
     return ChoiceChip(
       label: Text(label),
       selected: selected,
-      onSelected: (_) => setState(() => _tone = value),
+      onSelected: (_) {
+        HapticFeedback.selectionClick();
+        setState(() => _tone = value);
+      },
       selectedColor: AppTheme.primary.withValues(alpha: 0.15),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
       labelStyle: TextStyle(
         color: selected ? AppTheme.primary : AppTheme.textPrimary,
         fontWeight: FontWeight.w600,
+        fontSize: 14,
       ),
+      visualDensity: VisualDensity.compact,
+      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
     );
   }
 
