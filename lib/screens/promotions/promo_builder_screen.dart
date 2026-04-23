@@ -389,15 +389,37 @@ class _PromoBuilderScreenState extends State<PromoBuilderScreen> {
     HapticFeedback.lightImpact();
     setState(() => _generatingBanner = true);
     try {
-      final api = ApiService(AuthService());
+      final auth = AuthService();
+      final api = ApiService(auth);
+
+      // V2 payload: empaquetamos la "propuesta de valor" completa para
+      // que el backend se la pase al prompt imperativo de Gemini. El
+      // prompt antiguo sólo recibía %OFF y Gemini devolvía banners
+      // estilo "foto de menú" sin números legibles.
+      final discountPctRounded = _discountPercent.round();
       final discountText = _customDiscountCtrl.text.trim().isNotEmpty
           ? _customDiscountCtrl.text.trim()
-          : '${_discountPercent.round()}% OFF';
+          : '$discountPctRounded% OFF';
+      final tenantName = (await auth.getBusinessName())?.trim();
+      final normalPriceStr = _cop(_totalRegular);
+      final promoPriceStr = _cop(_totalPromo);
+      final savingsAmount = (_totalRegular - _totalPromo).clamp(0, double.infinity);
+      final savingsStr = savingsAmount > 0 ? 'Ahorras ${_cop(savingsAmount)}' : '';
+      final discountStr = discountPctRounded > 0
+          ? '$discountPctRounded% OFF'
+          : discountText;
+
       final res = await api.generatePromoBanner(
         promoName: _nameCtrl.text.trim(),
         productNames: _lines.map((l) => l.product.name).toList(),
         discountText: discountText,
         tone: _tone,
+        tenantName: tenantName,
+        comboTitle: _nameCtrl.text.trim(),
+        normalPriceStr: normalPriceStr,
+        promoPriceStr: promoPriceStr,
+        discountStr: discountStr,
+        savingsStr: savingsStr,
       );
       final url = res['banner_url'] as String?;
       if (url != null && mounted) {

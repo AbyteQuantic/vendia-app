@@ -917,21 +917,48 @@ class ApiService {
 
   /// Calls the AI banner generator. Returns the public URL of the
   /// generated banner (or a data: URL when storage is not configured).
+  ///
+  /// V2 (2026-04): además de los inputs V1 (`promoName`, `productNames`,
+  /// `discountText`, `tone`) ahora enviamos la propuesta de valor
+  /// completa — nombre del negocio, título del combo, precios
+  /// formateados y cadena de ahorro — para que el prompt del backend
+  /// inyecte tipografía comercial legible en la imagen generada. Todos
+  /// los campos V2 son opcionales: un backend viejo los ignorará, uno
+  /// nuevo los usará para mejorar el banner.
   Future<Map<String, dynamic>> generatePromoBanner({
     required String promoName,
     required List<String> productNames,
     String discountText = '',
     String tone = 'vibrante',
+    String? tenantName,
+    String? comboTitle,
+    String? normalPriceStr,
+    String? promoPriceStr,
+    String? discountStr,
+    String? savingsStr,
   }) async {
     try {
+      final data = <String, dynamic>{
+        'promo_name': promoName,
+        'products': productNames,
+        'discount_text': discountText,
+        'tone': tone,
+      };
+      void addIfPresent(String key, String? v) {
+        if (v != null && v.trim().isNotEmpty) {
+          data[key] = v.trim();
+        }
+      }
+      addIfPresent('tenant_name', tenantName);
+      addIfPresent('combo_title', comboTitle);
+      addIfPresent('normal_price_str', normalPriceStr);
+      addIfPresent('promo_price_str', promoPriceStr);
+      addIfPresent('discount_str', discountStr);
+      addIfPresent('savings_str', savingsStr);
+
       final response = await _dio.post(
         '/api/v1/marketing/generate-banner',
-        data: {
-          'promo_name': promoName,
-          'products': productNames,
-          'discount_text': discountText,
-          'tone': tone,
-        },
+        data: data,
       );
       return _extractData(response);
     } on DioException catch (e) {
