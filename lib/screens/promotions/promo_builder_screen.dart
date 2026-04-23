@@ -30,6 +30,12 @@ class PromoBuilderScreen extends StatefulWidget {
 
 enum _Validity { today, untilStockOut, customDate }
 
+/// Distinct empty-states the Step 1 inventory list can be in. Having
+/// this as a type instead of two booleans kills the ambiguity of the
+/// old "isEmpty ? 'No se encontraron productos' : list" ternary that
+/// conflated three totally different situations.
+enum _InventoryLoad { loading, ready, emptyDB }
+
 /// Fuente de las imágenes de producto que el backend usará como
 /// referencia multimodal al generar el banner. Se mapea 1:1 a los
 /// strings que espera `POST /api/v1/marketing/generate-banner` en el
@@ -141,11 +147,20 @@ class _PromoBuilderScreenState extends State<PromoBuilderScreen> {
   /// Es el ÚNICO lugar donde el usuario escribe precio en modo combo:
   /// los precios por ítem se recalculan automáticamente en el payload.
   final _comboTotalCtrl = TextEditingController();
+  final _stockLimitCtrl = TextEditingController();
   Timer? _searchDebounce;
 
   List<LocalProduct> _allProducts = [];
   List<LocalProduct> _searchResults = [];
   final bool _searching = false;
+  // Tracks the state of the initial inventory load so we can show
+  // three distinct empty states instead of the useless "No se
+  // encontraron productos" for every case:
+  //   • loading  → spinner
+  //   • emptyDB  → "Aún no tienes productos en tu inventario" + CTA
+  //   • noMatch  → "Ningún producto coincide con tu búsqueda"
+  _InventoryLoad _inventoryLoad = _InventoryLoad.loading;
+  bool _currentSearchIsEmpty = true;
 
   final List<_PromoLine> _lines = [];
 
@@ -162,6 +177,9 @@ class _PromoBuilderScreenState extends State<PromoBuilderScreen> {
   _Validity _validity = _Validity.today;
   DateTime? _customEnd;
   int? _stockLimit;
+
+  bool _isTimeLimited = false;
+  bool _isStockLimited = false;
 
   String? _bannerUrl;
   bool _generatingBanner = false;
@@ -233,11 +251,40 @@ class _PromoBuilderScreenState extends State<PromoBuilderScreen> {
       );
 
   Future<void> _loadProducts() async {
-    final all = await DatabaseService.instance.getAllProducts();
+    // Step 1 inventory load is defensive in three layers:
+    //   1. Read the Isar cache first (instant, works offline).
+    //   2. If the cache is empty — fresh install, wiped data, or the
+    //      background SyncService hasn't run yet — hit the API
+    //      directly and hydrate Isar with replaceAllProducts.
+    //   3. If BOTH end up empty, fall into the "emptyDB" state so the
+    //      UI can tell the tendero "no tienes productos todavía"
+    //      instead of the misleading "no se encontraron productos".
+    var all = await DatabaseService.instance.getAllProducts();
+    if (all.isEmpty) {
+      try {
+        final api = ApiService(AuthService());
+        final resp = await api.fetchProducts(page: 1, perPage: 200);
+        final list = (resp['data'] as List?) ?? const [];
+        final fromApi = list
+            .whereType<Map<String, dynamic>>()
+            .map(LocalProduct.fromJson)
+            .toList();
+        if (fromApi.isNotEmpty) {
+          await DatabaseService.instance.replaceAllProducts(fromApi);
+          all = fromApi;
+        }
+      } catch (_) {
+        // Offline or auth blip: keep the empty cache. The emptyDB
+        // state below will guide the user to upload products or
+        // retry online — better than crashing the wizard.
+      }
+    }
     if (!mounted) return;
     setState(() {
       _allProducts = all;
       _searchResults = all.take(30).toList();
+      _inventoryLoad =
+          all.isEmpty ? _InventoryLoad.emptyDB : _InventoryLoad.ready;
     });
     for (final seed in widget.seedProducts) {
       if (!_lines.any((l) => l.product.uuid == seed.uuid)) {
@@ -266,7 +313,10 @@ class _PromoBuilderScreenState extends State<PromoBuilderScreen> {
     _searchDebounce = Timer(const Duration(milliseconds: 200), () {
       final lower = q.trim().toLowerCase();
       if (lower.isEmpty) {
-        setState(() => _searchResults = _allProducts.take(30).toList());
+        setState(() {
+          _searchResults = _allProducts.take(30).toList();
+          _currentSearchIsEmpty = true;
+        });
         return;
       }
       setState(() {
@@ -274,6 +324,7 @@ class _PromoBuilderScreenState extends State<PromoBuilderScreen> {
             .where((p) => p.name.toLowerCase().contains(lower))
             .take(30)
             .toList();
+        _currentSearchIsEmpty = false;
       });
     });
   }
@@ -495,12 +546,19 @@ class _PromoBuilderScreenState extends State<PromoBuilderScreen> {
       final promoId = const Uuid().v4();
 
       DateTime? endDate;
-      if (_validity == _Validity.today) {
-        final now = DateTime.now();
-        endDate = DateTime(now.year, now.month, now.day, 23, 59, 59);
-      } else if (_validity == _Validity.customDate) {
-        endDate = _customEnd;
-      } // untilStockOut → null endDate, stock_limit carries it
+      if (_isTimeLimited) {
+        if (_customEnd != null) {
+          endDate = _customEnd;
+        } else {
+          // Default: 24h FOMO
+          endDate = DateTime.now().add(const Duration(hours: 24));
+        }
+      }
+
+      int? stockLimit;
+      if (_isStockLimited) {
+        stockLimit = int.tryParse(_stockLimitCtrl.text);
+      }
 
       // Serialización por tipo:
       //   * Combo → un item por línea con quantity/promoPriceEach.
@@ -575,8 +633,8 @@ class _PromoBuilderScreenState extends State<PromoBuilderScreen> {
         'banner_image_url': _bannerUrl ?? '',
         'start_date': DateTime.now().toUtc().toIso8601String(),
         if (endDate != null) 'end_date': endDate.toUtc().toIso8601String(),
-        if (_validity == _Validity.untilStockOut && _stockLimit != null)
-          'stock_limit': _stockLimit,
+        if (_isStockLimited && stockLimit != null)
+          'stock_limit': stockLimit,
         'items': items,
       };
 
@@ -718,25 +776,7 @@ class _PromoBuilderScreenState extends State<PromoBuilderScreen> {
           ),
         ),
         // Inventory list — the only scrollable piece of Step 1.
-        Expanded(
-          child: _searchResults.isEmpty
-              ? const Center(
-                  child: Padding(
-                    padding: EdgeInsets.all(24),
-                    child: Text(
-                      'No se encontraron productos.',
-                      style: TextStyle(
-                          fontSize: 15, color: AppTheme.textSecondary),
-                    ),
-                  ),
-                )
-              : ListView.separated(
-                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
-                  itemCount: _searchResults.length,
-                  separatorBuilder: (_, __) => const Divider(height: 1),
-                  itemBuilder: (_, i) => _resultTile(_searchResults[i]),
-                ),
-        ),
+        Expanded(child: _inventoryBody()),
       ],
     );
   }
@@ -891,6 +931,85 @@ class _PromoBuilderScreenState extends State<PromoBuilderScreen> {
         }).toList(),
       ),
     );
+  }
+
+  /// Decides which of the 4 possible bodies to render for the Step 1
+  /// inventory pane. Separated from the list widget so each state has
+  /// its own copy + illustration and we don't drown the tendero with
+  /// the same "No se encontraron productos" line in every situation.
+  Widget _inventoryBody() {
+    // 1. Still loading: the wizard was just opened. Showing a spinner
+    //    prevents the jarring flash of "no hay productos" before
+    //    Isar/network actually responded.
+    if (_inventoryLoad == _InventoryLoad.loading) {
+      return const Center(
+        child: CircularProgressIndicator(strokeWidth: 2.5),
+      );
+    }
+    // 2. Inventory truly empty (both Isar and API returned 0). Tell
+    //    the tendero why and offer a clear action.
+    if (_inventoryLoad == _InventoryLoad.emptyDB) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.inventory_2_outlined,
+                  size: 56, color: AppTheme.textSecondary),
+              const SizedBox(height: 12),
+              const Text(
+                'Aún no tienes productos en tu inventario',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(height: 6),
+              const Text(
+                'Agrega productos primero para poder armar promociones.',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                    fontSize: 13, color: AppTheme.textSecondary),
+              ),
+              const SizedBox(height: 14),
+              OutlinedButton.icon(
+                onPressed: _retryLoadProducts,
+                icon: const Icon(Icons.refresh_rounded),
+                label: const Text('Volver a cargar'),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+    // 3. Have products, but the current search filter returned 0.
+    if (_searchResults.isEmpty && !_currentSearchIsEmpty) {
+      return const Center(
+        child: Padding(
+          padding: EdgeInsets.all(24),
+          child: Text(
+            'Ningún producto coincide con tu búsqueda.',
+            textAlign: TextAlign.center,
+            style:
+                TextStyle(fontSize: 15, color: AppTheme.textSecondary),
+          ),
+        ),
+      );
+    }
+    // 4. Happy path: paint the list.
+    return ListView.separated(
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+      itemCount: _searchResults.length,
+      separatorBuilder: (_, __) => const Divider(height: 1),
+      itemBuilder: (_, i) => _resultTile(_searchResults[i]),
+    );
+  }
+
+  Future<void> _retryLoadProducts() async {
+    setState(() => _inventoryLoad = _InventoryLoad.loading);
+    await _loadProducts();
   }
 
   Widget _resultTile(LocalProduct p) {
@@ -1509,141 +1628,167 @@ class _PromoBuilderScreenState extends State<PromoBuilderScreen> {
     );
   }
 
-  // ── Step 3: Validity ──────────────────────────────────────────────────
+  // ── Step 3: Urgency ──────────────────────────────────────────────────
 
   Widget _stepValidity() {
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
       children: [
-        const Text('¿Hasta cuándo estará activa la promoción?',
-            style: TextStyle(fontSize: 17, fontWeight: FontWeight.w600)),
+        const Text('Motor de urgencia (FOMO)',
+            style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
+        const SizedBox(height: 4),
+        const Text(
+          'Activa gatillos mentales para que tus clientes compren más rápido.',
+          style: TextStyle(fontSize: 14, color: AppTheme.textSecondary),
+        ),
+        const SizedBox(height: 20),
+
+        // FOMO 1: Tiempo
+        _urgencyCard(
+          icon: Icons.timer_outlined,
+          title: '⏱️ Límite de tiempo',
+          subtitle: 'La promo desaparece automáticamente en 24h',
+          enabled: _isTimeLimited,
+          onChanged: (v) => setState(() => _isTimeLimited = v),
+          child: _isTimeLimited 
+            ? Container(
+                margin: const EdgeInsets.only(top: 12),
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: AppTheme.warning.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: const Row(
+                  children: [
+                    Icon(Icons.info_outline_rounded, size: 16, color: AppTheme.warning),
+                    SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'Los clientes verán un reloj en tiempo real.',
+                        style: TextStyle(fontSize: 12, color: AppTheme.warning, fontWeight: FontWeight.w600),
+                      ),
+                    ),
+                  ],
+                ),
+              )
+            : null,
+        ),
+
         const SizedBox(height: 14),
-        _radioCard(
-          _Validity.today,
-          title: 'Solo por hoy',
-          subtitle: 'Vence a las 11:59 PM de hoy',
-          icon: Icons.today_rounded,
+
+        // FOMO 2: Stock
+        _urgencyCard(
+          icon: Icons.inventory_2_outlined,
+          title: '📦 Límite de unidades',
+          subtitle: 'Vender solo una cantidad limitada',
+          enabled: _isStockLimited,
+          onChanged: (v) => setState(() => _isStockLimited = v),
+          child: _isStockLimited 
+            ? Padding(
+                padding: const EdgeInsets.only(top: 12),
+                child: TextFormField(
+                  controller: _stockLimitCtrl,
+                  keyboardType: TextInputType.number,
+                  inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                  decoration: InputDecoration(
+                    labelText: '¿Cuántos combos tienes disponibles?',
+                    hintText: 'Ej: 10',
+                    prefixIcon: const Icon(Icons.numbers_rounded),
+                    filled: true,
+                    fillColor: Colors.grey.shade50,
+                  ),
+                ),
+              )
+            : null,
         ),
-        _radioCard(
-          _Validity.untilStockOut,
-          title: 'Hasta agotar inventario',
-          subtitle: 'Define cuántos combos máximo',
-          icon: Icons.inventory_2_rounded,
-        ),
-        if (_validity == _Validity.untilStockOut)
-          Padding(
-            padding: const EdgeInsets.only(left: 52, top: 4, right: 8, bottom: 12),
-            child: TextFormField(
-              keyboardType: TextInputType.number,
-              inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-              decoration: const InputDecoration(
-                labelText: 'Cantidad máxima de combos',
-                hintText: 'Ej: 10',
-              ),
-              onChanged: (v) {
-                _stockLimit = int.tryParse(v);
-              },
-            ),
-          ),
-        _radioCard(
-          _Validity.customDate,
-          title: 'Fecha personalizada',
-          subtitle: _customEnd == null
-              ? 'Toca para elegir una fecha'
-              : 'Hasta ${_customEnd!.day}/${_customEnd!.month}/${_customEnd!.year}',
-          icon: Icons.event_rounded,
-          onTap: () async {
+
+        const SizedBox(height: 24),
+        
+        // Custom Date (Legacy support but secondary)
+        TextButton.icon(
+          onPressed: () async {
             final now = DateTime.now();
             final picked = await showDatePicker(
               context: context,
               initialDate: _customEnd ?? now.add(const Duration(days: 7)),
               firstDate: now,
               lastDate: now.add(const Duration(days: 365)),
-              helpText: 'Vigencia hasta',
-              confirmText: 'Listo',
-              cancelText: 'Cancelar',
             );
             if (picked != null) {
               setState(() {
                 _customEnd = picked;
-                _validity = _Validity.customDate;
+                _isTimeLimited = true;
               });
             }
           },
+          icon: const Icon(Icons.event_note_rounded, size: 18),
+          label: Text(_customEnd == null 
+            ? 'Definir otra fecha de vencimiento' 
+            : 'Vence el: ${_customEnd!.day}/${_customEnd!.month}/${_customEnd!.year}'),
         ),
       ],
     );
   }
 
-  Widget _radioCard(
-    _Validity val, {
+  Widget _urgencyCard({
+    required IconData icon,
     required String title,
     required String subtitle,
-    required IconData icon,
-    VoidCallback? onTap,
+    required bool enabled,
+    required ValueChanged<bool> onChanged,
+    Widget? child,
   }) {
-    final selected = _validity == val;
-    return InkWell(
-      onTap: () {
-        HapticFeedback.lightImpact();
-        setState(() => _validity = val);
-        if (onTap != null) onTap();
-      },
-      borderRadius: BorderRadius.circular(14),
-      child: Container(
-        margin: const EdgeInsets.only(bottom: 10),
-        padding: const EdgeInsets.all(14),
-        decoration: BoxDecoration(
-          color: selected
-              ? AppTheme.primary.withValues(alpha: 0.06)
-              : Colors.white,
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(
-            color: selected ? AppTheme.primary : AppTheme.borderColor,
-            width: selected ? 2 : 1,
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 200),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(
+          color: enabled ? AppTheme.primary : AppTheme.borderColor,
+          width: enabled ? 2 : 1,
+        ),
+        boxShadow: enabled ? [
+          BoxShadow(
+            color: AppTheme.primary.withValues(alpha: 0.1),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          )
+        ] : [],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 48,
+                height: 48,
+                decoration: BoxDecoration(
+                  color: enabled ? AppTheme.primary.withValues(alpha: 0.1) : AppTheme.surfaceGrey,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Icon(icon, color: enabled ? AppTheme.primary : AppTheme.textSecondary),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(title, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                    Text(subtitle, style: const TextStyle(fontSize: 13, color: AppTheme.textSecondary)),
+                  ],
+                ),
+              ),
+              Switch(
+                value: enabled,
+                onChanged: onChanged,
+                activeColor: AppTheme.primary,
+              ),
+            ],
           ),
-        ),
-        child: Row(
-          children: [
-            Container(
-              width: 44,
-              height: 44,
-              decoration: BoxDecoration(
-                color: selected
-                    ? AppTheme.primary.withValues(alpha: 0.12)
-                    : AppTheme.surfaceGrey,
-                borderRadius: BorderRadius.circular(10),
-              ),
-              child: Icon(icon,
-                  color: selected ? AppTheme.primary : AppTheme.textSecondary),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(title,
-                      style: const TextStyle(
-                          fontSize: 16, fontWeight: FontWeight.w700)),
-                  const SizedBox(height: 2),
-                  Text(subtitle,
-                      style: const TextStyle(
-                          fontSize: 13, color: AppTheme.textSecondary)),
-                ],
-              ),
-            ),
-            // Using the legacy Radio params because the RadioGroup API
-            // landed after our current Flutter pin; revisit on upgrade.
-            // ignore: deprecated_member_use
-            Radio<_Validity>(
-              value: val,
-              // ignore: deprecated_member_use
-              groupValue: _validity,
-              // ignore: deprecated_member_use
-              onChanged: (_) => setState(() => _validity = val),
-            ),
-          ],
-        ),
+          if (child != null) child,
+        ],
       ),
     );
   }
