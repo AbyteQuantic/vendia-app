@@ -1606,7 +1606,13 @@ class _PromoBuilderScreenState extends State<PromoBuilderScreen> {
           ),
         ),
         const SizedBox(height: 10),
-        Row(
+        // Wrap en vez de Row: en pantallas angostas (≤360 dp como
+        // muchos androides de gama baja) la suma de los 3 chips con
+        // emoji se desborda lateralmente. Wrap hace que bajen de
+        // línea automáticamente sin cortar el diseño.
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
           children: [
             _toneChip('vibrante', '🎨 Vibrante'),
             _toneChip('elegante', '✨ Elegante'),
@@ -1663,17 +1669,15 @@ class _PromoBuilderScreenState extends State<PromoBuilderScreen> {
 
   Widget _toneChip(String value, String label) {
     final selected = _tone == value;
-    return Padding(
-      padding: const EdgeInsets.only(right: 8),
-      child: ChoiceChip(
-        label: Text(label),
-        selected: selected,
-        onSelected: (_) => setState(() => _tone = value),
-        selectedColor: AppTheme.primary.withValues(alpha: 0.15),
-        labelStyle: TextStyle(
-          color: selected ? AppTheme.primary : AppTheme.textPrimary,
-          fontWeight: FontWeight.w600,
-        ),
+    // Sin Padding propio — el spacing lo maneja el Wrap padre.
+    return ChoiceChip(
+      label: Text(label),
+      selected: selected,
+      onSelected: (_) => setState(() => _tone = value),
+      selectedColor: AppTheme.primary.withValues(alpha: 0.15),
+      labelStyle: TextStyle(
+        color: selected ? AppTheme.primary : AppTheme.textPrimary,
+        fontWeight: FontWeight.w600,
       ),
     );
   }
