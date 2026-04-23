@@ -131,38 +131,12 @@ class _MainDashboardScreenState extends State<MainDashboardScreen> {
                   child: Column(
                     children: [
                       const SizedBox(height: 16),
-                      // Logo + Bell row
+                      // Logo + Bell row (Restored to original centered layout)
                       Row(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          // Toggle Abierto/Cerrado
-                          Row(
-                            children: [
-                              Icon(
-                                Icons.store_rounded,
-                                color: _isStoreOpen ? AppTheme.success : AppTheme.textSecondary,
-                                size: 20,
-                              ),
-                              const SizedBox(width: 4),
-                              _loadingStatus 
-                                ? const SizedBox(width: 32, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
-                                : Switch(
-                                    value: _isStoreOpen,
-                                    onChanged: _toggleStoreStatus,
-                                    activeColor: AppTheme.success,
-                                  ),
-                              const SizedBox(width: 4),
-                              Text(
-                                _isStoreOpen ? 'Abierta' : 'Cerrada',
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.bold,
-                                  color: _isStoreOpen ? AppTheme.success : AppTheme.textSecondary,
-                                ),
-                              ),
-                            ],
-                          ),
                           const Spacer(),
+                          const SizedBox(width: 52), // Balance for the buttons on the right
                           Container(
                             width: 72,
                             height: 72,
@@ -187,11 +161,6 @@ class _MainDashboardScreenState extends State<MainDashboardScreen> {
                             onPanicTriggered: PanicTriggerService.trigger,
                           ),
                           if (_flags.enableKDS) const SizedBox(width: 8),
-                          // KDS Notification bell — only rendered for
-                          // food-stack tenants (enable_kds). Retail
-                          // tiendas never need a pedidos panel so we
-                          // drop the bell entirely instead of showing a
-                          // "proximamente" snackbar.
                           if (_flags.enableKDS)
                           Semantics(
                             button: true,
@@ -259,6 +228,54 @@ class _MainDashboardScreenState extends State<MainDashboardScreen> {
                         ),
                       ),
                       const SizedBox(height: 4),
+                      // Store Status Switch Card
+                      GestureDetector(
+                        onTap: () => _toggleStoreStatus(!_isStoreOpen),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                          decoration: BoxDecoration(
+                            color: _isStoreOpen 
+                              ? AppTheme.success.withValues(alpha: 0.1) 
+                              : Colors.grey.shade100,
+                            borderRadius: BorderRadius.circular(16),
+                            border: Border.all(
+                              color: _isStoreOpen 
+                                ? AppTheme.success.withValues(alpha: 0.3) 
+                                : Colors.grey.shade300,
+                            ),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                _isStoreOpen ? Icons.online_prediction_rounded : Icons.cloud_off_rounded,
+                                color: _isStoreOpen ? AppTheme.success : AppTheme.textSecondary,
+                                size: 18,
+                              ),
+                              const SizedBox(width: 8),
+                              Text(
+                                _isStoreOpen ? 'VENTA ONLINE: ABIERTA' : 'VENTA ONLINE: CERRADA',
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w800,
+                                  color: _isStoreOpen ? AppTheme.success : AppTheme.textSecondary,
+                                  letterSpacing: 0.5,
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              _loadingStatus 
+                                ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2.5))
+                                : Switch(
+                                    value: _isStoreOpen,
+                                    onChanged: _toggleStoreStatus,
+                                    activeColor: AppTheme.success,
+                                    materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                  ),
+                            ],
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
                       const Text(
                         '¿Qué desea hacer hoy?',
                         style: TextStyle(
