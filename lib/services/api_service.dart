@@ -1005,6 +1005,14 @@ class ApiService {
     }
   }
 
+  Future<void> updateStoreStatus(bool isOpen) async {
+    try {
+      await _dio.patch('/api/v1/store/status', data: {'is_open': isOpen});
+    } on DioException catch (e) {
+      throw AppError.fromDioException(e);
+    }
+  }
+
   /// Fetches the store slug and the public catalog URL. The backend
   /// auto-provisions a slug from the business name the first time it
   /// is called, so this endpoint is safe to hit from the Marketing

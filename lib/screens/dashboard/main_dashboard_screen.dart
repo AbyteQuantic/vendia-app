@@ -26,6 +26,8 @@ class MainDashboardScreen extends StatefulWidget {
 class _MainDashboardScreenState extends State<MainDashboardScreen> {
   String _chargeMode = 'pre_payment';
   int _expiringCount = 0;
+  bool _isStoreOpen = false;
+  bool _loadingStatus = false;
   // Feature flags drive which cards the dashboard renders (MESAS, KDS,
   // service-first modules). Resolved once on mount because the blob
   // only changes across a fresh login.
@@ -37,6 +39,37 @@ class _MainDashboardScreenState extends State<MainDashboardScreen> {
     _loadChargeMode();
     _loadExpiringCount();
     _loadFeatureFlags();
+    _loadStoreStatus();
+  }
+
+  Future<void> _loadStoreStatus() async {
+    try {
+      final api = ApiService(AuthService());
+      final config = await api.fetchStoreConfig();
+      if (mounted) {
+        setState(() {
+          _isStoreOpen = config['is_delivery_open'] == true;
+        });
+      }
+    } catch (_) {}
+  }
+
+  Future<void> _toggleStoreStatus(bool val) async {
+    HapticFeedback.mediumImpact();
+    setState(() => _loadingStatus = true);
+    try {
+      final api = ApiService(AuthService());
+      await api.updateStoreStatus(val);
+      if (mounted) setState(() => _isStoreOpen = val);
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error al actualizar estado: $e')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _loadingStatus = false);
+    }
   }
 
   Future<void> _loadChargeMode() async {
@@ -102,6 +135,33 @@ class _MainDashboardScreenState extends State<MainDashboardScreen> {
                       Row(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
+                          // Toggle Abierto/Cerrado
+                          Row(
+                            children: [
+                              Icon(
+                                Icons.store_rounded,
+                                color: _isStoreOpen ? AppTheme.success : AppTheme.textSecondary,
+                                size: 20,
+                              ),
+                              const SizedBox(width: 4),
+                              _loadingStatus 
+                                ? const SizedBox(width: 32, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                                : Switch(
+                                    value: _isStoreOpen,
+                                    onChanged: _toggleStoreStatus,
+                                    activeColor: AppTheme.success,
+                                  ),
+                              const SizedBox(width: 4),
+                              Text(
+                                _isStoreOpen ? 'Abierta' : 'Cerrada',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.bold,
+                                  color: _isStoreOpen ? AppTheme.success : AppTheme.textSecondary,
+                                ),
+                              ),
+                            ],
+                          ),
                           const Spacer(),
                           Container(
                             width: 72,
