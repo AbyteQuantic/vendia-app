@@ -30,6 +30,21 @@ class PromoBuilderScreen extends StatefulWidget {
 
 enum _Validity { today, untilStockOut, customDate }
 
+/// Tipo de promoción. Afecta el Paso 1 (cuántos productos se pueden
+/// elegir), el Paso 2 (editor financiero) y la serialización a la API
+/// (`promo_type`).
+enum _PromoType {
+  /// Varios productos juntos a precio especial (flujo original).
+  combo,
+
+  /// "Lleve X, Pague Y" sobre un mismo producto. Se serializa como
+  /// un PromotionItem único con `quantity = buyQuantity` y
+  /// `promo_price` igual al precio unitario efectivo — así el backend
+  /// y el público lo interpretan como un combo de N unidades sin que
+  /// tengamos que cambiar el schema.
+  buyXPayY,
+}
+
 class _PromoLine {
   final LocalProduct product;
   int quantity;
@@ -40,6 +55,64 @@ class _PromoLine {
     required this.quantity,
     required this.promoPriceEach,
   });
+}
+
+/// Resultado financiero puro de un "Lleva X, Paga Y". Expuesto como
+/// top-level para poder testearlo sin montar el widget.
+///
+/// Convención:
+///   * [unitPrice]  — precio normal de 1 unidad.
+///   * [unitCost]   — costo estimado de 1 unidad (≈ 70% del precio).
+///   * [buyQty]     — unidades que se lleva el cliente.
+///   * [payQty]     — unidades que paga el cliente (buyQty > payQty).
+///
+/// Salidas:
+///   * totalRegular = unitPrice * buyQty
+///   * totalPromo   = unitPrice * payQty
+///   * cost         = unitCost  * buyQty  (el tendero igual desembolsa X)
+///   * netProfit    = totalPromo - cost
+class BuyXPayYFinancials {
+  final double totalRegular;
+  final double totalPromo;
+  final double cost;
+  final double netProfit;
+  final double discountAmount;
+  final double discountPercent;
+  final bool isProfitable;
+
+  const BuyXPayYFinancials({
+    required this.totalRegular,
+    required this.totalPromo,
+    required this.cost,
+    required this.netProfit,
+    required this.discountAmount,
+    required this.discountPercent,
+    required this.isProfitable,
+  });
+
+  factory BuyXPayYFinancials.compute({
+    required double unitPrice,
+    required double unitCost,
+    required int buyQty,
+    required int payQty,
+  }) {
+    final totalRegular = unitPrice * buyQty;
+    final totalPromo = unitPrice * payQty;
+    final cost = unitCost * buyQty;
+    final netProfit = totalPromo - cost;
+    final discountAmount = totalRegular - totalPromo;
+    final discountPercent =
+        totalRegular > 0 ? (discountAmount / totalRegular) * 100 : 0.0;
+    return BuyXPayYFinancials(
+      totalRegular: totalRegular,
+      totalPromo: totalPromo,
+      cost: cost,
+      netProfit: netProfit,
+      discountAmount: discountAmount,
+      discountPercent: discountPercent,
+      isProfitable: netProfit >= 0,
+    );
+  }
 }
 
 class _PromoBuilderScreenState extends State<PromoBuilderScreen> {
@@ -53,6 +126,16 @@ class _PromoBuilderScreenState extends State<PromoBuilderScreen> {
   final bool _searching = false;
 
   final List<_PromoLine> _lines = [];
+
+  // Promo type — controls both Step 1 (how many products can be added)
+  // and Step 2 (which editor is shown). Default: classic combo.
+  _PromoType _promoType = _PromoType.combo;
+
+  // Buy X / Pay Y — only relevant when _promoType == buyXPayY.
+  // "El cliente LLEVA _buyQty, PAGA _payQty". Both default to sensible
+  // values so the summary card never shows NaN/0 divisions.
+  int _buyQty = 3;
+  int _payQty = 2;
 
   _Validity _validity = _Validity.today;
   DateTime? _customEnd;
@@ -129,10 +212,37 @@ class _PromoBuilderScreenState extends State<PromoBuilderScreen> {
   void _addLine(LocalProduct p) {
     HapticFeedback.lightImpact();
     if (_lines.any((l) => l.product.uuid == p.uuid)) {
-      _showToast('${p.name} ya está en el combo');
+      _showToast(_promoType == _PromoType.buyXPayY
+          ? 'Ya elegiste este producto'
+          : '${p.name} ya está en el combo');
+      return;
+    }
+    // En modo "Lleve X, Pague Y" la promoción gira alrededor de UN
+    // solo producto — el segundo tap sustituye al anterior en vez de
+    // agregarlo (más predecible para el usuario que bloquear el tap).
+    if (_promoType == _PromoType.buyXPayY) {
+      setState(() {
+        _lines
+          ..clear()
+          ..add(_buildLineFor(p));
+      });
       return;
     }
     setState(() => _lines.add(_buildLineFor(p)));
+  }
+
+  /// Cambia el tipo de promoción. Si se pasa a BxPy y hay múltiples
+  /// líneas, conserva solo la primera (no queremos perder el trabajo
+  /// del usuario sin avisar, pero sí enforzar la regla del modo).
+  void _setPromoType(_PromoType t) {
+    if (t == _promoType) return;
+    HapticFeedback.selectionClick();
+    setState(() {
+      _promoType = t;
+      if (t == _PromoType.buyXPayY && _lines.length > 1) {
+        _lines.removeRange(1, _lines.length);
+      }
+    });
   }
 
   void _removeLine(String uuid) {
@@ -141,29 +251,68 @@ class _PromoBuilderScreenState extends State<PromoBuilderScreen> {
   }
 
   // ── Financial math (mirrors backend calculatePromoFinancials) ──────────
+  //
+  // Cost approximation: LocalProduct doesn't carry purchase_price, so
+  // the on-device preview uses `price * 0.7` as an "estimated cost"
+  // with a clear label in the summary card. Backend authorises the
+  // real margin when the promo is saved. Good enough for the
+  // shopkeeper's red/green gut-check while editing.
+  static const double _costFactor = 0.7;
 
-  // LocalProduct doesn't carry purchase_price, so the on-device preview
-  // uses price * 0.7 as an "estimated cost" with a clear label. Backend
-  // authorises the real margin when the promo is saved. Good enough for
-  // the shopkeeper's red/green gut-check while editing the combo.
-  double get _estimatedCost =>
-      _lines.fold(0.0, (sum, l) => sum + (l.product.price * 0.7) * l.quantity);
+  /// Snapshot BxPy actual — null en modo combo o si no hay producto.
+  BuyXPayYFinancials? get _buyPayFinancials {
+    if (_promoType != _PromoType.buyXPayY || _lines.isEmpty) return null;
+    final p = _lines.first.product;
+    return BuyXPayYFinancials.compute(
+      unitPrice: p.price,
+      unitCost: p.price * _costFactor,
+      buyQty: _buyQty,
+      payQty: _payQty,
+    );
+  }
 
-  double get _totalRegular => _lines.fold(
-        0.0,
-        (sum, l) => sum + (l.product.price * l.quantity),
-      );
+  /// Costo estimado total. En modo BxPy el costo se calcula sobre las
+  /// unidades que el cliente LLEVA (no las que paga), porque el
+  /// tendero igual tiene que desembolsar esas X unidades del inventario.
+  double get _estimatedCost {
+    final bxp = _buyPayFinancials;
+    if (bxp != null) return bxp.cost;
+    return _lines.fold(
+      0.0,
+      (sum, l) => sum + (l.product.price * _costFactor) * l.quantity,
+    );
+  }
 
-  double get _totalPromo => _lines.fold(
-        0.0,
-        (sum, l) => sum + (l.promoPriceEach * l.quantity).toDouble(),
-      );
+  double get _totalRegular {
+    final bxp = _buyPayFinancials;
+    if (bxp != null) return bxp.totalRegular;
+    return _lines.fold(
+      0.0,
+      (sum, l) => sum + (l.product.price * l.quantity),
+    );
+  }
+
+  double get _totalPromo {
+    final bxp = _buyPayFinancials;
+    if (bxp != null) return bxp.totalPromo;
+    return _lines.fold(
+      0.0,
+      (sum, l) => sum + (l.promoPriceEach * l.quantity).toDouble(),
+    );
+  }
 
   double get _discountAmount => _totalRegular - _totalPromo;
   double get _discountPercent =>
       _totalRegular > 0 ? (_discountAmount / _totalRegular) * 100 : 0;
   double get _netProfit => _totalPromo - _estimatedCost;
   bool get _isProfitable => _netProfit >= 0;
+
+  /// Validación del stepper de "Lleva/Paga": el cliente tiene que
+  /// llevarse al menos 1 unidad más de las que paga (si no, no hay
+  /// oferta), y paga ≥ 1.
+  bool get _isBuyPayValid =>
+      _promoType != _PromoType.buyXPayY ||
+      (_lines.length == 1 && _payQty >= 1 && _buyQty > _payQty);
 
   String _cop(num n) {
     final i = n.round();
@@ -239,22 +388,56 @@ class _PromoBuilderScreenState extends State<PromoBuilderScreen> {
         endDate = _customEnd;
       } // untilStockOut → null endDate, stock_limit carries it
 
-      final payload = <String, dynamic>{
-        'id': promoId,
-        'name': _nameCtrl.text.trim(),
-        'description': _customDiscountCtrl.text.trim(),
-        'banner_image_url': _bannerUrl ?? '',
-        'start_date': DateTime.now().toUtc().toIso8601String(),
-        if (endDate != null) 'end_date': endDate.toUtc().toIso8601String(),
-        if (_validity == _Validity.untilStockOut && _stockLimit != null)
-          'stock_limit': _stockLimit,
-        'items': _lines
+      // Serialización por tipo:
+      //   * Combo → un item por línea con quantity/promoPriceEach.
+      //   * BxPy  → un único item donde:
+      //        quantity    = cuántas unidades se LLEVA el cliente.
+      //        promo_price = precio unitario efectivo
+      //                      (precio normal * payQty / buyQty).
+      //     Matemáticamente equivalente al slogan "Lleva 3, paga 2" y
+      //     encaja en el schema actual de PromotionItem sin cambios
+      //     en el backend.
+      final List<Map<String, dynamic>> items;
+      final String promoType;
+      final String description;
+      if (_promoType == _PromoType.buyXPayY && _lines.isNotEmpty) {
+        final p = _lines.first.product;
+        final effectiveUnitPrice = (p.price * _payQty / _buyQty).round();
+        items = [
+          {
+            'product_id': p.uuid,
+            'quantity': _buyQty,
+            'promo_price': effectiveUnitPrice,
+          },
+        ];
+        promoType = 'buy_x_get_y';
+        final userDesc = _customDiscountCtrl.text.trim();
+        description = userDesc.isNotEmpty
+            ? userDesc
+            : 'Lleva $_buyQty, paga $_payQty';
+      } else {
+        items = _lines
             .map((l) => {
                   'product_id': l.product.uuid,
                   'quantity': l.quantity,
                   'promo_price': l.promoPriceEach,
                 })
-            .toList(),
+            .toList();
+        promoType = 'combo';
+        description = _customDiscountCtrl.text.trim();
+      }
+
+      final payload = <String, dynamic>{
+        'id': promoId,
+        'name': _nameCtrl.text.trim(),
+        'promo_type': promoType,
+        'description': description,
+        'banner_image_url': _bannerUrl ?? '',
+        'start_date': DateTime.now().toUtc().toIso8601String(),
+        if (endDate != null) 'end_date': endDate.toUtc().toIso8601String(),
+        if (_validity == _Validity.untilStockOut && _stockLimit != null)
+          'stock_limit': _stockLimit,
+        'items': items,
       };
 
       await api.createPromotion(payload);
@@ -359,92 +542,213 @@ class _PromoBuilderScreenState extends State<PromoBuilderScreen> {
   // ── Step 1: Products ───────────────────────────────────────────────────
 
   Widget _stepProducts() {
-    return ListView(
-      padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+    final isBuyPay = _promoType == _PromoType.buyXPayY;
+
+    return Column(
       children: [
-        TextField(
-          controller: _nameCtrl,
-          style: const TextStyle(fontSize: 18),
-          decoration: const InputDecoration(
-            labelText: 'Nombre del combo',
-            hintText: 'Ej: Combo Desayuno, 2x1 Gaseosas',
-            prefixIcon: Icon(Icons.local_offer_rounded),
+        // Non-scrollable top section: type selector + name + search.
+        // Extracted out of the ListView so the inventory scrolls under
+        // a sticky search bar (less tiring on a 6" phone).
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _promoTypeSelector(),
+              const SizedBox(height: 14),
+              TextField(
+                controller: _nameCtrl,
+                style: const TextStyle(fontSize: 18),
+                onChanged: (_) => setState(() {}),
+                decoration: InputDecoration(
+                  labelText: isBuyPay
+                      ? 'Nombre de la oferta'
+                      : 'Nombre del combo',
+                  hintText: isBuyPay
+                      ? 'Ej: 3x2 en gaseosas'
+                      : 'Ej: Combo Desayuno',
+                  prefixIcon: const Icon(Icons.local_offer_rounded),
+                ),
+              ),
+              const SizedBox(height: 12),
+              if (_lines.isNotEmpty) _selectedChipsRow(),
+              const SizedBox(height: 10),
+              _searchField(),
+            ],
           ),
         ),
-        const SizedBox(height: 16),
-        TextField(
-          controller: _searchCtrl,
-          style: const TextStyle(fontSize: 17),
-          onChanged: _onSearchChanged,
-          decoration: InputDecoration(
-            hintText: 'Buscar producto en inventario…',
-            prefixIcon: const Icon(Icons.search_rounded),
-            suffixIcon: _searching
-                ? const Padding(
-                    padding: EdgeInsets.all(12),
-                    child: SizedBox(
-                        width: 18,
-                        height: 18,
-                        child: CircularProgressIndicator(strokeWidth: 2)),
-                  )
-                : null,
-          ),
+        // Inventory list — the only scrollable piece of Step 1.
+        Expanded(
+          child: _searchResults.isEmpty
+              ? const Center(
+                  child: Padding(
+                    padding: EdgeInsets.all(24),
+                    child: Text(
+                      'No se encontraron productos.',
+                      style: TextStyle(
+                          fontSize: 15, color: AppTheme.textSecondary),
+                    ),
+                  ),
+                )
+              : ListView.separated(
+                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+                  itemCount: _searchResults.length,
+                  separatorBuilder: (_, __) => const Divider(height: 1),
+                  itemBuilder: (_, i) => _resultTile(_searchResults[i]),
+                ),
         ),
-        const SizedBox(height: 8),
-        if (_lines.isNotEmpty) ...[
-          const Text('Productos en el combo',
-              style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                  color: AppTheme.textSecondary)),
-          const SizedBox(height: 6),
-          ..._lines.map(_lineChip),
-          const SizedBox(height: 12),
-        ],
-        const Text('Inventario',
-            style: TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.w600,
-                color: AppTheme.textSecondary)),
-        const SizedBox(height: 6),
-        ..._searchResults.map(_resultTile),
       ],
     );
   }
 
-  Widget _lineChip(_PromoLine l) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 8),
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-      decoration: BoxDecoration(
-        color: AppTheme.primary.withValues(alpha: 0.06),
-        border: Border.all(color: AppTheme.primary, width: 1.4),
-        borderRadius: BorderRadius.circular(14),
-      ),
-      child: Row(
-        children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+  /// SegmentedButton-style selector for combo vs. buy-X-pay-Y.
+  /// Uses two side-by-side Cards because SegmentedButton renders very
+  /// small on older Android density values — we want taps to be
+  /// forgiving on phones held by 60+ users.
+  Widget _promoTypeSelector() {
+    return Row(
+      children: [
+        Expanded(
+          child: _typeCard(
+            type: _PromoType.combo,
+            icon: Icons.view_module_rounded,
+            title: 'Combo Armado',
+            subtitle: 'Varios productos juntos',
+          ),
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: _typeCard(
+            type: _PromoType.buyXPayY,
+            icon: Icons.exposure_plus_2_rounded,
+            title: 'Lleve X, Pague Y',
+            subtitle: 'Un mismo producto',
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _typeCard({
+    required _PromoType type,
+    required IconData icon,
+    required String title,
+    required String subtitle,
+  }) {
+    final selected = _promoType == type;
+    return InkWell(
+      key: Key('promo_type_${type.name}'),
+      borderRadius: BorderRadius.circular(14),
+      onTap: () => _setPromoType(type),
+      child: Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: selected
+              ? AppTheme.primary.withValues(alpha: 0.08)
+              : Colors.white,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(
+            color: selected ? AppTheme.primary : AppTheme.borderColor,
+            width: selected ? 2 : 1,
+          ),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
               children: [
-                Text(l.product.name,
-                    style: const TextStyle(
-                        fontSize: 16, fontWeight: FontWeight.w600)),
-                const SizedBox(height: 2),
-                Text(
-                  'Cantidad: ${l.quantity} · Precio normal: ${_cop(l.product.price)}',
-                  style: const TextStyle(
-                      fontSize: 13, color: AppTheme.textSecondary),
-                ),
+                Icon(icon,
+                    size: 22,
+                    color: selected
+                        ? AppTheme.primary
+                        : AppTheme.textSecondary),
+                const SizedBox(width: 6),
+                if (selected)
+                  const Icon(Icons.check_circle_rounded,
+                      size: 18, color: AppTheme.primary),
               ],
             ),
-          ),
-          IconButton(
-            icon: const Icon(Icons.remove_circle_outline_rounded,
-                color: AppTheme.error, size: 26),
-            onPressed: () => _removeLine(l.product.uuid),
-          ),
-        ],
+            const SizedBox(height: 6),
+            Text(title,
+                style: TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w700,
+                  color: selected
+                      ? AppTheme.primary
+                      : AppTheme.textPrimary,
+                )),
+            const SizedBox(height: 2),
+            Text(subtitle,
+                style: const TextStyle(
+                    fontSize: 12, color: AppTheme.textSecondary)),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _searchField() {
+    return TextField(
+      controller: _searchCtrl,
+      style: const TextStyle(fontSize: 17),
+      onChanged: _onSearchChanged,
+      decoration: InputDecoration(
+        hintText: 'Buscar producto en inventario…',
+        prefixIcon: const Icon(Icons.search_rounded),
+        // Clear button when there's text — faster than re-typing.
+        suffixIcon: _searching
+            ? const Padding(
+                padding: EdgeInsets.all(12),
+                child: SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2)),
+              )
+            : (_searchCtrl.text.isEmpty
+                ? null
+                : IconButton(
+                    icon: const Icon(Icons.close_rounded),
+                    onPressed: () {
+                      _searchCtrl.clear();
+                      _onSearchChanged('');
+                    },
+                  )),
+        filled: true,
+        fillColor: Colors.white,
+      ),
+    );
+  }
+
+  /// Compact row of chips showing the products currently in the
+  /// promotion. Replaces the old bulky cards that dominated the
+  /// screen and left no room for the inventory list.
+  Widget _selectedChipsRow() {
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: Wrap(
+        spacing: 8,
+        runSpacing: 8,
+        children: _lines.map((l) {
+          return InputChip(
+            key: Key('chip_${l.product.uuid}'),
+            label: Text(
+              l.product.name,
+              style: const TextStyle(
+                  fontSize: 14, fontWeight: FontWeight.w600),
+            ),
+            avatar: const Icon(Icons.check_circle_rounded,
+                color: AppTheme.primary, size: 18),
+            backgroundColor: AppTheme.primary.withValues(alpha: 0.08),
+            side: BorderSide(
+                color: AppTheme.primary.withValues(alpha: 0.35)),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(20),
+            ),
+            onDeleted: () => _removeLine(l.product.uuid),
+            deleteIcon: const Icon(Icons.close_rounded, size: 18),
+            deleteIconColor: AppTheme.textSecondary,
+          );
+        }).toList(),
       ),
     );
   }
@@ -464,24 +768,243 @@ class _PromoBuilderScreenState extends State<PromoBuilderScreen> {
                   color: AppTheme.primary, size: 28),
               onPressed: () => _addLine(p),
             ),
+      onTap: already ? null : () => _addLine(p),
     );
   }
 
   // ── Step 2: Financial Calculator ───────────────────────────────────────
 
   Widget _stepFinancialCalculator() {
+    final isBuyPay = _promoType == _PromoType.buyXPayY;
+
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
       children: [
-        const Text(
-          'Ajusta cantidad y precio de cada producto',
-          style: TextStyle(fontSize: 17, fontWeight: FontWeight.w600),
+        Text(
+          isBuyPay
+              ? 'Define cuántas unidades se lleva y cuántas paga'
+              : 'Ajusta cantidad y precio de cada producto',
+          style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w600),
         ),
         const SizedBox(height: 12),
-        ..._lines.map(_lineEditor),
+        if (isBuyPay) _buyXPayYEditor() else ..._lines.map(_lineEditor),
         const SizedBox(height: 16),
         _summaryCard(),
       ],
+    );
+  }
+
+  /// Editor visual del escenario "Lleve X, Pague Y". Dos steppers
+  /// gigantes, un contador central grande (gerontodiseño), y la
+  /// tarjeta de resumen financiero reacciona en tiempo real.
+  Widget _buyXPayYEditor() {
+    if (_lines.isEmpty) {
+      // Safety net — validación del Paso 1 ya bloquea avanzar sin
+      // producto, pero si alguien llega aquí mostramos un mensaje
+      // claro en vez de crashear.
+      return Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: AppTheme.warning.withValues(alpha: 0.08),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: AppTheme.warning.withValues(alpha: 0.4)),
+        ),
+        child: const Text(
+          'Vuelve al paso anterior y elige el producto de la oferta.',
+          style: TextStyle(fontSize: 15, color: AppTheme.textPrimary),
+        ),
+      );
+    }
+
+    final p = _lines.first.product;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        // Producto escogido — fila compacta, no roba la pantalla.
+        Container(
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: AppTheme.borderColor),
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: 44,
+                height: 44,
+                decoration: BoxDecoration(
+                  color: AppTheme.primary.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: const Icon(Icons.shopping_bag_rounded,
+                    color: AppTheme.primary),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(p.name,
+                        style: const TextStyle(
+                            fontSize: 16, fontWeight: FontWeight.w700)),
+                    const SizedBox(height: 2),
+                    Text('Precio unitario: ${_cop(p.price)}',
+                        style: const TextStyle(
+                            fontSize: 13, color: AppTheme.textSecondary)),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 16),
+        _bigStepper(
+          key: const Key('stepper_buy'),
+          label: 'El cliente LLEVA',
+          highlight: AppTheme.primary,
+          value: _buyQty,
+          min: 2,
+          onChanged: (v) => setState(() {
+            _buyQty = v;
+            // Mantén la invariante buy > pay — si empujamos _buyQty
+            // por debajo o igual a _payQty, bajamos _payQty 1 unidad.
+            if (_buyQty <= _payQty) _payQty = _buyQty - 1;
+            if (_payQty < 1) _payQty = 1;
+          }),
+        ),
+        const SizedBox(height: 14),
+        _bigStepper(
+          key: const Key('stepper_pay'),
+          label: 'El cliente PAGA',
+          highlight: AppTheme.success,
+          value: _payQty,
+          min: 1,
+          max: _buyQty - 1, // paga siempre < lleva (si no, no es oferta)
+          onChanged: (v) => setState(() => _payQty = v),
+        ),
+        const SizedBox(height: 14),
+        // Mini preview del slogan para validación visual.
+        Container(
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              colors: [
+                AppTheme.primary.withValues(alpha: 0.12),
+                AppTheme.success.withValues(alpha: 0.12),
+              ],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+            borderRadius: BorderRadius.circular(14),
+          ),
+          child: Text(
+            'Lleva $_buyQty, paga $_payQty · Te regalas ${_buyQty - _payQty} '
+            '${(_buyQty - _payQty) == 1 ? "unidad" : "unidades"}',
+            textAlign: TextAlign.center,
+            style: const TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.w700,
+              color: AppTheme.textPrimary,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// Stepper grande usado SOLO por el editor BxPy. Botones ±48px,
+  /// número central en 34sp para legibilidad a distancia.
+  Widget _bigStepper({
+    required Key key,
+    required String label,
+    required Color highlight,
+    required int value,
+    required ValueChanged<int> onChanged,
+    int min = 1,
+    int? max,
+  }) {
+    final canDec = value > min;
+    final canInc = max == null || value < max;
+    return Container(
+      key: key,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: highlight.withValues(alpha: 0.35), width: 1.5),
+      ),
+      child: Column(
+        children: [
+          Text(label,
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w700,
+                color: highlight,
+                letterSpacing: 0.5,
+              )),
+          const SizedBox(height: 10),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              _circleButton(
+                icon: Icons.remove_rounded,
+                enabled: canDec,
+                background: highlight,
+                onTap: () {
+                  HapticFeedback.lightImpact();
+                  onChanged(value - 1);
+                },
+              ),
+              Text(
+                '$value',
+                style: TextStyle(
+                  fontSize: 44,
+                  fontWeight: FontWeight.w900,
+                  color: highlight,
+                  height: 1.0,
+                ),
+              ),
+              _circleButton(
+                icon: Icons.add_rounded,
+                enabled: canInc,
+                background: highlight,
+                onTap: () {
+                  HapticFeedback.lightImpact();
+                  onChanged(value + 1);
+                },
+              ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          const Text('unidades',
+              style: TextStyle(
+                  fontSize: 13, color: AppTheme.textSecondary)),
+        ],
+      ),
+    );
+  }
+
+  Widget _circleButton({
+    required IconData icon,
+    required bool enabled,
+    required Color background,
+    required VoidCallback onTap,
+  }) {
+    return Material(
+      color: enabled
+          ? background
+          : background.withValues(alpha: 0.25),
+      borderRadius: BorderRadius.circular(48),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(48),
+        onTap: enabled ? onTap : null,
+        child: SizedBox(
+          width: 56,
+          height: 56,
+          child: Icon(icon, color: Colors.white, size: 30),
+        ),
+      ),
     );
   }
 
@@ -1006,7 +1529,7 @@ class _PromoBuilderScreenState extends State<PromoBuilderScreen> {
   Widget _bottomNav() {
     final canAdvance = switch (_currentStep) {
       0 => _lines.isNotEmpty && _nameCtrl.text.trim().isNotEmpty,
-      1 => _lines.isNotEmpty && _totalPromo > 0,
+      1 => _lines.isNotEmpty && _totalPromo > 0 && _isBuyPayValid,
       2 => _validity != _Validity.customDate || _customEnd != null,
       _ => true,
     };
