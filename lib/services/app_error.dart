@@ -61,9 +61,22 @@ class AppError implements Exception {
 
     if (statusCode != null && statusCode >= 500) {
       final serverMsg = data is Map ? data['error'] as String? : null;
+      // When the backend includes a "detail" field (e.g. pass-through
+      // of the raw DB/driver error from promotions or admin_catalogs),
+      // append it so the user sees something actionable instead of the
+      // generic 500 toast. We truncate to keep a single-line snackbar.
+      final rawDetail = data is Map ? data['detail'] as String? : null;
+      final detail = rawDetail != null && rawDetail.isNotEmpty
+          ? (rawDetail.length > 180
+              ? '${rawDetail.substring(0, 180)}…'
+              : rawDetail)
+          : null;
+      final combined = detail == null
+          ? (serverMsg ?? 'Error del servidor. Intenta de nuevo.')
+          : '${serverMsg ?? 'Error del servidor'} — $detail';
       return AppError(
         type: AppErrorType.server,
-        message: serverMsg ?? 'Error del servidor. Intenta de nuevo.',
+        message: combined,
         statusCode: statusCode,
       );
     }
