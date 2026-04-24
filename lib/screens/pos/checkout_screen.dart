@@ -62,6 +62,13 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   double _amountTendered = 0;
   final _manualCtrl = TextEditingController();
 
+  // Mirrors the global "Configuración de Fiados" switch on the admin
+  // hub. When the tendero has credit disabled we hide the "Fiar"
+  // payment chip entirely so the cashier can't register a fiado that
+  // shouldn't exist. Default to `true` so a network failure doesn't
+  // silently remove the chip for a merchant who expects it.
+  bool _fiadoEnabled = true;
+
   static const _denominations = [2000, 5000, 10000, 20000, 50000, 100000];
 
   double get _change => _amountTendered - widget.total;
@@ -85,6 +92,34 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   void initState() {
     super.initState();
     _amountTendered = widget.total; // default to exact
+    _loadFiadoFlag();
+  }
+
+  /// Pulls the live tenant flag that gates the "Fiar" payment chip.
+  /// Non-blocking — the screen still renders with the `true` default
+  /// while the network round-trip completes; if the tendero has
+  /// disabled fiados the chip disappears as soon as the GET returns.
+  /// Failures (offline, 401) keep the default so a transient error
+  /// can't silently hide a legitimate payment method.
+  Future<void> _loadFiadoFlag() async {
+    try {
+      final api = ApiService(AuthService());
+      final config = await api.fetchStoreConfig();
+      if (!mounted) return;
+      setState(() {
+        _fiadoEnabled = config['enable_fiados'] as bool? ?? true;
+        // If the tendero turned fiados off WHILE the cashier was on
+        // the checkout screen with "Fiar" selected, flip the selection
+        // back to cash so we don't end up posting a fiado the tenant
+        // no longer allows.
+        if (!_fiadoEnabled && _selectedMethod == 'credit') {
+          _selectedMethod = 'cash';
+        }
+      });
+    } catch (_) {
+      // Keep the default (true). The admin hub flag is the source of
+      // truth; an offline cashier shouldn't lose the "Fiar" option.
+    }
   }
 
   @override
@@ -225,13 +260,22 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                         selected: _selectedMethod == 'card',
                         onTap: () => setState(() => _selectedMethod = 'card'),
                       ),
-                      _PaymentChip(
-                        icon: Icons.menu_book_rounded,
-                        label: 'Fiar',
-                        selected: _selectedMethod == 'credit',
-                        onTap: () => setState(() => _selectedMethod = 'credit'),
-                        color: const Color(0xFFF59E0B),
-                      ),
+                      // "Fiar" chip is gated by the tenant's global
+                      // "Configuración de Fiados" switch. We hide the
+                      // chip outright (instead of disabling it) so the
+                      // cashier can't mistakenly select a method that
+                      // the owner has turned off — and so the checkout
+                      // UI matches the intent of the settings screen.
+                      if (_fiadoEnabled)
+                        _PaymentChip(
+                          key: const Key('checkout_payment_chip_fiar'),
+                          icon: Icons.menu_book_rounded,
+                          label: 'Fiar',
+                          selected: _selectedMethod == 'credit',
+                          onTap: () =>
+                              setState(() => _selectedMethod = 'credit'),
+                          color: const Color(0xFFF59E0B),
+                        ),
                     ],
                   ),
 
@@ -813,6 +857,7 @@ class _PaymentChip extends StatelessWidget {
   final Color? color;
 
   const _PaymentChip({
+    super.key,
     required this.icon, required this.label,
     required this.selected, required this.onTap, this.color,
   });
