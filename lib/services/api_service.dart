@@ -2020,12 +2020,47 @@ class ApiService {
   Future<void> createSupportTicket({
     required String subject,
     required String message,
+    String? category,
+    String? priority,
   }) async {
     try {
-      await _dio.post('/api/v1/support', data: {
+      await _dio.post('/api/v1/support/tickets', data: {
         'subject': subject,
         'message': message,
+        'category': category ?? 'OTHER',
+        'priority': priority ?? 'NORMAL',
       });
+    } on DioException catch (e) {
+      throw AppError.fromDioException(e);
+    }
+  }
+
+  Future<List<Map<String, dynamic>>> fetchTenantTickets() async {
+    try {
+      final response = await _dio.get('/api/v1/support/tickets');
+      return (response.data as List).cast<Map<String, dynamic>>();
+    } on DioException catch (e) {
+      throw AppError.fromDioException(e);
+    }
+  }
+
+  Future<Map<String, dynamic>> fetchTicketDetails(String id) async {
+    try {
+      final response = await _dio.get('/api/v1/support/tickets/$id');
+      return response.data as Map<String, dynamic>;
+    } on DioException catch (e) {
+      throw AppError.fromDioException(e);
+    }
+  }
+
+  Future<Map<String, dynamic>> addTicketMessage(
+      String ticketId, String content) async {
+    try {
+      final response = await _dio.post(
+        '/api/v1/support/tickets/$ticketId/messages',
+        data: {'content': content},
+      );
+      return response.data as Map<String, dynamic>;
     } on DioException catch (e) {
       throw AppError.fromDioException(e);
     }

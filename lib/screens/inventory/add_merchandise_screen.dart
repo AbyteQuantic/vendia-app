@@ -14,11 +14,97 @@ import '../pos/scan_screen.dart';
 class AddMerchandiseScreen extends StatelessWidget {
   const AddMerchandiseScreen({super.key});
 
-  Future<void> _openCamera(BuildContext context) async {
+  /// Shows the image-source chooser (camera vs. gallery) before
+  /// launching the picker. Split from [_processInvoice] so the
+  /// main button stays a single tap-target while still giving
+  /// tenderos with pre-taken invoices a path in — they asked for
+  /// this explicitly.
+  Future<void> _showImageSourceBottomSheet(BuildContext context) async {
     HapticFeedback.lightImpact();
+    await showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (sheetCtx) {
+        return SafeArea(
+          top: false,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Handle
+              Container(
+                margin: const EdgeInsets.only(top: 10, bottom: 6),
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: const Color(0xFFD6D0C8),
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              const Padding(
+                padding: EdgeInsets.fromLTRB(20, 10, 20, 8),
+                child: Text(
+                  '¿De dónde viene la factura?',
+                  style: TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.bold,
+                    color: AppTheme.textPrimary,
+                  ),
+                ),
+              ),
+              ListTile(
+                key: const Key('invoice_source_camera'),
+                leading: const Icon(Icons.camera_alt_rounded,
+                    size: 32, color: Color(0xFF2563EB)),
+                title: const Text(
+                  'Tomar foto con la cámara',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
+                ),
+                subtitle: const Text(
+                  'Úselo si tiene la factura en papel frente a usted',
+                  style: TextStyle(fontSize: 13),
+                ),
+                onTap: () {
+                  Navigator.pop(sheetCtx);
+                  _processInvoice(context, ImageSource.camera);
+                },
+              ),
+              ListTile(
+                key: const Key('invoice_source_gallery'),
+                leading: const Icon(Icons.photo_library_rounded,
+                    size: 32, color: Color(0xFF059669)),
+                title: const Text(
+                  'Subir foto desde la galería',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
+                ),
+                subtitle: const Text(
+                  'Úselo si ya le tomó foto antes o se la enviaron por WhatsApp',
+                  style: TextStyle(fontSize: 13),
+                ),
+                onTap: () {
+                  Navigator.pop(sheetCtx);
+                  _processInvoice(context, ImageSource.gallery);
+                },
+              ),
+              const SizedBox(height: 20),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  /// Launches the actual [ImagePicker] with the chosen [source],
+  /// validates the payload, and routes to the AI loading screen.
+  /// Unified so camera and gallery share identical validation /
+  /// navigation code paths — no drift possible.
+  Future<void> _processInvoice(
+      BuildContext context, ImageSource source) async {
     final picker = ImagePicker();
     final photo = await picker.pickImage(
-      source: ImageSource.camera,
+      source: source,
       imageQuality: 75,
       maxWidth: 1920,
       maxHeight: 1920,
@@ -56,6 +142,7 @@ class AddMerchandiseScreen extends StatelessWidget {
       return;
     }
 
+    if (!context.mounted) return;
     Navigator.of(context).push(
       MaterialPageRoute(
         builder: (_) => IaLoadingScreen(imagePath: photo.path),
@@ -114,7 +201,8 @@ class AddMerchandiseScreen extends StatelessWidget {
 
               // Giant camera button (reduced height for small screens)
               GestureDetector(
-                onTap: () => _openCamera(context),
+                key: const Key('btn_read_invoice'),
+                onTap: () => _showImageSourceBottomSheet(context),
                 child: Container(
                   width: double.infinity,
                   constraints: const BoxConstraints(maxHeight: 280),
@@ -157,7 +245,7 @@ class AddMerchandiseScreen extends StatelessWidget {
                         ),
                         const SizedBox(height: 8),
                         const Text(
-                          'Toque para abrir la cámara',
+                          'Toque para tomar o subir la foto',
                           style: TextStyle(
                               fontSize: 16, color: AppTheme.textSecondary),
                         ),
