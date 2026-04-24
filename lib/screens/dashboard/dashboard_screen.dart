@@ -68,11 +68,19 @@ class _DashboardScreenState extends State<DashboardScreen> {
   // degrade silently (keep 0) so the dashboard still renders offline.
   int _activePromosCount = 0;
 
+  // Storefront open/closed flag. The catálogo público reacts to this
+  // value (add-to-cart disabled when closed) so it must be obvious
+  // on the dashboard header and fast to flip. Loaded from the backend
+  // on mount; failures keep the default `false`.
+  bool _isStoreOpen = false;
+  bool _loadingStoreStatus = false;
+
   @override
   void initState() {
     super.initState();
     _loadData(); // Initial load
     _loadActivePromosCount();
+    _loadStoreStatus();
 
     final isar = _db.isar;
 
@@ -84,6 +92,43 @@ class _DashboardScreenState extends State<DashboardScreen> {
     _productsSub = isar.localProducts
         .watchLazy(fireImmediately: false)
         .listen((_) => _loadData());
+  }
+
+  Future<void> _loadStoreStatus() async {
+    try {
+      final api = ApiService(AuthService());
+      final config = await api.fetchStoreConfig();
+      if (mounted) {
+        setState(() {
+          _isStoreOpen = config['is_delivery_open'] == true;
+        });
+      }
+    } catch (_) {
+      // Offline / not configured — keep the default "closed" state.
+    }
+  }
+
+  /// Flip the storefront open/closed flag. Reads as "optimistic" from
+  /// the user's POV — the Switch visual stays put until the PATCH
+  /// returns OK, and the spinner on the pill covers the latency. On
+  /// failure the local flag is not touched so the Switch visually
+  /// reverts to the pre-tap value. SnackBar surfaces the error.
+  Future<void> _toggleStoreStatus(bool val) async {
+    HapticFeedback.mediumImpact();
+    setState(() => _loadingStoreStatus = true);
+    try {
+      final api = ApiService(AuthService());
+      await api.updateStoreStatus(val);
+      if (mounted) setState(() => _isStoreOpen = val);
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error al actualizar estado: $e')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _loadingStoreStatus = false);
+    }
   }
 
   /// Best-effort fetch of active promotions for the Marketing Hub badge.
@@ -221,6 +266,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   child: Padding(
                     padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
                     child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.center,
                       children: [
                         Expanded(
                           child: Column(
@@ -245,6 +291,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                       fontWeight: FontWeight.w600)),
                             ],
                           ),
+                        ),
+                        const SizedBox(width: 12),
+                        _StoreStatusPill(
+                          isOpen: _isStoreOpen,
+                          loading: _loadingStoreStatus,
+                          onToggle: _toggleStoreStatus,
                         ),
                       ],
                     ),
@@ -794,6 +846,95 @@ class _MarketingHubCard extends StatelessWidget {
                     color: _accent, size: 26),
               ],
             ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Storefront open/closed pill rendered on the dashboard header next
+/// to the tendero's greeting. The catálogo público (Next.js) reads
+/// is_delivery_open to decide whether to allow add-to-cart, so this
+/// control must be one-tap-away and visually unmissable. Gerontodiseño
+/// choices: pill shape, high-contrast colours, emoji reinforces the
+/// colour signal (colour-blind-safe), spinner covers PATCH latency,
+/// tap disabled while loading to prevent double-fire.
+class _StoreStatusPill extends StatelessWidget {
+  final bool isOpen;
+  final bool loading;
+  final ValueChanged<bool> onToggle;
+
+  const _StoreStatusPill({
+    required this.isOpen,
+    required this.loading,
+    required this.onToggle,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final bg = isOpen
+        ? AppTheme.success.withValues(alpha: 0.12)
+        : Colors.grey.shade100;
+    final border = isOpen
+        ? AppTheme.success.withValues(alpha: 0.4)
+        : Colors.grey.shade300;
+    final fg = isOpen ? AppTheme.success : AppTheme.textSecondary;
+    final label = isOpen ? 'Tienda Abierta 🟢' : 'Tienda Cerrada 🔴';
+
+    return Semantics(
+      key: const Key('dashboard_store_status_pill'),
+      button: true,
+      toggled: isOpen,
+      label: isOpen
+          ? 'Tienda online abierta, toca para cerrar'
+          : 'Tienda online cerrada, toca para abrir',
+      child: GestureDetector(
+        onTap: loading ? null : () => onToggle(!isOpen),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 180),
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+          decoration: BoxDecoration(
+            color: bg,
+            borderRadius: BorderRadius.circular(999),
+            border: Border.all(color: border, width: 1.5),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w800,
+                  color: fg,
+                  letterSpacing: 0.2,
+                ),
+              ),
+              const SizedBox(width: 8),
+              SizedBox(
+                width: 36,
+                height: 22,
+                child: loading
+                    ? const Center(
+                        child: SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2.2),
+                        ),
+                      )
+                    : FittedBox(
+                        fit: BoxFit.contain,
+                        child: Switch(
+                          value: isOpen,
+                          onChanged: onToggle,
+                          activeColor: AppTheme.success,
+                          materialTapTargetSize:
+                              MaterialTapTargetSize.shrinkWrap,
+                        ),
+                      ),
+              ),
+            ],
           ),
         ),
       ),
