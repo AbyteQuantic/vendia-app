@@ -26,6 +26,7 @@ import '../../services/auth_service.dart';
 import '../../services/panic_trigger_service.dart';
 import '../../database/collections/local_sale.dart';
 import '../inventory/add_merchandise_screen.dart';
+import '../payments/confirm_payment_scanner_screen.dart';
 import '../tables/tab_review_screen.dart';
 
 /// PosScreen — Mobile-First POS with persistent bottom bar.
@@ -1092,6 +1093,26 @@ class _PosScreenBodyState extends State<_PosScreenBody> {
                       ),
                       const Spacer(),
                       PanicButton(onPanicTriggered: PanicTriggerService.trigger),
+                      const SizedBox(width: 6),
+                      // Reverse-QR scanner — moved here from the
+                      // dashboard header (UX audit 2026-04-25).
+                      // Confirming a customer's cash payment is a
+                      // transactional action, so it lives in the
+                      // POS context where the cashier already is
+                      // when they need it.
+                      IconButton(
+                        key: const Key('pos_scan_payment'),
+                        tooltip: 'Escanear pago de cliente',
+                        icon: const Icon(Icons.qr_code_scanner_rounded,
+                            color: AppTheme.textPrimary, size: 26),
+                        onPressed: () {
+                          HapticFeedback.lightImpact();
+                          Navigator.of(context).push(MaterialPageRoute(
+                            builder: (_) =>
+                                const ConfirmPaymentScannerScreen(),
+                          ));
+                        },
+                      ),
                       const SizedBox(width: 6),
                       _HeaderBadgeIcon(
                         icon: Icons.menu_book_rounded,
