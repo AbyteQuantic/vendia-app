@@ -10,6 +10,7 @@ import 'database/sync/sync_service.dart';
 import 'services/active_fiado_service.dart';
 import 'services/api_service.dart';
 import 'services/auth_service.dart';
+import 'services/branch_provider.dart';
 import 'services/role_manager.dart';
 import 'theme/app_theme.dart';
 import 'screens/splash/animated_splash_screen.dart';
@@ -42,6 +43,12 @@ class _VendIAAppState extends State<VendIAApp> {
   late final SyncService _syncService;
   late final RoleManager _roleManager;
   late final ActiveFiadoService _activeFiado;
+  // BranchProvider lives at the root so BranchesListScreen,
+  // EmployeesScreen, MainDashboardScreen header chip, etc. all share
+  // one source of truth for the active sede. Not having it here made
+  // BranchesListScreen crash with ProviderNotFoundException the
+  // second the tendero tapped "Mis Sucursales".
+  late final BranchProvider _branchProvider;
 
   @override
   void initState() {
@@ -55,6 +62,7 @@ class _VendIAAppState extends State<VendIAApp> {
     _roleManager = RoleManager(AuthService());
     _roleManager.refresh();
     _activeFiado = ActiveFiadoService();
+    _branchProvider = BranchProvider();
     _syncService.startBackgroundSync();
     _syncCatalogInBackground();
     _syncSalesOnStart();
@@ -87,6 +95,7 @@ class _VendIAAppState extends State<VendIAApp> {
   void dispose() {
     _syncService.dispose();
     _connectivityMonitor.dispose();
+    _branchProvider.dispose();
     super.dispose();
   }
 
@@ -98,6 +107,7 @@ class _VendIAAppState extends State<VendIAApp> {
         ChangeNotifierProvider.value(value: _syncService),
         ChangeNotifierProvider.value(value: _roleManager),
         ChangeNotifierProvider.value(value: _activeFiado),
+        ChangeNotifierProvider.value(value: _branchProvider),
       ],
       child: MaterialApp(
         title: 'VendIA',
