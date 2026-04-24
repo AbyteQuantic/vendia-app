@@ -124,6 +124,15 @@ class CartController extends ChangeNotifier {
   final Map<int, Timer> _syncTimers = {};
   static const Duration _syncDebounce = Duration(milliseconds: 800);
 
+  // Per-tab hydration flag. The POS listens on this to decide
+  // whether to show a skeleton over the cart while we fetch the
+  // server-side open tab on mesa selection. We track by tab
+  // index (not label) because the cashier can swap tabs mid-
+  // fetch; anchoring on the tab is what the UI cares about.
+  final Set<int> _hydratingTabs = {};
+
+  bool isHydratingTab(int index) => _hydratingTabs.contains(index);
+
   /// Exposed for tests: inject a fake ApiService / AuthService so
   /// the provider tests don't need a live backend. Production
   /// callers keep using the default constructor.
@@ -238,13 +247,29 @@ class CartController extends ChangeNotifier {
   AccountContext contextAt(int index) => _contexts[index];
 
   void setContext(AccountContext ctx) {
+    final previous = _contexts[_activeIndex];
     _contexts[_activeIndex] = ctx;
     notifyListeners();
     _persistContexts();
-    // If the cashier just assigned a table AFTER adding products
-    // (common flow: pick items, then decide "llévalo a la Mesa 3"),
-    // push the cart to the backend so the QR is immediately live.
-    _scheduleTableTabSync(_activeIndex);
+
+    final switchedToNewMesa = (ctx.type == AccountType.mesa ||
+            ctx.type == AccountType.mesaInmediata) &&
+        (ctx.tableLabel ?? '').trim().isNotEmpty &&
+        (previous.type != ctx.type ||
+            (previous.tableLabel ?? '') != (ctx.tableLabel ?? ''));
+
+    if (switchedToNewMesa) {
+      // Pulling the server-side tab takes priority over pushing.
+      // If the cashier ALREADY had items in this tab (rare: they
+      // pre-loaded the cart then stamped it "Mesa 3"), hydrate
+      // will merge; see _hydrateActiveTab for the merge policy.
+      unawaited(_hydrateActiveTab());
+    } else {
+      // Same mesa or a mostrador/fiado context → the classic path
+      // still applies: push local cart to the backend so the QR
+      // stays live.
+      _scheduleTableTabSync(_activeIndex);
+    }
   }
 
   void clearContextForActive() {
@@ -477,6 +502,131 @@ class CartController extends ChangeNotifier {
     _syncTimers[index] = Timer(_syncDebounce, () {
       unawaited(_performTableTabSync(index));
     });
+  }
+
+  /// Public entry point for tests and force-refresh flows.
+  /// Fires the server lookup for the currently active tab; no-op
+  /// when the active context isn't a mesa. Safe to call multiple
+  /// times — guarded by [_hydratingTabs] to avoid concurrent
+  /// fetches on the same index.
+  Future<void> hydrateActiveTab() => _hydrateActiveTab();
+
+  Future<void> _hydrateActiveTab() async {
+    final index = _activeIndex;
+    final ctx = _contexts[index];
+    final isTable = ctx.type == AccountType.mesa ||
+        ctx.type == AccountType.mesaInmediata;
+    if (!isTable) return;
+    final label = ctx.tableLabel?.trim();
+    if (label == null || label.isEmpty) return;
+    if (_hydratingTabs.contains(index)) return;
+
+    _hydratingTabs.add(index);
+    notifyListeners();
+
+    // Snapshot the cart BEFORE we go to the network. If the
+    // cashier adds a product while we're fetching, we detect it
+    // via length + first-uuid and skip the overwrite — the
+    // debounced sync will push the merged state up instead.
+    final cartBefore = _carts[index]
+        .map((line) => '${line.product.uuid}:${line.quantity}')
+        .join('|');
+
+    try {
+      final api = apiOverride ?? ApiService(AuthService());
+      final tab = await api
+          .fetchTableTabByLabel(label)
+          .timeout(const Duration(seconds: 10));
+      if (tab == null) {
+        // No open ticket server-side — nothing to hydrate.
+        // Leave the local cart as-is (could be empty, could be
+        // the cashier's fresh order about to be sent).
+        return;
+      }
+
+      // Bail out if the cashier already moved on (switched tab,
+      // changed mesa) or touched the cart while we were fetching.
+      final still = _activeIndex == index &&
+          _contexts[index].type == ctx.type &&
+          (_contexts[index].tableLabel ?? '') == (ctx.tableLabel ?? '');
+      final cartNow = _carts[index]
+          .map((line) => '${line.product.uuid}:${line.quantity}')
+          .join('|');
+      if (!still) return;
+      if (cartNow != cartBefore) {
+        // Keep the server token metadata so the QR works, but
+        // don't clobber local edits.
+        final token = tab['session_token'] as String?;
+        final orderId = tab['order_id'] as String?;
+        if (token != null || orderId != null) {
+          _contexts[index] = _contexts[index].copyWith(
+            sessionToken: token,
+            orderId: orderId,
+          );
+          notifyListeners();
+          _persistContexts();
+        }
+        // And schedule a debounced push so the freshly edited
+        // cart lands on top of the server state.
+        _scheduleTableTabSync(index);
+        return;
+      }
+
+      // Safe to hydrate: replace local cart with server items.
+      final rawItems = (tab['items'] as List?) ?? const [];
+      final rebuilt = <CartItem>[];
+      for (final raw in rawItems) {
+        if (raw is! Map) continue;
+        final m = raw.cast<String, dynamic>();
+        final productUuid = (m['product_uuid'] as String?) ?? '';
+        final productName = (m['product_name'] as String?) ?? 'Producto';
+        final qty = (m['quantity'] as num?)?.toInt() ?? 1;
+        final unit = (m['unit_price'] as num?)?.toDouble() ?? 0;
+        if (productUuid.isEmpty || qty < 1) continue;
+        // Prefer the real catalog Product (keeps image, barcode,
+        // etc. for the cart UI). Fall back to a synthetic Product
+        // carrying just what we need — the cart widgets key on
+        // product.uuid so "+"/"−" still match.
+        final catalog = _products
+            .where((p) => p.uuid == productUuid)
+            .firstOrNull;
+        final product = catalog ??
+            Product(
+              id: 0,
+              uuid: productUuid,
+              name: productName,
+              price: unit,
+              stock: 9999,
+            );
+        rebuilt.add(CartItem(product: product, quantity: qty));
+      }
+
+      _carts[index]
+        ..clear()
+        ..addAll(rebuilt);
+      _contexts[index] = _contexts[index].copyWith(
+        sessionToken: tab['session_token'] as String?,
+        orderId: tab['order_id'] as String?,
+      );
+      notifyListeners();
+      _persistCarts();
+      _persistContexts();
+    } on AppError catch (e) {
+      developer.log(
+        '[TABLE_TAB] hydrate failed: ${e.type} ${e.message}',
+        name: 'CartController',
+      );
+    } catch (e, st) {
+      developer.log(
+        '[TABLE_TAB] hydrate unexpected error: $e',
+        name: 'CartController',
+        error: e,
+        stackTrace: st,
+      );
+    } finally {
+      _hydratingTabs.remove(index);
+      if (hasListeners) notifyListeners();
+    }
   }
 
   /// Public entry point for the POS screen's "Enviar a mesa"

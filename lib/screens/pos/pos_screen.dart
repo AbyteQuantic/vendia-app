@@ -51,6 +51,13 @@ class _PosScreenBody extends StatefulWidget {
 class _PosScreenBodyState extends State<_PosScreenBody> {
   final _searchCtrl = TextEditingController();
   List<Map<String, dynamic>> _tables = [];
+  // Label-indexed snapshot of tabs currently open on the server.
+  // Populated by _loadOpenTabs(); the mesa selector reads it to
+  // decorate occupied tables with a badge and their running total.
+  // Key is the raw label string (case preserved) to keep lookup
+  // simple; the mesa button already renders the same label so the
+  // match is exact.
+  Map<String, double> _openTabTotalsByLabel = const {};
   int _pendingFiados = 0;
   List<Map<String, dynamic>> _notifications = [];
   int _unreadNotifications = 0;
@@ -64,16 +71,20 @@ class _PosScreenBodyState extends State<_PosScreenBody> {
   void initState() {
     super.initState();
     _loadTables();
+    _loadOpenTabs();
     _loadPendingFiados();
     _loadNotifications();
     _loadFeatureFlags();
     // Poll every 20s while the POS is foregrounded so the bell badge
     // reacts to fiado acceptances / new online orders without the
-    // cashier needing to pull-to-refresh. Stopped on dispose.
+    // cashier needing to pull-to-refresh. Also refreshes the open-
+    // tabs overlay so mesas with new deudas get their badge without
+    // the cashier having to re-enter the selector.
     _notificationsTimer =
         Timer.periodic(const Duration(seconds: 20), (_) {
       _loadNotifications();
       _loadPendingFiados();
+      _loadOpenTabs();
     });
   }
 
@@ -88,6 +99,52 @@ class _PosScreenBodyState extends State<_PosScreenBody> {
       final tables = await api.fetchTables();
       if (mounted) setState(() => _tables = tables);
     } catch (_) {}
+  }
+
+  /// "$15.000"-style formatter used in the mesa selector badges.
+  /// Mirrors the grouping CartController.formattedTotal applies
+  /// so the selector and the cart sheet never disagree on how a
+  /// number looks.
+  static String _formatMoney(double amount) {
+    final cents = amount.round();
+    final s = cents.toString();
+    final buf = StringBuffer('\$');
+    final start = s.length % 3;
+    if (start > 0) buf.write(s.substring(0, start));
+    for (int i = start; i < s.length; i += 3) {
+      if (i > 0) buf.write('.');
+      buf.write(s.substring(i, i + 3));
+    }
+    return buf.toString();
+  }
+
+  /// Snapshot the currently-open tabs so the mesa selector can
+  /// decorate occupied tables. We fold the payload into a
+  /// `{label → total}` map so the render loop is O(1) per cell.
+  ///
+  /// Failures are silent: this is pure UI sugar, and the cashier
+  /// can still pick any mesa without it — the hydration path on
+  /// CartController will pull the real state when they do.
+  Future<void> _loadOpenTabs() async {
+    try {
+      final api = ApiService(AuthService());
+      final rows = await api.fetchOpenAccounts();
+      final map = <String, double>{};
+      for (final row in rows) {
+        final label = (row['label'] as String?)?.trim() ?? '';
+        if (label.isEmpty) continue;
+        final total = (row['total'] as num?)?.toDouble() ?? 0;
+        // If two open tickets share a label (shouldn't happen
+        // post-upsert, but guard anyway) we keep the biggest —
+        // better to over-alert than to hide a debt.
+        if (!map.containsKey(label) || map[label]! < total) {
+          map[label] = total;
+        }
+      }
+      if (mounted) setState(() => _openTabTotalsByLabel = map);
+    } catch (_) {
+      // Silent: the selector falls back to plain buttons.
+    }
   }
 
   /// Count credits awaiting customer acceptance. Surfaced as a badge on
@@ -354,6 +411,13 @@ class _PosScreenBodyState extends State<_PosScreenBody> {
                     itemBuilder: (_, i) {
                       final t = _tables[i];
                       final label = t['label'] as String? ?? 'Mesa ${i + 1}';
+                      // Mesa is "occupied" when the server is
+                      // currently holding an open tab for this
+                      // exact label. We surface the running total
+                      // as a compact subtitle so the cashier
+                      // spots a big debt before tapping.
+                      final openTotal = _openTabTotalsByLabel[label];
+                      final isOccupied = openTotal != null && openTotal > 0;
                       return GestureDetector(
                         onTap: () {
                           HapticFeedback.mediumImpact();
@@ -363,33 +427,80 @@ class _PosScreenBodyState extends State<_PosScreenBody> {
                           ));
                           Navigator.of(context).pop();
                         },
-                        child: Container(
-                          decoration: BoxDecoration(
-                            color: accentColor.withValues(alpha: 0.08),
-                            borderRadius: BorderRadius.circular(14),
-                            border: Border.all(color: accentColor.withValues(alpha: 0.3)),
-                          ),
-                          alignment: Alignment.center,
-                          child: FittedBox(
-                            fit: BoxFit.scaleDown,
-                            child: Padding(
-                              padding: const EdgeInsets.all(4),
-                              child: Column(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  Icon(Icons.table_restaurant_rounded,
-                                      color: accentColor, size: 24),
-                                  const SizedBox(height: 2),
-                                  Text(label,
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                      style: TextStyle(
-                                          fontSize: 13, fontWeight: FontWeight.bold,
-                                          color: accentColor)),
-                                ],
+                        child: Stack(
+                          clipBehavior: Clip.none,
+                          children: [
+                            Container(
+                              decoration: BoxDecoration(
+                                color: isOccupied
+                                    ? AppTheme.warning.withValues(alpha: 0.10)
+                                    : accentColor.withValues(alpha: 0.08),
+                                borderRadius: BorderRadius.circular(14),
+                                border: Border.all(
+                                  color: isOccupied
+                                      ? AppTheme.warning.withValues(alpha: 0.55)
+                                      : accentColor.withValues(alpha: 0.3),
+                                  width: isOccupied ? 1.8 : 1,
+                                ),
+                              ),
+                              alignment: Alignment.center,
+                              child: FittedBox(
+                                fit: BoxFit.scaleDown,
+                                child: Padding(
+                                  padding: const EdgeInsets.all(4),
+                                  child: Column(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      Icon(
+                                        Icons.table_restaurant_rounded,
+                                        color: isOccupied
+                                            ? AppTheme.warning
+                                            : accentColor,
+                                        size: 24,
+                                      ),
+                                      const SizedBox(height: 2),
+                                      Text(label,
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: TextStyle(
+                                            fontSize: 13,
+                                            fontWeight: FontWeight.bold,
+                                            color: isOccupied
+                                                ? AppTheme.warning
+                                                : accentColor,
+                                          )),
+                                      if (isOccupied) ...[
+                                        const SizedBox(height: 2),
+                                        Text(
+                                          _formatMoney(openTotal),
+                                          style: const TextStyle(
+                                            fontSize: 11,
+                                            fontWeight: FontWeight.w700,
+                                            color: AppTheme.warning,
+                                          ),
+                                        ),
+                                      ],
+                                    ],
+                                  ),
+                                ),
                               ),
                             ),
-                          ),
+                            // "Open" dot — a loud visual cue that
+                            // scans faster than reading the total.
+                            if (isOccupied)
+                              Positioned(
+                                top: 6,
+                                right: 6,
+                                child: Container(
+                                  width: 10,
+                                  height: 10,
+                                  decoration: const BoxDecoration(
+                                    color: AppTheme.warning,
+                                    shape: BoxShape.circle,
+                                  ),
+                                ),
+                              ),
+                          ],
                         ),
                       );
                     },
@@ -1663,6 +1774,47 @@ class _CartBottomSheet extends StatelessWidget {
                   ],
                 ),
               ),
+
+              // Hydration banner — shown when we're pulling the
+              // server-side open tab for a just-selected mesa.
+              // Non-blocking: the cart below still renders the
+              // previous snapshot so the cashier can keep typing.
+              if (ctrl.isHydratingTab(ctrl.activeIndex))
+                Container(
+                  key: const Key('pos_cart_hydration_banner'),
+                  margin: const EdgeInsets.fromLTRB(16, 4, 16, 8),
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 12, vertical: 10),
+                  decoration: BoxDecoration(
+                    color: AppTheme.primary.withValues(alpha: 0.08),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                        color: AppTheme.primary.withValues(alpha: 0.25)),
+                  ),
+                  child: const Row(
+                    children: [
+                      SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2.5,
+                          color: AppTheme.primary,
+                        ),
+                      ),
+                      SizedBox(width: 12),
+                      Expanded(
+                        child: Text(
+                          'Cargando cuenta abierta de la mesa…',
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
+                            color: AppTheme.primary,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
 
               // Items
               if (items.isEmpty)

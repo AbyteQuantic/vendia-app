@@ -11,12 +11,23 @@ import 'package:vendia_pos/services/auth_service.dart';
 /// future regressions that start pulling in unrelated endpoints
 /// show up loudly instead of silently hitting real HTTP.
 class _FakeTabApi extends ApiService {
-  _FakeTabApi({this.response, this.throwError}) : super(AuthService());
+  _FakeTabApi({
+    this.response,
+    this.throwError,
+    this.tabByLabel,
+    this.tabByLabelDelay,
+  }) : super(AuthService());
 
   Map<String, dynamic>? response;
   Object? throwError;
   int calls = 0;
   List<Map<String, dynamic>> lastPayloads = [];
+
+  /// Hydration fixture: label → tab payload (as the backend sends
+  /// it). Missing entries resolve to null — i.e. "no open tab".
+  Map<String, Map<String, dynamic>?>? tabByLabel;
+  Duration? tabByLabelDelay;
+  int hydrateCalls = 0;
 
   @override
   Future<Map<String, dynamic>> upsertTableTab({
@@ -30,6 +41,16 @@ class _FakeTabApi extends ApiService {
     lastPayloads.add({'label': label, 'items': items});
     if (throwError != null) throw throwError!;
     return response ?? const {};
+  }
+
+  @override
+  Future<Map<String, dynamic>?> fetchTableTabByLabel(String label) async {
+    hydrateCalls++;
+    if (tabByLabelDelay != null) {
+      await Future.delayed(tabByLabelDelay!);
+    }
+    if (tabByLabel == null) return null;
+    return tabByLabel![label.trim()];
   }
 }
 
@@ -432,6 +453,151 @@ void main() {
       final token = await c.flushTableTab();
       expect(token, isNull);
       expect(api.calls, 0);
+    });
+  });
+
+  // ── Table-tab hydration ──────────────────────────────────────────────
+  //
+  // Re-selecting an occupied mesa must pull the server-side tab
+  // (items + total + session_token) into the local cart. These
+  // tests pin the exact invariants the QR flow depends on.
+
+  group('Table-tab hydration', () {
+    test(
+        'selecting an occupied mesa rehydrates the local cart from '
+        'the server and stores the session_token', () async {
+      final api = _FakeTabApi(
+        tabByLabel: const {
+          'Mesa 1': {
+            'session_token': 'srv-token-77',
+            'order_id': 'order-77',
+            'total': 17000.0,
+            'items': [
+              {
+                'product_uuid': 'mock-gaseosa-cola-350ml',
+                'product_name': 'Gaseosa Cola 350ml',
+                'quantity': 2,
+                'unit_price': 2500.0,
+              },
+              {
+                'product_uuid': 'unknown-synthetic-uuid',
+                'product_name': 'Plato del día',
+                'quantity': 1,
+                'unit_price': 12000.0,
+              },
+            ],
+          },
+        },
+      );
+      final c = CartController(apiOverride: api);
+
+      c.setContext(const AccountContext(
+        type: AccountType.mesa,
+        tableLabel: 'Mesa 1',
+      ));
+      // setContext fires the hydration fire-and-forget; give it
+      // a tick to resolve.
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+      await c.hydrateActiveTab();
+
+      expect(api.hydrateCalls, greaterThanOrEqualTo(1));
+      expect(c.activeCart.length, 2);
+      expect(c.activeCart.first.product.uuid, 'mock-gaseosa-cola-350ml');
+      expect(c.activeCart.first.quantity, 2);
+      expect(c.activeCart.last.product.name, 'Plato del día',
+          reason: 'unknown catalog uuid must fall back to synthetic product');
+      expect(c.activeContext.sessionToken, 'srv-token-77');
+      expect(c.activeContext.orderId, 'order-77');
+    });
+
+    test('hydration is a no-op when the server has no open tab',
+        () async {
+      final api = _FakeTabApi(tabByLabel: const {}); // empty map → null
+      final c = CartController(apiOverride: api);
+      c.setContext(const AccountContext(
+        type: AccountType.mesa,
+        tableLabel: 'Mesa 42',
+      ));
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+      await c.hydrateActiveTab();
+
+      expect(c.activeCart, isEmpty);
+      expect(c.activeContext.sessionToken, isNull,
+          reason: 'no ticket on the server means no token');
+      expect(c.activeContext.tableLabel, 'Mesa 42',
+          reason: 'mesa assignment must survive an empty hydration');
+    });
+
+    test(
+        'hydration does NOT overwrite local edits made during the '
+        'network round-trip', () async {
+      final api = _FakeTabApi(
+        tabByLabelDelay: const Duration(milliseconds: 40),
+        tabByLabel: const {
+          'Mesa 3': {
+            'session_token': 'tk',
+            'order_id': 'oid',
+            'items': [
+              {
+                'product_uuid': 'mock-gaseosa-cola-350ml',
+                'product_name': 'Gaseosa Cola 350ml',
+                'quantity': 5,
+                'unit_price': 2500.0,
+              },
+            ],
+          },
+        },
+      );
+      final c = CartController(apiOverride: api);
+
+      // Kick off hydration…
+      c.setContext(const AccountContext(
+        type: AccountType.mesa,
+        tableLabel: 'Mesa 3',
+      ));
+      // …then simulate the cashier adding a different product
+      // before the network returns.
+      c.addProduct(CartController.mockProducts[1]); // Agua Cristal
+      // Wait for hydration to complete.
+      await Future<void>.delayed(const Duration(milliseconds: 80));
+
+      // Local edit preserved (agua), server items NOT merged on
+      // top of it. The token IS saved so the QR still works.
+      expect(c.activeCart.length, 1);
+      expect(c.activeCart.single.product.name, 'Agua Cristal 500ml');
+      expect(c.activeContext.sessionToken, 'tk');
+      expect(c.activeContext.orderId, 'oid');
+    });
+
+    test(
+        'switching between mostrador and mesa does not trigger '
+        'hydration on the mostrador side', () async {
+      final api = _FakeTabApi(tabByLabel: const {});
+      final c = CartController(apiOverride: api);
+      c.setContext(const AccountContext(type: AccountType.mostrador));
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+      expect(api.hydrateCalls, 0);
+    });
+
+    test('isHydratingTab flips true while the fetch is in flight',
+        () async {
+      final api = _FakeTabApi(
+        tabByLabelDelay: const Duration(milliseconds: 30),
+        tabByLabel: const {'Mesa 5': null},
+      );
+      final c = CartController(apiOverride: api);
+      // Intentionally don't await the future wrapping setContext;
+      // the controller fires hydration fire-and-forget.
+      c.setContext(const AccountContext(
+        type: AccountType.mesa,
+        tableLabel: 'Mesa 5',
+      ));
+      // Yield to let the microtask queue flush so hydration
+      // actually started.
+      await Future<void>.delayed(const Duration(milliseconds: 5));
+      expect(c.isHydratingTab(0), isTrue);
+      await Future<void>.delayed(const Duration(milliseconds: 60));
+      expect(c.isHydratingTab(0), isFalse);
     });
   });
 }
