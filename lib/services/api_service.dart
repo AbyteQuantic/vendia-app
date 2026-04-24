@@ -1871,9 +1871,21 @@ class ApiService {
   // ONLINE ORDERS
   // ═══════════════════════════════════════════════════════════════════════════
 
-  Future<List<dynamic>> fetchOnlineOrders() async {
+  /// Fetches online orders. Optional [status] narrows to a single
+  /// state ("pending", "accepted", "rejected", "completed"). The
+  /// active branch is attached automatically via currentBranchId so
+  /// a sede-scoped KDS doesn't leak other branches' pedidos.
+  Future<List<dynamic>> fetchOnlineOrders({String? status}) async {
     try {
-      final response = await _dio.get('/api/v1/online-orders');
+      final params = <String, dynamic>{};
+      if (status != null && status.isNotEmpty) params['status'] = status;
+      if (currentBranchId != null && currentBranchId!.isNotEmpty) {
+        params['branch_id'] = currentBranchId!;
+      }
+      final response = await _dio.get(
+        '/api/v1/online-orders',
+        queryParameters: params.isEmpty ? null : params,
+      );
       return (response.data['data'] as List?) ?? [];
     } on DioException catch (e) {
       throw AppError.fromDioException(e);

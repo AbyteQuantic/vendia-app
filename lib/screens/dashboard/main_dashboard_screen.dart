@@ -7,6 +7,7 @@ import '../../services/auth_service.dart';
 import '../../services/branch_provider.dart';
 import '../../services/panic_trigger_service.dart';
 import '../../theme/app_theme.dart';
+import '../../widgets/online_orders_bell.dart';
 import '../../widgets/panic_button.dart';
 import '../../widgets/sync_status_banner.dart';
 import '../admin/admin_hub_screen.dart';
@@ -160,61 +161,11 @@ class _MainDashboardScreenState extends State<MainDashboardScreen> {
                           PanicButton(
                             onPanicTriggered: PanicTriggerService.trigger,
                           ),
-                          if (_flags.enableKDS) const SizedBox(width: 8),
-                          if (_flags.enableKDS)
-                          Semantics(
-                            button: true,
-                            label: 'Pedidos pendientes, 2 notificaciones',
-                            child: GestureDetector(
-                              onTap: () {
-                                HapticFeedback.lightImpact();
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  const SnackBar(
-                                    content: Text(
-                                      'Proximamente: Panel de pedidos',
-                                      style: TextStyle(fontSize: 18),
-                                    ),
-                                  ),
-                                );
-                              },
-                              child: SizedBox(
-                                width: 52,
-                                height: 52,
-                                child: Stack(
-                                  children: [
-                                    const Center(
-                                      child: Icon(
-                                        Icons.notifications_rounded,
-                                        color: AppTheme.textPrimary,
-                                        size: 32,
-                                      ),
-                                    ),
-                                    Positioned(
-                                      right: 4,
-                                      top: 4,
-                                      child: Container(
-                                        width: 22,
-                                        height: 22,
-                                        decoration: const BoxDecoration(
-                                          color: AppTheme.error,
-                                          shape: BoxShape.circle,
-                                        ),
-                                        alignment: Alignment.center,
-                                        child: const Text(
-                                          '2',
-                                          style: TextStyle(
-                                            color: Colors.white,
-                                            fontSize: 13,
-                                            fontWeight: FontWeight.bold,
-                                          ),
-                                        ),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ),
-                          ),
+                          const SizedBox(width: 8),
+                          // KDS bell — replaces the old "Próximamente"
+                          // placeholder. Polls every 15 s and opens
+                          // OnlineOrdersScreen on tap.
+                          const OnlineOrdersBell(),
                         ],
                       ),
                       const SizedBox(height: 16),

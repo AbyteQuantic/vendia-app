@@ -9,6 +9,7 @@ import '../../services/api_service.dart';
 import '../../services/auth_service.dart';
 import '../../services/role_manager.dart';
 import '../../theme/app_theme.dart';
+import '../../widgets/online_orders_bell.dart';
 import '../../widgets/restricted_action.dart';
 import '../../widgets/stat_card.dart';
 import '../inventory/add_merchandise_screen.dart';
@@ -292,7 +293,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
                             ],
                           ),
                         ),
-                        const SizedBox(width: 12),
+                        // KDS bell — polls the backend every 15 s
+                        // for pedidos web en estado pending. Tapping
+                        // opens OnlineOrdersScreen where the tendero
+                        // can accept / reject.
+                        const OnlineOrdersBell(),
+                        const SizedBox(width: 8),
                         _StoreStatusPill(
                           isOpen: _isStoreOpen,
                           loading: _loadingStoreStatus,
