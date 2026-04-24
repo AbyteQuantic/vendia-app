@@ -1,3 +1,5 @@
+import 'dart:developer' as developer;
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
@@ -13,17 +15,37 @@ import '../../theme/app_theme.dart';
 /// is for the multi-wallet scenario and carries the optional QR
 /// screenshot upload into R2.
 class PaymentMethodsScreen extends StatefulWidget {
-  const PaymentMethodsScreen({super.key});
+  const PaymentMethodsScreen({super.key, this.apiOverride});
+
+  /// Injected only by widget tests. Production builds the real
+  /// client in the State's initState.
+  @visibleForTesting
+  final ApiService? apiOverride;
 
   @override
   State<PaymentMethodsScreen> createState() => _PaymentMethodsScreenState();
 }
 
 class _PaymentMethodsScreenState extends State<PaymentMethodsScreen> {
+  /// Injectable API client so tests can substitute a fake without
+  /// touching Dio or AuthService. Production still constructs the
+  /// real ApiService in initState.
   late final ApiService _api;
   List<Map<String, dynamic>> _methods = [];
+  // `_loading` is kept so the pull-to-refresh and Reintentar paths
+  // can show a subtle top banner, but we no longer gate the WHOLE
+  // screen on it. The P0 regression ("infinite loader") was caused
+  // by `_loading = true` plus a silent failure inside fetch: any
+  // exception that didn't reach our catch blocks left the screen
+  // frozen forever. Now the worst case is the empty-state UI
+  // (fully interactive, "Agregar Método" works) plus a retry
+  // chip — never a blank spinner.
   bool _loading = true;
   String? _loadError;
+  // True the very first time _fetch completes (success or error).
+  // Lets us skip the top-of-screen loading banner on subsequent
+  // manual refreshes so the "Agregar" flow never gets covered.
+  bool _hasCompletedFirstFetch = false;
   String? _uploadingId; // id of the method whose QR is uploading
 
   // Canonical list of supported wallets. `id` is what ends up in
@@ -90,42 +112,59 @@ class _PaymentMethodsScreenState extends State<PaymentMethodsScreen> {
   @override
   void initState() {
     super.initState();
-    _api = ApiService(AuthService());
+    _api = widget.apiOverride ?? ApiService(AuthService());
     _fetch();
   }
 
+  /// Loads the payment-method list. Three invariants:
+  ///
+  ///   1. It ALWAYS finishes. Defensive 8 s timeout on top of Dio,
+  ///      plus a belt-and-braces `whenComplete` that flips the
+  ///      loading flag in the one-in-a-million path where both
+  ///      try/catch and timeout somehow miss an error (see the
+  ///      `finally` at the bottom).
+  ///   2. It ALWAYS clears `_loading`. No return path, including
+  ///      widget-was-unmounted-mid-flight, leaves the flag true.
+  ///   3. It NEVER hides the form. The caller UI reads `_methods`
+  ///      separately from `_loading`, so an empty list keeps the
+  ///      "Agregar Método" button and the empty-state copy on
+  ///      screen while a second refresh runs in the background.
   Future<void> _fetch() async {
-    setState(() {
-      _loading = true;
-      _loadError = null;
-    });
+    if (mounted) {
+      setState(() {
+        _loading = true;
+        _loadError = null;
+      });
+    }
     try {
-      // Defensive timeout on top of the Dio-level 60 s: if the
-      // backend stops responding (intermittent Render cold-start,
-      // captive wifi portal) we still fall into an error state
-      // with a "Reintentar" button instead of a blank spinner
-      // forever. 12 s is longer than a healthy p99 but shorter
-      // than user patience.
       final list = await _api
           .fetchPaymentMethods()
-          .timeout(const Duration(seconds: 12));
+          .timeout(const Duration(seconds: 8));
       if (!mounted) return;
       setState(() {
         _methods = List<Map<String, dynamic>>.from(list);
-        _loading = false;
+        _loadError = null;
       });
-    } on AppError catch (e) {
+    } on AppError catch (e, stack) {
+      developer.log('fetchPaymentMethods failed (AppError): ${e.message}',
+          name: 'payment_methods_screen', error: e, stackTrace: stack);
       if (!mounted) return;
-      setState(() {
-        _loadError = e.message;
-        _loading = false;
-      });
-    } catch (e) {
+      setState(() => _loadError = e.message);
+    } catch (e, stack) {
+      // `on TimeoutException` and any weird TypeError from
+      // _extractList land here. We DO NOT rethrow — the whole
+      // point of this screen is that it survives backend hiccups.
+      developer.log('fetchPaymentMethods failed (unexpected)',
+          name: 'payment_methods_screen', error: e, stackTrace: stack);
       if (!mounted) return;
-      setState(() {
-        _loadError = 'No se pudieron cargar los métodos de pago.';
-        _loading = false;
-      });
+      setState(() => _loadError = 'No se pudieron cargar los métodos de pago.');
+    } finally {
+      if (mounted) {
+        setState(() {
+          _loading = false;
+          _hasCompletedFirstFetch = true;
+        });
+      }
     }
   }
 
@@ -454,6 +493,7 @@ class _PaymentMethodsScreenState extends State<PaymentMethodsScreen> {
         child: SizedBox(
           height: 60,
           child: ElevatedButton.icon(
+            key: const Key('pm_add_method_button'),
             onPressed: _showAddSheet,
             icon: const Icon(Icons.add_rounded, size: 24),
             label: const Text('Agregar Método',
@@ -470,40 +510,63 @@ class _PaymentMethodsScreenState extends State<PaymentMethodsScreen> {
     );
   }
 
+  /// Invariant: this method NEVER returns a full-screen spinner.
+  ///
+  /// State → render mapping:
+  ///   * first fetch still in-flight  → empty state + top loading
+  ///     banner (the user can already tap "Agregar Método" below
+  ///     and start creating a record if they know what they want)
+  ///   * error + empty list           → empty state + red retry
+  ///     banner with "Reintentar"
+  ///   * error + non-empty list       → list + red retry banner
+  ///   * success + empty list         → empty state, no banners
+  ///   * success + non-empty list     → list, no banners
+  ///
+  /// The previous implementation gated EVERYTHING on `_loading`
+  /// and turned into the infinite-spinner regression whenever the
+  /// async chain hung (captive wifi, cold start, silent TypeError
+  /// inside _extractList, JWT refresh stuck). Now the worst case
+  /// is a visible banner — never a dead screen.
   Widget _buildBody() {
-    if (_loading) {
-      return const Center(
-          child: CircularProgressIndicator(color: AppTheme.primary));
-    }
-    if (_loadError != null && _methods.isEmpty) {
-      return _ErrorState(message: _loadError!, onRetry: _fetch);
-    }
-    if (_methods.isEmpty) {
-      return _EmptyState(onAdd: _showAddSheet);
-    }
+    final hasMethods = _methods.isNotEmpty;
+    final showFirstLoadBanner = _loading && !_hasCompletedFirstFetch;
+    final showErrorBanner = _loadError != null;
+
+    final content = hasMethods
+        ? ListView.separated(
+            padding: const EdgeInsets.all(20),
+            physics: const AlwaysScrollableScrollPhysics(),
+            itemCount: _methods.length,
+            separatorBuilder: (_, __) => const SizedBox(height: 12),
+            itemBuilder: (_, i) {
+              final m = _methods[i];
+              final id = (m['id'] as String?) ?? '';
+              return _MethodCard(
+                method: m,
+                preset: _presetFor(m),
+                isUploading: _uploadingId == id,
+                onUploadQR: () => _uploadQR(id),
+                onToggleActive: (v) => _toggleActive(id, v),
+                onDelete: () {
+                  HapticFeedback.mediumImpact();
+                  _delete(id);
+                },
+              );
+            },
+          )
+        : _EmptyState(onAdd: _showAddSheet);
+
     return RefreshIndicator(
       onRefresh: _fetch,
       color: AppTheme.primary,
-      child: ListView.separated(
-        padding: const EdgeInsets.all(20),
-        physics: const AlwaysScrollableScrollPhysics(),
-        itemCount: _methods.length,
-        separatorBuilder: (_, __) => const SizedBox(height: 12),
-        itemBuilder: (_, i) {
-          final m = _methods[i];
-          final id = (m['id'] as String?) ?? '';
-          return _MethodCard(
-            method: m,
-            preset: _presetFor(m),
-            isUploading: _uploadingId == id,
-            onUploadQR: () => _uploadQR(id),
-            onToggleActive: (v) => _toggleActive(id, v),
-            onDelete: () {
-              HapticFeedback.mediumImpact();
-              _delete(id);
-            },
-          );
-        },
+      child: Column(
+        children: [
+          if (showFirstLoadBanner)
+            const _LoadingBanner()
+          else if (showErrorBanner)
+            _ErrorBanner(message: _loadError!, onRetry: _fetch),
+          Expanded(child: content),
+        ],
       ),
     );
   }
@@ -818,6 +881,7 @@ class _EmptyState extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Center(
+      key: const Key('pm_empty_state'),
       child: Padding(
         padding: const EdgeInsets.all(32),
         child: Column(
@@ -864,51 +928,84 @@ class _EmptyState extends StatelessWidget {
   }
 }
 
-class _ErrorState extends StatelessWidget {
-  const _ErrorState({required this.message, required this.onRetry});
+/// Thin banner shown across the top during the FIRST fetch so the
+/// user sees something is happening but can still interact with
+/// the empty state below (the primary "Agregar Método" button
+/// lives in the bottom nav and is always tappable).
+class _LoadingBanner extends StatelessWidget {
+  const _LoadingBanner();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      key: const Key('pm_loading_banner'),
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+      color: const Color(0xFFFFF7EC),
+      child: const Row(
+        children: [
+          SizedBox(
+            width: 16,
+            height: 16,
+            child: CircularProgressIndicator(
+                color: AppTheme.primary, strokeWidth: 2),
+          ),
+          SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              'Cargando sus métodos de pago...',
+              style: TextStyle(
+                  fontSize: 13,
+                  color: AppTheme.textSecondary,
+                  fontWeight: FontWeight.w600),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Retryable error banner. Replaces the old full-screen _ErrorState
+/// so the empty-state / list below it stays interactive — the user
+/// can still add a new method even while the server is flaky.
+class _ErrorBanner extends StatelessWidget {
+  const _ErrorBanner({required this.message, required this.onRetry});
   final String message;
   final VoidCallback onRetry;
 
   @override
   Widget build(BuildContext context) {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(32),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Icon(Icons.cloud_off_rounded,
-                size: 72, color: AppTheme.warning),
-            const SizedBox(height: 20),
-            const Text('No se pudo cargar',
-                style: TextStyle(
-                    fontSize: 22,
-                    fontWeight: FontWeight.w800,
-                    color: AppTheme.textPrimary)),
-            const SizedBox(height: 8),
-            Text(message,
-                textAlign: TextAlign.center,
-                style: const TextStyle(
-                    fontSize: 15,
-                    height: 1.4,
-                    color: AppTheme.textSecondary)),
-            const SizedBox(height: 20),
-            ElevatedButton.icon(
-              onPressed: onRetry,
-              icon: const Icon(Icons.refresh_rounded),
-              label: const Text('Reintentar',
-                  style: TextStyle(fontSize: 16)),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppTheme.primary,
-                foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(
-                    horizontal: 22, vertical: 14),
-                shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(14)),
-              ),
+    return Container(
+      key: const Key('pm_error_banner'),
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(20, 10, 10, 10),
+      color: const Color(0xFFFEE2E2),
+      child: Row(
+        children: [
+          const Icon(Icons.cloud_off_rounded,
+              color: AppTheme.error, size: 20),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              message,
+              style: const TextStyle(
+                  fontSize: 13,
+                  color: AppTheme.error,
+                  fontWeight: FontWeight.w600),
             ),
-          ],
-        ),
+          ),
+          TextButton.icon(
+            onPressed: onRetry,
+            icon: const Icon(Icons.refresh_rounded, size: 18),
+            label: const Text('Reintentar',
+                style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700)),
+            style: TextButton.styleFrom(
+              foregroundColor: AppTheme.error,
+              padding: const EdgeInsets.symmetric(horizontal: 8),
+            ),
+          ),
+        ],
       ),
     );
   }
