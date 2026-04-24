@@ -129,6 +129,110 @@ class _TabReviewScreenState extends State<TabReviewScreen> {
     return buf.toString();
   }
 
+  /// Pop up the customer-submitted screenshot full-screen so the
+  /// tendero can verify the transfer landed before treating the
+  /// abono as confirmed. The image is fetched from the same
+  /// payment-receipts bucket the public catalog wrote it to.
+  void _showReceipt(String url,
+      {required String method, required double amount}) {
+    if (url.trim().isEmpty) return;
+    HapticFeedback.lightImpact();
+    showDialog<void>(
+      context: context,
+      barrierDismissible: true,
+      builder: (ctx) => Dialog(
+        insetPadding: const EdgeInsets.all(16),
+        backgroundColor: Colors.white,
+        shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20)),
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Comprobante: ${method.isEmpty ? 'Pago' : method}',
+                          style: const TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w800,
+                            color: AppTheme.textPrimary,
+                          ),
+                        ),
+                        Text(
+                          _fmtCOP(amount),
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                            color: AppTheme.success,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.close_rounded),
+                    onPressed: () => Navigator.of(ctx).pop(),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              ConstrainedBox(
+                constraints: BoxConstraints(
+                  maxHeight: MediaQuery.of(ctx).size.height * 0.65,
+                ),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(14),
+                  child: InteractiveViewer(
+                    minScale: 1,
+                    maxScale: 4,
+                    child: Image.network(
+                      url,
+                      fit: BoxFit.contain,
+                      loadingBuilder: (_, child, progress) {
+                        if (progress == null) return child;
+                        return Container(
+                          height: 240,
+                          alignment: Alignment.center,
+                          child: const CircularProgressIndicator(),
+                        );
+                      },
+                      errorBuilder: (_, __, ___) => Container(
+                        height: 240,
+                        alignment: Alignment.center,
+                        padding: const EdgeInsets.all(24),
+                        child: const Text(
+                          'No pudimos cargar el comprobante.\n'
+                          'Pídele al cliente que lo reenvíe.',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(color: AppTheme.textSecondary),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 8),
+              const Text(
+                'Verifica que el monto y la cuenta destino coincidan antes de aprobar.',
+                style: TextStyle(
+                  fontSize: 12,
+                  color: AppTheme.textSecondary,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   String _fmtTime(String? iso) {
     if (iso == null || iso.isEmpty) return '';
     try {
@@ -262,6 +366,12 @@ class _TabReviewScreenState extends State<TabReviewScreen> {
                   method: (a['payment_method'] as String?) ?? 'Efectivo',
                   amount: (a['amount'] as num?)?.toDouble() ?? 0,
                   time: _fmtTime(a['created_at'] as String?),
+                  receiptUrl: (a['receipt_url'] as String?) ?? '',
+                  onShowReceipt: () => _showReceipt(
+                    a['receipt_url'] as String,
+                    method: (a['payment_method'] as String?) ?? 'Efectivo',
+                    amount: (a['amount'] as num?)?.toDouble() ?? 0,
+                  ),
                   fmtCOP: _fmtCOP,
                 )),
           const SizedBox(height: 24),
@@ -381,16 +491,21 @@ class _AbonoRow extends StatelessWidget {
     required this.method,
     required this.amount,
     required this.time,
+    required this.receiptUrl,
+    required this.onShowReceipt,
     required this.fmtCOP,
   });
 
   final String method;
   final double amount;
   final String time;
+  final String receiptUrl;
+  final VoidCallback onShowReceipt;
   final String Function(num) fmtCOP;
 
   @override
   Widget build(BuildContext context) {
+    final hasReceipt = receiptUrl.trim().isNotEmpty;
     return Container(
       margin: const EdgeInsets.only(bottom: 8),
       padding: const EdgeInsets.all(14),
@@ -415,6 +530,24 @@ class _AbonoRow extends StatelessWidget {
               ),
             ),
           ),
+          if (hasReceipt) ...[
+            // Receipt viewer — eye icon next to the amount so the
+            // tendero can verify the screenshot before treating
+            // the abono as confirmed. Hidden when no proof was
+            // attached (cash abonos, manual tendero entries).
+            IconButton(
+              key: const Key('abono_receipt_viewer'),
+              tooltip: 'Ver comprobante',
+              icon: const Icon(Icons.image_search_rounded,
+                  size: 22, color: AppTheme.primary),
+              onPressed: onShowReceipt,
+              constraints:
+                  const BoxConstraints(minWidth: 36, minHeight: 36),
+              padding: EdgeInsets.zero,
+              visualDensity: VisualDensity.compact,
+            ),
+            const SizedBox(width: 4),
+          ],
           Text(
             fmtCOP(amount),
             style: TextStyle(
