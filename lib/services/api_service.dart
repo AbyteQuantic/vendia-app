@@ -500,12 +500,20 @@ class ApiService {
     required String mimeType,
   }) async {
     try {
-      final formData = FormData.fromMap({
+      final fields = <String, dynamic>{
         'audio_file': await MultipartFile.fromFile(
           audioFile.path,
           contentType: DioMediaType.parse(mimeType),
         ),
-      });
+      };
+      // Phase-6: forward the active sede so the handler can tag any
+      // future DB writes with the right branch_id. The current
+      // handler only extracts from audio, but the contract is in
+      // place for when "guardar desde voz" wires through.
+      if (currentBranchId != null && currentBranchId!.isNotEmpty) {
+        fields['branch_id'] = currentBranchId!;
+      }
+      final formData = FormData.fromMap(fields);
       final response = await _dio.post(
         '/api/v1/ai/voice-inventory',
         data: formData,

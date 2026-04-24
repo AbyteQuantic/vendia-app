@@ -8,6 +8,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:record/record.dart';
 
 import '../../services/api_service.dart';
+import '../../services/app_error.dart';
 import '../../services/auth_service.dart';
 import '../../theme/app_theme.dart';
 import 'ia_result_screen.dart';
@@ -210,12 +211,37 @@ class _VoiceInventoryScreenState extends State<VoiceInventoryScreen>
         return;
       }
       _navigateToReview(items);
-    } catch (e) {
+    } catch (e, stack) {
+      // The original handler masked every failure as a generic "No
+      // se pudo procesar" toast, which hid network/quota/permission
+      // problems in production. Now we log the real thing via
+      // debugPrint (shows up in `flutter logs` / MCP) and surface a
+      // message the tendero can act on.
+      debugPrint('[VOICE] inventory call failed: $e\n$stack');
       if (!mounted) return;
+      final friendly = _friendlyMessageFor(e);
       setState(() {
         _status = _VoiceStatus.error;
-        _errorMessage = 'No se pudo procesar. Intenta otra vez.';
+        _errorMessage = friendly;
       });
+      // Only surface an extra SnackBar for actionable network /
+      // auth errors — the inline status banner already covers the
+      // generic case. Avoids double-showing the same copy.
+      final shouldToast = e is AppError &&
+          (e.type == AppErrorType.network ||
+              e.type == AppErrorType.auth ||
+              e.type == AppErrorType.server);
+      if (shouldToast) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            key: const Key('voice_error_snackbar'),
+            content: Text(friendly),
+            behavior: SnackBarBehavior.floating,
+            backgroundColor: AppTheme.error,
+            duration: const Duration(seconds: 5),
+          ),
+        );
+      }
     } finally {
       // Fire-and-forget the cleanup so the state transition above is
       // visible to the framework without waiting on real file I/O —
@@ -224,6 +250,29 @@ class _VoiceInventoryScreenState extends State<VoiceInventoryScreen>
       // sees the error banner instantly instead of after a disk op.
       unawaited(File(path).delete().catchError((_) => File(path)));
     }
+  }
+
+  /// Translate the raw error into a single-sentence Spanish message
+  /// the tendero can actually act on. The three branches match what
+  /// usually goes wrong here: bad network, expired trial / auth, and
+  /// backend parse/LLM errors — the rest fall back to a generic
+  /// retry message but the real stack still lands in debug logs.
+  String _friendlyMessageFor(Object e) {
+    if (e is AppError) {
+      switch (e.type) {
+        case AppErrorType.network:
+          return 'Sin conexión estable. Revisa el internet e intenta otra vez.';
+        case AppErrorType.auth:
+          return 'Tu sesión expiró. Vuelve a iniciar sesión para dictar productos.';
+        case AppErrorType.validation:
+          return e.message;
+        case AppErrorType.server:
+          return 'El servidor no pudo interpretar el audio: ${e.message}';
+        case AppErrorType.unknown:
+          return e.message;
+      }
+    }
+    return 'No se pudo procesar: $e';
   }
 
   void _navigateToReview(List<Map<String, dynamic>> items) {
@@ -384,12 +433,26 @@ class _MicOrb extends StatelessWidget {
                         ),
                       ],
                     ),
-                    child: Icon(
-                      isBusy
-                          ? Icons.auto_awesome_rounded
-                          : Icons.mic_rounded,
-                      color: Colors.white,
-                      size: 64,
+                    // During processing the orb morphs into a spinner
+                    // so the tendero gets unmistakable "working" feedback
+                    // and doesn't keep tapping. Recording / idle keep
+                    // the microphone icon.
+                    child: Center(
+                      child: isBusy
+                          ? const SizedBox(
+                              key: Key('voice_mic_spinner'),
+                              width: 54,
+                              height: 54,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 4,
+                                color: Colors.white,
+                              ),
+                            )
+                          : const Icon(
+                              Icons.mic_rounded,
+                              color: Colors.white,
+                              size: 64,
+                            ),
                     ),
                   ),
                 ),
