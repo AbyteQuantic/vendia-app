@@ -197,11 +197,25 @@ class _VoiceInventoryScreenState extends State<VoiceInventoryScreen>
 
     setState(() => _status = _VoiceStatus.processing);
 
+    // Audit log — ship the file size + duration before the API call.
+    // The architecture records audio + ships straight to Gemini
+    // multimodal (no on-device STT), so there's no transcript to
+    // log here; the backend logs the raw Gemini response for
+    // diagnosis when the extracted items look wrong.
+    try {
+      final sizeBytes = await File(path).length();
+      debugPrint(
+          '[VOICE] uploading audio duration=${realElapsed.inMilliseconds}ms size=${sizeBytes}B');
+    } catch (_) {}
+
     try {
       final items = await _apiCall(
         audioFile: File(path),
         mimeType: 'audio/m4a',
       );
+      debugPrint(
+          '[VOICE] extracted ${items.length} items: '
+          '${items.map((i) => '${i['quantity']}x ${i['name']}').join(', ')}');
       if (!mounted) return;
       if (items.isEmpty) {
         setState(() {
