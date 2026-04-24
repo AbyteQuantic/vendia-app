@@ -11,6 +11,7 @@ import '../../services/api_service.dart';
 import '../../services/app_error.dart';
 import '../../services/auth_service.dart';
 import '../../theme/app_theme.dart';
+import '../../widgets/premium_upsell_sheet.dart';
 import 'ia_result_screen.dart';
 
 /// Phase-4 "Killer feature": Voice-to-Catalog.
@@ -212,35 +213,49 @@ class _VoiceInventoryScreenState extends State<VoiceInventoryScreen>
       }
       _navigateToReview(items);
     } catch (e, stack) {
-      // The original handler masked every failure as a generic "No
-      // se pudo procesar" toast, which hid network/quota/permission
-      // problems in production. Now we log the real thing via
-      // debugPrint (shows up in `flutter logs` / MCP) and surface a
-      // message the tendero can act on.
+      // Paywall short-circuit: when the backend says this tenant
+      // isn't entitled to AI features we route to the soft paywall
+      // sheet INSTEAD of the red error banner. The Dio interceptor
+      // already fires PremiumUpsellController.notifyBlocked() on
+      // any 403 with the structured code — we also invoke it from
+      // here to cover the direct `showPremiumUpsellSheet` path in
+      // case the controller isn't wired yet (e.g. during tests
+      // that instantiate the screen with an injected apiCall).
       debugPrint('[VOICE] inventory call failed: $e\n$stack');
       if (!mounted) return;
-      final friendly = _friendlyMessageFor(e);
-      setState(() {
-        _status = _VoiceStatus.error;
-        _errorMessage = friendly;
-      });
-      // Only surface an extra SnackBar for actionable network /
-      // auth errors — the inline status banner already covers the
-      // generic case. Avoids double-showing the same copy.
-      final shouldToast = e is AppError &&
-          (e.type == AppErrorType.network ||
-              e.type == AppErrorType.auth ||
-              e.type == AppErrorType.server);
-      if (shouldToast) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            key: const Key('voice_error_snackbar'),
-            content: Text(friendly),
-            behavior: SnackBarBehavior.floating,
-            backgroundColor: AppTheme.error,
-            duration: const Duration(seconds: 5),
-          ),
-        );
+      if (e is AppError && e.isPremiumLocked) {
+        setState(() {
+          _status = _VoiceStatus.idle;
+          _errorMessage = null;
+        });
+        unawaited(showPremiumUpsellSheet(
+          context,
+          reason:
+              'La dictación por voz es una función PRO. Actívala para seguir usándola.',
+        ));
+      } else {
+        final friendly = _friendlyMessageFor(e);
+        setState(() {
+          _status = _VoiceStatus.error;
+          _errorMessage = friendly;
+        });
+        // Only surface an extra SnackBar for actionable network /
+        // auth errors — the inline status banner already covers the
+        // generic case. Avoids double-showing the same copy.
+        final shouldToast = e is AppError &&
+            (e.type == AppErrorType.network ||
+                e.type == AppErrorType.server);
+        if (shouldToast) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              key: const Key('voice_error_snackbar'),
+              content: Text(friendly),
+              behavior: SnackBarBehavior.floating,
+              backgroundColor: AppTheme.error,
+              duration: const Duration(seconds: 5),
+            ),
+          );
+        }
       }
     } finally {
       // Fire-and-forget the cleanup so the state transition above is
@@ -253,17 +268,20 @@ class _VoiceInventoryScreenState extends State<VoiceInventoryScreen>
   }
 
   /// Translate the raw error into a single-sentence Spanish message
-  /// the tendero can actually act on. The three branches match what
-  /// usually goes wrong here: bad network, expired trial / auth, and
-  /// backend parse/LLM errors — the rest fall back to a generic
-  /// retry message but the real stack still lands in debug logs.
+  /// the tendero can actually act on. Premium-lock errors never
+  /// reach this helper — they're handled above via the paywall
+  /// sheet, so the `auth` branch here only fires for 401 (token
+  /// expired) and other 403s without the paywall payload.
   String _friendlyMessageFor(Object e) {
     if (e is AppError) {
       switch (e.type) {
         case AppErrorType.network:
           return 'Sin conexión estable. Revisa el internet e intenta otra vez.';
         case AppErrorType.auth:
-          return 'Tu sesión expiró. Vuelve a iniciar sesión para dictar productos.';
+          if (e.statusCode == 401) {
+            return 'Tu sesión expiró. Vuelve a iniciar sesión para dictar productos.';
+          }
+          return e.message;
         case AppErrorType.validation:
           return e.message;
         case AppErrorType.server:

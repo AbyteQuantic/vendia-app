@@ -6,12 +6,27 @@ class AppError implements Exception {
   final AppErrorType type;
   final String message;
   final int? statusCode;
+  // Canonical machine-readable code from the backend payload. Lets
+  // screens route on "premium_feature_locked" / "premium_expired" /
+  // "branch_not_owned" without string-matching against Spanish copy.
+  final String? errorCode;
 
   const AppError({
     required this.type,
     required this.message,
     this.statusCode,
+    this.errorCode,
   });
+
+  /// Convenience predicate used by views that want to short-circuit
+  /// their own UX when the backend blocked the call with a premium
+  /// paywall. Matches either error_code (legacy "premium_expired")
+  /// or the canonical "premium_feature_locked" tag.
+  bool get isPremiumLocked {
+    if (statusCode != 403) return false;
+    return errorCode == 'premium_expired' ||
+        errorCode == 'premium_feature_locked';
+  }
 
   factory AppError.fromDioException(DioException e) {
     if (e.type == DioExceptionType.connectionTimeout ||
@@ -32,6 +47,7 @@ class AppError implements Exception {
 
     final statusCode = e.response?.statusCode;
     final data = e.response?.data;
+    final rawCode = _pickErrorCode(data);
 
     if (statusCode == 401) {
       return const AppError(
@@ -41,12 +57,28 @@ class AppError implements Exception {
       );
     }
 
+    if (statusCode == 403) {
+      // Premium paywall branch: surface the backend's human-readable
+      // message (when present) + the structured code so views can
+      // route on it. Falls back to a neutral "sin acceso" copy.
+      final serverMsg = data is Map
+          ? (data['message'] as String? ?? data['error'] as String?)
+          : null;
+      return AppError(
+        type: AppErrorType.auth,
+        message: serverMsg ?? 'No tienes acceso a esta función.',
+        statusCode: 403,
+        errorCode: rawCode,
+      );
+    }
+
     if (statusCode == 422 || statusCode == 400) {
       final serverMsg = data is Map ? data['error'] as String? : null;
       return AppError(
         type: AppErrorType.validation,
         message: serverMsg ?? 'Revisa los campos marcados.',
         statusCode: statusCode,
+        errorCode: rawCode,
       );
     }
 
@@ -56,6 +88,7 @@ class AppError implements Exception {
         type: AppErrorType.validation,
         message: serverMsg ?? 'Ese registro ya existe.',
         statusCode: 409,
+        errorCode: rawCode,
       );
     }
 
@@ -78,13 +111,32 @@ class AppError implements Exception {
         type: AppErrorType.server,
         message: combined,
         statusCode: statusCode,
+        errorCode: rawCode,
       );
     }
 
-    return const AppError(
+    return AppError(
       type: AppErrorType.unknown,
       message: 'Algo salió mal. Intente de nuevo.',
+      statusCode: statusCode,
+      errorCode: rawCode,
     );
+  }
+
+  /// Extract the first machine-readable code present in the server
+  /// payload. New callers should prefer the canonical `error` field
+  /// (2026-04-24 shape ships "premium_feature_locked" there); we fall
+  /// back to the legacy `error_code` when the new key is absent or
+  /// doesn't look like a code (heuristic: lowercase + underscore).
+  static String? _pickErrorCode(Object? data) {
+    if (data is! Map) return null;
+    final err = data['error'];
+    if (err is String && err.isNotEmpty && !err.contains(' ')) {
+      return err;
+    }
+    final legacy = data['error_code'];
+    if (legacy is String && legacy.isNotEmpty) return legacy;
+    return null;
   }
 
   factory AppError.fromException(Object e) {

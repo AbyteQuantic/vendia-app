@@ -61,15 +61,17 @@ class ApiService {
         handler.next(options);
       },
       onError: (error, handler) async {
-        // Soft paywall: the backend returns 403 with error_code =
-        // "premium_expired" when a tenant's trial lapses and they
-        // haven't upgraded to PRO_ACTIVE. Surface the upsell sheet
-        // instead of letting the error bubble up as a generic alert;
-        // basic endpoints (auth, sales, inventory) remain open so the
-        // cashier can keep working while the owner considers the
-        // upgrade. See migration 022 + middleware.PremiumAuth in Go.
-        if (error.response?.statusCode == 403 &&
-            _extractErrorCode(error) == 'premium_expired') {
+        // Soft paywall: the backend emits a structured payload on
+        // premium-locked endpoints. Historical builds tagged it
+        // `error_code: "premium_expired"`; the 2026-04-24 epic added
+        // the canonical `error: "premium_feature_locked"` +
+        // `code: 403` pair. We match on EITHER, so old + new
+        // backend deploys coexist with this client.
+        //
+        // Basic endpoints (auth, sales, inventory) stay open so the
+        // cashier keeps working while the owner considers the
+        // upgrade — see migration 022 + middleware.PremiumAuth in Go.
+        if (_isPremiumLocked(error)) {
           final reason = _extractErrorMessage(error);
           unawaited(PremiumUpsellController.notifyBlocked(reason: reason));
           handler.next(error);
@@ -2046,9 +2048,32 @@ class ApiService {
 
   String? _extractErrorMessage(DioException error) {
     final data = error.response?.data;
-    if (data is Map && data['error'] is String) {
-      return data['error'] as String;
+    if (data is Map) {
+      // New shape carries the human-readable copy under `message`;
+      // legacy shape kept the user-facing string under `error`.
+      if (data['message'] is String && (data['message'] as String).isNotEmpty) {
+        return data['message'] as String;
+      }
+      if (data['error'] is String) {
+        return data['error'] as String;
+      }
     }
     return null;
   }
+
+  bool _isPremiumLocked(DioException error) {
+    if (error.response?.statusCode != 403) return false;
+    final code = _extractErrorCode(error);
+    if (code == 'premium_expired' || code == 'premium_feature_locked') {
+      return true;
+    }
+    // Canonical 2026-04-24 shape carries `error: "premium_feature_locked"`
+    // at the top level instead of `error_code`.
+    final data = error.response?.data;
+    if (data is Map && data['error'] is String) {
+      return data['error'] == 'premium_feature_locked';
+    }
+    return false;
+  }
 }
+
