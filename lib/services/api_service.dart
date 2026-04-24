@@ -1987,6 +1987,54 @@ class ApiService {
     }
   }
 
+  // ═══════════════════════════════════════════════════════════════════════════
+  // LIVE TAB — public session + partial payments (abonos)
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  /// Fetches the live tab via the PUBLIC endpoint. Same payload the
+  /// customer sees on the QR page so the tendero and the client are
+  /// looking at the exact same numbers (items with added_at, abonos,
+  /// paid_amount, remaining_balance, payment_methods). No auth.
+  Future<Map<String, dynamic>> fetchPublicTableSession(
+      String sessionToken) async {
+    try {
+      final response = await _dio.get(
+        '/api/v1/public/table-sessions/$sessionToken',
+      );
+      return _extractData(response);
+    } on DioException catch (e) {
+      throw AppError.fromDioException(e);
+    }
+  }
+
+  /// Authenticated: tendero registers a manual abono from the POS
+  /// (customer handed them cash / paid by transfer in person).
+  /// Lands as APPROVED directly so it counts against the remaining
+  /// balance without an extra confirmation step.
+  Future<Map<String, dynamic>> registerPartialPayment({
+    required String orderId,
+    required double amount,
+    required String paymentMethod,
+    String paymentMethodId = '',
+    String notes = '',
+  }) async {
+    try {
+      final response = await _dio.post(
+        '/api/v1/orders/partial-payments',
+        data: {
+          'order_id': orderId,
+          'amount': amount,
+          'payment_method': paymentMethod,
+          'payment_method_id': paymentMethodId,
+          'notes': notes,
+        },
+      );
+      return _extractData(response);
+    } on DioException catch (e) {
+      throw AppError.fromDioException(e);
+    }
+  }
+
   /// Owner sets the 4-digit PIN that cashiers will enter to unlock restricted
   /// actions. Fails with 403 if the caller is not owner/admin.
   Future<void> setOwnerPin(String pin) async {

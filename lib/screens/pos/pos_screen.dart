@@ -26,6 +26,7 @@ import '../../services/auth_service.dart';
 import '../../services/panic_trigger_service.dart';
 import '../../database/collections/local_sale.dart';
 import '../inventory/add_merchandise_screen.dart';
+import '../tables/tab_review_screen.dart';
 
 /// PosScreen — Mobile-First POS with persistent bottom bar.
 /// Products fill the screen; cart opens as a bottom sheet.
@@ -317,6 +318,7 @@ class _PosScreenBodyState extends State<_PosScreenBody> {
             activeCtx.type == AccountType.mesaInmediata)
         ? activeCtx.tableLabel
         : null;
+    final sessionToken = activeCtx.sessionToken;
 
     showModalBottomSheet(
       context: context,
@@ -334,9 +336,22 @@ class _PosScreenBodyState extends State<_PosScreenBody> {
                 showTableQrSheet(
                   context,
                   tableLabel: activeTableLabel,
-                  knownSessionToken: activeCtx.sessionToken,
+                  knownSessionToken: sessionToken,
                 );
               },
+        onShowTabReview:
+            (activeTableLabel == null || sessionToken == null || sessionToken.isEmpty)
+                ? null
+                : () {
+                    Navigator.of(context).pop();
+                    Navigator.of(context).push(MaterialPageRoute(
+                      builder: (_) => TabReviewScreen(
+                        sessionToken: sessionToken,
+                        tableLabel: activeTableLabel,
+                        orderId: activeCtx.orderId,
+                      ),
+                    ));
+                  },
         onMostrador: () {
           ctrl.setContext(const AccountContext(type: AccountType.mostrador));
           Navigator.of(context).pop();
@@ -2155,6 +2170,10 @@ class _AccountContextSheet extends StatelessWidget {
   /// at the top of the sheet. Null for mostrador / fiado contexts.
   final String? activeTableLabel;
   final VoidCallback? onShowTableQr;
+  /// Tab review — a read of the cuenta detallada (items + horas +
+  /// abonos + saldo) so the tendero doesn't have to re-sum the
+  /// ticket mentally when a customer asks "¿cuánto voy?".
+  final VoidCallback? onShowTabReview;
 
   const _AccountContextSheet({
     required this.onMostrador,
@@ -2163,6 +2182,7 @@ class _AccountContextSheet extends StatelessWidget {
     required this.onMesaInmediata,
     this.activeTableLabel,
     this.onShowTableQr,
+    this.onShowTabReview,
   });
 
   @override
@@ -2193,6 +2213,23 @@ class _AccountContextSheet extends StatelessWidget {
               style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 20),
+
+            if (activeTableLabel != null && onShowTabReview != null) ...[
+              // Tab review (priority option per the live-tab epic) —
+              // detailed cuenta read so the tendero never has to
+              // sum items in their head when a diner asks for the
+              // total halfway through the meal.
+              _ContextOption(
+                key: const Key('context_show_tab_review'),
+                icon: Icons.receipt_long_rounded,
+                emoji: '🧾',
+                label: 'Ver Detalle de la Cuenta',
+                subtitle: 'Items con hora, abonos y saldo de ${activeTableLabel!}',
+                color: const Color(0xFFEA580C),
+                onTap: onShowTabReview!,
+              ),
+              const SizedBox(height: 12),
+            ],
 
             if (activeTableLabel != null && onShowTableQr != null) ...[
               // Live-tab QR — shown only when a table is already
