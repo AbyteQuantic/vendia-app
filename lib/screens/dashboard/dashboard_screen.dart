@@ -10,6 +10,7 @@ import '../../services/auth_service.dart';
 import '../../services/role_manager.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/online_orders_bell.dart';
+import '../payments/confirm_payment_scanner_screen.dart';
 import '../../widgets/restricted_action.dart';
 import '../../widgets/stat_card.dart';
 import '../inventory/add_merchandise_screen.dart';
@@ -292,6 +293,22 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                       fontWeight: FontWeight.w600)),
                             ],
                           ),
+                        ),
+                        // Reverse-QR scanner — staff confirms a
+                        // cash-at-waiter abono by scanning the QR
+                        // the customer renders on the live-tab.
+                        IconButton(
+                          key: const Key('dashboard_scan_payment'),
+                          tooltip: 'Escanear pago de cliente',
+                          icon: const Icon(Icons.qr_code_scanner_rounded,
+                              color: AppTheme.textPrimary),
+                          onPressed: () {
+                            HapticFeedback.lightImpact();
+                            Navigator.of(context).push(MaterialPageRoute(
+                              builder: (_) =>
+                                  const ConfirmPaymentScannerScreen(),
+                            ));
+                          },
                         ),
                         // KDS bell — polls the backend every 15 s
                         // for pedidos web en estado pending. Tapping

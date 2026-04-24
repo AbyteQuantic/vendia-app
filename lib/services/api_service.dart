@@ -2035,6 +2035,24 @@ class ApiService {
     }
   }
 
+  /// Reverse-QR confirm: tendero / mesero scanned the customer's
+  /// QR, takes the cash, and we flip the abono to APPROVED. Returns
+  /// the updated row + an `already` flag (true when the same QR
+  /// had already been confirmed — the UI can show "ya cobrado"
+  /// instead of double-counting the abono).
+  Future<Map<String, dynamic>> confirmPartialPayment(String paymentId) async {
+    try {
+      final response = await _dio.post(
+        '/api/v1/orders/payments/$paymentId/confirm',
+      );
+      final raw = response.data;
+      if (raw is Map<String, dynamic>) return raw;
+      return <String, dynamic>{};
+    } on DioException catch (e) {
+      throw AppError.fromDioException(e);
+    }
+  }
+
   /// Owner sets the 4-digit PIN that cashiers will enter to unlock restricted
   /// actions. Fails with 403 if the caller is not owner/admin.
   Future<void> setOwnerPin(String pin) async {
