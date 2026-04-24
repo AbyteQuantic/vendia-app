@@ -815,6 +815,59 @@ class ApiService {
     return best;
   }
 
+  /// Persists (upserts) the local cart for a table as an OPEN
+  /// OrderTicket on the backend, keyed by `label`. Returns the
+  /// response `data` object, which always contains:
+  ///   - session_token   (UUID, stable across upserts)
+  ///   - order_id        (ticket UUID)
+  ///   - total           (re-computed server-side)
+  ///
+  /// This is the source of truth for the live-tab QR: persist
+  /// first, then store the returned token in the local
+  /// [AccountContext] so the QR sheet can render without
+  /// round-tripping through /orders/open-accounts every time.
+  Future<Map<String, dynamic>> upsertTableTab({
+    required String label,
+    required List<Map<String, dynamic>> items,
+    String? customerName,
+    String? employeeUuid,
+    String? employeeName,
+  }) async {
+    try {
+      final response = await _dio.put('/api/v1/tables/tab', data: {
+        'label': label,
+        'items': items,
+        if (customerName != null && customerName.isNotEmpty)
+          'customer_name': customerName,
+        if (employeeUuid != null && employeeUuid.isNotEmpty)
+          'employee_uuid': employeeUuid,
+        if (employeeName != null && employeeName.isNotEmpty)
+          'employee_name': employeeName,
+      });
+      return _extractData(response);
+    } on DioException catch (e) {
+      throw AppError.fromDioException(e);
+    }
+  }
+
+  /// Authenticated lookup that mirrors UpsertTableTab but without
+  /// mutating anything. Used by the QR sheet as a fallback when
+  /// the local context has no session_token yet — e.g. the cashier
+  /// opened the tab on another device.
+  Future<Map<String, dynamic>?> fetchTableTabByLabel(String label) async {
+    final clean = label.trim();
+    if (clean.isEmpty) return null;
+    try {
+      final response = await _dio.get(
+        '/api/v1/tables/tab/${Uri.encodeComponent(clean)}',
+      );
+      return _extractData(response);
+    } on DioException catch (e) {
+      if (e.response?.statusCode == 404) return null;
+      throw AppError.fromDioException(e);
+    }
+  }
+
   Future<Map<String, dynamic>> closeOrder(
       String uuid, String paymentMethod) async {
     try {

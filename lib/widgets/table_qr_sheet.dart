@@ -27,6 +27,7 @@ import '../theme/app_theme.dart';
 Future<void> showTableQrSheet(
   BuildContext context, {
   required String tableLabel,
+  String? knownSessionToken,
   ApiService? apiOverride,
 }) {
   return showModalBottomSheet<void>(
@@ -35,6 +36,7 @@ Future<void> showTableQrSheet(
     backgroundColor: Colors.transparent,
     builder: (_) => _TableQrSheet(
       tableLabel: tableLabel,
+      knownSessionToken: knownSessionToken,
       apiOverride: apiOverride,
     ),
   );
@@ -43,10 +45,18 @@ Future<void> showTableQrSheet(
 class _TableQrSheet extends StatefulWidget {
   const _TableQrSheet({
     required this.tableLabel,
+    this.knownSessionToken,
     this.apiOverride,
   });
 
   final String tableLabel;
+
+  /// Token already persisted in the local POS context. When
+  /// provided we skip the round-trip to open-accounts and render
+  /// the QR immediately; the backend URL is still resolved in
+  /// parallel via fetchStoreSlug.
+  final String? knownSessionToken;
+
   final ApiService? apiOverride;
 
   @override
@@ -65,20 +75,18 @@ class _TableQrSheetState extends State<_TableQrSheet> {
   Future<void> _load() async {
     try {
       final api = widget.apiOverride ?? ApiService(AuthService());
-      // Two API calls in parallel keeps perceived latency low —
-      // the slug endpoint is ~50 ms and open-accounts can be
-      // slower depending on how many tables are active.
-      final results = await Future.wait<dynamic>([
-        api.fetchStoreSlug(),
-        api.fetchOpenTicketByLabel(widget.tableLabel),
-      ]);
+      // We always need the tenant domain — fetch that in parallel
+      // with the token resolution. Whichever arrives later decides
+      // when the QR renders.
+      final slugFuture = api.fetchStoreSlug();
+      final tokenFuture = _resolveToken(api);
+
+      final slugData = await slugFuture;
+      final token = await tokenFuture;
+
       if (!mounted) return;
 
-      final slugData = results[0] as Map<String, dynamic>;
-      final ticket = results[1] as Map<String, dynamic>?;
-
       final baseUrl = (slugData['base_url'] as String?)?.trim();
-      final token = (ticket?['session_token'] as String?)?.trim();
 
       if (baseUrl == null || baseUrl.isEmpty) {
         setState(() => _state = const _Error(
@@ -87,7 +95,7 @@ class _TableQrSheetState extends State<_TableQrSheet> {
             ));
         return;
       }
-      if (ticket == null || token == null || token.isEmpty) {
+      if (token == null || token.isEmpty) {
         setState(() => _state = const _Empty());
         return;
       }
@@ -99,13 +107,37 @@ class _TableQrSheetState extends State<_TableQrSheet> {
       final origin = _originOf(baseUrl);
       final url = '$origin/t/$token';
 
-      setState(() => _state = _Ready(url: url, ticket: ticket));
+      setState(() => _state = _Ready(url: url));
     } catch (e) {
       if (!mounted) return;
       setState(() => _state = _Error(
             'No pudimos cargar el QR. ${e.toString()}',
           ));
     }
+  }
+
+  /// Three-tier resolution:
+  ///   1. [widget.knownSessionToken] — the POS already persisted
+  ///      the tab and handed us its token. Instant render.
+  ///   2. GET /api/v1/tables/tab/:label — authenticated lookup by
+  ///      label, cheap and tenant-scoped. Handles the "opened the
+  ///      tab on another device" case.
+  ///   3. Legacy fallback via open-accounts + label scan, kept
+  ///      only for backends that haven't deployed the new
+  ///      endpoint yet.
+  Future<String?> _resolveToken(ApiService api) async {
+    final known = widget.knownSessionToken?.trim();
+    if (known != null && known.isNotEmpty) return known;
+
+    try {
+      final tab = await api.fetchTableTabByLabel(widget.tableLabel);
+      final token = (tab?['session_token'] as String?)?.trim();
+      if (token != null && token.isNotEmpty) return token;
+    } catch (_) {
+      // Swallow and fall back below.
+    }
+    final ticket = await api.fetchOpenTicketByLabel(widget.tableLabel);
+    return (ticket?['session_token'] as String?)?.trim();
   }
 
   /// Strip any path from [raw], leaving just `scheme://host[:port]`.
@@ -421,7 +453,6 @@ class _Error extends _LoadState {
 }
 
 class _Ready extends _LoadState {
-  const _Ready({required this.url, required this.ticket});
+  const _Ready({required this.url});
   final String url;
-  final Map<String, dynamic> ticket;
 }

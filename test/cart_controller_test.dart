@@ -1,10 +1,52 @@
+import 'package:flutter/widgets.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:vendia_pos/screens/pos/cart_controller.dart';
+import 'package:vendia_pos/services/api_service.dart';
+import 'package:vendia_pos/services/auth_service.dart';
+
+/// Minimal ApiService double — only [upsertTableTab] is needed for
+/// the table-tab sync tests. Other calls throw so accidental
+/// future regressions that start pulling in unrelated endpoints
+/// show up loudly instead of silently hitting real HTTP.
+class _FakeTabApi extends ApiService {
+  _FakeTabApi({this.response, this.throwError}) : super(AuthService());
+
+  Map<String, dynamic>? response;
+  Object? throwError;
+  int calls = 0;
+  List<Map<String, dynamic>> lastPayloads = [];
+
+  @override
+  Future<Map<String, dynamic>> upsertTableTab({
+    required String label,
+    required List<Map<String, dynamic>> items,
+    String? customerName,
+    String? employeeUuid,
+    String? employeeName,
+  }) async {
+    calls++;
+    lastPayloads.add({'label': label, 'items': items});
+    if (throwError != null) throw throwError!;
+    return response ?? const {};
+  }
+}
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+
+  setUpAll(() {
+    dotenv.testLoad(fileInput: 'API_BASE_URL=http://localhost:8080');
+  });
+
   late CartController ctrl;
 
   setUp(() {
+    // Every test starts with clean SharedPreferences so the
+    // restore-from-disk path in the constructor is deterministic
+    // and doesn't leak state between tests.
+    SharedPreferences.setMockInitialValues({});
     ctrl = CartController();
   });
 
@@ -307,6 +349,89 @@ void main() {
       ctrl.setSearch('');
       expect(ctrl.filteredProducts.length,
           equals(CartController.mockProducts.length));
+    });
+  });
+
+  // ── Table-tab persistence ────────────────────────────────────────────
+  //
+  // These guard the invariant that broke the live-tab QR before
+  // this fix: adding a product to a mesa without a session_token
+  // being materialised locally. The controller now owns the
+  // background round-trip.
+
+  group('Table-tab persistence', () {
+    test('flushTableTab is a no-op when the active context is mostrador',
+        () async {
+      final api = _FakeTabApi(response: const {'session_token': 'x'});
+      final c = CartController(apiOverride: api);
+      c.addProduct(CartController.mockProducts.first);
+
+      final token = await c.flushTableTab();
+
+      expect(token, isNull);
+      expect(api.calls, 0,
+          reason: 'mostrador context must NOT hit the backend');
+      expect(c.activeContext.sessionToken, isNull);
+    });
+
+    test(
+        'flushTableTab PUTs the cart and stores the returned '
+        'session_token on the mesa context', () async {
+      final api = _FakeTabApi(response: const {
+        'session_token': 'srv-token-1',
+        'order_id': 'order-1',
+        'total': 2500.0,
+      });
+      final c = CartController(apiOverride: api);
+      c.setContext(const AccountContext(
+        type: AccountType.mesa,
+        tableLabel: 'Mesa 4',
+      ));
+      c.addProduct(CartController.mockProducts.first);
+
+      final token = await c.flushTableTab();
+
+      expect(token, 'srv-token-1');
+      expect(api.calls, greaterThanOrEqualTo(1));
+      expect(api.lastPayloads.last['label'], 'Mesa 4');
+      expect((api.lastPayloads.last['items'] as List).length, 1);
+
+      expect(c.activeContext.sessionToken, 'srv-token-1');
+      expect(c.activeContext.orderId, 'order-1');
+      expect(c.activeContext.type, AccountType.mesa,
+          reason: 'the mesa context must stay attached');
+    });
+
+    test('flushTableTab swallows AppError instead of throwing', () async {
+      final api = _FakeTabApi(throwError: StateError('boom'));
+      final c = CartController(apiOverride: api);
+      c.setContext(const AccountContext(
+        type: AccountType.mesa,
+        tableLabel: 'Mesa 9',
+      ));
+      c.addProduct(CartController.mockProducts.first);
+
+      // Must not throw — the UI already showed the optimistic
+      // line, we just failed to persist. The QR sheet will
+      // surface an empty state to the cashier.
+      final token = await c.flushTableTab();
+      expect(token, isNull);
+      expect(c.activeContext.sessionToken, isNull);
+    });
+
+    test(
+        'flushTableTab is a no-op when the mesa cart is empty '
+        '(no fantasma tickets in KDS)', () async {
+      final api = _FakeTabApi(response: const {'session_token': 'y'});
+      final c = CartController(apiOverride: api);
+      c.setContext(const AccountContext(
+        type: AccountType.mesa,
+        tableLabel: 'Mesa 1',
+      ));
+      // No products added.
+      final token = await c.flushTableTab();
+      expect(token, isNull);
+      expect(api.calls, 0);
     });
   });
 }

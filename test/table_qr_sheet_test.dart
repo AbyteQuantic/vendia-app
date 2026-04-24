@@ -14,10 +14,16 @@ class _FakeApi extends ApiService {
   _FakeApi({
     required this.slugResponse,
     required this.openAccounts,
+    this.tabByLabel,
   }) : super(AuthService());
 
   final Map<String, dynamic> slugResponse;
   final List<Map<String, dynamic>> openAccounts;
+
+  /// Optional lookup for the authenticated /tables/tab/:label
+  /// endpoint. `null` means "not configured" → the sheet will
+  /// fall through to the legacy open-accounts scan.
+  final Map<String, Map<String, dynamic>?>? tabByLabel;
 
   @override
   Future<Map<String, dynamic>> fetchStoreSlug() async =>
@@ -26,12 +32,19 @@ class _FakeApi extends ApiService {
   @override
   Future<List<Map<String, dynamic>>> fetchOpenAccounts() async =>
       List<Map<String, dynamic>>.from(openAccounts);
+
+  @override
+  Future<Map<String, dynamic>?> fetchTableTabByLabel(String label) async {
+    if (tabByLabel == null) return null;
+    return tabByLabel![label.trim()];
+  }
 }
 
 Future<void> _openSheet(
   WidgetTester tester, {
   required String tableLabel,
   required ApiService api,
+  String? knownSessionToken,
 }) async {
   await tester.pumpWidget(MaterialApp(
     home: Scaffold(
@@ -40,6 +53,7 @@ Future<void> _openSheet(
           onPressed: () => showTableQrSheet(
             ctx,
             tableLabel: tableLabel,
+            knownSessionToken: knownSessionToken,
             apiOverride: api,
           ),
           child: const Text('open'),
@@ -154,6 +168,60 @@ void main() {
 
       expect(find.byKey(const Key('table_qr_image')), findsNothing);
       expect(find.text('Aún no hay cuenta abierta'), findsOneWidget);
+    });
+
+    testWidgets(
+        'uses knownSessionToken without scanning open-accounts '
+        'when it is provided by the POS context', (tester) async {
+      // The fake deliberately has NO matching ticket and NO tab
+      // lookup wired. If the sheet were still round-tripping, the
+      // test would fall through to the empty state. Passing a
+      // knownSessionToken must short-circuit that path.
+      final api = _FakeApi(
+        slugResponse: const {
+          'base_url': 'https://vendia.test/brasas',
+        },
+        openAccounts: const [],
+      );
+
+      await _openSheet(
+        tester,
+        tableLabel: 'Mesa 1',
+        api: api,
+        knownSessionToken: 'known-token-123',
+      );
+
+      expect(find.byKey(const Key('table_qr_image')), findsOneWidget);
+      expect(
+        find.text('https://vendia.test/t/known-token-123'),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets(
+        'falls back to /tables/tab/:label when no knownSessionToken '
+        'is provided', (tester) async {
+      // open-accounts is empty to prove the sheet is not using it;
+      // the authenticated tab endpoint hands back the token.
+      final api = _FakeApi(
+        slugResponse: const {
+          'base_url': 'https://vendia.test/brasas',
+        },
+        openAccounts: const [],
+        tabByLabel: const {
+          'Mesa 3': {
+            'session_token': 'tab-endpoint-token',
+            'order_id': 'order-xyz',
+          },
+        },
+      );
+
+      await _openSheet(tester, tableLabel: 'Mesa 3', api: api);
+
+      expect(
+        find.text('https://vendia.test/t/tab-endpoint-token'),
+        findsOneWidget,
+      );
     });
 
     testWidgets('shows error state when base_url is missing', (tester) async {

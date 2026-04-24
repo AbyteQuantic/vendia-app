@@ -271,7 +271,14 @@ class _PosScreenBodyState extends State<_PosScreenBody> {
             ? null
             : () {
                 Navigator.of(context).pop();
-                showTableQrSheet(context, tableLabel: activeTableLabel);
+                // Hand the sheet the token the controller already
+                // resolved so the QR paints without a round-trip
+                // when the cart has been synced in the background.
+                showTableQrSheet(
+                  context,
+                  tableLabel: activeTableLabel,
+                  knownSessionToken: activeCtx.sessionToken,
+                );
               },
         onMostrador: () {
           ctrl.setContext(const AccountContext(type: AccountType.mostrador));
@@ -704,8 +711,12 @@ class _PosScreenBodyState extends State<_PosScreenBody> {
 
   void _sendOrder(CartController ctrl) {
     final ctx = ctrl.activeContext;
-    // TODO: persist order to local DB / API
-    // Keep mesa assigned, only clear items
+    // Persist FIRST so the live-tab QR has a session_token by the
+    // time the cashier opens the account sheet. We fire-and-forget
+    // because the debounced syncs along the way have almost
+    // certainly already landed; this flush is a safety net. The
+    // UI keeps the mesa assigned and only clears line items.
+    unawaited(ctrl.flushTableTab());
     ctrl.clearCartKeepContext();
 
     ScaffoldMessenger.of(context).showSnackBar(

@@ -1,4 +1,6 @@
+import 'dart:async';
 import 'dart:convert';
+import 'dart:developer' as developer;
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../database/database_service.dart';
@@ -6,6 +8,7 @@ import '../../database/collections/local_product.dart';
 import '../../models/product.dart';
 import '../../models/cart_item.dart';
 import '../../services/api_service.dart';
+import '../../services/app_error.dart';
 import '../../services/auth_service.dart';
 
 // ── Account Context (Mostrador / Mesa / Fiado) ─────────────────────────────
@@ -18,12 +21,44 @@ class AccountContext {
   final String? customerName; // e.g. "Don Carlos"
   final String? customerPhone;
 
+  /// Server-side session token for this tab. Populated by
+  /// [CartController.syncActiveTableTab] after a successful PUT
+  /// /api/v1/tables/tab. Persisted so re-opening the app keeps
+  /// the QR pointing to the same live tab.
+  final String? sessionToken;
+
+  /// Server-side order_id for the open tab. Kept alongside the
+  /// session_token because the authenticated POS screens (e.g.
+  /// detail view) expect an order uuid, while the public live
+  /// tab page uses the token. Nullable until first sync.
+  final String? orderId;
+
   const AccountContext({
     this.type = AccountType.mostrador,
     this.tableLabel,
     this.customerName,
     this.customerPhone,
+    this.sessionToken,
+    this.orderId,
   });
+
+  AccountContext copyWith({
+    AccountType? type,
+    String? tableLabel,
+    String? customerName,
+    String? customerPhone,
+    String? sessionToken,
+    String? orderId,
+  }) {
+    return AccountContext(
+      type: type ?? this.type,
+      tableLabel: tableLabel ?? this.tableLabel,
+      customerName: customerName ?? this.customerName,
+      customerPhone: customerPhone ?? this.customerPhone,
+      sessionToken: sessionToken ?? this.sessionToken,
+      orderId: orderId ?? this.orderId,
+    );
+  }
 
   String get tabLabel {
     switch (type) {
@@ -43,6 +78,8 @@ class AccountContext {
         'tableLabel': tableLabel,
         'customerName': customerName,
         'customerPhone': customerPhone,
+        'sessionToken': sessionToken,
+        'orderId': orderId,
       };
 
   factory AccountContext.fromJson(Map<String, dynamic> json) {
@@ -55,6 +92,8 @@ class AccountContext {
       tableLabel: json['tableLabel'] as String?,
       customerName: json['customerName'] as String?,
       customerPhone: json['customerPhone'] as String?,
+      sessionToken: json['sessionToken'] as String?,
+      orderId: json['orderId'] as String?,
     );
   }
 }
@@ -75,9 +114,33 @@ class CartController extends ChangeNotifier {
   List<Product> _products = [];
   bool _productsLoaded = false;
 
-  CartController() {
+  // ── Background table-tab persistence ───────────────────────────
+  //
+  // Per-tab debounced writer. Each tab index has at most one in-
+  // flight Timer. When a cashier taps "+" three times on Mesa 1
+  // we only hit the backend once, 800ms after the last tap.
+  // On "Enviar a mesa" / payment the caller can bypass the
+  // debounce with flushTableTab(index: activeIndex).
+  final Map<int, Timer> _syncTimers = {};
+  static const Duration _syncDebounce = Duration(milliseconds: 800);
+
+  /// Exposed for tests: inject a fake ApiService / AuthService so
+  /// the provider tests don't need a live backend. Production
+  /// callers keep using the default constructor.
+  final ApiService? apiOverride;
+
+  CartController({this.apiOverride}) {
     _restoreCarts();
     _loadProducts();
+  }
+
+  @override
+  void dispose() {
+    for (final t in _syncTimers.values) {
+      t.cancel();
+    }
+    _syncTimers.clear();
+    super.dispose();
   }
 
   // Mock products carry explicit uuids so addProduct's uuid-based dedupe
@@ -178,6 +241,10 @@ class CartController extends ChangeNotifier {
     _contexts[_activeIndex] = ctx;
     notifyListeners();
     _persistContexts();
+    // If the cashier just assigned a table AFTER adding products
+    // (common flow: pick items, then decide "llévalo a la Mesa 3"),
+    // push the cart to the backend so the QR is immediately live.
+    _scheduleTableTabSync(_activeIndex);
   }
 
   void clearContextForActive() {
@@ -340,6 +407,7 @@ class CartController extends ChangeNotifier {
     }
     notifyListeners();
     _persistCarts();
+    _scheduleTableTabSync(_activeIndex);
   }
 
   void increment(Product product) {
@@ -349,6 +417,7 @@ class CartController extends ChangeNotifier {
     item.quantity++;
     notifyListeners();
     _persistCarts();
+    _scheduleTableTabSync(_activeIndex);
   }
 
   void decrement(Product product) {
@@ -361,6 +430,7 @@ class CartController extends ChangeNotifier {
     }
     notifyListeners();
     _persistCarts();
+    _scheduleTableTabSync(_activeIndex);
   }
 
   void setQuantity(Product product, int qty) {
@@ -377,6 +447,114 @@ class CartController extends ChangeNotifier {
     }
     notifyListeners();
     _persistCarts();
+    _scheduleTableTabSync(_activeIndex);
+  }
+
+  // ── Table-tab sync ─────────────────────────────────────────────────────────
+
+  /// Debounced background sync for the tab at [index]. No-op when
+  /// the tab is not a mesa or has no items yet (a brand-new mesa
+  /// with zero lines doesn't need a ticket, and we'd only pollute
+  /// the KDS with empties).
+  ///
+  /// When [flush] is true the debounce is skipped and the request
+  /// fires immediately — used by "Enviar a mesa" so the QR is
+  /// ready the instant the cashier opens the account sheet.
+  void _scheduleTableTabSync(int index, {bool flush = false}) {
+    final ctx = _contexts[index];
+    final isTable = ctx.type == AccountType.mesa ||
+        ctx.type == AccountType.mesaInmediata;
+    if (!isTable) return;
+
+    final label = ctx.tableLabel?.trim();
+    if (label == null || label.isEmpty) return;
+
+    _syncTimers[index]?.cancel();
+    if (flush) {
+      unawaited(_performTableTabSync(index));
+      return;
+    }
+    _syncTimers[index] = Timer(_syncDebounce, () {
+      unawaited(_performTableTabSync(index));
+    });
+  }
+
+  /// Public entry point for the POS screen's "Enviar a mesa"
+  /// action. Returns the `session_token` the backend settled on
+  /// (may already be known locally), or null if the sync failed.
+  Future<String?> flushTableTab({int? index}) async {
+    final i = index ?? _activeIndex;
+    _syncTimers[i]?.cancel();
+    return _performTableTabSync(i);
+  }
+
+  Future<String?> _performTableTabSync(int index) async {
+    if (index < 0 || index >= _cartCount) return null;
+    final ctx = _contexts[index];
+    final isTable = ctx.type == AccountType.mesa ||
+        ctx.type == AccountType.mesaInmediata;
+    if (!isTable) return null;
+    final label = ctx.tableLabel?.trim();
+    if (label == null || label.isEmpty) return null;
+    final cart = _carts[index];
+    if (cart.isEmpty) return null;
+
+    final items = cart.map((line) {
+      return {
+        'product_uuid': line.product.uuid,
+        'product_name': line.isService && line.customDescription != null
+            ? line.customDescription!
+            : line.product.name,
+        'quantity': line.quantity,
+        'unit_price': line.isService && line.customUnitPrice != null
+            ? line.customUnitPrice
+            : line.product.price,
+      };
+    }).toList();
+
+    try {
+      final api = apiOverride ?? ApiService(AuthService());
+      final data = await api.upsertTableTab(
+        label: label,
+        items: items,
+        customerName: ctx.customerName,
+      );
+      final token = data['session_token'] as String?;
+      final orderId = data['order_id'] as String?;
+      if (token == null || token.isEmpty) {
+        developer.log(
+          '[TABLE_TAB] upsert ok but no session_token in response',
+          name: 'CartController',
+        );
+        return null;
+      }
+      // Only notify if something actually changed — avoids
+      // spurious rebuilds while the cashier is scrolling.
+      final before = _contexts[index];
+      if (before.sessionToken != token || before.orderId != orderId) {
+        _contexts[index] = before.copyWith(
+          sessionToken: token,
+          orderId: orderId,
+        );
+        notifyListeners();
+        _persistContexts();
+      }
+      return token;
+    } on AppError catch (e) {
+      developer.log(
+        '[TABLE_TAB] upsert failed: ${e.type} ${e.message}',
+        name: 'CartController',
+      );
+      return null;
+    } catch (e, st) {
+      developer.log(
+        '[TABLE_TAB] upsert unexpected error: $e',
+        name: 'CartController',
+        error: e,
+        stackTrace: st,
+      );
+      return null;
+    }
   }
 
   int getQuantity(Product product) {
