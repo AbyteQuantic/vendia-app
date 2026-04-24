@@ -213,8 +213,13 @@ class _PromoShareScreenState extends State<PromoShareScreen> {
 
   Widget _bannerTile() {
     final url = widget.bannerUrl;
+    // 16:9 — consistente con el preview del PromoBuilderStep4 y con el
+    // slot "Special Offers" del catálogo web. Si dejáramos esto 1:1 el
+    // usuario vería aquí un cuadrado, compartiría por WhatsApp una
+    // imagen horizontal, y en el catálogo web la imagen quedaría cover
+    // recortada — tres resultados distintos del "mismo banner".
     return AspectRatio(
-      aspectRatio: 1,
+      aspectRatio: 16 / 9,
       child: Container(
         decoration: BoxDecoration(
           color: Colors.white,

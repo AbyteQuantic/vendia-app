@@ -1806,7 +1806,7 @@ class _PromoBuilderScreenState extends State<PromoBuilderScreen> {
     //
     // Nueva jerarquía (de arriba hacia abajo):
     //    [carrusel horizontal de tonos — 56 dp]
-    //    [preview cuadrado del banner — AspectRatio 1:1]
+    //    [preview horizontal del banner — AspectRatio 16:9]
     //    [CTA principal: "✨ Generar con IA" — 56 dp morado]
     //    [CTA secundario: "Subir foto desde galería" — 52 dp outlined]
     // Así el usuario abre el paso y ve de un golpe: qué estilo elegir,
@@ -2057,8 +2057,14 @@ class _PromoBuilderScreenState extends State<PromoBuilderScreen> {
   }
 
   Widget _bannerPreview() {
+    // 16:9 (aspectRatio ≈ 1.777) — el slot "Special Offers" del
+    // catálogo web es un carrusel horizontal de tarjetas de 280×144 px
+    // (`h-36 w-full`). Mantener el preview en 1:1 confundía al tendero
+    // porque veía un cuadrado pero en producción quedaba letterboxed.
+    // `BoxFit.cover` se mantiene para que la imagen 16:9 generada por
+    // Gemini rellene el marco sin franjas blancas.
     return AspectRatio(
-      aspectRatio: 1,
+      aspectRatio: 16 / 9,
       child: Container(
         decoration: BoxDecoration(
           color: Colors.white,
