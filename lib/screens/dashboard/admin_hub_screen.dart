@@ -54,11 +54,27 @@ class _AdminHubScreenState extends State<AdminHubScreen> {
   }
 
   Future<void> _toggleFiados(bool value) async {
+    // Optimistic flip for immediate feedback; if the PATCH fails we
+    // roll back so the UI and the backend stay honest with each
+    // other (previous version silently swallowed the error, so the
+    // tendero thought fiados were enabled when they weren't).
+    final previous = _enableFiados;
     setState(() => _enableFiados = value);
     HapticFeedback.lightImpact();
     try {
       await _api.updateStoreConfig({'enable_fiados': value});
-    } catch (_) {}
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _enableFiados = previous);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('No se pudo guardar el cambio: $e'),
+          behavior: SnackBarBehavior.floating,
+          backgroundColor: AppTheme.error,
+          duration: const Duration(seconds: 4),
+        ),
+      );
+    }
   }
 
   void _showMarginConfig() {
