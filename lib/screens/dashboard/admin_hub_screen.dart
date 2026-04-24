@@ -253,23 +253,34 @@ class _AdminHubScreenState extends State<AdminHubScreen> {
                       color: Color(0xFF10B981))),
               onTap: _showMarginConfig,
             ),
+            // "Cobro Digital" used to point to a single-account
+            // shortcut (PaymentQuickSetupScreen) that crashed in
+            // production — the DropdownButtonFormField raised
+            // "exactly one item" whenever the stored provider wasn't
+            // in the hard-coded preset list, leaving the screen
+            // blank. The shortcut is kept behind an "express" entry
+            // for backwards compat, but the primary entry now
+            // drives the full multi-wallet hub which has robust
+            // loading / empty / error states and supports QR + link
+            // uploads (Nequi, Daviplata, Bancolombia, Breve, …).
             _SettingsTile(
               icon: Icons.bolt_rounded,
               iconColor: const Color(0xFF6D28D9),
               title: 'Cobro Digital',
-              subtitle: 'Configurar Nequi, Daviplata o Bancolombia en 30 seg',
+              subtitle: 'Nequi, Daviplata, Bancolombia, Breve y QR',
               onTap: () => Navigator.of(context).push(
                 MaterialPageRoute(
-                    builder: (_) => const PaymentQuickSetupScreen()),
+                    builder: (_) => const PaymentMethodsScreen()),
               ),
             ),
             _SettingsTile(
-              icon: Icons.receipt_long_rounded,
+              icon: Icons.flash_on_rounded,
               iconColor: const Color(0xFFEA580C),
-              title: 'Otros medios de pago',
-              subtitle: 'Cuentas adicionales (avanzado)',
+              title: 'Configuración rápida (Nequi)',
+              subtitle: 'Atajo de 30 segundos para un solo método',
               onTap: () => Navigator.of(context).push(
-                MaterialPageRoute(builder: (_) => const PaymentMethodsScreen()),
+                MaterialPageRoute(
+                    builder: (_) => const PaymentQuickSetupScreen()),
               ),
             ),
 

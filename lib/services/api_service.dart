@@ -1533,6 +1533,23 @@ class ApiService {
     }
   }
 
+  /// Partial update for a payment method — used by the toggle-active
+  /// switch in the hub UI. Accepts any subset of {name,
+  /// account_details, is_active, provider, qr_image_url}; the
+  /// backend ignores keys you don't send.
+  Future<Map<String, dynamic>> updatePaymentMethod(
+      String id, Map<String, dynamic> patch) async {
+    try {
+      final response = await _dio.patch(
+        '/api/v1/store/payment-methods/$id',
+        data: patch,
+      );
+      return _extractData(response);
+    } on DioException catch (e) {
+      throw AppError.fromDioException(e);
+    }
+  }
+
   /// Uploads a QR code image for an existing payment method.
   ///
   /// The backend stores it in the `payment-qrs` bucket (R2/Supabase)

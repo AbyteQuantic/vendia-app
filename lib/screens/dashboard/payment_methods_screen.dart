@@ -100,10 +100,18 @@ class _PaymentMethodsScreenState extends State<PaymentMethodsScreen> {
       _loadError = null;
     });
     try {
-      final list = await _api.fetchPaymentMethods();
+      // Defensive timeout on top of the Dio-level 60 s: if the
+      // backend stops responding (intermittent Render cold-start,
+      // captive wifi portal) we still fall into an error state
+      // with a "Reintentar" button instead of a blank spinner
+      // forever. 12 s is longer than a healthy p99 but shorter
+      // than user patience.
+      final list = await _api
+          .fetchPaymentMethods()
+          .timeout(const Duration(seconds: 12));
       if (!mounted) return;
       setState(() {
-        _methods = list;
+        _methods = List<Map<String, dynamic>>.from(list);
         _loading = false;
       });
     } on AppError catch (e) {
@@ -118,6 +126,27 @@ class _PaymentMethodsScreenState extends State<PaymentMethodsScreen> {
         _loadError = 'No se pudieron cargar los métodos de pago.';
         _loading = false;
       });
+    }
+  }
+
+  Future<void> _toggleActive(String id, bool isActive) async {
+    // Optimistic UI: flip the switch immediately, roll back on
+    // failure. The tendero's network is often flaky so this keeps
+    // the interaction snappy and obvious.
+    final originalIndex = _methods.indexWhere((m) => m['id'] == id);
+    if (originalIndex == -1) return;
+    final original = Map<String, dynamic>.from(_methods[originalIndex]);
+    setState(() {
+      _methods[originalIndex] = {..._methods[originalIndex], 'is_active': isActive};
+    });
+    HapticFeedback.selectionClick();
+    try {
+      await _api.updatePaymentMethod(id, {'is_active': isActive});
+    } catch (e) {
+      if (!mounted) return;
+      // Roll back the optimistic update.
+      setState(() => _methods[originalIndex] = original);
+      _showError('No se pudo ${isActive ? "activar" : "desactivar"}: $e');
     }
   }
 
@@ -460,16 +489,21 @@ class _PaymentMethodsScreenState extends State<PaymentMethodsScreen> {
         physics: const AlwaysScrollableScrollPhysics(),
         itemCount: _methods.length,
         separatorBuilder: (_, __) => const SizedBox(height: 12),
-        itemBuilder: (_, i) => _MethodCard(
-          method: _methods[i],
-          preset: _presetFor(_methods[i]),
-          isUploading: _uploadingId == _methods[i]['id'],
-          onUploadQR: () => _uploadQR(_methods[i]['id'] as String),
-          onDelete: () {
-            HapticFeedback.mediumImpact();
-            _delete(_methods[i]['id'] as String);
-          },
-        ),
+        itemBuilder: (_, i) {
+          final m = _methods[i];
+          final id = (m['id'] as String?) ?? '';
+          return _MethodCard(
+            method: m,
+            preset: _presetFor(m),
+            isUploading: _uploadingId == id,
+            onUploadQR: () => _uploadQR(id),
+            onToggleActive: (v) => _toggleActive(id, v),
+            onDelete: () {
+              HapticFeedback.mediumImpact();
+              _delete(id);
+            },
+          );
+        },
       ),
     );
   }
@@ -483,6 +517,7 @@ class _MethodCard extends StatelessWidget {
     required this.preset,
     required this.isUploading,
     required this.onUploadQR,
+    required this.onToggleActive,
     required this.onDelete,
   });
 
@@ -490,6 +525,7 @@ class _MethodCard extends StatelessWidget {
   final _MethodPreset preset;
   final bool isUploading;
   final VoidCallback onUploadQR;
+  final ValueChanged<bool> onToggleActive;
   final VoidCallback onDelete;
 
   @override
@@ -497,74 +533,123 @@ class _MethodCard extends StatelessWidget {
     final name = (method['name'] as String? ?? '').trim();
     final details = (method['account_details'] as String? ?? '').trim();
     final qr = (method['qr_image_url'] as String? ?? '').trim();
+    // `is_active` may be missing on old payloads; default to true so
+    // legacy methods stay visible in the catalog instead of silently
+    // disappearing.
+    final isActive = (method['is_active'] as bool?) ?? true;
+    final isLink = preset.provider == 'breve' ||
+        (details.startsWith('http://') || details.startsWith('https://'));
     final color = preset.color;
 
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(18),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.04),
-            blurRadius: 8,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Container(
-                width: 52,
-                height: 52,
-                decoration: BoxDecoration(
-                  color: color.withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(16),
+    return Opacity(
+      // Faded card when deactivated → instantly readable "this is
+      // off" cue for older tenderos without decoding switch state.
+      opacity: isActive ? 1.0 : 0.6,
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(18),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.04),
+              blurRadius: 8,
+              offset: const Offset(0, 2),
+            ),
+          ],
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Container(
+                  width: 52,
+                  height: 52,
+                  decoration: BoxDecoration(
+                    color: color.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  child: Icon(preset.icon, color: color, size: 28),
                 ),
-                child: Icon(preset.icon, color: color, size: 28),
-              ),
-              const SizedBox(width: 14),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(name,
-                        style: const TextStyle(
-                            fontSize: 19,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.black87)),
-                    if (details.isNotEmpty)
-                      Padding(
-                        padding: const EdgeInsets.only(top: 2),
-                        child: Text(details,
-                            style: const TextStyle(
-                                fontSize: 16,
-                                color: AppTheme.textSecondary,
-                                fontWeight: FontWeight.w500)),
-                      ),
-                  ],
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(name,
+                          style: const TextStyle(
+                              fontSize: 19,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.black87)),
+                      if (details.isNotEmpty)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 2),
+                          child: Row(
+                            children: [
+                              if (isLink)
+                                Padding(
+                                  padding:
+                                      const EdgeInsets.only(right: 6),
+                                  child: Icon(Icons.link_rounded,
+                                      size: 16, color: color),
+                                ),
+                              Expanded(
+                                child: Text(
+                                  details,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(
+                                      fontSize: 16,
+                                      color: AppTheme.textSecondary,
+                                      fontWeight: FontWeight.w500),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                    ],
+                  ),
                 ),
-              ),
-              IconButton(
+                // Big visible active toggle (≥ 48 px tap target).
+                Switch(
+                  value: isActive,
+                  onChanged: onToggleActive,
+                  activeThumbColor: AppTheme.success,
+                ),
+              ],
+            ),
+
+            // QR row — thumbnail if present, upload button otherwise.
+            // For Breve / link payments the QR is rarely needed but
+            // still offered in case the tendero has a generated one.
+            const SizedBox(height: 10),
+            _QRRow(
+              qrUrl: qr,
+              color: color,
+              isUploading: isUploading,
+              onUpload: onUploadQR,
+            ),
+
+            const SizedBox(height: 8),
+            Align(
+              alignment: Alignment.centerRight,
+              child: TextButton.icon(
                 onPressed: onDelete,
-                icon: const Icon(Icons.delete_outline_rounded,
-                    color: AppTheme.error, size: 26),
-                tooltip: 'Eliminar',
+                icon: const Icon(Icons.delete_outline_rounded, size: 18),
+                label: const Text('Eliminar',
+                    style: TextStyle(fontSize: 14)),
+                style: TextButton.styleFrom(
+                  foregroundColor: AppTheme.error,
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  minimumSize: const Size(0, 32),
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                ),
               ),
-            ],
-          ),
-          // QR row — thumbnail if present, upload button otherwise.
-          const SizedBox(height: 10),
-          _QRRow(
-            qrUrl: qr,
-            color: color,
-            isUploading: isUploading,
-            onUpload: onUploadQR,
-          ),
-        ],
+            ),
+          ],
+        ),
       ),
     );
   }
