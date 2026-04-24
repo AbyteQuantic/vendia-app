@@ -218,62 +218,31 @@ class _MainDashboardScreenState extends State<MainDashboardScreen> {
                         ],
                       ),
                       const SizedBox(height: 16),
-                      const Text(
-                        'VendIA',
-                        style: TextStyle(
-                          fontSize: 28,
-                          fontWeight: FontWeight.bold,
-                          color: AppTheme.textPrimary,
-                          letterSpacing: -0.5,
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      // Store Status Switch Card
-                      GestureDetector(
-                        onTap: () => _toggleStoreStatus(!_isStoreOpen),
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                          decoration: BoxDecoration(
-                            color: _isStoreOpen 
-                              ? AppTheme.success.withValues(alpha: 0.1) 
-                              : Colors.grey.shade100,
-                            borderRadius: BorderRadius.circular(16),
-                            border: Border.all(
-                              color: _isStoreOpen 
-                                ? AppTheme.success.withValues(alpha: 0.3) 
-                                : Colors.grey.shade300,
+                      // Title + storefront status pill on the same line so
+                      // the open/closed state is the first thing the
+                      // tendero sees on the dashboard — the catálogo
+                      // público reacts to this flag, so making it
+                      // prominent prevents the "I didn't know my store
+                      // was closed" class of incidents.
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.center,
+                        children: [
+                          const Text(
+                            'VendIA',
+                            style: TextStyle(
+                              fontSize: 28,
+                              fontWeight: FontWeight.bold,
+                              color: AppTheme.textPrimary,
+                              letterSpacing: -0.5,
                             ),
                           ),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(
-                                _isStoreOpen ? Icons.online_prediction_rounded : Icons.cloud_off_rounded,
-                                color: _isStoreOpen ? AppTheme.success : AppTheme.textSecondary,
-                                size: 18,
-                              ),
-                              const SizedBox(width: 8),
-                              Text(
-                                _isStoreOpen ? 'VENTA ONLINE: ABIERTA' : 'VENTA ONLINE: CERRADA',
-                                style: TextStyle(
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.w800,
-                                  color: _isStoreOpen ? AppTheme.success : AppTheme.textSecondary,
-                                  letterSpacing: 0.5,
-                                ),
-                              ),
-                              const SizedBox(width: 12),
-                              _loadingStatus 
-                                ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2.5))
-                                : Switch(
-                                    value: _isStoreOpen,
-                                    onChanged: _toggleStoreStatus,
-                                    activeColor: AppTheme.success,
-                                    materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                                  ),
-                            ],
+                          const Spacer(),
+                          _StoreStatusPill(
+                            isOpen: _isStoreOpen,
+                            loading: _loadingStatus,
+                            onToggle: _toggleStoreStatus,
                           ),
-                        ),
+                        ],
                       ),
                       const SizedBox(height: 12),
                       const Text(
@@ -463,6 +432,97 @@ class _DashButton extends StatelessWidget {
                   color: Colors.white,
                   letterSpacing: 0.5,
                 ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Storefront open/closed pill rendered next to the dashboard title.
+/// The catálogo público (Next.js) reacts to this flag — when closed
+/// it disables add-to-cart and renders a "Tienda cerrada" notice —
+/// so the tendero needs a one-tap, high-contrast control without
+/// drilling into settings. Gerontodiseño rules: generous padding,
+/// emoji reinforces the color so colour-blind users still get the
+/// signal, spinner while the PATCH is in flight.
+class _StoreStatusPill extends StatelessWidget {
+  final bool isOpen;
+  final bool loading;
+  final ValueChanged<bool> onToggle;
+
+  const _StoreStatusPill({
+    required this.isOpen,
+    required this.loading,
+    required this.onToggle,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final bg = isOpen
+        ? AppTheme.success.withValues(alpha: 0.12)
+        : Colors.grey.shade100;
+    final border = isOpen
+        ? AppTheme.success.withValues(alpha: 0.4)
+        : Colors.grey.shade300;
+    final fg = isOpen ? AppTheme.success : AppTheme.textSecondary;
+    // Emoji 🟢/🔴 gives a non-colour secondary signal; keeps the
+    // control readable for users with colour-vision deficiencies.
+    final label = isOpen ? 'Tienda Abierta 🟢' : 'Tienda Cerrada 🔴';
+
+    return Semantics(
+      key: const Key('dashboard_store_status_pill'),
+      button: true,
+      toggled: isOpen,
+      label: isOpen
+          ? 'Tienda online abierta, toca para cerrar'
+          : 'Tienda online cerrada, toca para abrir',
+      child: GestureDetector(
+        onTap: loading ? null : () => onToggle(!isOpen),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 180),
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+          decoration: BoxDecoration(
+            color: bg,
+            borderRadius: BorderRadius.circular(999),
+            border: Border.all(color: border, width: 1.5),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w800,
+                  color: fg,
+                  letterSpacing: 0.2,
+                ),
+              ),
+              const SizedBox(width: 8),
+              SizedBox(
+                width: 36,
+                height: 22,
+                child: loading
+                    ? const Center(
+                        child: SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2.2),
+                        ),
+                      )
+                    : FittedBox(
+                        fit: BoxFit.contain,
+                        child: Switch(
+                          value: isOpen,
+                          onChanged: onToggle,
+                          activeColor: AppTheme.success,
+                          materialTapTargetSize:
+                              MaterialTapTargetSize.shrinkWrap,
+                        ),
+                      ),
               ),
             ],
           ),

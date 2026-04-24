@@ -86,5 +86,22 @@ void main() {
           reason: 'Inventario y Administrar comparten la misma Row Expanded');
       expect(inv.height, closeTo(adm.height, 4));
     });
+
+    // Storefront status pill. The catálogo público reacts to the
+    // is_delivery_open flag, so the tendero must always be able to
+    // see + flip the state without drilling into settings. The pill
+    // lives on the header row next to the "VendIA" title.
+    testWidgets('renders storefront status pill on the dashboard header',
+        (tester) async {
+      await tester.pumpWidget(_buildDashboard());
+      await tester.pump();
+
+      expect(find.byKey(const Key('dashboard_store_status_pill')),
+          findsOneWidget);
+      // First paint starts with _isStoreOpen = false (default) and the
+      // async load fails silently in tests, so we expect the "closed"
+      // copy out of the box.
+      expect(find.text('Tienda Cerrada 🔴'), findsOneWidget);
+    });
   });
 }
