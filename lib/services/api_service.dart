@@ -783,6 +783,38 @@ class ApiService {
     }
   }
 
+  /// Finds the most recently opened ticket whose `label` matches
+  /// [tableLabel] (case-insensitive, trimmed) and returns the row
+  /// verbatim — the caller reads `session_token` from it to build
+  /// the live-tab URL for the QR.
+  ///
+  /// Returns `null` when no open ticket exists for that table. We
+  /// deliberately do NOT create a ticket here: the QR is only
+  /// meaningful once the first item has been added to the tab,
+  /// and auto-creating an empty ticket would pollute the KDS.
+  Future<Map<String, dynamic>?> fetchOpenTicketByLabel(
+    String tableLabel,
+  ) async {
+    final wanted = tableLabel.trim().toLowerCase();
+    if (wanted.isEmpty) return null;
+    final accounts = await fetchOpenAccounts();
+    Map<String, dynamic>? best;
+    DateTime? bestCreated;
+    for (final row in accounts) {
+      final label = (row['label'] as String?)?.trim().toLowerCase() ?? '';
+      if (label != wanted) continue;
+      final created = DateTime.tryParse(row['created_at']?.toString() ?? '');
+      // Newest wins — the KDS lists ASC, but if a historical open
+      // ticket lingers we still want the freshest one.
+      if (bestCreated == null ||
+          (created != null && created.isAfter(bestCreated))) {
+        best = row;
+        bestCreated = created;
+      }
+    }
+    return best;
+  }
+
   Future<Map<String, dynamic>> closeOrder(
       String uuid, String paymentMethod) async {
     try {

@@ -10,6 +10,7 @@ import '../../models/product.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/notification_center_sheet.dart';
 import '../../widgets/panic_button.dart';
+import '../../widgets/table_qr_sheet.dart';
 import '../../widgets/stock_badge.dart';
 import '../../widgets/sync_status_banner.dart';
 import 'cart_controller.dart';
@@ -250,11 +251,28 @@ class _PosScreenBodyState extends State<_PosScreenBody> {
   // ── Context Sheet: "¿Para quién es esta cuenta?" ──────────────────────────
   void _showContextSheet(CartController ctrl) {
     HapticFeedback.mediumImpact();
+    final activeCtx = ctrl.activeContext;
+    // Only surface the QR affordance when the cashier is standing
+    // on a table context (both "cuenta abierta" and "pago
+    // inmediato" qualify — a QR is useful even for the immediate
+    // variant so the diner can split the check).
+    final String? activeTableLabel = (activeCtx.type == AccountType.mesa ||
+            activeCtx.type == AccountType.mesaInmediata)
+        ? activeCtx.tableLabel
+        : null;
+
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (_) => _AccountContextSheet(
+        activeTableLabel: activeTableLabel,
+        onShowTableQr: activeTableLabel == null
+            ? null
+            : () {
+                Navigator.of(context).pop();
+                showTableQrSheet(context, tableLabel: activeTableLabel);
+              },
         onMostrador: () {
           ctrl.setContext(const AccountContext(type: AccountType.mostrador));
           Navigator.of(context).pop();
@@ -1969,11 +1987,19 @@ class _AccountContextSheet extends StatelessWidget {
   final VoidCallback onFiado;
   final VoidCallback onMesaInmediata;
 
+  /// Label of the currently active table ("Mesa 1", …). When set,
+  /// we surface an additional "Mostrar QR de la cuenta" affordance
+  /// at the top of the sheet. Null for mostrador / fiado contexts.
+  final String? activeTableLabel;
+  final VoidCallback? onShowTableQr;
+
   const _AccountContextSheet({
     required this.onMostrador,
     required this.onMesa,
     required this.onFiado,
     required this.onMesaInmediata,
+    this.activeTableLabel,
+    this.onShowTableQr,
   });
 
   @override
@@ -2004,6 +2030,23 @@ class _AccountContextSheet extends StatelessWidget {
               style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 20),
+
+            if (activeTableLabel != null && onShowTableQr != null) ...[
+              // Live-tab QR — shown only when a table is already
+              // active in the current cart. Tapping delegates to
+              // the parent which closes THIS sheet before opening
+              // the QR sheet, keeping the nav stack shallow.
+              _ContextOption(
+                key: const Key('context_show_table_qr'),
+                icon: Icons.qr_code_2_rounded,
+                emoji: '📱',
+                label: 'Mostrar QR de la cuenta',
+                subtitle: 'El cliente ve ${activeTableLabel!} en vivo',
+                color: AppTheme.primary,
+                onTap: onShowTableQr!,
+              ),
+              const SizedBox(height: 12),
+            ],
 
             // Option A: Mostrador
             _ContextOption(
@@ -2063,6 +2106,7 @@ class _ContextOption extends StatelessWidget {
   final VoidCallback onTap;
 
   const _ContextOption({
+    super.key,
     required this.icon,
     required this.emoji,
     required this.label,
