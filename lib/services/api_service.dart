@@ -1533,6 +1533,43 @@ class ApiService {
     }
   }
 
+  /// Uploads a QR code image for an existing payment method.
+  ///
+  /// The backend stores it in the `payment-qrs` bucket (R2/Supabase)
+  /// and returns the full updated record with `qr_image_url`.
+  ///
+  /// `filePath` must point to a local image (≤ 3 MB). `mimeType`
+  /// defaults to image/png — the gallery picker on Android/iOS will
+  /// usually hand us PNG or JPEG.
+  Future<Map<String, dynamic>> uploadPaymentMethodQR({
+    required String id,
+    required String filePath,
+    String mimeType = 'image/png',
+    String filename = 'qr.png',
+  }) async {
+    try {
+      final form = FormData.fromMap({
+        'qr': await MultipartFile.fromFile(
+          filePath,
+          filename: filename,
+          contentType: DioMediaType.parse(mimeType),
+        ),
+      });
+      final response = await _dio.post(
+        '/api/v1/store/payment-methods/$id/qr',
+        data: form,
+        options: Options(
+          headers: {'Content-Type': 'multipart/form-data'},
+          sendTimeout: const Duration(seconds: 30),
+          receiveTimeout: const Duration(seconds: 30),
+        ),
+      );
+      return _extractData(response);
+    } on DioException catch (e) {
+      throw AppError.fromDioException(e);
+    }
+  }
+
   // ═══════════════════════════════════════════════════════════════════════════
   // FINANCIAL ANALYTICS
   // ═══════════════════════════════════════════════════════════════════════════
