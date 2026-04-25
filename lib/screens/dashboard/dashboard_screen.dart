@@ -10,7 +10,6 @@ import '../../services/auth_service.dart';
 import '../../services/role_manager.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/online_orders_bell.dart';
-import '../../widgets/restricted_action.dart';
 import '../../widgets/stat_card.dart';
 import '../inventory/add_merchandise_screen.dart';
 import '../online_store/promo_management_screen.dart';
@@ -337,26 +336,26 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 ),
 
                 // ── Stats Cards (REACTIVE) ──────────────────────────
+                // RBAC: cashier / waiter never see the gross sales
+                // total or the receipt count on the dashboard. The
+                // entire row collapses so we don't paint a placeholder
+                // box that hints at "there's something here you
+                // can't see" — that itself is a leak.
                 SliverToBoxAdapter(
                   child: Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 20),
                     child: Column(
                       children: [
-                        // Row 1: Sales total + count
-                        Row(
-                          children: [
-                            Expanded(
-                              flex: 3,
-                              child: Material(
-                                color: Colors.transparent,
-                                child: Builder(builder: (ctx) {
-                                  final canOpen = ctx
-                                      .watch<RoleManager>()
-                                      .canSeeFinances;
-                                  return RestrictedAction(
-                                    allowed: canOpen,
-                                    deniedMessage:
-                                        'La tarjeta de Finanzas y Rentabilidad solo la ve el propietario del negocio.',
+                        if (context.watch<RoleManager>().canSeeFinances) ...[
+                          // Row 1: Sales total + count (owner / admin only).
+                          Row(
+                            children: [
+                              Expanded(
+                                flex: 3,
+                                child: Material(
+                                  color: Colors.transparent,
+                                  child: InkWell(
+                                    borderRadius: BorderRadius.circular(20),
                                     onTap: () {
                                       HapticFeedback.lightImpact();
                                       Navigator.of(context).push(
@@ -377,30 +376,30 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                           : 'primer día',
                                       compact: true,
                                     ),
-                                  );
-                                }),
-                              ),
-                            ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              flex: 2,
-                              child: Material(
-                                color: Colors.transparent,
-                                child: InkWell(
-                                  borderRadius: BorderRadius.circular(20),
-                                  onTap: () => HapticFeedback.lightImpact(),
-                                  child: StatCard(
-                                    label: 'Ventas',
-                                    value: '${_data.txCount}',
-                                    icon: Icons.receipt_long_rounded,
-                                    compact: true,
                                   ),
                                 ),
                               ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 12),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                flex: 2,
+                                child: Material(
+                                  color: Colors.transparent,
+                                  child: InkWell(
+                                    borderRadius: BorderRadius.circular(20),
+                                    onTap: () => HapticFeedback.lightImpact(),
+                                    child: StatCard(
+                                      label: 'Ventas',
+                                      value: '${_data.txCount}',
+                                      icon: Icons.receipt_long_rounded,
+                                      compact: true,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 12),
+                        ],
                         // Row 2: Top product + Inventory
                         Row(
                           children: [

@@ -295,6 +295,28 @@ class ApiService {
     }
   }
 
+  /// Owner-only: hand a temporary password to an employee so they can
+  /// log in via phone+password. The backend also upserts a global
+  /// User row + UserWorkspace so the next login picks up this tenant
+  /// in the workspaces array. If the phone already belongs to a User
+  /// (Viviana case: cashier here, owner elsewhere) the response sets
+  /// `password_already_set=true` so the UI can warn the owner that
+  /// the global credential was NOT overwritten.
+  Future<Map<String, dynamic>> setEmployeePassword({
+    required String employeeUuid,
+    required String password,
+  }) async {
+    try {
+      final response = await _dio.post(
+        '/api/v1/employees/$employeeUuid/password',
+        data: {'password': password},
+      );
+      return _extractData(response);
+    } on DioException catch (e) {
+      throw AppError.fromDioException(e);
+    }
+  }
+
   Future<Map<String, dynamic>> verifyPin({
     required String employeeUuid,
     required String pin,

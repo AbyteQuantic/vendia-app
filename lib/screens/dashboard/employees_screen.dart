@@ -581,6 +581,137 @@ class _EmployeeTile extends StatelessWidget {
     required this.onDelete,
   });
 
+  void _openAdminSheet(BuildContext context) {
+    HapticFeedback.lightImpact();
+    final isOwner = emp['is_owner'] as bool? ?? false;
+    final id = emp['id'] as String? ?? '';
+    final phone = emp['phone'] as String? ?? '';
+    final hasPhone = phone.trim().isNotEmpty;
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (sheetCtx) => _EmployeeAdminSheet(
+        employeeName: emp['name'] as String? ?? '',
+        employeeId: id,
+        canDelete: !isOwner,
+        canSetPassword: !isOwner && hasPhone,
+        missingPhoneHint: !hasPhone,
+        onSetPassword: () async {
+          Navigator.of(sheetCtx).pop();
+          await _promptPasswordChange(context, id);
+        },
+        onDelete: () {
+          Navigator.of(sheetCtx).pop();
+          HapticFeedback.mediumImpact();
+          onDelete(id);
+        },
+      ),
+    );
+  }
+
+  Future<void> _promptPasswordChange(
+      BuildContext context, String employeeId) async {
+    final ctrl = TextEditingController();
+    final formKey = GlobalKey<FormState>();
+    bool obscure = true;
+
+    final newPassword = await showDialog<String>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogCtx) {
+        return StatefulBuilder(builder: (ctx, setState) {
+          return AlertDialog(
+            title: const Text('Asignar contraseña'),
+            content: Form(
+              key: formKey,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    'El empleado podrá iniciar sesión con su celular y esta contraseña.',
+                    style: TextStyle(
+                        fontSize: 13, color: Colors.grey.shade700),
+                  ),
+                  const SizedBox(height: 12),
+                  TextFormField(
+                    key: const Key('employee_password_field'),
+                    controller: ctrl,
+                    obscureText: obscure,
+                    autofocus: true,
+                    decoration: InputDecoration(
+                      labelText: 'Nueva contraseña',
+                      border: const OutlineInputBorder(),
+                      suffixIcon: IconButton(
+                        icon: Icon(obscure
+                            ? Icons.visibility_rounded
+                            : Icons.visibility_off_rounded),
+                        onPressed: () =>
+                            setState(() => obscure = !obscure),
+                      ),
+                    ),
+                    validator: (v) {
+                      if (v == null || v.length < 6) {
+                        return 'Mínimo 6 caracteres';
+                      }
+                      return null;
+                    },
+                  ),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(dialogCtx).pop(),
+                child: const Text('Cancelar'),
+              ),
+              FilledButton(
+                onPressed: () {
+                  if (formKey.currentState?.validate() ?? false) {
+                    Navigator.of(dialogCtx).pop(ctrl.text);
+                  }
+                },
+                child: const Text('Guardar'),
+              ),
+            ],
+          );
+        });
+      },
+    );
+
+    if (newPassword == null || newPassword.isEmpty) return;
+    if (!context.mounted) return;
+
+    try {
+      final api = ApiService(AuthService());
+      final res = await api.setEmployeePassword(
+        employeeUuid: employeeId,
+        password: newPassword,
+      );
+      if (!context.mounted) return;
+      final alreadySet = res['password_already_set'] == true;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(alreadySet
+              ? 'Quedó vinculado a este negocio. Su clave personal no se cambió.'
+              : 'Contraseña asignada al empleado'),
+          behavior: SnackBarBehavior.floating,
+          duration: const Duration(seconds: 4),
+        ),
+      );
+    } catch (e) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('No se pudo guardar: $e'),
+          behavior: SnackBarBehavior.floating,
+          backgroundColor: AppTheme.error,
+          duration: const Duration(seconds: 5),
+        ),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final name = emp['name'] as String? ?? '';
@@ -588,48 +719,226 @@ class _EmployeeTile extends StatelessWidget {
     final isOwner = emp['is_owner'] as bool? ?? false;
     final color = roleColor(role);
 
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 6, 16, 6),
-      child: Row(
+    return InkWell(
+      onTap: () => _openAdminSheet(context),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 6, 16, 6),
+        child: Row(
+          children: [
+            Container(
+              width: 44, height: 44,
+              decoration: BoxDecoration(
+                color: color.withValues(alpha: 0.10),
+                borderRadius: BorderRadius.circular(14),
+              ),
+              child: Icon(
+                isOwner ? Icons.star_rounded : Icons.person_rounded,
+                color: color, size: 22,
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(name,
+                      style: const TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.black87)),
+                  Text(
+                    isOwner ? 'Dueño' : (roleLabels[role] ?? role),
+                    style: TextStyle(fontSize: 13, color: color),
+                  ),
+                ],
+              ),
+            ),
+            const Icon(Icons.chevron_right_rounded,
+                color: Colors.grey, size: 22),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ─── Admin BottomSheet ─────────────────────────────────────────────────────────
+//
+// Tap on any non-owner employee opens this sheet so the OWNER has a
+// concentrated set of admin actions in one place. Currently exposes
+// the password-reset flow + delete; future iterations can drop role
+// changes / branch reassignments here without re-opening every
+// surface that lists employees.
+class _EmployeeAdminSheet extends StatelessWidget {
+  const _EmployeeAdminSheet({
+    required this.employeeName,
+    required this.employeeId,
+    required this.canDelete,
+    required this.canSetPassword,
+    required this.missingPhoneHint,
+    required this.onSetPassword,
+    required this.onDelete,
+  });
+
+  final String employeeName;
+  final String employeeId;
+  final bool canDelete;
+  final bool canSetPassword;
+  final bool missingPhoneHint;
+  final VoidCallback onSetPassword;
+  final VoidCallback onDelete;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+      ),
+      padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Container(
-            width: 44, height: 44,
-            decoration: BoxDecoration(
-              color: color.withValues(alpha: 0.10),
-              borderRadius: BorderRadius.circular(14),
-            ),
-            child: Icon(
-              isOwner ? Icons.star_rounded : Icons.person_rounded,
-              color: color, size: 22,
-            ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(name,
-                    style: const TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.black87)),
-                Text(
-                  isOwner ? 'Dueño' : (roleLabels[role] ?? role),
-                  style: TextStyle(fontSize: 13, color: color),
-                ),
-              ],
+          Center(
+            child: Container(
+              width: 40,
+              height: 4,
+              margin: const EdgeInsets.only(bottom: 16),
+              decoration: BoxDecoration(
+                color: const Color(0xFFD6D0C8),
+                borderRadius: BorderRadius.circular(2),
+              ),
             ),
           ),
-          if (!isOwner)
-            IconButton(
-              onPressed: () {
-                HapticFeedback.mediumImpact();
-                onDelete(emp['id'] as String? ?? '');
-              },
-              icon: const Icon(Icons.delete_outline_rounded,
-                  color: AppTheme.error, size: 22),
+          Text(
+            employeeName.isEmpty ? 'Empleado' : employeeName,
+            style: const TextStyle(
+              fontSize: 20,
+              fontWeight: FontWeight.bold,
+              color: AppTheme.textPrimary,
             ),
+          ),
+          const SizedBox(height: 4),
+          const Text(
+            '¿Qué quieres hacer con este empleado?',
+            style: TextStyle(fontSize: 14, color: AppTheme.textSecondary),
+          ),
+          const SizedBox(height: 18),
+
+          if (canSetPassword)
+            _AdminAction(
+              key: const Key('employee_admin_set_password'),
+              icon: Icons.key_rounded,
+              emoji: '🔑',
+              label: 'Asignar / Cambiar Contraseña',
+              subtitle: 'Para que pueda iniciar sesión en la app',
+              color: AppTheme.primary,
+              onTap: onSetPassword,
+            )
+          else if (missingPhoneHint)
+            Container(
+              padding: const EdgeInsets.all(12),
+              margin: const EdgeInsets.only(bottom: 12),
+              decoration: BoxDecoration(
+                color: AppTheme.warning.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(
+                    color: AppTheme.warning.withValues(alpha: 0.3)),
+              ),
+              child: const Text(
+                'Para asignar contraseña, primero registra un celular para este empleado.',
+                style:
+                    TextStyle(fontSize: 13, color: AppTheme.textPrimary),
+              ),
+            ),
+
+          if (canDelete) ...[
+            const SizedBox(height: 8),
+            _AdminAction(
+              key: const Key('employee_admin_delete'),
+              icon: Icons.delete_outline_rounded,
+              emoji: '🗑️',
+              label: 'Eliminar empleado',
+              subtitle: 'Pierde acceso al instante',
+              color: AppTheme.error,
+              onTap: onDelete,
+            ),
+          ],
+          const SizedBox(height: 6),
         ],
+      ),
+    );
+  }
+}
+
+class _AdminAction extends StatelessWidget {
+  const _AdminAction({
+    super.key,
+    required this.icon,
+    required this.emoji,
+    required this.label,
+    required this.subtitle,
+    required this.color,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final String emoji;
+  final String label;
+  final String subtitle;
+  final Color color;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      borderRadius: BorderRadius.circular(16),
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.all(14),
+        margin: const EdgeInsets.only(bottom: 8),
+        decoration: BoxDecoration(
+          color: color.withValues(alpha: 0.06),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: color.withValues(alpha: 0.2)),
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 42,
+              height: 42,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: color.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Icon(icon, color: color, size: 22),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    '$emoji  $label',
+                    style: const TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w800,
+                      color: AppTheme.textPrimary,
+                    ),
+                  ),
+                  Text(
+                    subtitle,
+                    style: const TextStyle(
+                        fontSize: 12, color: AppTheme.textSecondary),
+                  ),
+                ],
+              ),
+            ),
+            Icon(Icons.chevron_right_rounded, color: color, size: 20),
+          ],
+        ),
       ),
     );
   }
