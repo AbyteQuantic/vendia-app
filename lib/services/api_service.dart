@@ -619,6 +619,10 @@ class ApiService {
 
   Future<Map<String, dynamic>> fetchSalesHistory({
     String? date,
+    String? startDate,
+    String? endDate,
+    String? source,
+    String? paymentMethod,
     String? query,
     int page = 1,
     int perPage = 20,
@@ -629,6 +633,10 @@ class ApiService {
         'per_page': perPage,
       };
       if (date != null) params['date'] = date;
+      if (startDate != null) params['start_date'] = startDate;
+      if (endDate != null) params['end_date'] = endDate;
+      if (source != null) params['source'] = source;
+      if (paymentMethod != null) params['payment_method'] = paymentMethod;
       if (query != null) params['query'] = query;
       final response =
           await _dio.get('/api/v1/sales/history', queryParameters: params);

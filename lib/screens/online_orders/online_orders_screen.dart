@@ -363,22 +363,38 @@ class _OrderCard extends StatelessWidget {
           // shows: Recibido (pending) -> Preparando (accepted) ->
           // En camino (completed). The mapping here mirrors that
           // so the staff thinks in the same vocabulary.
+          //
+          // SizedBox(double.infinity) forces the button to span the
+          // card's content width; without it FilledButton.icon
+          // shrink-wraps to its label and the rounded corners
+          // collide with the card on small phones.
           if (status == 'accepted')
-            FilledButton.icon(
-              key: Key('order_complete_${order['id']}'),
-              onPressed: busy ? null : onComplete,
-              icon: busy
-                  ? const SizedBox(
-                      width: 16,
-                      height: 16,
-                      child: CircularProgressIndicator(
-                          strokeWidth: 2.2, color: Colors.white),
-                    )
-                  : const Icon(Icons.local_shipping_rounded),
-              label: const Text('Marcar entregado'),
-              style: FilledButton.styleFrom(
-                padding: const EdgeInsets.symmetric(vertical: 14),
-                backgroundColor: AppTheme.primary,
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton.icon(
+                key: Key('order_complete_${order['id']}'),
+                onPressed: busy ? null : onComplete,
+                icon: busy
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(
+                            strokeWidth: 2.2, color: Colors.white),
+                      )
+                    : const Icon(Icons.local_shipping_rounded),
+                label: const Text(
+                  'Marcar entregado',
+                  overflow: TextOverflow.ellipsis,
+                ),
+                style: FilledButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                  backgroundColor: AppTheme.primary,
+                  // explicit shape stops the rounded corners from
+                  // bleeding past the card border in any dpr.
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
               ),
             )
           else
