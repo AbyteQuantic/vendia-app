@@ -76,10 +76,25 @@ class _OnlineOrdersScreenState extends State<OnlineOrdersScreen> {
       return;
     }
     try {
-      final list = await api.fetchOnlineOrders(status: 'pending');
+      // Both pending AND accepted live here so the staff has a
+      // single surface for the whole life cycle: pending rows show
+      // Aceptar/Rechazar, accepted rows show "Marcar entregado".
+      // The customer-side portal polls /my-orders and reflects the
+      // status flips in its 3-step timeline (Recibido / Preparando
+      // / En camino).
+      final pendingFuture = api.fetchOnlineOrders(status: 'pending');
+      final acceptedFuture = api.fetchOnlineOrders(status: 'accepted');
+      final results = await Future.wait([pendingFuture, acceptedFuture]);
+      final combined = <dynamic>[...results[0], ...results[1]];
+      // Sort newest first so a fresh "pending" lands on top.
+      combined.sort((a, b) {
+        final ac = ((a as Map)['created_at'] as String?) ?? '';
+        final bc = ((b as Map)['created_at'] as String?) ?? '';
+        return bc.compareTo(ac);
+      });
       if (!mounted) return;
       setState(() {
-        _orders = list;
+        _orders = combined;
         _loading = false;
         _errorMessage = null;
       });
@@ -203,6 +218,8 @@ class _OnlineOrdersScreenState extends State<OnlineOrdersScreen> {
                 order['id'] as String, 'accepted', 'Pedido aceptado'),
             onReject: () => _decide(
                 order['id'] as String, 'rejected', 'Pedido rechazado'),
+            onComplete: () => _decide(
+                order['id'] as String, 'completed', 'Pedido entregado'),
           );
         },
         separatorBuilder: (_, __) => const SizedBox(height: 12),
@@ -218,12 +235,14 @@ class _OrderCard extends StatelessWidget {
     required this.busy,
     required this.onAccept,
     required this.onReject,
+    required this.onComplete,
   });
 
   final Map<String, dynamic> order;
   final bool busy;
   final Future<void> Function() onAccept;
   final Future<void> Function() onReject;
+  final Future<void> Function() onComplete;
 
   String _formatCOP(num amount) {
     final v = amount.round();
@@ -258,6 +277,7 @@ class _OrderCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final status = (order['status'] as String?) ?? 'pending';
     final total = (order['total_amount'] as num?) ?? 0;
     final name = (order['customer_name'] as String?) ?? '—';
     final phone = (order['customer_phone'] as String?) ?? '';
@@ -277,6 +297,25 @@ class _OrderCard extends StatelessWidget {
         children: [
           Row(
             children: [
+              if (status == 'accepted')
+                Container(
+                  margin: const EdgeInsets.only(right: 8),
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 8, vertical: 3),
+                  decoration: BoxDecoration(
+                    color: AppTheme.primary.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                  child: const Text(
+                    'PREPARANDO',
+                    style: TextStyle(
+                      fontSize: 10,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: 1.2,
+                      color: AppTheme.primary,
+                    ),
+                  ),
+                ),
               Expanded(
                 child: Text(
                   name,
@@ -320,43 +359,67 @@ class _OrderCard extends StatelessWidget {
               ),
           ],
           const SizedBox(height: 14),
-          Row(
-            children: [
-              Expanded(
-                child: OutlinedButton.icon(
-                  key: Key('order_reject_${order['id']}'),
-                  onPressed: busy ? null : onReject,
-                  icon: const Icon(Icons.close_rounded),
-                  label: const Text('Rechazar'),
-                  style: OutlinedButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(vertical: 14),
-                    foregroundColor: AppTheme.error,
-                    side: BorderSide(color: AppTheme.error.withValues(alpha: 0.5)),
+          // Action row varies by state. The customer-side timeline
+          // shows: Recibido (pending) -> Preparando (accepted) ->
+          // En camino (completed). The mapping here mirrors that
+          // so the staff thinks in the same vocabulary.
+          if (status == 'accepted')
+            FilledButton.icon(
+              key: Key('order_complete_${order['id']}'),
+              onPressed: busy ? null : onComplete,
+              icon: busy
+                  ? const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(
+                          strokeWidth: 2.2, color: Colors.white),
+                    )
+                  : const Icon(Icons.local_shipping_rounded),
+              label: const Text('Marcar entregado'),
+              style: FilledButton.styleFrom(
+                padding: const EdgeInsets.symmetric(vertical: 14),
+                backgroundColor: AppTheme.primary,
+              ),
+            )
+          else
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton.icon(
+                    key: Key('order_reject_${order['id']}'),
+                    onPressed: busy ? null : onReject,
+                    icon: const Icon(Icons.close_rounded),
+                    label: const Text('Rechazar'),
+                    style: OutlinedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      foregroundColor: AppTheme.error,
+                      side: BorderSide(
+                          color: AppTheme.error.withValues(alpha: 0.5)),
+                    ),
                   ),
                 ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: FilledButton.icon(
-                  key: Key('order_accept_${order['id']}'),
-                  onPressed: busy ? null : onAccept,
-                  icon: busy
-                      ? const SizedBox(
-                          width: 16,
-                          height: 16,
-                          child: CircularProgressIndicator(
-                              strokeWidth: 2.2, color: Colors.white),
-                        )
-                      : const Icon(Icons.check_rounded),
-                  label: const Text('Aceptar'),
-                  style: FilledButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(vertical: 14),
-                    backgroundColor: AppTheme.success,
+                const SizedBox(width: 12),
+                Expanded(
+                  child: FilledButton.icon(
+                    key: Key('order_accept_${order['id']}'),
+                    onPressed: busy ? null : onAccept,
+                    icon: busy
+                        ? const SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(
+                                strokeWidth: 2.2, color: Colors.white),
+                          )
+                        : const Icon(Icons.check_rounded),
+                    label: const Text('Aceptar'),
+                    style: FilledButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      backgroundColor: AppTheme.success,
+                    ),
                   ),
                 ),
-              ),
-            ],
-          ),
+              ],
+            ),
         ],
       ),
     );
