@@ -96,19 +96,42 @@ class _LoginScreenState extends State<LoginScreen> {
       final businessTypes =
           (data['business_types'] as List?)?.whereType<String>().toList();
 
-      if (data.containsKey('access_token')) {
-        final tenant = Map<String, dynamic>.from(
-            (data['tenant'] as Map<String, dynamic>?) ?? {});
-        if (featureFlags != null) tenant['feature_flags'] = featureFlags;
-        if (businessTypes != null) tenant['business_types'] = businessTypes;
-        await _auth.saveSession(
-          accessToken: data['access_token'] as String,
-          refreshToken: data['refresh_token'] as String? ?? '',
-          tenant: tenant,
+      // Backend ships the JWT under both `access_token` (canonical
+      // since the RBAC fix) and `token` (legacy). Accept either so
+      // older deploys still hydrate the session correctly. The
+      // presence of refresh_token is what tells us we're on the
+      // workspace-aware path; without it the response is the
+      // pre-multi-workspace shape.
+      final accessToken =
+          (data['access_token'] as String?) ?? (data['token'] as String?);
+      final refreshToken = data['refresh_token'] as String?;
+      final role = data['role'] as String? ?? '';
+      final isWorkspaceShape = accessToken != null &&
+          refreshToken != null &&
+          refreshToken.isNotEmpty;
+
+      if (isWorkspaceShape) {
+        // Workspace-aware path — persist the role + branch + user
+        // ids so RoleManager can gate the dashboard correctly. We
+        // call saveWorkspaceSession (instead of saveSession) so the
+        // role lands in secure storage and the next RoleManager
+        // refresh reads a real value (owner / cashier / waiter)
+        // instead of the legacy "unknown -> assume owner" fallback.
+        await _auth.saveWorkspaceSession(
+          accessToken: accessToken,
+          refreshToken: refreshToken,
+          tenantId: (data['tenant_id'] ?? '').toString(),
+          ownerName: data['owner_name'] as String? ?? '',
+          businessName: data['business_name'] as String? ?? '',
+          userId: (data['user_id'] ?? '').toString(),
+          branchId: (data['branch_id'] ?? '').toString(),
+          role: role,
+          featureFlags: featureFlags,
+          businessTypes: businessTypes,
         );
       } else {
         await _auth.saveLegacySession(
-          token: data['token'] as String,
+          token: (data['token'] as String?) ?? '',
           tenantId: data['tenant_id'].toString(),
           ownerName: data['owner_name'] as String? ?? '',
           businessName: data['business_name'] as String? ?? '',
