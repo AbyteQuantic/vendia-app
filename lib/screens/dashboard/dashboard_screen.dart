@@ -18,6 +18,7 @@ import '../pos/pos_screen.dart';
 import '../../widgets/sync_status_banner.dart';
 import 'admin_hub_screen.dart';
 import 'financial_dashboard_screen.dart';
+import 'product_insights_screen.dart';
 
 // ── Dashboard Data (computed from Isar) ─────────────────────────────────────
 
@@ -457,12 +458,31 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         Row(
                           children: [
                             Expanded(
-                              child: StatCard(
-                                label: 'Más vendido',
-                                value: _data.topProduct,
-                                icon: Icons.star_rounded,
-                                iconColor: const Color(0xFFF59E0B),
-                                compact: true,
+                              child: Material(
+                                color: Colors.transparent,
+                                child: InkWell(
+                                  borderRadius: BorderRadius.circular(20),
+                                  onTap: () {
+                                    HapticFeedback.lightImpact();
+                                    // Promote the read-only "Más vendido"
+                                    // tile to a real entry point: opens
+                                    // the Inteligencia de productos panel
+                                    // (top sellers / slow movers /
+                                    // expiring soon + Crear promoción
+                                    // shortcuts).
+                                    Navigator.of(context).push(
+                                        MaterialPageRoute(
+                                            builder: (_) =>
+                                                const ProductInsightsScreen()));
+                                  },
+                                  child: StatCard(
+                                    label: 'Más vendido',
+                                    value: _data.topProduct,
+                                    icon: Icons.star_rounded,
+                                    iconColor: const Color(0xFFF59E0B),
+                                    compact: true,
+                                  ),
+                                ),
                               ),
                             ),
                             const SizedBox(width: 12),

@@ -1773,6 +1773,22 @@ class ApiService {
     }
   }
 
+  /// GET /analytics/products-insights — consolidated product
+  /// intelligence panel: top sellers, slow movers, items near expiry.
+  Future<Map<String, dynamic>> fetchProductInsights({
+    String period = '30d',
+  }) async {
+    try {
+      final response = await _dio.get(
+        '/api/v1/analytics/products-insights',
+        queryParameters: {'period': period},
+      );
+      return _extractData(response);
+    } on DioException catch (e) {
+      throw AppError.fromDioException(e);
+    }
+  }
+
   Future<List<dynamic>> fetchSalesHistoryByPeriod({
     String period = 'today',
     int page = 1,
