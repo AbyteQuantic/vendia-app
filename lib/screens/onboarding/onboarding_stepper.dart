@@ -355,27 +355,24 @@ class _OnboardingStepperState extends State<OnboardingStepper> {
                           ),
                         ),
 
-                      // Botón Siguiente / Crear cuenta / Entrar.
-                      // Tres modos:
-                      //   - pasos 1-4: "Siguiente" (avanza local)
-                      //   - paso 5 (empleados): "Crear cuenta" → submit
-                      //     y, en éxito, _onControllerChange avanza al
-                      //     paso de logo
-                      //   - paso 6 (logo): "Entrar al panel" → navega
+                      // Botón Siguiente / Crear cuenta. Dos modos
+                      // tras mover el logo a step 5:
+                      //   - pasos 1-5: "Siguiente" (avanza local)
+                      //   - paso 6 (empleados, último): "Crear cuenta"
+                      //     → submit() registra + replays la
+                      //     intención de logo capturada en step 5;
+                      //     _onControllerChange navega al dashboard
+                      //     en éxito.
                       Expanded(
                         child: ElevatedButton(
-                          key: isLogoStep
-                              ? const Key('btn_finish')
-                              : isRegisterStep
-                                  ? const Key('btn_submit')
-                                  : const Key('btn_next'),
+                          key: isRegisterStep
+                              ? const Key('btn_submit')
+                              : const Key('btn_next'),
                           onPressed: isLoading
                               ? null
-                              : isLogoStep
-                                  ? _finishOnboarding
-                                  : isRegisterStep
-                                      ? ctrl.submit
-                                      : _onNext,
+                              : isRegisterStep
+                                  ? ctrl.submit
+                                  : _onNext,
                           child: isLoading
                               ? const SizedBox(
                                   height: 24,
@@ -383,11 +380,9 @@ class _OnboardingStepperState extends State<OnboardingStepper> {
                                   child: CircularProgressIndicator(
                                       color: Colors.white, strokeWidth: 2.5),
                                 )
-                              : Text(isLogoStep
-                                  ? 'Entrar al panel'
-                                  : isRegisterStep
-                                      ? 'Crear cuenta'
-                                      : 'Siguiente'),
+                              : Text(isRegisterStep
+                                  ? 'Crear cuenta'
+                                  : 'Siguiente'),
                         ),
                       ),
                     ],
