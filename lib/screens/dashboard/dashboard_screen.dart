@@ -11,6 +11,7 @@ import '../../services/role_manager.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/online_orders_bell.dart';
 import '../../widgets/stat_card.dart';
+import '../auth/login_screen.dart';
 import '../inventory/add_merchandise_screen.dart';
 import '../online_store/promo_management_screen.dart';
 import '../pos/pos_screen.dart';
@@ -237,6 +238,43 @@ class _DashboardScreenState extends State<DashboardScreen> {
         _ => 'Efectivo',
       };
 
+  /// Confirm + clear the session and bounce back to the login screen.
+  /// Same logout that lived inside admin_hub, mirrored here so the
+  /// cashier (who can't reach Configuración) isn't trapped.
+  Future<void> _onLogout() async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20)),
+        title: const Text('¿Cerrar sesión?',
+            style: TextStyle(fontSize: 22)),
+        content: const Text(
+            'Sus datos locales se mantendrán guardados.',
+            style: TextStyle(fontSize: 16)),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('Cancelar',
+                style: TextStyle(fontSize: 18)),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: const Text('Cerrar sesión',
+                style: TextStyle(fontSize: 18, color: AppTheme.error)),
+          ),
+        ],
+      ),
+    );
+    if (confirm != true || !mounted) return;
+    await AuthService().logout();
+    if (!mounted) return;
+    Navigator.of(context).pushAndRemoveUntil(
+      MaterialPageRoute(builder: (_) => const LoginScreen()),
+      (_) => false,
+    );
+  }
+
   // ── Build ───────────────────────────────────────────────────────────────────
 
   @override
@@ -292,6 +330,20 @@ class _DashboardScreenState extends State<DashboardScreen> {
                             ],
                           ),
                         ),
+                        // Account menu — every role needs a way to
+                        // close their session. The dueño had it inside
+                        // "Configuración"; cashiers / waiters never
+                        // saw that card so they were trapped in the
+                        // session of whichever workspace they entered.
+                        // Mounting it on the dashboard header makes
+                        // logout reachable in one tap regardless of
+                        // role.
+                        _AccountMenuButton(
+                          ownerName: widget.ownerName,
+                          businessName: widget.businessName,
+                          onLogout: _onLogout,
+                        ),
+                        const SizedBox(width: 4),
                         // KDS bell — polls the backend every 15 s
                         // for pedidos web en estado pending. Tapping
                         // opens OnlineOrdersScreen where the tendero
@@ -862,6 +914,134 @@ class _MarketingHubCard extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+/// Account menu button on the dashboard header. Opens a bottom sheet
+/// with the user's identity + workspace and a "Cerrar sesión" action.
+/// Visible to every role — owners had logout inside Configuración,
+/// but cashiers and waiters never reach that hub, so the only escape
+/// from a session was wiping the app.
+class _AccountMenuButton extends StatelessWidget {
+  final String ownerName;
+  final String businessName;
+  final Future<void> Function() onLogout;
+
+  const _AccountMenuButton({
+    required this.ownerName,
+    required this.businessName,
+    required this.onLogout,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final roleLabel = context.watch<RoleManager>().role.label;
+    return IconButton(
+      tooltip: 'Mi cuenta',
+      icon: Container(
+        width: 40,
+        height: 40,
+        decoration: BoxDecoration(
+          color: AppTheme.primary.withValues(alpha: 0.10),
+          shape: BoxShape.circle,
+        ),
+        child: const Icon(Icons.person_rounded,
+            color: AppTheme.primary, size: 24),
+      ),
+      onPressed: () {
+        HapticFeedback.lightImpact();
+        showModalBottomSheet<void>(
+          context: context,
+          backgroundColor: Colors.white,
+          shape: const RoundedRectangleBorder(
+            borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+          ),
+          builder: (ctx) => SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(20, 12, 20, 16),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Center(
+                    child: Container(
+                      width: 40,
+                      height: 4,
+                      decoration: BoxDecoration(
+                        color: Colors.grey.shade300,
+                        borderRadius: BorderRadius.circular(2),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  Row(
+                    children: [
+                      Container(
+                        width: 56,
+                        height: 56,
+                        decoration: BoxDecoration(
+                          color: AppTheme.primary.withValues(alpha: 0.10),
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Icon(Icons.person_rounded,
+                            color: AppTheme.primary, size: 28),
+                      ),
+                      const SizedBox(width: 14),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(ownerName,
+                                style: const TextStyle(
+                                    fontSize: 22,
+                                    fontWeight: FontWeight.bold,
+                                    color: AppTheme.textPrimary),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis),
+                            const SizedBox(height: 2),
+                            Text('$roleLabel • $businessName',
+                                style: const TextStyle(
+                                    fontSize: 15,
+                                    color: AppTheme.textSecondary),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 20),
+                  SizedBox(
+                    width: double.infinity,
+                    height: 56,
+                    child: ElevatedButton.icon(
+                      icon: const Icon(Icons.logout_rounded,
+                          color: AppTheme.error),
+                      label: const Text('Cerrar sesión',
+                          style: TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                              color: AppTheme.error)),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor:
+                            AppTheme.error.withValues(alpha: 0.08),
+                        elevation: 0,
+                        shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(16)),
+                      ),
+                      onPressed: () async {
+                        Navigator.of(ctx).pop();
+                        await onLogout();
+                      },
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
     );
   }
 }
