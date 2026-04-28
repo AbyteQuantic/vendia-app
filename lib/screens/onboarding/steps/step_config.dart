@@ -117,11 +117,18 @@ class StepConfig extends StatelessWidget {
                 const SizedBox(height: 24),
 
                 // Radio-style grid: tap replaces the previous selection.
+                // childAspectRatio dropped from 0.85 → 0.78: at the
+                // previous ratio each card was ~3-5px short of the
+                // natural height of [icon + title(2 lines) +
+                // description(2 lines)] on 360dp devices and Flutter
+                // painted the BOTTOM-OVERFLOWED debug stripe across
+                // all cards. UI_RULES.md #3 — must render clean on
+                // 360dp.
                 GridView.count(
                   crossAxisCount: 2,
                   crossAxisSpacing: 16,
                   mainAxisSpacing: 16,
-                  childAspectRatio: 0.85,
+                  childAspectRatio: 0.78,
                   shrinkWrap: true,
                   physics: const NeverScrollableScrollPhysics(),
                   children: _types.map((opt) {
@@ -273,36 +280,51 @@ class _TypeCard extends StatelessWidget {
                 ),
               ),
               Padding(
-                padding: const EdgeInsets.fromLTRB(12, 16, 12, 12),
+                padding: const EdgeInsets.fromLTRB(12, 14, 12, 10),
+                // Flexible-wrapped texts so a long label/description
+                // shrinks (with ellipsis) rather than overflowing the
+                // card — defensive even with the bumped aspect ratio
+                // above. Icon size trimmed from 44 → 38 to free a
+                // few px for the description line on narrow screens.
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
+                  mainAxisSize: MainAxisSize.min,
                   children: [
                     Icon(
                       option.icon,
-                      size: 44,
+                      size: 38,
                       color: selected ? Colors.white : AppTheme.primary,
                     ),
-                    const SizedBox(height: 10),
-                    Text(
-                      option.label,
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                        height: 1.2,
-                        color: selected ? Colors.white : AppTheme.textPrimary,
+                    const SizedBox(height: 8),
+                    Flexible(
+                      child: Text(
+                        option.label,
+                        textAlign: TextAlign.center,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                          height: 1.2,
+                          color:
+                              selected ? Colors.white : AppTheme.textPrimary,
+                        ),
                       ),
                     ),
                     const SizedBox(height: 4),
-                    Text(
-                      option.description,
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        fontSize: 16,
-                        height: 1.3,
-                        color: selected
-                            ? Colors.white.withValues(alpha: 0.85)
-                            : Colors.grey.shade500,
+                    Flexible(
+                      child: Text(
+                        option.description,
+                        textAlign: TextAlign.center,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 14,
+                          height: 1.3,
+                          color: selected
+                              ? Colors.white.withValues(alpha: 0.85)
+                              : Colors.grey.shade500,
+                        ),
                       ),
                     ),
                   ],
