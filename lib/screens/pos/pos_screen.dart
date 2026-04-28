@@ -1357,8 +1357,14 @@ class _ProductCard extends StatelessWidget {
         clipBehavior: Clip.hardEdge,
         child: LayoutBuilder(
           builder: (context, box) {
-            // Split: 50% image, 50% content — guaranteed no overflow
-            final imageH = (box.maxHeight * 0.50).roundToDouble();
+            // Split: 45% image / 55% content. The previous 50/50 left
+            // the content side ~3px short of the natural height of
+            // [name(2 lines) + subtitle + StockBadge + price-row], and
+            // Flutter painted the BOTTOM-OVERFLOWED debug stripe on the
+            // physical device (UI_RULES.md #3 — must render clean on
+            // 360dp). Giving content a bit more room absorbs the
+            // overflow without shrinking the image meaningfully.
+            final imageH = (box.maxHeight * 0.45).roundToDouble();
             final contentH = box.maxHeight - imageH;
 
             return Column(
@@ -1404,34 +1410,47 @@ class _ProductCard extends StatelessWidget {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        // Name + subtitle (flexible — absorbs overflow)
+                        // Name + subtitle + stock — Spacer pushes the
+                        // StockBadge to the bottom of the available
+                        // area instead of stacking with a fixed 4px gap
+                        // that caused overflow when the card was
+                        // narrow. Each Text uses Flexible so they can
+                        // shrink (rather than overflow) under tight
+                        // constraints.
                         Expanded(
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisSize: MainAxisSize.max,
                             children: [
-                              Text(
-                                product.name,
-                                maxLines: 2,
-                                overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.w600,
-                                  color: AppTheme.textPrimary,
-                                  height: 1.2,
+                              Flexible(
+                                child: Text(
+                                  product.name,
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
+                                  softWrap: true,
+                                  style: const TextStyle(
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w600,
+                                    color: AppTheme.textPrimary,
+                                    height: 1.2,
+                                  ),
                                 ),
                               ),
                               if (product.subtitle.isNotEmpty)
-                                Text(
-                                  product.subtitle,
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: const TextStyle(
-                                    fontSize: 12,
-                                    color: AppTheme.textSecondary,
-                                    height: 1.3,
+                                Flexible(
+                                  child: Text(
+                                    product.subtitle,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    softWrap: false,
+                                    style: const TextStyle(
+                                      fontSize: 12,
+                                      color: AppTheme.textSecondary,
+                                      height: 1.3,
+                                    ),
                                   ),
                                 ),
-                              const SizedBox(height: 4),
+                              const Spacer(),
                               Align(
                                 alignment: Alignment.centerLeft,
                                 child: StockBadge(stock: product.stock),
