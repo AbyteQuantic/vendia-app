@@ -53,8 +53,36 @@ class _FinancialDashboardScreenState extends State<FinancialDashboardScreen> {
   Future<void> _load() async {
     setState(() => _loading = true);
     await _loadLocal();
+    // Server overlay — owners need to see EVERY employee's sales,
+    // not just whatever landed in this device's Isar. Without this,
+    // a sale Viviana cobró on her phone never showed on Bryan's
+    // Finanzas (he was reading his own offline cache). The server
+    // call is best-effort; on failure we keep the local view.
+    await _loadFromServer();
     _loadSuggestions();
     if (mounted) setState(() => _loading = false);
+  }
+
+  Future<void> _loadFromServer() async {
+    try {
+      final data = await _api.fetchFinancialSummary(period: _period);
+      if (!mounted) return;
+      double parse(dynamic v) =>
+          v is num ? v.toDouble() : double.tryParse(v?.toString() ?? '') ?? 0;
+      int parseInt(dynamic v) =>
+          v is num ? v.toInt() : int.tryParse(v?.toString() ?? '') ?? 0;
+      setState(() {
+        _totalSales = parse(data['total_sales']);
+        _txCount = parseInt(data['transaction_count']);
+        _cashInDrawer = parse(data['cash_in_drawer']);
+        _digitalMoney = parse(data['digital_money']);
+        _accountsReceivable = parse(data['accounts_receivable']);
+        _profit = parse(data['total_profit']);
+        _dailyAvg = parse(data['daily_average']);
+      });
+    } catch (_) {
+      // Offline / 5xx — keep the local-Isar values already in state.
+    }
   }
 
   /// All periods use Isar local data — single source of truth.
