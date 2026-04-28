@@ -457,7 +457,21 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                   color: Colors.transparent,
                                   child: InkWell(
                                     borderRadius: BorderRadius.circular(20),
-                                    onTap: () => HapticFeedback.lightImpact(),
+                                    onTap: () {
+                                      HapticFeedback.lightImpact();
+                                      // Open the full Finanzas screen
+                                      // — same destination as "Ventas
+                                      // de hoy" so a tap on the count
+                                      // leads to the same drilldown
+                                      // (history list, ranking, hour
+                                      // chart). Previously a no-op.
+                                      Navigator.of(context).push(
+                                        MaterialPageRoute(
+                                          builder: (_) =>
+                                              const FinancialDashboardScreen(),
+                                        ),
+                                      );
+                                    },
                                     child: StatCard(
                                       label: 'Ventas',
                                       value: '${_data.txCount}',

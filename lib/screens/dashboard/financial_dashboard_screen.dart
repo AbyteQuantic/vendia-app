@@ -275,10 +275,210 @@ class _FinancialDashboardScreenState extends State<FinancialDashboardScreen> {
                 .toList(),
           ),
         ),
+        // Sales history at the bottom — every transaction in the
+        // window with WHO sold it (employee), WHEN, HOW (method),
+        // WHAT (first item + count). Filters carry over from the
+        // top-of-screen filter sheet.
+        _SalesHistorySection(
+          period: _period.name,
+          employee: _employeeFilter,
+          source: _sourceFilter,
+          paymentMethod: _methodFilter,
+        ),
       ],
     );
   }
 }
+
+/// Streams the period sales straight from the backend so the owner
+/// sees attribution (employee_name) without depending on local Isar.
+/// Lives at the bottom of the Finanzas screen and re-fetches whenever
+/// any of the upstream filters change (period / employee / channel /
+/// method).
+class _SalesHistorySection extends StatefulWidget {
+  final String period;
+  final String? employee;
+  final String? source;
+  final String? paymentMethod;
+  const _SalesHistorySection({
+    required this.period,
+    required this.employee,
+    required this.source,
+    required this.paymentMethod,
+  });
+
+  @override
+  State<_SalesHistorySection> createState() => _SalesHistorySectionState();
+}
+
+class _SalesHistorySectionState extends State<_SalesHistorySection> {
+  late final ApiService _api;
+  bool _loading = true;
+  List<dynamic> _sales = const [];
+
+  @override
+  void initState() {
+    super.initState();
+    _api = ApiService(AuthService());
+    _load();
+  }
+
+  @override
+  void didUpdateWidget(_SalesHistorySection old) {
+    super.didUpdateWidget(old);
+    if (old.period != widget.period ||
+        old.employee != widget.employee ||
+        old.source != widget.source ||
+        old.paymentMethod != widget.paymentMethod) {
+      _load();
+    }
+  }
+
+  Future<void> _load() async {
+    setState(() => _loading = true);
+    try {
+      final list = await _api.fetchSalesHistoryByPeriod(
+        period: widget.period,
+        page: 1,
+        perPage: 50,
+      );
+      if (!mounted) return;
+      setState(() {
+        // Filter client-side using the same predicates as the dashboard
+        // — saves a backend roundtrip and keeps the source of truth one
+        // endpoint until SalesHistoryByPeriod grows the same filters.
+        _sales = list.where((s) {
+          if (widget.employee != null && widget.employee!.isNotEmpty) {
+            if ((s['employee_name'] ?? '') != widget.employee) return false;
+          }
+          if (widget.source != null && widget.source!.isNotEmpty) {
+            if ((s['source'] ?? '') != widget.source) return false;
+          }
+          if (widget.paymentMethod != null &&
+              widget.paymentMethod!.isNotEmpty) {
+            if ((s['payment_method'] ?? '') != widget.paymentMethod) {
+              return false;
+            }
+          }
+          return true;
+        }).toList();
+        _loading = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _sales = const [];
+        _loading = false;
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return _Section(
+      icon: Icons.receipt_long_rounded,
+      title: 'Historial de ventas',
+      child: _loading
+          ? const Padding(
+              padding: EdgeInsets.symmetric(vertical: 24),
+              child: Center(child: CircularProgressIndicator()),
+            )
+          : _sales.isEmpty
+              ? const Text('No hay ventas en este período.',
+                  style: TextStyle(
+                      fontSize: 15, color: AppTheme.textSecondary))
+              : Column(
+                  children: _sales
+                      .take(20)
+                      .map((s) => _SaleTile(s as Map<String, dynamic>))
+                      .toList(),
+                ),
+    );
+  }
+}
+
+class _SaleTile extends StatelessWidget {
+  final Map<String, dynamic> sale;
+  const _SaleTile(this.sale);
+
+  @override
+  Widget build(BuildContext context) {
+    final total = (sale['total'] as num?)?.toDouble() ?? 0;
+    final method = (sale['payment_method'] ?? '') as String;
+    final source = (sale['source'] ?? 'POS') as String;
+    final employee = (sale['employee_name'] ?? '') as String;
+    final createdAt = DateTime.tryParse(sale['created_at']?.toString() ?? '')
+            ?.toLocal() ??
+        DateTime.now();
+    final items = (sale['Items'] ?? sale['items'] ?? const []) as List;
+    String label = 'Venta';
+    if (items.isNotEmpty) {
+      final first = items.first as Map;
+      label = (first['name'] ?? first['product_name'] ?? 'Producto') as String;
+      if (items.length > 1) {
+        label = '$label + ${items.length - 1} más';
+      }
+    }
+    final timeStr =
+        '${createdAt.hour.toString().padLeft(2, '0')}:${createdAt.minute.toString().padLeft(2, '0')}';
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: Row(
+        children: [
+          Container(
+            width: 40,
+            height: 40,
+            decoration: BoxDecoration(
+              color: _methodColor(method).withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Icon(_methodIcon(method),
+                size: 20, color: _methodColor(method)),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(label,
+                    style: const TextStyle(
+                        fontSize: 16, fontWeight: FontWeight.w600),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis),
+                const SizedBox(height: 2),
+                Text(
+                  '${employee.isEmpty ? "Sin asignar" : employee} · '
+                  '$timeStr · '
+                  '${_methodLabel(method)} · '
+                  '${_channelLabel(source)}',
+                  style: const TextStyle(
+                      fontSize: 13, color: AppTheme.textSecondary),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
+          Text(_formatMoney(total),
+              style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                  color: _methodColor(method))),
+        ],
+      ),
+    );
+  }
+}
+
+IconData _methodIcon(String m) => switch (m) {
+      'cash' => Icons.payments_rounded,
+      'transfer' || 'nequi' || 'daviplata' => Icons.phone_android_rounded,
+      'card' => Icons.credit_card_rounded,
+      'credit' => Icons.menu_book_rounded,
+      _ => Icons.receipt_rounded,
+    };
 
 // ── Helpers ────────────────────────────────────────────────────────
 
