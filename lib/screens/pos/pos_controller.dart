@@ -42,7 +42,15 @@ class PosController extends ChangeNotifier {
   List<Product> get _filteredProducts {
     if (_searchQuery.isEmpty) return _products;
     final q = _searchQuery.toLowerCase();
-    return _products.where((p) => p.name.toLowerCase().contains(q)).toList();
+    // Match against name OR barcode — when the cashier scans / types a code
+    // (e.g. 8412598000775), the only fast resolution path is via the
+    // products.barcode column. Without this, a barcode-driven search always
+    // misses because no product name contains the digits.
+    return _products.where((p) {
+      if (p.name.toLowerCase().contains(q)) return true;
+      final code = (p.barcode ?? '').toLowerCase();
+      return code.isNotEmpty && code.contains(q);
+    }).toList();
   }
 
   void setSearch(String q) {
