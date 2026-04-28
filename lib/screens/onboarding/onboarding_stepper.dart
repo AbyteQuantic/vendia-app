@@ -1,5 +1,3 @@
-import 'dart:io';
-
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../services/api_service.dart';
@@ -29,19 +27,6 @@ class OnboardingStepperScreen extends StatelessWidget {
     return ChangeNotifierProvider(
       create: (_) => OnboardingStepperController(
         apiCall: (payload) => api.registerTenantFull(payload),
-        // Logo callbacks fire AFTER registerTenantFull / saveSession,
-        // so by the time they run the JWT is already in the
-        // ApiService auth interceptor — no manual token plumbing.
-        generateLogoIA: (description) async {
-          await api.generateLogoAI(
-            businessName: '',
-            businessType: '',
-            details: description,
-          );
-        },
-        uploadLogoFile: (path) async {
-          await api.uploadLogo(File(path));
-        },
         saveSession: (data) async {
           // Backend returns feature_flags + business_types at the root
           // of the register/login response (migration 021). Fold them

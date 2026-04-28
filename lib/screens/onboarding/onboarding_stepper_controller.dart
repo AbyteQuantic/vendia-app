@@ -13,18 +13,10 @@ enum StepperStatus { idle, loading, success, error }
 class OnboardingStepperController extends ChangeNotifier {
   final Future<Map<String, dynamic>> Function(Map<String, dynamic>) apiCall;
   final Future<void> Function(Map<String, dynamic> responseData) saveSession;
-  // Optional logo-apply hooks. Called AFTER registerTenantFull lands
-  // so they have a real JWT in scope. Failures are swallowed — the
-  // account is already created at that point and the merchant can
-  // re-apply the logo from Configuración.
-  final Future<void> Function(String description)? generateLogoIA;
-  final Future<void> Function(String localPath)? uploadLogoFile;
 
   OnboardingStepperController({
     required this.apiCall,
     required this.saveSession,
-    this.generateLogoIA,
-    this.uploadLogoFile,
   });
 
   // ── Estado del stepper ────────────────────────────────────────────────────
@@ -88,38 +80,25 @@ class OnboardingStepperController extends ChangeNotifier {
     return '${labels.sublist(0, labels.length - 1).join(", ")} y ${labels.last}';
   }
 
-  // ── Paso 5: Logo (intent capture, applied post-register) ────────────────
-  // The logo step now sits BEFORE registration in the visual flow so the
-  // merchant feels like they're crafting the brand before the account
-  // is real. Both the IA endpoint and the upload endpoint require a
-  // tenant_id, so the actual API calls are deferred to submit() — we
-  // capture intent here and replay it after registerTenantFull() lands.
+  // ── Paso 5: Logo (resolved BEFORE register via public preview API) ───
+  // Step 5 now actually generates / uploads the logo via two public
+  // routes (POST /api/v1/auth/preview-logo, .../preview-logo-upload).
+  // The resulting URL is stored here and folded into the register
+  // payload at business.logo_url so the tenant is born with its
+  // brand mark already attached.
   //
-  //   - logoIntent == 'ai'      → call generateLogoAI(details=logoDescription)
-  //   - logoIntent == 'gallery' → call uploadLogo(File(logoLocalPath))
-  //   - logoIntent == ''        → skip; logo remains null
-  String logoIntent = '';
+  // logoDescription persists across step revisits so a Back-then-
+  // Next doesn't wipe the merchant's typed intent.
+  String logoUrl = '';
   String logoDescription = '';
-  String logoLocalPath = '';
 
-  void setLogoIA(String description) {
-    logoIntent = 'ai';
-    logoDescription = description.trim();
-    logoLocalPath = '';
+  void setLogoUrl(String url) {
+    logoUrl = url;
     notifyListeners();
   }
 
-  void setLogoFile(String path) {
-    logoIntent = 'gallery';
-    logoLocalPath = path;
-    logoDescription = '';
-    notifyListeners();
-  }
-
-  void clearLogoIntent() {
-    logoIntent = '';
-    logoDescription = '';
-    logoLocalPath = '';
+  void clearLogo() {
+    logoUrl = '';
     notifyListeners();
   }
 
@@ -194,29 +173,6 @@ class OnboardingStepperController extends ChangeNotifier {
 
       await saveSession(data);
 
-      // Replay the logo intent that was captured in step 5. From the
-      // merchant's POV the logo is applied AS PART OF "Crear cuenta" —
-      // they don't see the two-phase orchestration. Failures are
-      // non-fatal: account is real, logo stays unset, merchant can
-      // try again from Configuración.
-      if (logoIntent == 'ai' &&
-          logoDescription.isNotEmpty &&
-          generateLogoIA != null) {
-        try {
-          await generateLogoIA!(logoDescription);
-        } catch (_) {
-          // Swallow — see comment above.
-        }
-      } else if (logoIntent == 'gallery' &&
-          logoLocalPath.isNotEmpty &&
-          uploadLogoFile != null) {
-        try {
-          await uploadLogoFile!(logoLocalPath);
-        } catch (_) {
-          // Swallow.
-        }
-      }
-
       _status = StepperStatus.success;
     } catch (e) {
       _status = StepperStatus.error;
@@ -241,6 +197,7 @@ class OnboardingStepperController extends ChangeNotifier {
         'type': businessType, // tipo principal
         'types': businessTypes, // todos los portafolios
         'has_multiple_branches': hasMultipleBranches,
+        if (logoUrl.isNotEmpty) 'logo_url': logoUrl,
       },
       'config': {
         'sale_types': saleTypes,

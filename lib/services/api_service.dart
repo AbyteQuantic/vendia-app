@@ -1329,6 +1329,44 @@ class ApiService {
   // 15b. LOGO IA
   // ═══════════════════════════════════════════════════════════════════════════
 
+  /// PUBLIC endpoint used during onboarding (BEFORE the tenant
+  /// exists). Generates a preview logo, returns the URL — the URL
+  /// is then sent in the registerTenantFull payload so the tenant
+  /// is created with the logo in place.
+  Future<Map<String, dynamic>> previewLogoIA({
+    required String businessName,
+    required String businessType,
+    required String details,
+  }) async {
+    try {
+      final response = await _dio.post('/api/v1/auth/preview-logo', data: {
+        'business_name': businessName,
+        'business_type': businessType,
+        'details': details,
+      });
+      return _extractData(response);
+    } on DioException catch (e) {
+      throw AppError.fromDioException(e);
+    }
+  }
+
+  /// PUBLIC counterpart of previewLogoIA — uploads a gallery image
+  /// before the tenant exists. Used by the onboarding logo step.
+  Future<Map<String, dynamic>> previewLogoUpload(File logo) async {
+    try {
+      final formData = FormData.fromMap({
+        'logo': await MultipartFile.fromFile(logo.path),
+      });
+      final response = await _dio.post(
+        '/api/v1/auth/preview-logo-upload',
+        data: formData,
+      );
+      return _extractData(response);
+    } on DioException catch (e) {
+      throw AppError.fromDioException(e);
+    }
+  }
+
   Future<Map<String, dynamic>> generateLogoAI({
     required String businessName,
     required String businessType,
