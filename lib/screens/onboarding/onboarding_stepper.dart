@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../services/api_service.dart';
@@ -27,6 +29,19 @@ class OnboardingStepperScreen extends StatelessWidget {
     return ChangeNotifierProvider(
       create: (_) => OnboardingStepperController(
         apiCall: (payload) => api.registerTenantFull(payload),
+        // Logo callbacks fire AFTER registerTenantFull / saveSession,
+        // so by the time they run the JWT is already in the
+        // ApiService auth interceptor — no manual token plumbing.
+        generateLogoIA: (description) async {
+          await api.generateLogoAI(
+            businessName: '',
+            businessType: '',
+            details: description,
+          );
+        },
+        uploadLogoFile: (path) async {
+          await api.uploadLogo(File(path));
+        },
         saveSession: (data) async {
           // Backend returns feature_flags + business_types at the root
           // of the register/login response (migration 021). Fold them
@@ -83,17 +98,19 @@ class _OnboardingStepperState extends State<OnboardingStepper> {
     GlobalKey<FormState>(), // Paso 2 — Negocio
   ];
 
-  // Títulos y subtítulos. Step 5/6 (índice 4) sigue siendo Empleados
-  // y dispara el registro al pulsar "Crear cuenta". Step 6/6 (índice
-  // 5) es Logo — solo se muestra después de que el tenant exista, así
-  // la IA puede usar el JWT para generar.
+  // Títulos y subtítulos. Logo en step 5 (intent capture, sin API
+  // calls), Empleados en step 6 — el botón "Crear cuenta" del paso 6
+  // dispara registerTenantFull() y a continuación replays la
+  // intención de logo capturada en el paso 5. Así, desde la
+  // perspectiva del comerciante, "no se crea la cuenta sin la imagen
+  // del negocio".
   static const _stepTitles = [
     ('Paso 1 de 6', 'Sus datos personales'),
     ('Paso 2 de 6', 'Datos del negocio'),
     ('Paso 3 de 6', '¿Tiene más de un local?'),
     ('Paso 4 de 6', '¿Qué vende en su negocio?'),
-    ('Paso 5 de 6', 'Sus empleados'),
-    ('Paso 6 de 6', 'La imagen de su negocio'),
+    ('Paso 5 de 6', 'La imagen de su negocio'),
+    ('Paso 6 de 6', 'Sus empleados'),
   ];
 
   @override
@@ -105,20 +122,12 @@ class _OnboardingStepperState extends State<OnboardingStepper> {
 
   void _onControllerChange() {
     if (!mounted) return;
-
-    // After registerTenantFull succeeds (triggered by the "Crear
-    // cuenta" button on step 5), advance to the LOGO step instead of
-    // jumping to the dashboard. This is what gives the IA a real
-    // tenant_id to work with — pre-registration generation never
-    // worked. The dashboard navigation moves to _onFinish, fired by
-    // the "Entrar" button on step 6.
-    if (_ctrl.status == StepperStatus.success && _ctrl.currentStep == 4) {
-      _ctrl.nextStep();
-      _pageCtrl.animateToPage(
-        _ctrl.currentStep,
-        duration: const Duration(milliseconds: 350),
-        curve: Curves.easeInOut,
-      );
+    // submit() runs on step 6 (the new last step) and applies the
+    // captured logo intent inline. On success we go straight to the
+    // dashboard — no intermediate logo screen anymore because that
+    // step now lives BEFORE registration.
+    if (_ctrl.status == StepperStatus.success) {
+      _finishOnboarding();
     }
   }
 
@@ -189,12 +198,10 @@ class _OnboardingStepperState extends State<OnboardingStepper> {
           builder: (ctx, ctrl, _) {
             final step = ctrl.currentStep;
             final (stepLabel, stepTitle) = _stepTitles[step];
-            // Step 4 (índice 4 = "Sus empleados", penúltimo): aquí
-            // se dispara el registro. Step 5 (índice 5 = logo, último):
-            // sólo navega al dashboard.
+            // Last step (índice 5 = "Sus empleados") dispara el
+            // registro y, en éxito, replays el logo capturado en el
+            // paso 5. Logo step (índice 4) es solo "Siguiente".
             final isRegisterStep =
-                step == OnboardingStepperController.totalSteps - 2;
-            final isLogoStep =
                 step == OnboardingStepperController.totalSteps - 1;
             final isLoading = ctrl.status == StepperStatus.loading;
 
@@ -291,8 +298,8 @@ class _OnboardingStepperState extends State<OnboardingStepper> {
                       StepBusiness(controller: ctrl, formKey: _formKeys[1]),
                       const StepBranches(),
                       const StepConfig(),
-                      const StepEmployees(),
                       const StepLogo(),
+                      const StepEmployees(),
                     ],
                   ),
                 ),

@@ -5,22 +5,23 @@ import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 
-import '../../../services/api_service.dart';
-import '../../../services/auth_service.dart';
 import '../../../theme/app_theme.dart';
 import '../onboarding_stepper_controller.dart';
 
-/// Paso final post-registro: la imagen del negocio.
+/// Paso 5 — La imagen de su negocio.
 ///
-/// Este paso SOLO se muestra después de que `OnboardingStepperController.submit()`
-/// haya creado el tenant (status == success). En ese punto el JWT ya tiene
-/// `tenant_id`, así que las llamadas a `/api/v1/tenant/generate-logo` y
-/// `/api/v1/tenant/upload-logo` pueden ejecutarse — algo que NO funcionaba
-/// cuando este step vivía pre-registro.
+/// IMPORTANT: this step now sits BEFORE registration. The merchant
+/// asked for "no se debería crear la cuenta sin un logo" — so the
+/// flow is reordered to: data collection (1-4) → logo (5) → empleados
+/// + Crear cuenta (6).
 ///
-/// La IA recibe nombre del negocio + tipo de negocio (su prompt en el
-/// backend ahora prescribe estilo plano vectorial, paleta limitada, sin texto,
-/// safe-area, ícono industrial — ver gemini_service.go GenerateLogo).
+/// Both the IA endpoint and the upload endpoint require a tenant_id,
+/// which doesn't exist yet at this point in the flow. We capture the
+/// merchant's intent locally on the controller (`logoIntent` +
+/// `logoDescription` / `logoLocalPath`) and replay the API calls in
+/// submit() AFTER registerTenantFull() lands a real JWT. From the
+/// merchant's POV the logo is "applied" by the same "Crear cuenta"
+/// click as the registration itself — atomic from their perspective.
 class StepLogo extends StatefulWidget {
   const StepLogo({super.key});
 
@@ -28,28 +29,11 @@ class StepLogo extends StatefulWidget {
   State<StepLogo> createState() => _StepLogoState();
 }
 
-enum _LogoStatus { idle, generating, ready, uploading, error }
-
 class _StepLogoState extends State<StepLogo> {
-  late final ApiService _api;
-
-  _LogoStatus _status = _LogoStatus.idle;
-  String? _logoUrl; // generated or uploaded — final URL
-  String? _localPreviewPath; // for gallery uploads, before upload completes
-  String? _errorMsg;
-
-  // Free-text context the merchant types to steer the IA. Fed verbatim
-  // into the prompt as a "BRAND TONE" line so the model can pick
-  // industry-appropriate symbology (e.g. "vendo helados artesanales con
-  // sabores de frutas" pushes the model toward an ice-cream cone with
-  // mango / strawberry accents instead of a generic storefront).
-  late final TextEditingController _detailsCtrl;
-
-  // Below this character count we consider the description too thin
-  // to feed the IA a meaningful symbol — "tienda" alone is not enough
-  // to differentiate from the rubro default. 12 chars is roughly
-  // "vendo X" — short but specific.
   static const int _minDetailsLength = 12;
+
+  late final TextEditingController _detailsCtrl;
+  String? _localPreviewPath;
 
   bool get _detailsValid =>
       _detailsCtrl.text.trim().length >= _minDetailsLength;
@@ -57,11 +41,17 @@ class _StepLogoState extends State<StepLogo> {
   @override
   void initState() {
     super.initState();
-    _api = ApiService(AuthService());
-    _detailsCtrl = TextEditingController()
-      // Rebuild on every keystroke so the IA button enables / disables
-      // and the helper-text counter updates in real time.
-      ..addListener(() => setState(() {}));
+    final ctrl = context.read<OnboardingStepperController>();
+    // Hydrate from any prior visit so the merchant doesn't have to
+    // retype after going Back.
+    _detailsCtrl =
+        TextEditingController(text: ctrl.logoDescription)
+          ..addListener(() {
+            ctrl.logoDescription = _detailsCtrl.text.trim();
+            setState(() {});
+          });
+    _localPreviewPath =
+        ctrl.logoLocalPath.isNotEmpty ? ctrl.logoLocalPath : null;
   }
 
   @override
@@ -70,42 +60,7 @@ class _StepLogoState extends State<StepLogo> {
     super.dispose();
   }
 
-  Future<void> _generateWithAI() async {
-    HapticFeedback.lightImpact();
-    setState(() {
-      _status = _LogoStatus.generating;
-      _errorMsg = null;
-    });
-    try {
-      final ctrl = context.read<OnboardingStepperController>();
-      final data = await _api.generateLogoAI(
-        businessName: ctrl.businessName,
-        businessType: ctrl.businessType,
-        details: _detailsCtrl.text.trim(),
-      );
-      final url = data['logo_url'] as String?;
-      if (!mounted) return;
-      if (url == null || url.isEmpty) {
-        setState(() {
-          _status = _LogoStatus.error;
-          _errorMsg = 'La IA no devolvió un logo válido.';
-        });
-        return;
-      }
-      setState(() {
-        _logoUrl = url;
-        _status = _LogoStatus.ready;
-      });
-    } catch (e) {
-      if (!mounted) return;
-      setState(() {
-        _status = _LogoStatus.error;
-        _errorMsg = 'No se pudo generar el logo. Intente de nuevo.';
-      });
-    }
-  }
-
-  Future<void> _uploadFromGallery() async {
+  Future<void> _pickGallery() async {
     HapticFeedback.lightImpact();
     final picker = ImagePicker();
     final picked = await picker.pickImage(
@@ -115,63 +70,58 @@ class _StepLogoState extends State<StepLogo> {
       maxHeight: 1024,
     );
     if (picked == null || !mounted) return;
-    setState(() {
-      _status = _LogoStatus.uploading;
-      _localPreviewPath = picked.path;
-      _errorMsg = null;
-    });
-    try {
-      final data = await _api.uploadLogo(File(picked.path));
-      final url = data['logo_url'] as String?;
-      if (!mounted) return;
-      if (url == null || url.isEmpty) {
-        setState(() {
-          _status = _LogoStatus.error;
-          _errorMsg = 'No se pudo subir la imagen.';
-        });
-        return;
-      }
-      setState(() {
-        _logoUrl = url;
-        _status = _LogoStatus.ready;
-      });
-    } catch (e) {
-      if (!mounted) return;
-      setState(() {
-        _status = _LogoStatus.error;
-        _errorMsg = 'No se pudo subir la imagen. Intente de nuevo.';
-      });
-    }
+    setState(() => _localPreviewPath = picked.path);
+    context.read<OnboardingStepperController>().setLogoFile(picked.path);
+  }
+
+  void _commitIntentIA() {
+    HapticFeedback.lightImpact();
+    if (!_detailsValid) return;
+    context.read<OnboardingStepperController>()
+        .setLogoIA(_detailsCtrl.text.trim());
+    setState(() => _localPreviewPath = null);
+    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+      backgroundColor: AppTheme.success,
+      behavior: SnackBarBehavior.floating,
+      content: Text(
+        '✓ Logo se diseñará al crear la cuenta',
+        style: TextStyle(fontSize: 16),
+      ),
+    ));
+  }
+
+  void _clearChoice() {
+    setState(() => _localPreviewPath = null);
+    context.read<OnboardingStepperController>().clearLogoIntent();
   }
 
   @override
   Widget build(BuildContext context) {
-    final busy =
-        _status == _LogoStatus.generating || _status == _LogoStatus.uploading;
+    final ctrl = context.watch<OnboardingStepperController>();
+    final intent = ctrl.logoIntent;
     return SingleChildScrollView(
       padding: const EdgeInsets.fromLTRB(24, 8, 24, 24),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const Text(
-            '¡Su cuenta está lista! 🎉',
+            'La imagen de su negocio',
             style: TextStyle(
-              fontSize: 22,
-              fontWeight: FontWeight.bold,
-              color: AppTheme.textPrimary,
-            ),
+                fontSize: 22,
+                fontWeight: FontWeight.bold,
+                color: AppTheme.textPrimary),
           ),
           const SizedBox(height: 6),
           const Text(
-            'Para terminar, dele identidad a su negocio. Para generarlo con IA '
-            'cuéntenos qué hace especial a su negocio — la IA lo necesita para '
-            'acertar. También puede subir una imagen propia o saltar el paso.',
-            style:
-                TextStyle(fontSize: 16, height: 1.4, color: AppTheme.textSecondary),
+            'Antes de crear la cuenta, dele identidad a su negocio. La IA '
+            'la diseñará usando lo que cuente abajo, o puede subir una '
+            'imagen propia. También puede saltar este paso.',
+            style: TextStyle(
+                fontSize: 16, height: 1.4, color: AppTheme.textSecondary),
           ),
-          const SizedBox(height: 24),
+          const SizedBox(height: 20),
 
-          // ── Preview ────────────────────────────────────────────────
+          // ── Preview / status ──────────────────────────────────────
           Center(
             child: Container(
               width: 180,
@@ -179,48 +129,71 @@ class _StepLogoState extends State<StepLogo> {
               decoration: BoxDecoration(
                 color: AppTheme.surfaceGrey,
                 borderRadius: BorderRadius.circular(36),
-                border: Border.all(color: AppTheme.borderColor, width: 1.5),
+                border: Border.all(
+                    color: intent.isNotEmpty
+                        ? AppTheme.success
+                        : AppTheme.borderColor,
+                    width: intent.isNotEmpty ? 2.5 : 1.5),
               ),
               clipBehavior: Clip.hardEdge,
-              child: _buildPreview(busy),
+              child: _buildPreview(intent),
             ),
           ),
-          const SizedBox(height: 20),
-
-          // ── Brand-tone (REQUIRED for the IA) ──────────────────────
-          // Validation lifted to a contract: the IA button is disabled
-          // until the merchant types at least _minDetailsLength chars.
-          // Without this guardrail the model produced unrelated blobs
-          // (the demo phone hit "Llaveros y utensilios de moda" → a
-          // brown shape with no relation to keys or fashion). Backend
-          // also rejects empty / too-short details with a 400 — the
-          // UI gate is just the friendlier first line of defense.
-          Row(children: [
-            const Text(
-              '¿Qué hace especial a su negocio?',
-              style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w600,
-                  color: AppTheme.textPrimary),
-            ),
-            const SizedBox(width: 6),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-              decoration: BoxDecoration(
-                color: AppTheme.error.withValues(alpha: 0.10),
-                borderRadius: BorderRadius.circular(8),
+          const SizedBox(height: 6),
+          if (intent == 'ai')
+            Center(
+              child: Text(
+                '✨ La IA diseñará su logo al crear la cuenta',
+                style: TextStyle(
+                    fontSize: 14,
+                    color: AppTheme.success,
+                    fontWeight: FontWeight.w600),
               ),
-              child: const Text('Obligatorio para IA',
-                  style: TextStyle(
-                      fontSize: 12,
-                      color: AppTheme.error,
-                      fontWeight: FontWeight.w700)),
+            )
+          else if (intent == 'gallery')
+            Center(
+              child: Text(
+                '✓ Imagen lista para subir al crear la cuenta',
+                style: TextStyle(
+                    fontSize: 14,
+                    color: AppTheme.success,
+                    fontWeight: FontWeight.w600),
+              ),
             ),
-          ]),
+          const SizedBox(height: 18),
+
+          // ── Title row (Wrap so the obligatorio pill drops cleanly) ─
+          Wrap(
+            spacing: 6,
+            runSpacing: 4,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              const Text(
+                '¿Qué hace especial a su negocio?',
+                style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600,
+                    color: AppTheme.textPrimary),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(
+                    horizontal: 8, vertical: 2),
+                decoration: BoxDecoration(
+                  color: AppTheme.error.withValues(alpha: 0.10),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Text('Obligatorio para IA',
+                    style: TextStyle(
+                        fontSize: 12,
+                        color: AppTheme.error,
+                        fontWeight: FontWeight.w700)),
+              ),
+            ],
+          ),
           const SizedBox(height: 4),
           const Text(
-            'Cuéntenos en una frase qué vende, qué lo distingue, '
-            'colores que le gusten… La IA usa esto para acertar.',
+            'Cuéntenos qué vende, qué lo distingue, colores que le '
+            'gusten… La IA usa esto para acertar.',
             style: TextStyle(fontSize: 14, color: AppTheme.textSecondary),
           ),
           const SizedBox(height: 8),
@@ -229,13 +202,12 @@ class _StepLogoState extends State<StepLogo> {
             maxLines: 3,
             minLines: 2,
             maxLength: 240,
-            enabled: !busy,
             style: const TextStyle(fontSize: 16),
             decoration: InputDecoration(
               hintText: 'Ej: Tienda de barrio que también vende helados '
                   'artesanales de frutas naturales. Me gusta el color verde.',
-              hintStyle: TextStyle(
-                  fontSize: 14, color: Colors.grey.shade500),
+              hintStyle:
+                  TextStyle(fontSize: 14, color: Colors.grey.shade500),
               filled: true,
               fillColor: AppTheme.surfaceGrey,
               border: OutlineInputBorder(
@@ -247,16 +219,12 @@ class _StepLogoState extends State<StepLogo> {
             ),
           ),
           const SizedBox(height: 6),
-          // Inline helper: doubles as character counter + validation.
-          // Switches to a green check + "¡Listo!" once the threshold
-          // is met so the merchant has a clear "I can press the
-          // button now" signal.
           _detailsValid
               ? Row(children: const [
                   Icon(Icons.check_circle_rounded,
                       color: AppTheme.success, size: 18),
                   SizedBox(width: 6),
-                  Text('¡Listo! Ya puede generar el logo.',
+                  Text('¡Listo! Ya puede elegir IA.',
                       style: TextStyle(
                           fontSize: 14,
                           color: AppTheme.success,
@@ -270,37 +238,9 @@ class _StepLogoState extends State<StepLogo> {
                       fontSize: 14, color: AppTheme.textSecondary)),
           const SizedBox(height: 16),
 
-          if (_errorMsg != null)
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: AppTheme.error.withValues(alpha: 0.08),
-                borderRadius: BorderRadius.circular(14),
-                border: Border.all(color: AppTheme.error.withValues(alpha: 0.3)),
-              ),
-              child: Row(
-                children: [
-                  const Icon(Icons.error_outline_rounded,
-                      color: AppTheme.error, size: 20),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      _errorMsg!,
-                      style: const TextStyle(
-                          fontSize: 16, color: AppTheme.error),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          if (_errorMsg != null) const SizedBox(height: 16),
-
-          // ── Acciones ───────────────────────────────────────────────
-          // IA button gated on _detailsValid — without a usable
-          // description the model cannot pick an industry-appropriate
-          // symbol and we'd burn a Gemini credit on a generic blob.
+          // ── IA option ─────────────────────────────────────────────
           ElevatedButton.icon(
-            onPressed: (busy || !_detailsValid) ? null : _generateWithAI,
+            onPressed: _detailsValid ? _commitIntentIA : null,
             style: ElevatedButton.styleFrom(
               backgroundColor: const Color(0xFF7C3AED),
               foregroundColor: Colors.white,
@@ -313,15 +253,18 @@ class _StepLogoState extends State<StepLogo> {
             ),
             icon: const Icon(Icons.auto_awesome_rounded, size: 22),
             label: Text(
-              _status == _LogoStatus.generating
-                  ? 'Diseñando...'
-                  : (_logoUrl != null ? 'Regenerar con IA' : 'Generar Logo con IA'),
-              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+              intent == 'ai'
+                  ? '✓ Listo para diseñar con IA'
+                  : 'Diseñar Logo con IA',
+              style:
+                  const TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
             ),
           ),
           const SizedBox(height: 10),
+
+          // ── Gallery upload option ─────────────────────────────────
           OutlinedButton.icon(
-            onPressed: busy ? null : _uploadFromGallery,
+            onPressed: _pickGallery,
             style: OutlinedButton.styleFrom(
               foregroundColor: AppTheme.primary,
               minimumSize: const Size(double.infinity, 60),
@@ -331,53 +274,73 @@ class _StepLogoState extends State<StepLogo> {
             ),
             icon: const Icon(Icons.photo_library_rounded, size: 22),
             label: Text(
-              _status == _LogoStatus.uploading
-                  ? 'Subiendo...'
+              intent == 'gallery'
+                  ? '✓ Cambiar imagen'
                   : 'Subir foto de mi galería',
-              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+              style:
+                  const TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
             ),
           ),
           const SizedBox(height: 12),
-          Center(
-            child: Text(
-              _logoUrl == null
-                  ? 'También puede saltar este paso y configurarlo después en Ajustes.'
-                  : '¡Listo! Toque "Entrar" para ir al panel.',
-              textAlign: TextAlign.center,
-              style: const TextStyle(
-                  fontSize: 14, color: AppTheme.textSecondary),
+          if (intent.isNotEmpty)
+            Center(
+              child: TextButton.icon(
+                onPressed: _clearChoice,
+                icon: const Icon(Icons.close_rounded, size: 18),
+                label: const Text('Quitar elección'),
+                style: TextButton.styleFrom(
+                    foregroundColor: AppTheme.textSecondary),
+              ),
+            )
+          else
+            Center(
+              child: Text(
+                'También puede saltar este paso y configurarlo después.',
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                    fontSize: 14, color: AppTheme.textSecondary),
+              ),
             ),
-          ),
         ],
       ),
     );
   }
 
-  Widget _buildPreview(bool busy) {
-    if (_status == _LogoStatus.generating || _status == _LogoStatus.uploading) {
-      return const Center(
-        child: SizedBox(
-          width: 36,
-          height: 36,
-          child: CircularProgressIndicator(strokeWidth: 3),
+  Widget _buildPreview(String intent) {
+    if (intent == 'gallery' && _localPreviewPath != null) {
+      return Image.file(File(_localPreviewPath!), fit: BoxFit.cover);
+    }
+    if (intent == 'ai') {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: const [
+            Icon(Icons.auto_awesome_rounded,
+                size: 56, color: Color(0xFF7C3AED)),
+            SizedBox(height: 6),
+            Padding(
+              padding: EdgeInsets.symmetric(horizontal: 12),
+              child: Text('Lista para IA',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                      fontSize: 14,
+                      color: Color(0xFF7C3AED),
+                      fontWeight: FontWeight.w700)),
+            ),
+          ],
         ),
       );
     }
-    if (_logoUrl != null) {
-      return Image.network(_logoUrl!, fit: BoxFit.cover);
-    }
-    if (_localPreviewPath != null) {
-      return Image.file(File(_localPreviewPath!), fit: BoxFit.cover);
-    }
-    return const Center(
+    return Center(
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
-        children: [
+        children: const [
           Icon(Icons.storefront_rounded,
               size: 56, color: AppTheme.textSecondary),
           SizedBox(height: 6),
           Text('Su logo aquí',
-              style: TextStyle(fontSize: 14, color: AppTheme.textSecondary)),
+              style:
+                  TextStyle(fontSize: 14, color: AppTheme.textSecondary)),
         ],
       ),
     );
