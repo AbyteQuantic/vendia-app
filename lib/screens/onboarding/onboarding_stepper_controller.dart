@@ -80,16 +80,14 @@ class OnboardingStepperController extends ChangeNotifier {
     return '${labels.sublist(0, labels.length - 1).join(", ")} y ${labels.last}';
   }
 
-  // ── Paso 4: Logo ──────────────────────────────────────────────────────────
-  String? logoUrl;        // URL of selected/generated logo
-  String? logoLocalPath;  // Local path of gallery-picked logo
-
   // ── Paso 5: Empleados ─────────────────────────────────────────────────────
   bool? hasEmployees; // null = sin respuesta, true = sí, false = no
 
   // ── Navegación ────────────────────────────────────────────────────────────
 
-  static const int totalSteps = 6; // 0..5
+  static const int totalSteps = 5; // 0..4 — logo step removed (lives in
+                                   // Configuración after onboarding because
+                                   // the IA endpoint requires a tenant id).
 
   void nextStep() {
     if (_currentStep < totalSteps - 1) {

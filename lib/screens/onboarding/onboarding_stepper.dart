@@ -10,7 +10,6 @@ import 'steps/step_owner.dart';
 import 'steps/step_business.dart';
 import 'steps/step_branches.dart';
 import 'steps/step_config.dart';
-import 'steps/step_logo.dart';
 import 'steps/step_employees.dart';
 
 /// Punto de entrada público del Stepper de onboarding.
@@ -83,14 +82,17 @@ class _OnboardingStepperState extends State<OnboardingStepper> {
     GlobalKey<FormState>(), // Paso 2 — Negocio
   ];
 
-  // Títulos y subtítulos de cada paso (6 pasos)
+  // Títulos y subtítulos de cada paso. Logo step removed: the IA
+  // logo endpoint requires a tenant id (post-registration), so the
+  // pre-registration screen could only show "Los logos se generarán
+  // después del registro" — confusing dead end. Logo flow lives in
+  // Configuración → Imagen del negocio after onboarding completes.
   static const _stepTitles = [
-    ('Paso 1 de 6', 'Sus datos personales'),
-    ('Paso 2 de 6', 'Datos del negocio'),
-    ('Paso 3 de 6', '¿Tiene más de un local?'),
-    ('Paso 4 de 6', '¿Qué vende en su negocio?'),
-    ('Paso 5 de 6', 'La imagen de su negocio'),
-    ('Paso 6 de 6', 'Sus empleados'),
+    ('Paso 1 de 5', 'Sus datos personales'),
+    ('Paso 2 de 5', 'Datos del negocio'),
+    ('Paso 3 de 5', '¿Tiene más de un local?'),
+    ('Paso 4 de 5', '¿Qué vende en su negocio?'),
+    ('Paso 5 de 5', 'Sus empleados'),
   ];
 
   @override
@@ -268,7 +270,6 @@ class _OnboardingStepperState extends State<OnboardingStepper> {
                       StepBusiness(controller: ctrl, formKey: _formKeys[1]),
                       const StepBranches(),
                       const StepConfig(),
-                      const StepLogo(),
                       const StepEmployees(),
                     ],
                   ),
