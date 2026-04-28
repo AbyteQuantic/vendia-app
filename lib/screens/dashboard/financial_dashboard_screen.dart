@@ -1,13 +1,30 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import '../../database/database_service.dart';
-import '../../database/collections/local_sale.dart';
+
 import '../../services/api_service.dart';
 import '../../services/auth_service.dart';
-import '../../services/margin_service.dart';
 import '../../theme/app_theme.dart';
-import 'sales_ideas_screen.dart';
 
+/// Owner / manager dashboard. Pulls a single comprehensive endpoint
+/// (`/analytics/financial-summary`) that returns the full cube and
+/// renders it as a stack of focused sections so the tendero can scan
+/// the screen and decide:
+///
+///   1. Hero KPIs                — total ventas, ticket prom, vs período anterior
+///   2. Cash flow                — efectivo / digital / fiado / utilidad
+///   3. Por canal                — POS / Mesa / Online
+///   4. Por método de pago
+///   5. Hora pico + primera venta
+///   6. Mejor / peor día (semana / mes)
+///   7. Ranking de empleados con ganancia estimada
+///   8. Historial de ventas
+///
+/// Filters live in a bottom sheet: rango (Hoy/Semana/Mes), empleado,
+/// canal, método de pago. Server is the source of truth; offline we
+/// fall back to a "Sin datos" empty state instead of stale local Isar
+/// (the previous implementation overlaid local data and showed $0
+/// when the cashier's sale lived only on her device — that bug went
+/// away once the backend became authoritative).
 class FinancialDashboardScreen extends StatefulWidget {
   const FinancialDashboardScreen({super.key});
 
@@ -16,32 +33,19 @@ class FinancialDashboardScreen extends StatefulWidget {
       _FinancialDashboardScreenState();
 }
 
+enum _Period { today, week, month }
+
 class _FinancialDashboardScreenState extends State<FinancialDashboardScreen> {
   late final ApiService _api;
-  final _db = DatabaseService.instance;
-  String _period = 'today';
+
+  _Period _period = _Period.today;
+  String? _employeeFilter;
+  String? _sourceFilter;
+  String? _methodFilter;
+
   bool _loading = true;
-
-  // Financial data
-  double _totalSales = 0;
-  int _txCount = 0;
-  double _cashInDrawer = 0;
-  double _digitalMoney = 0;
-  double _accountsReceivable = 0;
-  double _profit = 0;
-  double _dailyAvg = 0;
-
-  // Local sales for today
-  List<LocalSale> _localSales = [];
-
-  // Employee performance
-  List<_EmployeePerf> _employeePerf = [];
-
-  // AI suggestions
-  List<String> _suggestions = [];
-  bool _suggestionsLoading = true;
-
-  static const _periods = {'today': 'Hoy', 'week': 'Semana', 'month': 'Mes'};
+  String? _errorMsg;
+  Map<String, dynamic>? _data;
 
   @override
   void initState() {
@@ -51,644 +55,1198 @@ class _FinancialDashboardScreenState extends State<FinancialDashboardScreen> {
   }
 
   Future<void> _load() async {
-    setState(() => _loading = true);
-    await _loadLocal();
-    // Server overlay — owners need to see EVERY employee's sales,
-    // not just whatever landed in this device's Isar. Without this,
-    // a sale Viviana cobró on her phone never showed on Bryan's
-    // Finanzas (he was reading his own offline cache). The server
-    // call is best-effort; on failure we keep the local view.
-    await _loadFromServer();
-    _loadSuggestions();
-    if (mounted) setState(() => _loading = false);
-  }
-
-  Future<void> _loadFromServer() async {
+    setState(() {
+      _loading = true;
+      _errorMsg = null;
+    });
     try {
-      final data = await _api.fetchFinancialSummary(period: _period);
+      final data = await _api.fetchFinancialSummaryFull(
+        period: _period.name,
+        employee: _employeeFilter,
+        source: _sourceFilter,
+        paymentMethod: _methodFilter,
+      );
       if (!mounted) return;
-      double parse(dynamic v) =>
-          v is num ? v.toDouble() : double.tryParse(v?.toString() ?? '') ?? 0;
-      int parseInt(dynamic v) =>
-          v is num ? v.toInt() : int.tryParse(v?.toString() ?? '') ?? 0;
       setState(() {
-        _totalSales = parse(data['total_sales']);
-        _txCount = parseInt(data['transaction_count']);
-        _cashInDrawer = parse(data['cash_in_drawer']);
-        _digitalMoney = parse(data['digital_money']);
-        _accountsReceivable = parse(data['accounts_receivable']);
-        _profit = parse(data['total_profit']);
-        _dailyAvg = parse(data['daily_average']);
+        _data = data;
+        _loading = false;
       });
-    } catch (_) {
-      // Offline / 5xx — keep the local-Isar values already in state.
-    }
-  }
-
-  /// All periods use Isar local data — single source of truth.
-  /// This guarantees the tendero always sees their data even offline.
-  Future<void> _loadLocal() async {
-    final now = DateTime.now();
-    DateTime since;
-    switch (_period) {
-      case 'week':
-        since = now.subtract(const Duration(days: 7));
-      case 'month':
-        since = DateTime(now.year, now.month - 1, now.day);
-      default: // today
-        since = DateTime(now.year, now.month, now.day);
-    }
-
-    final sales = _period == 'today'
-        ? await _db.getSalesToday()
-        : await _db.getSalesSince(since);
-    sales.sort((a, b) => b.createdAt.compareTo(a.createdAt));
-    final margin = await MarginService.getMargin();
-
-    double cash = 0, digital = 0, credit = 0;
-    // Employee grouping
-    final empMap = <String, _EmployeePerf>{};
-
-    for (final s in sales) {
-      switch (s.paymentMethod) {
-        case 'cash':
-          cash += s.total;
-        case 'transfer' || 'card' || 'nequi' || 'daviplata':
-          digital += s.total;
-        case 'credit':
-          credit += s.total;
-        default:
-          cash += s.total;
-      }
-
-      // Group by employee
-      final empName = (s.employeeName != null && s.employeeName!.isNotEmpty)
-          ? s.employeeName!
-          : 'Sin asignar';
-      empMap.putIfAbsent(empName, () => _EmployeePerf(name: empName));
-      empMap[empName]!.totalSales += s.total;
-      empMap[empName]!.txCount += 1;
-    }
-
-    final total = sales.fold<double>(0, (sum, s) => sum + s.total);
-
-    // Profit = total - estimated cost using configured margin
-    // If margin is 20%, cost = total / 1.20
-    final estimatedCost = margin > 0 ? total / (1 + margin / 100) : total;
-    final profit = total - estimatedCost;
-
-    // Calculate per-employee profit proportionally
-    for (final emp in empMap.values) {
-      final empCost = margin > 0
-          ? emp.totalSales / (1 + margin / 100)
-          : emp.totalSales;
-      emp.profit = emp.totalSales - empCost;
-    }
-
-    final perfList = empMap.values.toList()
-      ..sort((a, b) => b.totalSales.compareTo(a.totalSales));
-
-    if (mounted) {
+    } catch (e) {
+      if (!mounted) return;
       setState(() {
-        _totalSales = total;
-        _txCount = sales.length;
-        _cashInDrawer = cash;
-        _digitalMoney = digital;
-        _accountsReceivable = credit;
-        _profit = profit;
-        _dailyAvg = total;
-        _localSales = sales;
-        _employeePerf = perfList;
+        _errorMsg = 'No se pudo cargar el panel: $e';
+        _loading = false;
       });
     }
   }
 
-  void _loadSuggestions() {
-    setState(() => _suggestionsLoading = true);
-
-    // Smart local suggestions based on sales data
-    final tips = <String>[];
-    if (_txCount == 0) {
-      tips.add('Registre su primera venta del dia para ver estadisticas.');
-    } else {
-      if (_cashInDrawer > _digitalMoney && _digitalMoney == 0) {
-        tips.add(
-            'Todas las ventas son en efectivo. Active Nequi o Daviplata para captar mas clientes.');
-      }
-      if (_txCount < 5) {
-        tips.add(
-            'Pocas ventas hoy. Considere una promocion "2x1" en productos de baja rotacion.');
-      }
-      if (_accountsReceivable > _totalSales * 0.3 &&
-          _accountsReceivable > 0) {
-        tips.add(
-            'Las cuentas por cobrar son altas. Envie recordatorios por WhatsApp.');
-      }
-    }
-    if (tips.isEmpty) {
-      tips.add('Siga asi. Sus ventas van bien hoy.');
-    }
-
-    if (mounted) {
-      setState(() {
-        _suggestions = tips;
-        _suggestionsLoading = false;
-      });
-    }
+  void _setPeriod(_Period p) {
+    if (_period == p) return;
+    HapticFeedback.lightImpact();
+    setState(() => _period = p);
+    _load();
   }
 
-  String _fmt(double amount) {
-    final v = amount.round();
-    if (v == 0) return '\$0';
-    final s = v.abs().toString();
-    final buffer = StringBuffer(v < 0 ? '-\$' : '\$');
-    final start = s.length % 3;
-    if (start > 0) buffer.write(s.substring(0, start));
-    for (int i = start; i < s.length; i += 3) {
-      if (i > 0) buffer.write('.');
-      buffer.write(s.substring(i, i + 3));
-    }
-    return buffer.toString();
+  Future<void> _openFilters() async {
+    final available = (_data?['available_employees'] as List?)
+            ?.cast<String>()
+            .toList() ??
+        const <String>[];
+    final result = await showModalBottomSheet<_FilterSelection>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+      ),
+      builder: (ctx) => _FilterSheet(
+        availableEmployees: available,
+        initialEmployee: _employeeFilter,
+        initialSource: _sourceFilter,
+        initialMethod: _methodFilter,
+      ),
+    );
+    if (result == null) return;
+    setState(() {
+      _employeeFilter = result.employee;
+      _sourceFilter = result.source;
+      _methodFilter = result.method;
+    });
+    _load();
   }
-
-  String _timeAgo(DateTime dt) {
-    final diff = DateTime.now().difference(dt);
-    if (diff.inMinutes < 1) return 'Ahora';
-    if (diff.inMinutes < 60) return 'Hace ${diff.inMinutes} min';
-    if (diff.inHours < 24) return 'Hace ${diff.inHours}h';
-    return 'Hace ${diff.inDays}d';
-  }
-
-  String _methodLabel(String m) => switch (m) {
-        'transfer' => 'Transferencia',
-        'card' => 'Tarjeta',
-        'credit' => 'Fiado',
-        _ => 'Efectivo',
-      };
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFFFFBF7),
+      backgroundColor: AppTheme.background,
       appBar: AppBar(
-        backgroundColor: const Color(0xFFFFFBF7),
-        elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back_rounded,
-              color: AppTheme.textPrimary, size: 28),
-          onPressed: () => Navigator.of(context).pop(),
-        ),
         title: const Text('Finanzas',
-            style: TextStyle(
-                fontSize: 24,
-                fontWeight: FontWeight.w800,
-                color: AppTheme.textPrimary)),
-      ),
-      body: _loading
-          ? const Center(
-              child: CircularProgressIndicator(color: AppTheme.primary))
-          : RefreshIndicator(
-              color: AppTheme.primary,
-              onRefresh: _load,
-              child: ListView(
-                padding: const EdgeInsets.symmetric(horizontal: 20),
-                children: [
-                  // ── Period selector ─────────────────────────────────
-                  Row(
-                    children: _periods.entries.map((e) {
-                      final sel = _period == e.key;
-                      return Padding(
-                        padding: const EdgeInsets.only(right: 8),
-                        child: GestureDetector(
-                          onTap: () {
-                            HapticFeedback.lightImpact();
-                            setState(() => _period = e.key);
-                            _load();
-                          },
-                          child: AnimatedContainer(
-                            duration: const Duration(milliseconds: 200),
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 20, vertical: 10),
-                            decoration: BoxDecoration(
-                              color:
-                                  sel ? AppTheme.primary : AppTheme.surfaceGrey,
-                              borderRadius: BorderRadius.circular(14),
-                            ),
-                            child: Text(e.value,
-                                style: TextStyle(
-                                    fontSize: 16,
-                                    fontWeight: FontWeight.w700,
-                                    color: sel
-                                        ? Colors.white
-                                        : AppTheme.textSecondary)),
-                          ),
-                        ),
-                      );
-                    }).toList(),
-                  ),
-                  const SizedBox(height: 20),
-
-                  // ── Total ventas (hero card) ───────────────────────
-                  Container(
-                    padding: const EdgeInsets.all(20),
-                    decoration: BoxDecoration(
-                      gradient: const LinearGradient(
-                        colors: [Color(0xFF1A2FA0), Color(0xFF2541B2)],
+            style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
+        actions: [
+          IconButton(
+            tooltip: 'Filtros',
+            icon: Stack(
+              children: [
+                const Icon(Icons.tune_rounded, size: 26),
+                if (_hasActiveFilter)
+                  Positioned(
+                    right: 0,
+                    top: 0,
+                    child: Container(
+                      width: 8,
+                      height: 8,
+                      decoration: const BoxDecoration(
+                        color: AppTheme.error,
+                        shape: BoxShape.circle,
                       ),
-                      borderRadius: BorderRadius.circular(24),
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          children: [
-                            const Icon(Icons.trending_up_rounded,
-                                color: Colors.white70, size: 22),
-                            const SizedBox(width: 8),
-                            Text('Ventas ${_periods[_period]}',
-                                style: const TextStyle(
-                                    fontSize: 16,
-                                    color: Colors.white70,
-                                    fontWeight: FontWeight.w500)),
-                          ],
-                        ),
-                        const SizedBox(height: 8),
-                        FittedBox(
-                          fit: BoxFit.scaleDown,
-                          child: Text(_fmt(_totalSales),
-                              style: const TextStyle(
-                                  fontSize: 40,
-                                  fontWeight: FontWeight.w800,
-                                  color: Colors.white)),
-                        ),
-                        Text('$_txCount transacciones',
-                            style: const TextStyle(
-                                fontSize: 15, color: Colors.white54)),
-                      ],
                     ),
                   ),
-                  const SizedBox(height: 16),
-
-                  // ── Financial grid ─────────────────────────────────
-                  Row(
-                    children: [
-                      Expanded(
-                        child: _FinCard(
-                          icon: Icons.payments_rounded,
-                          label: 'Efectivo en caja',
-                          value: _fmt(_cashInDrawer),
-                          bgColor: Colors.green.shade50,
-                          fgColor: Colors.green.shade800,
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: _FinCard(
-                          icon: Icons.phone_android_rounded,
-                          label: 'Dinero digital',
-                          value: _fmt(_digitalMoney),
-                          bgColor: Colors.blue.shade50,
-                          fgColor: Colors.blue.shade800,
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: _FinCard(
-                          icon: Icons.menu_book_rounded,
-                          label: 'Cuentas x cobrar',
-                          value: _fmt(_accountsReceivable),
-                          bgColor: Colors.orange.shade50,
-                          fgColor: Colors.orange.shade800,
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: _FinCard(
-                          icon: Icons.show_chart_rounded,
-                          label: 'Utilidad estimada',
-                          value: _fmt(_profit),
-                          bgColor: Colors.purple.shade50,
-                          fgColor: Colors.purple.shade800,
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 24),
-
-                  // ── AI Suggestions (tap to navigate) ──────────────
-                  GestureDetector(
-                  onTap: () {
-                    HapticFeedback.lightImpact();
-                    Navigator.of(context).push(MaterialPageRoute(
-                      builder: (_) => const SalesIdeasScreen(),
-                    ));
-                  },
-                  child: Container(
-                    padding: const EdgeInsets.all(20),
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        colors: [
-                          const Color(0xFF7C3AED).withValues(alpha: 0.08),
-                          const Color(0xFF3B82F6).withValues(alpha: 0.06),
-                        ],
-                      ),
-                      borderRadius: BorderRadius.circular(20),
-                      border: Border.all(
-                        color:
-                            const Color(0xFF7C3AED).withValues(alpha: 0.2),
-                      ),
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Row(
-                          children: [
-                            Icon(Icons.auto_awesome_rounded,
-                                color: Color(0xFF7C3AED), size: 22),
-                            SizedBox(width: 8),
-                            Expanded(
-                              child: Text('Ideas para Vender Mas',
-                                  style: TextStyle(
-                                      fontSize: 18,
-                                      fontWeight: FontWeight.w700,
-                                      color: Color(0xFF7C3AED))),
-                            ),
-                            Icon(Icons.chevron_right_rounded,
-                                color: Color(0xFF7C3AED), size: 26),
-                          ],
-                        ),
-                        const SizedBox(height: 12),
-                        if (_suggestionsLoading)
-                          const Center(
-                              child: CircularProgressIndicator(
-                                  color: Color(0xFF7C3AED), strokeWidth: 2))
-                        else
-                          for (final tip in _suggestions) ...[
-                            Padding(
-                              padding: const EdgeInsets.only(bottom: 8),
-                              child: Row(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  const Text('💡 ',
-                                      style: TextStyle(fontSize: 16)),
-                                  Expanded(
-                                    child: Text(tip,
-                                        style: const TextStyle(
-                                            fontSize: 16,
-                                            color: Colors.black87,
-                                            height: 1.4)),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ],
-                      ],
-                    ),
-                  ),
-                  ),
-                  const SizedBox(height: 24),
-
-                  // ── Employee performance ───────────────────────────
-                  if (_employeePerf.isNotEmpty) ...[
-                    const Row(
-                      children: [
-                        Icon(Icons.people_rounded,
-                            color: AppTheme.textPrimary, size: 22),
-                        SizedBox(width: 8),
-                        Text('Rendimiento del Equipo',
-                            style: TextStyle(
-                                fontSize: 20,
-                                fontWeight: FontWeight.bold,
-                                color: AppTheme.textPrimary)),
-                      ],
-                    ),
-                    const SizedBox(height: 12),
-                    Container(
-                      decoration: BoxDecoration(
-                        color: AppTheme.surfaceGrey,
-                        borderRadius: BorderRadius.circular(20),
-                      ),
-                      child: ListView.separated(
-                        shrinkWrap: true,
-                        physics: const NeverScrollableScrollPhysics(),
-                        itemCount: _employeePerf.length,
-                        separatorBuilder: (_, __) =>
-                            const Divider(height: 1, indent: 72, endIndent: 20),
-                        itemBuilder: (_, i) {
-                          final emp = _employeePerf[i];
-                          final initial = emp.name.isNotEmpty
-                              ? emp.name[0].toUpperCase()
-                              : '?';
-                          return Padding(
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 16, vertical: 14),
-                            child: Row(
-                              children: [
-                                CircleAvatar(
-                                  radius: 24,
-                                  backgroundColor: AppTheme.primary
-                                      .withValues(alpha: 0.12),
-                                  child: Text(initial,
-                                      style: const TextStyle(
-                                          fontSize: 20,
-                                          fontWeight: FontWeight.bold,
-                                          color: AppTheme.primary)),
-                                ),
-                                const SizedBox(width: 14),
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      Text(emp.name,
-                                          style: const TextStyle(
-                                              fontSize: 17,
-                                              fontWeight: FontWeight.w600,
-                                              color: AppTheme.textPrimary)),
-                                      Text(
-                                          '${emp.txCount} venta${emp.txCount > 1 ? 's' : ''} registrada${emp.txCount > 1 ? 's' : ''}',
-                                          style: const TextStyle(
-                                              fontSize: 14,
-                                              color: AppTheme.textSecondary)),
-                                    ],
-                                  ),
-                                ),
-                                Column(
-                                  crossAxisAlignment: CrossAxisAlignment.end,
-                                  children: [
-                                    Text(_fmt(emp.totalSales),
-                                        style: const TextStyle(
-                                            fontSize: 18,
-                                            fontWeight: FontWeight.bold,
-                                            color: AppTheme.primary)),
-                                    Text('Ganancia: ${_fmt(emp.profit)}',
-                                        style: TextStyle(
-                                            fontSize: 13,
-                                            fontWeight: FontWeight.w600,
-                                            color: Colors.green.shade700)),
-                                  ],
-                                ),
-                              ],
-                            ),
-                          );
-                        },
-                      ),
-                    ),
-                    const SizedBox(height: 24),
-                  ],
-
-                  // ── Sales history ──────────────────────────────────
-                  const Text('Historial de ventas',
-                      style: TextStyle(
-                          fontSize: 20,
-                          fontWeight: FontWeight.bold,
-                          color: AppTheme.textPrimary)),
-                  const SizedBox(height: 12),
-
-                  if (_localSales.isEmpty && _period == 'today')
-                    Container(
-                      padding: const EdgeInsets.all(32),
-                      decoration: BoxDecoration(
-                        color: AppTheme.surfaceGrey,
-                        borderRadius: BorderRadius.circular(20),
-                      ),
-                      child: const Center(
-                        child: Text('Sin ventas hoy todavia',
-                            style: TextStyle(
-                                fontSize: 18,
-                                color: AppTheme.textSecondary)),
-                      ),
-                    )
-                  else if (_localSales.isNotEmpty)
-                    Container(
-                      decoration: BoxDecoration(
-                        color: AppTheme.surfaceGrey,
-                        borderRadius: BorderRadius.circular(20),
-                      ),
-                      child: Column(
-                        children: [
-                          for (int i = 0; i < _localSales.length; i++) ...[
-                            _buildLocalSaleTile(_localSales[i]),
-                            if (i < _localSales.length - 1)
-                              const Divider(
-                                  height: 1, indent: 72, endIndent: 20),
-                          ],
-                        ],
-                      ),
-                    ),
-                  const SizedBox(height: 32),
-                ],
-              ),
+              ],
             ),
+            onPressed: _openFilters,
+          ),
+        ],
+      ),
+      body: RefreshIndicator(
+        onRefresh: _load,
+        color: AppTheme.primary,
+        child: _loading
+            ? const Center(child: CircularProgressIndicator())
+            : _errorMsg != null
+                ? _ErrorState(message: _errorMsg!, onRetry: _load)
+                : _buildBody(),
+      ),
     );
   }
 
-  Widget _buildLocalSaleTile(LocalSale sale) {
-    final items = sale.items;
-    final label = items.isNotEmpty
-        ? items.first.productName +
-            (items.length > 1 ? ' + ${items.length - 1} mas' : '')
-        : 'Venta';
+  bool get _hasActiveFilter =>
+      (_employeeFilter ?? '').isNotEmpty ||
+      (_sourceFilter ?? '').isNotEmpty ||
+      (_methodFilter ?? '').isNotEmpty;
 
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-      child: Row(
-        children: [
-          Container(
-            width: 48,
-            height: 48,
-            decoration: BoxDecoration(
-              color: AppTheme.primary.withValues(alpha: 0.1),
-              borderRadius: BorderRadius.circular(16),
-            ),
-            child: Icon(
-              sale.paymentMethod == 'credit'
-                  ? Icons.menu_book_rounded
-                  : sale.paymentMethod == 'transfer'
-                      ? Icons.phone_android_rounded
-                      : Icons.payments_rounded,
-              color: AppTheme.primary,
-              size: 24,
-            ),
+  Widget _buildBody() {
+    final d = _data ?? const {};
+    final totalSales = (d['total_sales'] as num?)?.toDouble() ?? 0;
+    final txCount = (d['transaction_count'] as num?)?.toInt() ?? 0;
+    final avgTicket = (d['avg_ticket'] as num?)?.toDouble() ?? 0;
+    final vsPrev = (d['vs_previous_pct'] as num?)?.toDouble();
+    final cash = (d['cash_in_drawer'] as num?)?.toDouble() ?? 0;
+    final digital = (d['digital_money'] as num?)?.toDouble() ?? 0;
+    final fiado = (d['credit_paid_total'] as num?)?.toDouble() ?? 0;
+    final receivable = (d['accounts_receivable'] as num?)?.toDouble() ?? 0;
+    final profit = (d['total_profit'] as num?)?.toDouble() ?? 0;
+
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+      children: [
+        _PeriodChips(period: _period, onChanged: _setPeriod),
+        if (_hasActiveFilter) ...[
+          const SizedBox(height: 8),
+          _ActiveFiltersBar(
+            employee: _employeeFilter,
+            source: _sourceFilter,
+            method: _methodFilter,
+            onClear: () {
+              setState(() {
+                _employeeFilter = null;
+                _sourceFilter = null;
+                _methodFilter = null;
+              });
+              _load();
+            },
           ),
-          const SizedBox(width: 14),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(label,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                        fontSize: 17,
-                        fontWeight: FontWeight.w600,
-                        color: AppTheme.textPrimary)),
-                Text(
-                  '${_methodLabel(sale.paymentMethod)}'
-                  '${sale.employeeName != null && sale.employeeName!.isNotEmpty ? ' · ${sale.employeeName}' : ''}'
-                  ' · ${_timeAgo(sale.createdAt)}',
-                  style: const TextStyle(
-                      fontSize: 14, color: AppTheme.textSecondary),
-                ),
-              ],
-            ),
-          ),
-          Text(_fmt(sale.total),
-              style: const TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                  color: AppTheme.success)),
         ],
-      ),
+        const SizedBox(height: 12),
+        _HeroKpi(
+          total: totalSales,
+          txCount: txCount,
+          avgTicket: avgTicket,
+          vsPrevPct: vsPrev,
+        ),
+        const SizedBox(height: 12),
+        _CashFlowCards(
+            cash: cash, digital: digital, fiado: fiado, profit: profit),
+        const SizedBox(height: 12),
+        _ReceivablePill(amount: receivable),
+        const SizedBox(height: 18),
+        _Section(
+          icon: Icons.pie_chart_outline_rounded,
+          title: 'Por canal de venta',
+          child: _BreakdownBars(
+            rows: ((d['by_channel'] as List?) ?? const [])
+                .cast<Map>()
+                .map((m) => _BarRow(
+                      label: _channelLabel(m['source']?.toString() ?? ''),
+                      total: (m['total'] as num?)?.toDouble() ?? 0,
+                      count: (m['count'] as num?)?.toInt() ?? 0,
+                      color: _channelColor(m['source']?.toString() ?? ''),
+                    ))
+                .toList(),
+            grandTotal: totalSales,
+          ),
+        ),
+        _Section(
+          icon: Icons.payments_outlined,
+          title: 'Por método de pago',
+          child: _BreakdownBars(
+            rows: ((d['by_method'] as List?) ?? const [])
+                .cast<Map>()
+                .map((m) => _BarRow(
+                      label: _methodLabel(
+                          m['payment_method']?.toString() ?? ''),
+                      total: (m['total'] as num?)?.toDouble() ?? 0,
+                      count: (m['count'] as num?)?.toInt() ?? 0,
+                      color: _methodColor(
+                          m['payment_method']?.toString() ?? ''),
+                    ))
+                .toList(),
+            grandTotal: totalSales,
+          ),
+        ),
+        _Section(
+          icon: Icons.access_time_rounded,
+          title: 'Hora del día',
+          child: _HourHeatmap(
+            byHour: ((d['by_hour'] as List?) ?? const [])
+                .cast<Map>()
+                .toList(),
+            firstSaleAt: d['first_sale_at']?.toString(),
+            peakHour: d['peak_hour'] as Map?,
+          ),
+        ),
+        if (_period != _Period.today)
+          _Section(
+            icon: Icons.calendar_view_week_rounded,
+            title: 'Día de la semana',
+            child: _WeekdayBars(
+              byWeekday: ((d['by_weekday'] as List?) ?? const [])
+                  .cast<Map>()
+                  .toList(),
+              best: d['best_day'] as Map?,
+              worst: d['worst_day'] as Map?,
+            ),
+          ),
+        _Section(
+          icon: Icons.emoji_events_outlined,
+          title: 'Ranking del equipo',
+          child: _EmployeeLeaderboard(
+            rows: ((d['top_employees'] as List?) ?? const [])
+                .cast<Map>()
+                .toList(),
+          ),
+        ),
+      ],
     );
   }
 }
 
-class _FinCard extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  final String value;
-  final Color bgColor;
-  final Color fgColor;
+// ── Helpers ────────────────────────────────────────────────────────
 
-  const _FinCard({
-    required this.icon,
-    required this.label,
-    required this.value,
-    required this.bgColor,
-    required this.fgColor,
+String _channelLabel(String s) => switch (s) {
+      'POS' => 'Mostrador',
+      'TABLE' => 'Mesa',
+      'WEB' => 'Tienda online',
+      _ => s.isEmpty ? 'Otro' : s,
+    };
+
+Color _channelColor(String s) => switch (s) {
+      'POS' => AppTheme.primary,
+      'TABLE' => const Color(0xFFEA580C),
+      'WEB' => const Color(0xFF7C3AED),
+      _ => Colors.grey,
+    };
+
+String _methodLabel(String m) => switch (m) {
+      'cash' => 'Efectivo',
+      'transfer' => 'Transferencia',
+      'card' => 'Tarjeta',
+      'nequi' => 'Nequi',
+      'daviplata' => 'Daviplata',
+      'credit' => 'Fiado',
+      _ => m,
+    };
+
+Color _methodColor(String m) => switch (m) {
+      'cash' => AppTheme.success,
+      'transfer' || 'nequi' || 'daviplata' || 'card' => AppTheme.primary,
+      'credit' => AppTheme.warning,
+      _ => Colors.grey,
+    };
+
+String _formatMoney(double amount) {
+  final cents = amount.round();
+  if (cents == 0) return r'$0';
+  final s = cents.abs().toString();
+  final buf = StringBuffer(cents < 0 ? r'-$' : r'$');
+  final start = s.length % 3;
+  if (start > 0) buf.write(s.substring(0, start));
+  for (int i = start; i < s.length; i += 3) {
+    if (i > 0) buf.write('.');
+    buf.write(s.substring(i, i + 3));
+  }
+  return buf.toString();
+}
+
+// ── Layout pieces ──────────────────────────────────────────────────
+
+class _PeriodChips extends StatelessWidget {
+  final _Period period;
+  final ValueChanged<_Period> onChanged;
+  const _PeriodChips({required this.period, required this.onChanged});
+
+  @override
+  Widget build(BuildContext context) {
+    return Wrap(
+      spacing: 8,
+      children: _Period.values.map((p) {
+        final active = p == period;
+        return ChoiceChip(
+          label: Text(switch (p) {
+            _Period.today => 'Hoy',
+            _Period.week => '7 días',
+            _Period.month => '30 días',
+          }),
+          labelStyle: TextStyle(
+            fontSize: 16,
+            fontWeight: FontWeight.w700,
+            color: active ? Colors.white : AppTheme.textPrimary,
+          ),
+          selected: active,
+          selectedColor: AppTheme.primary,
+          backgroundColor: AppTheme.surfaceGrey,
+          onSelected: (_) => onChanged(p),
+          shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
+              side: BorderSide(
+                  color:
+                      active ? AppTheme.primary : AppTheme.borderColor)),
+        );
+      }).toList(),
+    );
+  }
+}
+
+class _ActiveFiltersBar extends StatelessWidget {
+  final String? employee;
+  final String? source;
+  final String? method;
+  final VoidCallback onClear;
+  const _ActiveFiltersBar({
+    required this.employee,
+    required this.source,
+    required this.method,
+    required this.onClear,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final chips = <Widget>[];
+    if ((employee ?? '').isNotEmpty) chips.add(_pill('👤 $employee'));
+    if ((source ?? '').isNotEmpty) chips.add(_pill('📍 ${_channelLabel(source!)}'));
+    if ((method ?? '').isNotEmpty) chips.add(_pill('💳 ${_methodLabel(method!)}'));
+    return Wrap(
+      spacing: 6,
+      runSpacing: 6,
+      crossAxisAlignment: WrapCrossAlignment.center,
+      children: [
+        ...chips,
+        TextButton.icon(
+          onPressed: onClear,
+          icon: const Icon(Icons.close_rounded, size: 18),
+          label: const Text('Quitar filtros'),
+          style: TextButton.styleFrom(
+              foregroundColor: AppTheme.error,
+              minimumSize: const Size(0, 36),
+              padding: const EdgeInsets.symmetric(horizontal: 10)),
+        ),
+      ],
+    );
+  }
+
+  Widget _pill(String label) => Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+        decoration: BoxDecoration(
+          color: AppTheme.primary.withValues(alpha: 0.10),
+          borderRadius: BorderRadius.circular(20),
+        ),
+        child: Text(label,
+            style: const TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+                color: AppTheme.primary)),
+      );
+}
+
+class _HeroKpi extends StatelessWidget {
+  final double total;
+  final int txCount;
+  final double avgTicket;
+  final double? vsPrevPct;
+  const _HeroKpi({
+    required this.total,
+    required this.txCount,
+    required this.avgTicket,
+    required this.vsPrevPct,
   });
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.fromLTRB(20, 18, 20, 18),
       decoration: BoxDecoration(
-        color: bgColor,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: fgColor.withValues(alpha: 0.15)),
+        gradient: const LinearGradient(
+          colors: [AppTheme.primary, Color(0xFF3D5AFE)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(24),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(icon, color: fgColor, size: 24),
-          const SizedBox(height: 10),
+          const Row(children: [
+            Icon(Icons.show_chart_rounded, color: Colors.white, size: 22),
+            SizedBox(width: 8),
+            Text('Ventas del período',
+                style: TextStyle(fontSize: 16, color: Colors.white)),
+          ]),
+          const SizedBox(height: 6),
+          Text(_formatMoney(total),
+              style: const TextStyle(
+                  fontSize: 38,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.white,
+                  height: 1.1)),
+          const SizedBox(height: 6),
+          Row(children: [
+            Text('$txCount transacciones',
+                style: TextStyle(
+                    fontSize: 15,
+                    color: Colors.white.withValues(alpha: 0.85))),
+            if (txCount > 0) ...[
+              const Text(' · ',
+                  style: TextStyle(color: Colors.white70, fontSize: 15)),
+              Text('Ticket prom. ${_formatMoney(avgTicket)}',
+                  style: TextStyle(
+                      fontSize: 15,
+                      color: Colors.white.withValues(alpha: 0.85))),
+            ],
+          ]),
+          if (vsPrevPct != null) ...[
+            const SizedBox(height: 8),
+            Row(children: [
+              Icon(
+                vsPrevPct! >= 0
+                    ? Icons.trending_up_rounded
+                    : Icons.trending_down_rounded,
+                color: vsPrevPct! >= 0
+                    ? const Color(0xFF6EE7B7)
+                    : const Color(0xFFFCA5A5),
+                size: 20,
+              ),
+              const SizedBox(width: 4),
+              Text(
+                '${vsPrevPct! >= 0 ? '+' : ''}${vsPrevPct!.toStringAsFixed(1)}% vs período anterior',
+                style: TextStyle(
+                    fontSize: 14,
+                    color: Colors.white.withValues(alpha: 0.95),
+                    fontWeight: FontWeight.w600),
+              ),
+            ]),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _CashFlowCards extends StatelessWidget {
+  final double cash, digital, fiado, profit;
+  const _CashFlowCards({
+    required this.cash,
+    required this.digital,
+    required this.fiado,
+    required this.profit,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(children: [
+      Row(children: [
+        Expanded(
+          child: _MoneyCard(
+            label: 'Efectivo',
+            amount: cash,
+            color: AppTheme.success,
+            icon: Icons.payments_rounded,
+          ),
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: _MoneyCard(
+            label: 'Dinero digital',
+            amount: digital,
+            color: AppTheme.primary,
+            icon: Icons.phone_android_rounded,
+          ),
+        ),
+      ]),
+      const SizedBox(height: 10),
+      Row(children: [
+        Expanded(
+          child: _MoneyCard(
+            label: 'Fiado del período',
+            amount: fiado,
+            color: AppTheme.warning,
+            icon: Icons.menu_book_rounded,
+          ),
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: _MoneyCard(
+            label: 'Utilidad estimada',
+            amount: profit,
+            color: const Color(0xFF7C3AED),
+            icon: Icons.show_chart_rounded,
+          ),
+        ),
+      ]),
+    ]);
+  }
+}
+
+class _MoneyCard extends StatelessWidget {
+  final String label;
+  final double amount;
+  final Color color;
+  final IconData icon;
+  const _MoneyCard(
+      {required this.label,
+      required this.amount,
+      required this.color,
+      required this.icon});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: color.withValues(alpha: 0.18)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(icon, color: color, size: 22),
+          const SizedBox(height: 6),
           Text(label,
               style: TextStyle(
-                  fontSize: 14,
-                  color: fgColor.withValues(alpha: 0.7),
-                  fontWeight: FontWeight.w500)),
-          const SizedBox(height: 2),
-          FittedBox(
-            fit: BoxFit.scaleDown,
-            alignment: Alignment.centerLeft,
-            child: Text(value,
+                  fontSize: 15,
+                  color: color,
+                  fontWeight: FontWeight.w600)),
+          const SizedBox(height: 4),
+          Text(_formatMoney(amount),
+              style: TextStyle(
+                  fontSize: 22, fontWeight: FontWeight.bold, color: color)),
+        ],
+      ),
+    );
+  }
+}
+
+class _ReceivablePill extends StatelessWidget {
+  final double amount;
+  const _ReceivablePill({required this.amount});
+
+  @override
+  Widget build(BuildContext context) {
+    if (amount <= 0) return const SizedBox.shrink();
+    return Container(
+      padding: const EdgeInsets.fromLTRB(14, 10, 14, 10),
+      decoration: BoxDecoration(
+        color: AppTheme.warning.withValues(alpha: 0.10),
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.account_balance_wallet_rounded,
+              color: AppTheme.warning, size: 22),
+          const SizedBox(width: 10),
+          const Expanded(
+            child: Text('Total cuentas por cobrar (todos los fiados abiertos)',
                 style: TextStyle(
-                    fontSize: 22, fontWeight: FontWeight.w800, color: fgColor)),
+                    fontSize: 14, color: AppTheme.textSecondary)),
+          ),
+          Text(_formatMoney(amount),
+              style: const TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  color: AppTheme.warning)),
+        ],
+      ),
+    );
+  }
+}
+
+class _Section extends StatelessWidget {
+  final IconData icon;
+  final String title;
+  final Widget child;
+  const _Section(
+      {required this.icon, required this.title, required this.child});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 14),
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: AppTheme.borderColor.withValues(alpha: 0.6)),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(children: [
+              Icon(icon, size: 20, color: AppTheme.primary),
+              const SizedBox(width: 8),
+              Text(title,
+                  style: const TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                      color: AppTheme.textPrimary)),
+            ]),
+            const SizedBox(height: 12),
+            child,
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _BarRow {
+  final String label;
+  final double total;
+  final int count;
+  final Color color;
+  _BarRow({
+    required this.label,
+    required this.total,
+    required this.count,
+    required this.color,
+  });
+}
+
+class _BreakdownBars extends StatelessWidget {
+  final List<_BarRow> rows;
+  final double grandTotal;
+  const _BreakdownBars({required this.rows, required this.grandTotal});
+
+  @override
+  Widget build(BuildContext context) {
+    if (rows.isEmpty || grandTotal <= 0) {
+      return const Text('Sin datos en este período.',
+          style: TextStyle(fontSize: 15, color: AppTheme.textSecondary));
+    }
+    rows.sort((a, b) => b.total.compareTo(a.total));
+    return Column(
+      children: rows.map((r) {
+        final share = grandTotal > 0 ? r.total / grandTotal : 0.0;
+        return Padding(
+          padding: const EdgeInsets.only(bottom: 10),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(children: [
+                Expanded(
+                    child: Text(r.label,
+                        style: const TextStyle(
+                            fontSize: 15,
+                            fontWeight: FontWeight.w600,
+                            color: AppTheme.textPrimary))),
+                Text(_formatMoney(r.total),
+                    style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.bold,
+                        color: r.color)),
+                const SizedBox(width: 6),
+                Text('${(share * 100).toStringAsFixed(0)}%',
+                    style: const TextStyle(
+                        fontSize: 13, color: AppTheme.textSecondary)),
+              ]),
+              const SizedBox(height: 4),
+              ClipRRect(
+                borderRadius: BorderRadius.circular(8),
+                child: LinearProgressIndicator(
+                  value: share.clamp(0, 1).toDouble(),
+                  minHeight: 8,
+                  backgroundColor: AppTheme.surfaceGrey,
+                  valueColor: AlwaysStoppedAnimation(r.color),
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text('${r.count} transacciones',
+                  style: const TextStyle(
+                      fontSize: 12, color: AppTheme.textSecondary)),
+            ],
+          ),
+        );
+      }).toList(),
+    );
+  }
+}
+
+class _HourHeatmap extends StatelessWidget {
+  final List<Map> byHour;
+  final String? firstSaleAt;
+  final Map? peakHour;
+  const _HourHeatmap(
+      {required this.byHour,
+      required this.firstSaleAt,
+      required this.peakHour});
+
+  @override
+  Widget build(BuildContext context) {
+    if (byHour.isEmpty) {
+      return const Text('Sin ventas en este período.',
+          style: TextStyle(fontSize: 15, color: AppTheme.textSecondary));
+    }
+    final byHourMap = <int, double>{
+      for (final h in byHour)
+        ((h['hour'] as num?)?.toInt() ?? 0):
+            ((h['total'] as num?)?.toDouble() ?? 0)
+    };
+    final maxVal =
+        byHourMap.values.fold<double>(0, (a, b) => b > a ? b : a);
+    String firstStr = '—';
+    if (firstSaleAt != null) {
+      final dt = DateTime.tryParse(firstSaleAt!)?.toLocal();
+      if (dt != null) {
+        firstStr =
+            '${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
+      }
+    }
+    final peakH = (peakHour?['hour'] as num?)?.toInt();
+    final peakShare = (peakHour?['share_pct'] as num?)?.toDouble() ?? 0;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(children: [
+          Expanded(
+            child: _MiniStat(
+                label: 'Primera venta', value: firstStr, color: AppTheme.success),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: _MiniStat(
+                label: 'Hora pico',
+                value: peakH == null
+                    ? '—'
+                    : '${peakH.toString().padLeft(2, '0')}:00 · ${peakShare.toStringAsFixed(0)}%',
+                color: AppTheme.primary),
+          ),
+        ]),
+        const SizedBox(height: 14),
+        SizedBox(
+          height: 90,
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: List.generate(24, (h) {
+              final v = byHourMap[h] ?? 0;
+              final ratio = maxVal > 0 ? v / maxVal : 0.0;
+              return Expanded(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 1.5),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.end,
+                    children: [
+                      Container(
+                        height: (60 * ratio).clamp(2, 60).toDouble(),
+                        decoration: BoxDecoration(
+                          color: ratio > 0
+                              ? AppTheme.primary
+                                  .withValues(alpha: 0.4 + 0.6 * ratio)
+                              : AppTheme.borderColor,
+                          borderRadius: BorderRadius.circular(3),
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      if (h % 3 == 0)
+                        Text('$h',
+                            style: const TextStyle(
+                                fontSize: 10, color: AppTheme.textSecondary))
+                      else
+                        const SizedBox(height: 12),
+                    ],
+                  ),
+                ),
+              );
+            }),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _MiniStat extends StatelessWidget {
+  final String label;
+  final String value;
+  final Color color;
+  const _MiniStat(
+      {required this.label, required this.value, required this.color});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(label,
+              style: TextStyle(
+                  fontSize: 13,
+                  color: color,
+                  fontWeight: FontWeight.w600)),
+          const SizedBox(height: 2),
+          Text(value,
+              style: TextStyle(
+                  fontSize: 18, fontWeight: FontWeight.bold, color: color)),
+        ],
+      ),
+    );
+  }
+}
+
+class _WeekdayBars extends StatelessWidget {
+  final List<Map> byWeekday;
+  final Map? best;
+  final Map? worst;
+  const _WeekdayBars(
+      {required this.byWeekday, required this.best, required this.worst});
+
+  static const _names = [
+    'D',
+    'L',
+    'M',
+    'X',
+    'J',
+    'V',
+    'S'
+  ]; // Sun..Sat short labels
+
+  @override
+  Widget build(BuildContext context) {
+    if (byWeekday.isEmpty) {
+      return const Text('Sin datos en este período.',
+          style: TextStyle(fontSize: 15, color: AppTheme.textSecondary));
+    }
+    final byMap = <int, double>{
+      for (final w in byWeekday)
+        ((w['weekday'] as num?)?.toInt() ?? 0):
+            ((w['total'] as num?)?.toDouble() ?? 0)
+    };
+    final max = byMap.values.fold<double>(0, (a, b) => b > a ? b : a);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (best != null)
+          _DayHighlight(
+              label: 'Mejor día',
+              dayName: best?['name']?.toString() ?? '',
+              total: (best?['total'] as num?)?.toDouble() ?? 0,
+              color: AppTheme.success),
+        if (worst != null)
+          _DayHighlight(
+              label: 'Peor día',
+              dayName: worst?['name']?.toString() ?? '',
+              total: (worst?['total'] as num?)?.toDouble() ?? 0,
+              color: AppTheme.error),
+        const SizedBox(height: 14),
+        SizedBox(
+          height: 110,
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: List.generate(7, (dow) {
+              final v = byMap[dow] ?? 0;
+              final ratio = max > 0 ? v / max : 0.0;
+              return Expanded(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 4),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.end,
+                    children: [
+                      if (v > 0)
+                        Text(_formatMoney(v),
+                            style: const TextStyle(
+                                fontSize: 11,
+                                color: AppTheme.textSecondary,
+                                fontWeight: FontWeight.w600)),
+                      const SizedBox(height: 4),
+                      Container(
+                        height: (70 * ratio).clamp(4, 70).toDouble(),
+                        decoration: BoxDecoration(
+                          color: AppTheme.primary
+                              .withValues(alpha: 0.35 + 0.65 * ratio),
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      Text(_names[dow],
+                          style: const TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.bold,
+                              color: AppTheme.textPrimary)),
+                    ],
+                  ),
+                ),
+              );
+            }),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _DayHighlight extends StatelessWidget {
+  final String label;
+  final String dayName;
+  final double total;
+  final Color color;
+  const _DayHighlight(
+      {required this.label,
+      required this.dayName,
+      required this.total,
+      required this.color});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 6),
+      child: Row(children: [
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+          decoration: BoxDecoration(
+              color: color.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(8)),
+          child: Text(label,
+              style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                  color: color)),
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Text(dayName,
+              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+        ),
+        Text(_formatMoney(total),
+            style: TextStyle(
+                fontSize: 16, fontWeight: FontWeight.bold, color: color)),
+      ]),
+    );
+  }
+}
+
+class _EmployeeLeaderboard extends StatelessWidget {
+  final List<Map> rows;
+  const _EmployeeLeaderboard({required this.rows});
+
+  @override
+  Widget build(BuildContext context) {
+    if (rows.isEmpty) {
+      return const Text('Aún no hay ventas registradas.',
+          style: TextStyle(fontSize: 15, color: AppTheme.textSecondary));
+    }
+    return Column(
+      children: rows.asMap().entries.map((e) {
+        final idx = e.key;
+        final r = e.value;
+        final name = (r['name'] ?? '') as String;
+        final sales = (r['sales_total'] as num?)?.toDouble() ?? 0;
+        final tx = (r['tx_count'] as num?)?.toInt() ?? 0;
+        final profit = (r['profit'] as num?)?.toDouble() ?? 0;
+        final medal = idx == 0
+            ? '🥇'
+            : idx == 1
+                ? '🥈'
+                : idx == 2
+                    ? '🥉'
+                    : '#${idx + 1}';
+        return Padding(
+          padding: const EdgeInsets.only(bottom: 10),
+          child: Row(children: [
+            Container(
+              width: 40,
+              alignment: Alignment.center,
+              child: Text(medal,
+                  style:
+                      const TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
+            ),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(name,
+                      style: const TextStyle(
+                          fontSize: 17,
+                          fontWeight: FontWeight.bold,
+                          color: AppTheme.textPrimary),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis),
+                  const SizedBox(height: 2),
+                  Text(
+                      '$tx ${tx == 1 ? 'venta' : 'ventas'} · Ganancia ${_formatMoney(profit)}',
+                      style: const TextStyle(
+                          fontSize: 13, color: AppTheme.textSecondary)),
+                ],
+              ),
+            ),
+            Text(_formatMoney(sales),
+                style: const TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                    color: AppTheme.primary)),
+          ]),
+        );
+      }).toList(),
+    );
+  }
+}
+
+class _ErrorState extends StatelessWidget {
+  final String message;
+  final VoidCallback onRetry;
+  const _ErrorState({required this.message, required this.onRetry});
+
+  @override
+  Widget build(BuildContext context) {
+    return ListView(
+      padding: const EdgeInsets.all(24),
+      children: [
+        const SizedBox(height: 80),
+        const Icon(Icons.cloud_off_rounded,
+            size: 56, color: AppTheme.textSecondary),
+        const SizedBox(height: 12),
+        Text(message,
+            textAlign: TextAlign.center,
+            style:
+                const TextStyle(fontSize: 17, color: AppTheme.textPrimary)),
+        const SizedBox(height: 18),
+        Center(
+          child: ElevatedButton.icon(
+            onPressed: onRetry,
+            icon: const Icon(Icons.refresh_rounded),
+            label: const Text('Reintentar'),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+// ── Filter sheet ───────────────────────────────────────────────────
+
+class _FilterSelection {
+  final String? employee;
+  final String? source;
+  final String? method;
+  const _FilterSelection({this.employee, this.source, this.method});
+}
+
+class _FilterSheet extends StatefulWidget {
+  final List<String> availableEmployees;
+  final String? initialEmployee;
+  final String? initialSource;
+  final String? initialMethod;
+  const _FilterSheet({
+    required this.availableEmployees,
+    required this.initialEmployee,
+    required this.initialSource,
+    required this.initialMethod,
+  });
+
+  @override
+  State<_FilterSheet> createState() => _FilterSheetState();
+}
+
+class _FilterSheetState extends State<_FilterSheet> {
+  late String? _employee;
+  late String? _source;
+  late String? _method;
+
+  @override
+  void initState() {
+    super.initState();
+    _employee = widget.initialEmployee;
+    _source = widget.initialSource;
+    _method = widget.initialMethod;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: EdgeInsets.fromLTRB(
+          20, 14, 20, MediaQuery.of(context).viewInsets.bottom + 24),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Center(
+            child: Container(
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: Colors.grey.shade300,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+          ),
+          const SizedBox(height: 14),
+          const Text('Filtrar el panel',
+              style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
+          const SizedBox(height: 16),
+          if (widget.availableEmployees.isNotEmpty) ...[
+            const Text('Empleado',
+                style: TextStyle(
+                    fontSize: 16, fontWeight: FontWeight.w600)),
+            const SizedBox(height: 6),
+            Wrap(
+              spacing: 8,
+              children: [
+                _ChipChoice(
+                  label: 'Todos',
+                  selected: _employee == null,
+                  onTap: () => setState(() => _employee = null),
+                ),
+                ...widget.availableEmployees.map((e) => _ChipChoice(
+                      label: e,
+                      selected: _employee == e,
+                      onTap: () => setState(() => _employee = e),
+                    )),
+              ],
+            ),
+            const SizedBox(height: 14),
+          ],
+          const Text('Canal',
+              style:
+                  TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+          const SizedBox(height: 6),
+          Wrap(
+            spacing: 8,
+            children: [
+              _ChipChoice(
+                  label: 'Todos',
+                  selected: _source == null,
+                  onTap: () => setState(() => _source = null)),
+              _ChipChoice(
+                  label: 'Mostrador',
+                  selected: _source == 'POS',
+                  onTap: () => setState(() => _source = 'POS')),
+              _ChipChoice(
+                  label: 'Mesa',
+                  selected: _source == 'TABLE',
+                  onTap: () => setState(() => _source = 'TABLE')),
+              _ChipChoice(
+                  label: 'Tienda online',
+                  selected: _source == 'WEB',
+                  onTap: () => setState(() => _source = 'WEB')),
+            ],
+          ),
+          const SizedBox(height: 14),
+          const Text('Método de pago',
+              style:
+                  TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+          const SizedBox(height: 6),
+          Wrap(
+            spacing: 8,
+            children: [
+              _ChipChoice(
+                  label: 'Todos',
+                  selected: _method == null,
+                  onTap: () => setState(() => _method = null)),
+              _ChipChoice(
+                  label: 'Efectivo',
+                  selected: _method == 'cash',
+                  onTap: () => setState(() => _method = 'cash')),
+              _ChipChoice(
+                  label: 'Transferencia',
+                  selected: _method == 'transfer',
+                  onTap: () => setState(() => _method = 'transfer')),
+              _ChipChoice(
+                  label: 'Tarjeta',
+                  selected: _method == 'card',
+                  onTap: () => setState(() => _method = 'card')),
+              _ChipChoice(
+                  label: 'Fiado',
+                  selected: _method == 'credit',
+                  onTap: () => setState(() => _method = 'credit')),
+            ],
+          ),
+          const SizedBox(height: 22),
+          SizedBox(
+            width: double.infinity,
+            height: 56,
+            child: ElevatedButton(
+              onPressed: () => Navigator.of(context).pop(_FilterSelection(
+                  employee: _employee,
+                  source: _source,
+                  method: _method)),
+              child: const Text('Aplicar filtros',
+                  style:
+                      TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+            ),
           ),
         ],
       ),
@@ -696,16 +1254,30 @@ class _FinCard extends StatelessWidget {
   }
 }
 
-class _EmployeePerf {
-  final String name;
-  double totalSales;
-  double profit;
-  int txCount;
+class _ChipChoice extends StatelessWidget {
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+  const _ChipChoice(
+      {required this.label, required this.selected, required this.onTap});
 
-  _EmployeePerf({
-    required this.name,
-    this.totalSales = 0,
-    this.profit = 0,
-    this.txCount = 0,
-  });
+  @override
+  Widget build(BuildContext context) {
+    return ChoiceChip(
+      label: Text(label,
+          style: TextStyle(
+              fontSize: 15,
+              color: selected ? Colors.white : AppTheme.textPrimary,
+              fontWeight: FontWeight.w600)),
+      selected: selected,
+      selectedColor: AppTheme.primary,
+      backgroundColor: AppTheme.surfaceGrey,
+      onSelected: (_) => onTap(),
+      shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(14),
+          side: BorderSide(
+              color:
+                  selected ? AppTheme.primary : AppTheme.borderColor)),
+    );
+  }
 }

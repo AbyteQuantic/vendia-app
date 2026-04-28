@@ -1737,6 +1737,40 @@ class ApiService {
     }
   }
 
+  /// Full dashboard payload — same endpoint, but with the optional
+  /// employee/source/payment-method filters wired through. The
+  /// backend extends the response with by_channel, by_hour,
+  /// by_weekday, peak_hour, top_employees, etc. (see
+  /// handlers/analytics_tenant.go FinancialSummary).
+  Future<Map<String, dynamic>> fetchFinancialSummaryFull({
+    String period = 'today',
+    String? employee,
+    String? source,
+    String? paymentMethod,
+    DateTime? since,
+    DateTime? until,
+  }) async {
+    try {
+      final params = <String, dynamic>{'period': period};
+      if (employee != null && employee.isNotEmpty) {
+        params['employee'] = employee;
+      }
+      if (source != null && source.isNotEmpty) params['source'] = source;
+      if (paymentMethod != null && paymentMethod.isNotEmpty) {
+        params['payment_method'] = paymentMethod;
+      }
+      if (since != null) params['since'] = since.toUtc().toIso8601String();
+      if (until != null) params['until'] = until.toUtc().toIso8601String();
+      final response = await _dio.get(
+        '/api/v1/analytics/financial-summary',
+        queryParameters: params,
+      );
+      return _extractData(response);
+    } on DioException catch (e) {
+      throw AppError.fromDioException(e);
+    }
+  }
+
   Future<List<dynamic>> fetchSalesHistoryByPeriod({
     String period = 'today',
     int page = 1,
