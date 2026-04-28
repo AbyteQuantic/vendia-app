@@ -72,30 +72,39 @@ class StatCard extends StatelessWidget {
             overflow: TextOverflow.ellipsis,
           ),
           if (trend != null) ...[
-            const SizedBox(height: 2),
+            const SizedBox(height: 4),
+            // Trend lives on its own line — at fontSize:15 the row
+            // "↗ primer día vs. ayer" overflowed inside a 1/3-width
+            // card on 360dp screens (truncated to "primer día vs. a...").
+            // maxLines:2 + softWrap lets the message breathe; the icon
+            // sits inline so the colour signal is preserved.
             Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Icon(
-                  trend!.startsWith('+')
-                      ? Icons.trending_up_rounded
-                      : Icons.trending_down_rounded,
-                  size: 14,
-                  color: trend!.startsWith('+')
-                      ? AppTheme.success
-                      : AppTheme.error,
+                Padding(
+                  padding: const EdgeInsets.only(top: 2),
+                  child: Icon(
+                    trend!.startsWith('+')
+                        ? Icons.trending_up_rounded
+                        : Icons.trending_down_rounded,
+                    size: 16,
+                    color: trend!.startsWith('+')
+                        ? AppTheme.success
+                        : AppTheme.error,
+                  ),
                 ),
-                const SizedBox(width: 3),
+                const SizedBox(width: 4),
                 Flexible(
                   child: Text(
                     '${trend!} vs. ayer',
                     style: TextStyle(
-                      fontSize: 15,
+                      fontSize: 16,
                       fontWeight: FontWeight.w600,
                       color: trend!.startsWith('+')
                           ? AppTheme.success
                           : AppTheme.error,
                     ),
-                    maxLines: 1,
+                    maxLines: 2,
                     overflow: TextOverflow.ellipsis,
                   ),
                 ),

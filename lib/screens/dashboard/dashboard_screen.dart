@@ -300,68 +300,87 @@ class _DashboardScreenState extends State<DashboardScreen> {
               ),
               slivers: [
                 // ── Header ──────────────────────────────────────────
+                // Two-row layout (UI_RULES.md #1): four-widget Row was
+                // overflowing on 360dp screens — the greeting was
+                // wrapping to "¡Buen / os días! / B... / Don / Brayan".
+                // Splitting into [greeting | actions] + [business |
+                // status] frees the full screen width for the owner
+                // name and keeps every header action one tap away.
                 SliverToBoxAdapter(
                   child: Padding(
                     padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.center,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(_greeting(),
-                                  style: const TextStyle(
-                                      fontSize: 18,
-                                      color: AppTheme.textSecondary)),
-                              Text(widget.ownerName,
-                                  style: const TextStyle(
-                                    fontSize: 30,
-                                    fontWeight: FontWeight.bold,
-                                    color: Color(0xFF1A1A1A),
-                                  ),
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis),
-                              Text(widget.businessName,
+                        // Line 1 — greeting + ownerName | bell + account
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.center,
+                          children: [
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(_greeting(),
+                                      style: const TextStyle(
+                                          fontSize: 18,
+                                          color: AppTheme.textSecondary),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      softWrap: false),
+                                  Text(widget.ownerName,
+                                      style: const TextStyle(
+                                        fontSize: 30,
+                                        fontWeight: FontWeight.bold,
+                                        color: AppTheme.textPrimary,
+                                      ),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      softWrap: false),
+                                ],
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            // KDS bell — polls every 15s for pending
+                            // online orders. The reverse-QR scanner
+                            // moved to the POS AppBar (2026-04-25): a
+                            // cash-confirmation belongs inside the
+                            // cash-register context, not on the
+                            // landing dashboard.
+                            const OnlineOrdersBell(),
+                            const SizedBox(width: 4),
+                            // Account menu — every role needs a way
+                            // to close their session. Owners had it
+                            // inside Configuración; cashiers / waiters
+                            // never reached that hub, so logout had
+                            // to live here.
+                            _AccountMenuButton(
+                              ownerName: widget.ownerName,
+                              businessName: widget.businessName,
+                              onLogout: _onLogout,
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 6),
+                        // Line 2 — businessName | storefront status
+                        Row(
+                          children: [
+                            Expanded(
+                              child: Text(widget.businessName,
                                   style: const TextStyle(
                                       fontSize: 18,
                                       color: AppTheme.primary,
-                                      fontWeight: FontWeight.w600)),
-                            ],
-                          ),
-                        ),
-                        // Account menu — every role needs a way to
-                        // close their session. The dueño had it inside
-                        // "Configuración"; cashiers / waiters never
-                        // saw that card so they were trapped in the
-                        // session of whichever workspace they entered.
-                        // Mounting it on the dashboard header makes
-                        // logout reachable in one tap regardless of
-                        // role.
-                        _AccountMenuButton(
-                          ownerName: widget.ownerName,
-                          businessName: widget.businessName,
-                          onLogout: _onLogout,
-                        ),
-                        const SizedBox(width: 4),
-                        // KDS bell — polls the backend every 15 s
-                        // for pedidos web en estado pending. Tapping
-                        // opens OnlineOrdersScreen where the tendero
-                        // can accept / reject.
-                        //
-                        // The reverse-QR scanner used to live here
-                        // too. Heuristic audit (UX 2026-04-25)
-                        // moved it into the POS AppBar — confirming
-                        // a cash payment is a transactional action,
-                        // and transactional actions belong inside
-                        // the cash-register context, not on the
-                        // landing dashboard.
-                        const OnlineOrdersBell(),
-                        const SizedBox(width: 12),
-                        _StoreStatusPill(
-                          isOpen: _isStoreOpen,
-                          loading: _loadingStoreStatus,
-                          onToggle: _toggleStoreStatus,
+                                      fontWeight: FontWeight.w600),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  softWrap: false),
+                            ),
+                            const SizedBox(width: 12),
+                            _StoreStatusPill(
+                              isOpen: _isStoreOpen,
+                              loading: _loadingStoreStatus,
+                              onToggle: _toggleStoreStatus,
+                            ),
+                          ],
                         ),
                       ],
                     ),
@@ -533,8 +552,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                             fontWeight: FontWeight.bold,
                                             color: AppTheme.textPrimary)),
                                     Text('Mesas, Fiados, Empleados y Perfil',
-                                        style: TextStyle(fontSize: 14,
-                                            color: AppTheme.textSecondary)),
+                                        style: TextStyle(fontSize: 16,
+                                            color: AppTheme.textSecondary),
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis),
                                   ],
                                 ),
                               ),
@@ -861,25 +882,26 @@ class _MarketingHubCard extends StatelessWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Row(
+                      // Title + badge in a Wrap so the badge breaks
+                      // to a second line on 360dp instead of squeezing
+                      // the title into "Catálogo ..." with ellipsis.
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 4,
+                        crossAxisAlignment: WrapCrossAlignment.center,
                         children: [
-                          const Flexible(
-                            child: Text(
-                              '📢 Catálogo y Promos',
-                              style: TextStyle(
-                                fontSize: 18,
-                                fontWeight: FontWeight.bold,
-                                color: AppTheme.textPrimary,
-                              ),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
+                          const Text(
+                            '📢 Catálogo y Promos',
+                            style: TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                              color: AppTheme.textPrimary,
                             ),
                           ),
-                          if (activePromos > 0) ...[
-                            const SizedBox(width: 8),
+                          if (activePromos > 0)
                             Container(
                               padding: const EdgeInsets.symmetric(
-                                  horizontal: 8, vertical: 2),
+                                  horizontal: 10, vertical: 3),
                               decoration: BoxDecoration(
                                 color: _accent,
                                 borderRadius: BorderRadius.circular(10),
@@ -887,20 +909,19 @@ class _MarketingHubCard extends StatelessWidget {
                               child: Text(
                                 badgeLabel,
                                 style: const TextStyle(
-                                  fontSize: 12,
+                                  fontSize: 13,
                                   fontWeight: FontWeight.w700,
                                   color: Colors.white,
                                 ),
                               ),
                             ),
-                          ],
                         ],
                       ),
-                      const SizedBox(height: 2),
+                      const SizedBox(height: 4),
                       const Text(
                         'Cree combos, banners con IA y comparta su tienda online.',
                         style: TextStyle(
-                          fontSize: 14,
+                          fontSize: 16,
                           color: AppTheme.textSecondary,
                         ),
                       ),
