@@ -63,9 +63,13 @@ class _LoginScreenState extends State<LoginScreen> {
         password: _pinCtrl.text.trim(),
       );
 
-      // ── Multi-workspace response: workspaces array ──────────────
+      // ── Selector response: backend returns `workspaces` whenever
+      // a per-workspace password prompt is required — multi-workspace
+      // OR single-workspace where the typed password matches identity
+      // but not the chosen tenant's binding credential. Trust the
+      // presence of `workspaces` regardless of length.
       final workspaces = data['workspaces'] as List<dynamic>?;
-      if (workspaces != null && workspaces.length > 1) {
+      if (workspaces != null && workspaces.isNotEmpty) {
         if (!mounted) return;
         Navigator.of(context).pushReplacement(
           PageRouteBuilder(

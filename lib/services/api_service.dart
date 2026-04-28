@@ -156,15 +156,21 @@ class ApiService {
     }
   }
 
-  /// Select a workspace (multi-workspace flow). Requires temp_token as auth.
+  /// Select a workspace (multi-workspace flow). Requires temp_token as auth
+  /// and the password specific to the chosen workspace — the backend rejects
+  /// cross-tenant credential reuse with `workspace_password_mismatch`.
   Future<Map<String, dynamic>> selectWorkspace({
     required String workspaceId,
     required String tempToken,
+    required String password,
   }) async {
     try {
       final response = await _dio.post(
         '/api/v1/auth/select-workspace',
-        data: {'workspace_id': workspaceId},
+        data: {
+          'workspace_id': workspaceId,
+          'password': password,
+        },
         options: Options(headers: {'Authorization': 'Bearer $tempToken'}),
       );
       return response.data as Map<String, dynamic>;

@@ -80,16 +80,24 @@ class _WorkspaceSelectorScreenState extends State<WorkspaceSelectorScreen> {
 
   Future<void> _onWorkspaceTap(WorkspaceInfo ws) async {
     if (_selecting) return;
+    HapticFeedback.lightImpact();
+
+    // Per-workspace credential gate. Backend requires the password
+    // specific to THIS tenant — the global identity match at /login
+    // only unlocked the selector, not the JWT.
+    final password = await _promptPassword(ws);
+    if (password == null || password.isEmpty) return;
+
     setState(() {
       _selecting = true;
       _selectingId = ws.workspaceId;
     });
-    HapticFeedback.lightImpact();
 
     try {
       final data = await _api.selectWorkspace(
         workspaceId: ws.workspaceId,
         tempToken: widget.tempToken,
+        password: password,
       );
 
       await _auth.saveWorkspaceSession(
@@ -126,13 +134,88 @@ class _WorkspaceSelectorScreenState extends State<WorkspaceSelectorScreen> {
           _selecting = false;
           _selectingId = null;
         });
+        final msg = e.toString().contains('workspace_password_mismatch')
+            ? 'Esa clave no abre este negocio. Use la clave que el dueño le asignó.'
+            : 'Error: $e';
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text('Error: $e', style: const TextStyle(fontSize: 16)),
+          content: Text(msg, style: const TextStyle(fontSize: 16)),
           backgroundColor: AppTheme.error,
           behavior: SnackBarBehavior.floating,
         ));
       }
     }
+  }
+
+  Future<String?> _promptPassword(WorkspaceInfo ws) async {
+    final controller = TextEditingController();
+    bool obscure = true;
+    return showDialog<String>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setSt) => AlertDialog(
+          shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(20)),
+          title: Text(
+            ws.tenantName,
+            style: const TextStyle(
+                fontSize: 22, fontWeight: FontWeight.bold),
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                ws.isOwner
+                    ? 'Confirme su clave para entrar como propietario.'
+                    : 'Ingrese la clave que el dueño le asignó para este negocio.',
+                style:
+                    const TextStyle(fontSize: 16, height: 1.4),
+              ),
+              const SizedBox(height: 16),
+              TextField(
+                controller: controller,
+                obscureText: obscure,
+                autofocus: true,
+                style: const TextStyle(fontSize: 18),
+                onSubmitted: (v) => Navigator.of(ctx).pop(v),
+                decoration: InputDecoration(
+                  labelText: 'Clave',
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  suffixIcon: IconButton(
+                    icon: Icon(obscure
+                        ? Icons.visibility_outlined
+                        : Icons.visibility_off_outlined),
+                    onPressed: () => setSt(() => obscure = !obscure),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(null),
+              child: const Text('Cancelar', style: TextStyle(fontSize: 16)),
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppTheme.primary,
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12)),
+                padding: const EdgeInsets.symmetric(
+                    horizontal: 20, vertical: 12),
+              ),
+              onPressed: () => Navigator.of(ctx).pop(controller.text),
+              child: const Text('Entrar',
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   @override
