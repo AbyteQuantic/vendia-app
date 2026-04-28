@@ -1332,11 +1332,13 @@ class ApiService {
   Future<Map<String, dynamic>> generateLogoAI({
     required String businessName,
     required String businessType,
+    String? details,
   }) async {
     try {
       final response = await _dio.post('/api/v1/tenant/generate-logo', data: {
         'business_name': businessName,
         'business_type': businessType,
+        if (details != null && details.isNotEmpty) 'details': details,
       });
       return _extractData(response);
     } on DioException catch (e) {

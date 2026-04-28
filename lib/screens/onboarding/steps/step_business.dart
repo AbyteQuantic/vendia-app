@@ -48,52 +48,86 @@ class _StepBusinessState extends State<StepBusiness> {
     });
 
     try {
-      // Check permission
-      LocationPermission permission = await Geolocator.checkPermission();
-      if (permission == LocationPermission.denied) {
-        permission = await Geolocator.requestPermission();
-        if (permission == LocationPermission.denied) {
-          setState(() {
-            _locationError = 'Permiso de ubicación denegado';
-            _locationLoading = false;
-          });
-          return;
-        }
-      }
-
-      if (permission == LocationPermission.deniedForever) {
+      // 1) GPS hardware. If the user has Location Services off in the
+      // OS, getCurrentPosition() throws an opaque LocationServiceDisabled
+      // — we catch it earlier and tell them what to enable.
+      final serviceOn = await Geolocator.isLocationServiceEnabled();
+      if (!serviceOn) {
         setState(() {
           _locationError =
-              'Permiso denegado permanentemente.\nActívelo en Configuración del teléfono.';
+              'El GPS está apagado. Active "Ubicación" en los ajustes del teléfono y vuelva a tocar.';
           _locationLoading = false;
         });
         return;
       }
 
-      // Get position
-      final position = await Geolocator.getCurrentPosition(
-        locationSettings: const LocationSettings(
-          accuracy: LocationAccuracy.high,
-          timeLimit: Duration(seconds: 15),
-        ),
-      );
+      // 2) Permission. denied → ask. deniedForever → settings hint.
+      LocationPermission permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+        if (permission == LocationPermission.denied) {
+          setState(() {
+            _locationError =
+                'No nos dio permiso para usar la ubicación.\nPuede escribir la dirección a mano.';
+            _locationLoading = false;
+          });
+          return;
+        }
+      }
+      if (permission == LocationPermission.deniedForever) {
+        setState(() {
+          _locationError =
+              'El permiso quedó bloqueado.\nActívelo en Ajustes → Apps → VendIA → Permisos → Ubicación.';
+          _locationLoading = false;
+        });
+        return;
+      }
 
-      // Reverse geocode
-      final placemarks = await placemarkFromCoordinates(
-        position.latitude,
-        position.longitude,
-      );
+      // 3) Position. timeLimit:15s; on phones with weak indoor signal
+      // we fall back to last-known location instead of failing outright,
+      // so the cashier still gets ~city-level accuracy when stuck inside
+      // a metal-roof tienda.
+      Position? position;
+      try {
+        position = await Geolocator.getCurrentPosition(
+          locationSettings: const LocationSettings(
+            accuracy: LocationAccuracy.high,
+            timeLimit: Duration(seconds: 15),
+          ),
+        );
+      } catch (_) {
+        position = await Geolocator.getLastKnownPosition();
+      }
+      if (position == null) {
+        setState(() {
+          _locationError =
+              'No pudimos leer la ubicación (la señal está débil).\nPuede escribir la dirección a mano.';
+          _locationLoading = false;
+        });
+        return;
+      }
 
+      // 4) Reverse geocode. Best-effort; on failure we still expose
+      // the lat/lng so the form isn't blocked.
       String address = '';
-      if (placemarks.isNotEmpty) {
-        final p = placemarks.first;
-        final parts = <String>[
-          if (p.street != null && p.street!.isNotEmpty) p.street!,
-          if (p.subLocality != null && p.subLocality!.isNotEmpty)
-            p.subLocality!,
-          if (p.locality != null && p.locality!.isNotEmpty) p.locality!,
-        ];
-        address = parts.join(', ');
+      try {
+        final placemarks = await placemarkFromCoordinates(
+          position.latitude,
+          position.longitude,
+        );
+        if (placemarks.isNotEmpty) {
+          final p = placemarks.first;
+          final parts = <String>[
+            if (p.street != null && p.street!.isNotEmpty) p.street!,
+            if (p.subLocality != null && p.subLocality!.isNotEmpty)
+              p.subLocality!,
+            if (p.locality != null && p.locality!.isNotEmpty) p.locality!,
+          ];
+          address = parts.join(', ');
+        }
+      } catch (_) {
+        // Reverse-geocoding failure: keep the coordinates as a fallback
+        // so the merchant still has something they can refine manually.
       }
 
       if (address.isEmpty) {
@@ -109,7 +143,8 @@ class _StepBusinessState extends State<StepBusiness> {
       widget.controller.address = address;
     } catch (e) {
       setState(() {
-        _locationError = 'No se pudo obtener la ubicación.\nIntente de nuevo.';
+        _locationError =
+            'No pudimos detectar la ubicación.\nPuede escribir la dirección a mano.';
         _locationLoading = false;
       });
     }
@@ -300,23 +335,49 @@ class _StepBusinessState extends State<StepBusiness> {
                 ),
               ],
 
-              // Link para escribir manualmente
+              // Manual-entry escape hatch. Promoted to a full-width
+              // button when there's been an error so the cashier
+              // doesn't get trapped chasing GPS — the previous tiny
+              // "Prefiero escribir" link was easy to miss.
               const SizedBox(height: 12),
-              Center(
-                child: TextButton(
-                  onPressed: () {
-                    setState(() => _locationFound = true);
-                  },
-                  child: Text(
-                    'Prefiero escribir la dirección',
-                    style: TextStyle(
-                      fontSize: 16,
-                      color: Colors.grey.shade500,
-                      decoration: TextDecoration.underline,
-                      decorationColor: Colors.grey.shade500,
+              if (_locationError != null)
+                SizedBox(
+                  width: double.infinity,
+                  height: 56,
+                  child: OutlinedButton.icon(
+                    icon: const Icon(Icons.edit_location_alt_rounded,
+                        size: 22),
+                    label: const Text('Escribir dirección a mano',
+                        style: TextStyle(
+                            fontSize: 17, fontWeight: FontWeight.w700)),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: AppTheme.primary,
+                      side: const BorderSide(
+                          color: AppTheme.primary, width: 2),
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(20)),
+                    ),
+                    onPressed: () {
+                      setState(() => _locationFound = true);
+                    },
+                  ),
+                )
+              else
+                Center(
+                  child: TextButton(
+                    onPressed: () {
+                      setState(() => _locationFound = true);
+                    },
+                    child: Text(
+                      'Prefiero escribir la dirección',
+                      style: TextStyle(
+                        fontSize: 16,
+                        color: Colors.grey.shade500,
+                        decoration: TextDecoration.underline,
+                        decorationColor: Colors.grey.shade500,
+                      ),
                     ),
                   ),
-                ),
               ),
             ],
 

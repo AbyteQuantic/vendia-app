@@ -38,10 +38,24 @@ class _StepLogoState extends State<StepLogo> {
   String? _localPreviewPath; // for gallery uploads, before upload completes
   String? _errorMsg;
 
+  // Free-text context the merchant types to steer the IA. Fed verbatim
+  // into the prompt as a "BRAND TONE" line so the model can pick
+  // industry-appropriate symbology (e.g. "vendo helados artesanales con
+  // sabores de frutas" pushes the model toward an ice-cream cone with
+  // mango / strawberry accents instead of a generic storefront).
+  late final TextEditingController _detailsCtrl;
+
   @override
   void initState() {
     super.initState();
     _api = ApiService(AuthService());
+    _detailsCtrl = TextEditingController();
+  }
+
+  @override
+  void dispose() {
+    _detailsCtrl.dispose();
+    super.dispose();
   }
 
   Future<void> _generateWithAI() async {
@@ -55,6 +69,7 @@ class _StepLogoState extends State<StepLogo> {
       final data = await _api.generateLogoAI(
         businessName: ctrl.businessName,
         businessType: ctrl.businessType,
+        details: _detailsCtrl.text.trim(),
       );
       final url = data['logo_url'] as String?;
       if (!mounted) return;
@@ -157,6 +172,51 @@ class _StepLogoState extends State<StepLogo> {
             ),
           ),
           const SizedBox(height: 20),
+
+          // ── Brand-tone hint for the IA ────────────────────────────
+          // Free-text field: when populated, the prompt picks symbology
+          // and palette accents that match what the merchant actually
+          // sells — generic "tienda de barrio" gives a basket; "tienda
+          // de barrio especializada en helados artesanales" gives a
+          // basket-with-ice-cream variant. The field is optional —
+          // empty string falls back to the rubro-default prompt.
+          const Text(
+            '¿Qué hace especial a su negocio?',
+            style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w600,
+                color: AppTheme.textPrimary),
+          ),
+          const SizedBox(height: 4),
+          const Text(
+            'Cuéntenos en una frase qué vende, qué lo distingue, '
+            'colores que le gusten… La IA usa esto para acertar.',
+            style: TextStyle(fontSize: 14, color: AppTheme.textSecondary),
+          ),
+          const SizedBox(height: 8),
+          TextField(
+            controller: _detailsCtrl,
+            maxLines: 3,
+            minLines: 2,
+            maxLength: 240,
+            enabled: !busy,
+            style: const TextStyle(fontSize: 16),
+            decoration: InputDecoration(
+              hintText: 'Ej: Tienda de barrio que también vende helados '
+                  'artesanales de frutas naturales. Me gusta el color verde.',
+              hintStyle: TextStyle(
+                  fontSize: 14, color: Colors.grey.shade500),
+              filled: true,
+              fillColor: AppTheme.surfaceGrey,
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(16),
+                borderSide: BorderSide.none,
+              ),
+              contentPadding: const EdgeInsets.all(14),
+              counterText: '',
+            ),
+          ),
+          const SizedBox(height: 16),
 
           if (_errorMsg != null)
             Container(
