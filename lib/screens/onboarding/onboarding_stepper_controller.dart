@@ -85,9 +85,14 @@ class OnboardingStepperController extends ChangeNotifier {
 
   // ── Navegación ────────────────────────────────────────────────────────────
 
-  static const int totalSteps = 5; // 0..4 — logo step removed (lives in
-                                   // Configuración after onboarding because
-                                   // the IA endpoint requires a tenant id).
+  // Six visible steps. The LAST step (logo, index 5) is deliberately
+  // post-registration: submit() runs at the end of step 4 (employees)
+  // and only on success do we advance to the logo screen, where the
+  // authenticated session lets us call /tenant/generate-logo with a
+  // real tenant_id. Pre-registration logo generation never worked
+  // ("Los logos se generarán después del registro" was the dead-end
+  // message that triggered this redesign).
+  static const int totalSteps = 6;
 
   void nextStep() {
     if (_currentStep < totalSteps - 1) {

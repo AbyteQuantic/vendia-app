@@ -11,6 +11,7 @@ import 'steps/step_business.dart';
 import 'steps/step_branches.dart';
 import 'steps/step_config.dart';
 import 'steps/step_employees.dart';
+import 'steps/step_logo.dart';
 
 /// Punto de entrada público del Stepper de onboarding.
 /// Crea el [OnboardingStepperController] con las dependencias reales
@@ -82,17 +83,17 @@ class _OnboardingStepperState extends State<OnboardingStepper> {
     GlobalKey<FormState>(), // Paso 2 — Negocio
   ];
 
-  // Títulos y subtítulos de cada paso. Logo step removed: the IA
-  // logo endpoint requires a tenant id (post-registration), so the
-  // pre-registration screen could only show "Los logos se generarán
-  // después del registro" — confusing dead end. Logo flow lives in
-  // Configuración → Imagen del negocio after onboarding completes.
+  // Títulos y subtítulos. Step 5/6 (índice 4) sigue siendo Empleados
+  // y dispara el registro al pulsar "Crear cuenta". Step 6/6 (índice
+  // 5) es Logo — solo se muestra después de que el tenant exista, así
+  // la IA puede usar el JWT para generar.
   static const _stepTitles = [
-    ('Paso 1 de 5', 'Sus datos personales'),
-    ('Paso 2 de 5', 'Datos del negocio'),
-    ('Paso 3 de 5', '¿Tiene más de un local?'),
-    ('Paso 4 de 5', '¿Qué vende en su negocio?'),
-    ('Paso 5 de 5', 'Sus empleados'),
+    ('Paso 1 de 6', 'Sus datos personales'),
+    ('Paso 2 de 6', 'Datos del negocio'),
+    ('Paso 3 de 6', '¿Tiene más de un local?'),
+    ('Paso 4 de 6', '¿Qué vende en su negocio?'),
+    ('Paso 5 de 6', 'Sus empleados'),
+    ('Paso 6 de 6', 'La imagen de su negocio'),
   ];
 
   @override
@@ -105,20 +106,34 @@ class _OnboardingStepperState extends State<OnboardingStepper> {
   void _onControllerChange() {
     if (!mounted) return;
 
-    if (_ctrl.status == StepperStatus.success) {
-      Navigator.of(context).pushAndRemoveUntil(
-        PageRouteBuilder(
-          pageBuilder: (_, animation, __) => const MainDashboardScreen(),
-          transitionsBuilder: (_, animation, __, child) => FadeTransition(
-            opacity:
-                CurvedAnimation(parent: animation, curve: Curves.easeInOut),
-            child: child,
-          ),
-          transitionDuration: const Duration(milliseconds: 400),
-        ),
-        (_) => false,
+    // After registerTenantFull succeeds (triggered by the "Crear
+    // cuenta" button on step 5), advance to the LOGO step instead of
+    // jumping to the dashboard. This is what gives the IA a real
+    // tenant_id to work with — pre-registration generation never
+    // worked. The dashboard navigation moves to _onFinish, fired by
+    // the "Entrar" button on step 6.
+    if (_ctrl.status == StepperStatus.success && _ctrl.currentStep == 4) {
+      _ctrl.nextStep();
+      _pageCtrl.animateToPage(
+        _ctrl.currentStep,
+        duration: const Duration(milliseconds: 350),
+        curve: Curves.easeInOut,
       );
     }
+  }
+
+  void _finishOnboarding() {
+    Navigator.of(context).pushAndRemoveUntil(
+      PageRouteBuilder(
+        pageBuilder: (_, animation, __) => const MainDashboardScreen(),
+        transitionsBuilder: (_, animation, __, child) => FadeTransition(
+          opacity: CurvedAnimation(parent: animation, curve: Curves.easeInOut),
+          child: child,
+        ),
+        transitionDuration: const Duration(milliseconds: 400),
+      ),
+      (_) => false,
+    );
   }
 
   @override
@@ -174,7 +189,13 @@ class _OnboardingStepperState extends State<OnboardingStepper> {
           builder: (ctx, ctrl, _) {
             final step = ctrl.currentStep;
             final (stepLabel, stepTitle) = _stepTitles[step];
-            final isLastStep = step == OnboardingStepperController.totalSteps - 1;
+            // Step 4 (índice 4 = "Sus empleados", penúltimo): aquí
+            // se dispara el registro. Step 5 (índice 5 = logo, último):
+            // sólo navega al dashboard.
+            final isRegisterStep =
+                step == OnboardingStepperController.totalSteps - 2;
+            final isLogoStep =
+                step == OnboardingStepperController.totalSteps - 1;
             final isLoading = ctrl.status == StepperStatus.loading;
 
             return Column(
@@ -271,6 +292,7 @@ class _OnboardingStepperState extends State<OnboardingStepper> {
                       const StepBranches(),
                       const StepConfig(),
                       const StepEmployees(),
+                      const StepLogo(),
                     ],
                   ),
                 ),
@@ -326,15 +348,27 @@ class _OnboardingStepperState extends State<OnboardingStepper> {
                           ),
                         ),
 
-                      // Botón Siguiente / Finalizar
+                      // Botón Siguiente / Crear cuenta / Entrar.
+                      // Tres modos:
+                      //   - pasos 1-4: "Siguiente" (avanza local)
+                      //   - paso 5 (empleados): "Crear cuenta" → submit
+                      //     y, en éxito, _onControllerChange avanza al
+                      //     paso de logo
+                      //   - paso 6 (logo): "Entrar al panel" → navega
                       Expanded(
                         child: ElevatedButton(
-                          key: isLastStep
-                              ? const Key('btn_submit')
-                              : const Key('btn_next'),
+                          key: isLogoStep
+                              ? const Key('btn_finish')
+                              : isRegisterStep
+                                  ? const Key('btn_submit')
+                                  : const Key('btn_next'),
                           onPressed: isLoading
                               ? null
-                              : (isLastStep ? ctrl.submit : _onNext),
+                              : isLogoStep
+                                  ? _finishOnboarding
+                                  : isRegisterStep
+                                      ? ctrl.submit
+                                      : _onNext,
                           child: isLoading
                               ? const SizedBox(
                                   height: 24,
@@ -342,9 +376,11 @@ class _OnboardingStepperState extends State<OnboardingStepper> {
                                   child: CircularProgressIndicator(
                                       color: Colors.white, strokeWidth: 2.5),
                                 )
-                              : Text(isLastStep
-                                  ? 'Finalizar Registro'
-                                  : 'Siguiente'),
+                              : Text(isLogoStep
+                                  ? 'Entrar al panel'
+                                  : isRegisterStep
+                                      ? 'Crear cuenta'
+                                      : 'Siguiente'),
                         ),
                       ),
                     ],
