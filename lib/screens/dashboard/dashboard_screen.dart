@@ -418,70 +418,38 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     child: Column(
                       children: [
                         if (context.watch<RoleManager>().canSeeFinances) ...[
-                          // Row 1: Sales total + count (owner / admin only).
-                          Row(
-                            children: [
-                              Expanded(
-                                flex: 3,
-                                child: Material(
-                                  color: Colors.transparent,
-                                  child: InkWell(
-                                    borderRadius: BorderRadius.circular(20),
-                                    onTap: () {
-                                      HapticFeedback.lightImpact();
-                                      Navigator.of(context).push(
-                                          MaterialPageRoute(
-                                              builder: (_) =>
-                                                  const FinancialDashboardScreen()));
-                                    },
-                                    child: StatCard(
-                                      label: 'Ventas de hoy',
-                                      value: _formatCOP(
-                                          _data.totalToday.round()),
-                                      icon: Icons.payments_rounded,
-                                      iconColor: AppTheme.primary,
-                                      backgroundColor: AppTheme.primary
-                                          .withValues(alpha: 0.06),
-                                      trend: _data.txCount > 0
-                                          ? '${_data.txCount} venta${_data.txCount > 1 ? 's' : ''}'
-                                          : 'primer día',
-                                      compact: true,
-                                    ),
-                                  ),
-                                ),
+                          // Single full-width Ventas card. Used to be a
+                          // 3:2 row with "Ventas de hoy" + a duplicate
+                          // "Ventas" count tile that opened the same
+                          // FinancialDashboardScreen — pure redundancy.
+                          // The transaction count now lives inside this
+                          // card's trend line ("1 venta vs. ayer"), so
+                          // we can promote the card to full width and
+                          // free vertical real-estate for Más vendido
+                          // and Inventario below.
+                          Material(
+                            color: Colors.transparent,
+                            child: InkWell(
+                              borderRadius: BorderRadius.circular(20),
+                              onTap: () {
+                                HapticFeedback.lightImpact();
+                                Navigator.of(context).push(MaterialPageRoute(
+                                    builder: (_) =>
+                                        const FinancialDashboardScreen()));
+                              },
+                              child: StatCard(
+                                label: 'Ventas de hoy',
+                                value:
+                                    _formatCOP(_data.totalToday.round()),
+                                icon: Icons.payments_rounded,
+                                iconColor: AppTheme.primary,
+                                backgroundColor:
+                                    AppTheme.primary.withValues(alpha: 0.06),
+                                trend: _data.txCount > 0
+                                    ? '${_data.txCount} venta${_data.txCount > 1 ? 's' : ''}'
+                                    : 'primer día',
                               ),
-                              const SizedBox(width: 12),
-                              Expanded(
-                                flex: 2,
-                                child: Material(
-                                  color: Colors.transparent,
-                                  child: InkWell(
-                                    borderRadius: BorderRadius.circular(20),
-                                    onTap: () {
-                                      HapticFeedback.lightImpact();
-                                      // Open the full Finanzas screen
-                                      // — same destination as "Ventas
-                                      // de hoy" so a tap on the count
-                                      // leads to the same drilldown
-                                      // (history list, ranking, hour
-                                      // chart). Previously a no-op.
-                                      Navigator.of(context).push(
-                                        MaterialPageRoute(
-                                          builder: (_) =>
-                                              const FinancialDashboardScreen(),
-                                        ),
-                                      );
-                                    },
-                                    child: StatCard(
-                                      label: 'Ventas',
-                                      value: '${_data.txCount}',
-                                      icon: Icons.receipt_long_rounded,
-                                      compact: true,
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            ],
+                            ),
                           ),
                           const SizedBox(height: 12),
                         ],
