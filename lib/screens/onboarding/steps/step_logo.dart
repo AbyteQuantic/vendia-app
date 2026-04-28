@@ -45,11 +45,23 @@ class _StepLogoState extends State<StepLogo> {
   // mango / strawberry accents instead of a generic storefront).
   late final TextEditingController _detailsCtrl;
 
+  // Below this character count we consider the description too thin
+  // to feed the IA a meaningful symbol — "tienda" alone is not enough
+  // to differentiate from the rubro default. 12 chars is roughly
+  // "vendo X" — short but specific.
+  static const int _minDetailsLength = 12;
+
+  bool get _detailsValid =>
+      _detailsCtrl.text.trim().length >= _minDetailsLength;
+
   @override
   void initState() {
     super.initState();
     _api = ApiService(AuthService());
-    _detailsCtrl = TextEditingController();
+    _detailsCtrl = TextEditingController()
+      // Rebuild on every keystroke so the IA button enables / disables
+      // and the helper-text counter updates in real time.
+      ..addListener(() => setState(() {}));
   }
 
   @override
@@ -151,9 +163,11 @@ class _StepLogoState extends State<StepLogo> {
           ),
           const SizedBox(height: 6),
           const Text(
-            'Para terminar, dele identidad a su negocio. Puede generarlo con IA '
-            '(usaremos su nombre y tipo de negocio) o subir una imagen suya.',
-            style: TextStyle(fontSize: 16, height: 1.4, color: AppTheme.textSecondary),
+            'Para terminar, dele identidad a su negocio. Para generarlo con IA '
+            'cuéntenos qué hace especial a su negocio — la IA lo necesita para '
+            'acertar. También puede subir una imagen propia o saltar el paso.',
+            style:
+                TextStyle(fontSize: 16, height: 1.4, color: AppTheme.textSecondary),
           ),
           const SizedBox(height: 24),
 
@@ -173,20 +187,36 @@ class _StepLogoState extends State<StepLogo> {
           ),
           const SizedBox(height: 20),
 
-          // ── Brand-tone hint for the IA ────────────────────────────
-          // Free-text field: when populated, the prompt picks symbology
-          // and palette accents that match what the merchant actually
-          // sells — generic "tienda de barrio" gives a basket; "tienda
-          // de barrio especializada en helados artesanales" gives a
-          // basket-with-ice-cream variant. The field is optional —
-          // empty string falls back to the rubro-default prompt.
-          const Text(
-            '¿Qué hace especial a su negocio?',
-            style: TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.w600,
-                color: AppTheme.textPrimary),
-          ),
+          // ── Brand-tone (REQUIRED for the IA) ──────────────────────
+          // Validation lifted to a contract: the IA button is disabled
+          // until the merchant types at least _minDetailsLength chars.
+          // Without this guardrail the model produced unrelated blobs
+          // (the demo phone hit "Llaveros y utensilios de moda" → a
+          // brown shape with no relation to keys or fashion). Backend
+          // also rejects empty / too-short details with a 400 — the
+          // UI gate is just the friendlier first line of defense.
+          Row(children: [
+            const Text(
+              '¿Qué hace especial a su negocio?',
+              style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w600,
+                  color: AppTheme.textPrimary),
+            ),
+            const SizedBox(width: 6),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+              decoration: BoxDecoration(
+                color: AppTheme.error.withValues(alpha: 0.10),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: const Text('Obligatorio para IA',
+                  style: TextStyle(
+                      fontSize: 12,
+                      color: AppTheme.error,
+                      fontWeight: FontWeight.w700)),
+            ),
+          ]),
           const SizedBox(height: 4),
           const Text(
             'Cuéntenos en una frase qué vende, qué lo distingue, '
@@ -216,6 +246,28 @@ class _StepLogoState extends State<StepLogo> {
               counterText: '',
             ),
           ),
+          const SizedBox(height: 6),
+          // Inline helper: doubles as character counter + validation.
+          // Switches to a green check + "¡Listo!" once the threshold
+          // is met so the merchant has a clear "I can press the
+          // button now" signal.
+          _detailsValid
+              ? Row(children: const [
+                  Icon(Icons.check_circle_rounded,
+                      color: AppTheme.success, size: 18),
+                  SizedBox(width: 6),
+                  Text('¡Listo! Ya puede generar el logo.',
+                      style: TextStyle(
+                          fontSize: 14,
+                          color: AppTheme.success,
+                          fontWeight: FontWeight.w600)),
+                ])
+              : Text(
+                  'Escriba al menos $_minDetailsLength caracteres '
+                  '(${_detailsCtrl.text.trim().length}/$_minDetailsLength) '
+                  'para activar la generación con IA.',
+                  style: const TextStyle(
+                      fontSize: 14, color: AppTheme.textSecondary)),
           const SizedBox(height: 16),
 
           if (_errorMsg != null)
@@ -244,11 +296,17 @@ class _StepLogoState extends State<StepLogo> {
           if (_errorMsg != null) const SizedBox(height: 16),
 
           // ── Acciones ───────────────────────────────────────────────
+          // IA button gated on _detailsValid — without a usable
+          // description the model cannot pick an industry-appropriate
+          // symbol and we'd burn a Gemini credit on a generic blob.
           ElevatedButton.icon(
-            onPressed: busy ? null : _generateWithAI,
+            onPressed: (busy || !_detailsValid) ? null : _generateWithAI,
             style: ElevatedButton.styleFrom(
               backgroundColor: const Color(0xFF7C3AED),
               foregroundColor: Colors.white,
+              disabledBackgroundColor:
+                  const Color(0xFF7C3AED).withValues(alpha: 0.35),
+              disabledForegroundColor: Colors.white.withValues(alpha: 0.85),
               minimumSize: const Size(double.infinity, 60),
               shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(20)),
