@@ -10,12 +10,18 @@ class AppError implements Exception {
   // screens route on "premium_feature_locked" / "premium_expired" /
   // "branch_not_owned" without string-matching against Spanish copy.
   final String? errorCode;
+  // Raw server payload (decoded JSON object). Optional; only set when
+  // the response carries structured data the caller needs to inspect
+  // — e.g. a 409 cart_locked includes "holder" with the rival
+  // employee's display info so the snackbar can name them.
+  final Map<String, dynamic>? payload;
 
   const AppError({
     required this.type,
     required this.message,
     this.statusCode,
     this.errorCode,
+    this.payload,
   });
 
   /// Convenience predicate used by views that want to short-circuit
@@ -89,6 +95,7 @@ class AppError implements Exception {
         message: serverMsg ?? 'Ese registro ya existe.',
         statusCode: 409,
         errorCode: rawCode,
+        payload: data is Map<String, dynamic> ? data : null,
       );
     }
 

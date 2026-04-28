@@ -7,6 +7,7 @@ import '../theme/app_theme.dart';
 import '../widgets/premium_upsell_sheet.dart';
 import 'app_error.dart';
 import 'auth_service.dart';
+import 'cart_session_service.dart';
 
 /// Central API client for the VendIA backend.
 /// Integrates with the full contract: 18 modules, 70+ endpoints.
@@ -2196,6 +2197,73 @@ class ApiService {
       }
     }
     return null;
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // CART-SESSION LOCKS (multi-employee concurrency)
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  /// GET /api/v1/carts/sessions — live snapshot of who currently
+  /// holds each cart slot in the caller's tenant + branch.
+  Future<List<CartSessionInfo>> listCartSessions() async {
+    try {
+      final response = await _dio.get('/api/v1/carts/sessions');
+      final data = _extractData(response);
+      final list = (data['data'] as List?) ?? const [];
+      return list
+          .cast<Map<String, dynamic>>()
+          .map(CartSessionInfo.fromJson)
+          .toList();
+    } on DioException catch (e) {
+      throw AppError.fromDioException(e);
+    }
+  }
+
+  /// POST /carts/sessions/claim — claim or refresh ownership of a
+  /// slot. Throws AppError(statusCode=409) when held by another
+  /// user; the AppError.payload carries the holder's info.
+  Future<CartSessionInfo> claimCartSession(int cartIndex) async {
+    try {
+      final response = await _dio.post(
+        '/api/v1/carts/sessions/claim',
+        data: {'cart_index': cartIndex},
+      );
+      final data = _extractData(response);
+      return CartSessionInfo.fromJson(
+          (data['data'] as Map).cast<String, dynamic>());
+    } on DioException catch (e) {
+      throw AppError.fromDioException(e);
+    }
+  }
+
+  /// POST /carts/sessions/heartbeat — same shape as claim, called
+  /// every 30s while the user stays on a tab.
+  Future<CartSessionInfo> heartbeatCartSession(int cartIndex) async {
+    try {
+      final response = await _dio.post(
+        '/api/v1/carts/sessions/heartbeat',
+        data: {'cart_index': cartIndex},
+      );
+      final data = _extractData(response);
+      return CartSessionInfo.fromJson(
+          (data['data'] as Map).cast<String, dynamic>());
+    } on DioException catch (e) {
+      throw AppError.fromDioException(e);
+    }
+  }
+
+  /// POST /carts/sessions/release — drop the held slot. Server
+  /// silently ignores release requests for slots the caller doesn't
+  /// own.
+  Future<void> releaseCartSession(int cartIndex) async {
+    try {
+      await _dio.post(
+        '/api/v1/carts/sessions/release',
+        data: {'cart_index': cartIndex},
+      );
+    } on DioException catch (e) {
+      throw AppError.fromDioException(e);
+    }
   }
 
   bool _isPremiumLocked(DioException error) {
