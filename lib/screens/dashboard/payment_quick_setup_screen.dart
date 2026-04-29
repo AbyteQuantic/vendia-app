@@ -82,16 +82,11 @@ class _PaymentQuickSetupScreenState extends State<PaymentQuickSetupScreen> {
 
   Future<void> _prefill() async {
     try {
-      final data = await _api.fetchBusinessProfile();
+      final data = await _api.fetchBusinessProfile()
+          .timeout(const Duration(seconds: 10));
       if (!mounted) return;
       final name = (data['payment_method_name'] as String? ?? '').trim();
       setState(() {
-        // Guard: the dropdown crashes the build ("There should be
-        // exactly one item with [DropdownButton]'s value") if the
-        // saved name is not in `_methods` — old tenants configured
-        // from previous UIs may have "Otro" / custom labels. Falling
-        // back to the default keeps the screen renderable; the
-        // tendero can re-pick and re-save.
         if (name.isNotEmpty && _methods.any((m) => m.id == name)) {
           _method = name;
         }
@@ -101,10 +96,8 @@ class _PaymentQuickSetupScreenState extends State<PaymentQuickSetupScreen> {
             (data['payment_account_holder'] as String? ?? '').trim();
         _loading = false;
       });
-    } catch (_) {
-      // Swallow and render the empty form — a blank screen is worse
-      // than a form that needs to be filled from scratch. The save
-      // call will re-surface any real server issue via the snackbar.
+    } catch (e) {
+      debugPrint('[COBRO_DIGITAL] prefill error: $e');
       if (mounted) setState(() => _loading = false);
     }
   }
