@@ -776,26 +776,31 @@ class _HeroHeaderDelegate extends SliverPersistentHeaderDelegate {
     final t = (shrinkOffset / range).clamp(0.0, 1.0);
     final detailsOpacity = (1.0 - t * 1.8).clamp(0.0, 1.0);
 
-    return Container(
-      decoration: BoxDecoration(
-        gradient: _DashboardScreenState._heroGradient,
-        borderRadius: const BorderRadius.only(
-          bottomLeft: Radius.circular(24),
-          bottomRight: Radius.circular(24),
-        ),
-        boxShadow: t > 0.3
-            ? [
-                BoxShadow(
-                  color: const Color(0xFF1E3A8A).withValues(alpha: 0.3),
-                  blurRadius: 12,
-                  offset: const Offset(0, 4),
-                ),
-              ]
-            : null,
+    return ClipRRect(
+      borderRadius: const BorderRadius.only(
+        bottomLeft: Radius.circular(24),
+        bottomRight: Radius.circular(24),
       ),
-      child: Padding(
-        padding: EdgeInsets.fromLTRB(20, topPadding + 6, 8, 10),
-        child: Column(
+      child: Container(
+        decoration: BoxDecoration(
+          gradient: _DashboardScreenState._heroGradient,
+          borderRadius: const BorderRadius.only(
+            bottomLeft: Radius.circular(24),
+            bottomRight: Radius.circular(24),
+          ),
+          boxShadow: t > 0.3
+              ? [
+                  BoxShadow(
+                    color: const Color(0xFF1E3A8A).withValues(alpha: 0.3),
+                    blurRadius: 12,
+                    offset: const Offset(0, 4),
+                  ),
+                ]
+              : null,
+        ),
+        child: Padding(
+          padding: EdgeInsets.fromLTRB(20, topPadding + 6, 8, 10),
+          child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               // ── Row 1: name + icons (always visible) ──────────
@@ -878,7 +883,8 @@ class _HeroHeaderDelegate extends SliverPersistentHeaderDelegate {
             ],
           ),
         ),
-      );
+      ),
+    );
   }
 
   @override
