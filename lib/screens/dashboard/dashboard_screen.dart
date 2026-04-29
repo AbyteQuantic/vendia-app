@@ -291,102 +291,90 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   // ── Build ───────────────────────────────────────────────────────────────────
 
+  // ── Gradient constants ───────────────────────────────────────────
+  static const _heroGradient = LinearGradient(
+    begin: Alignment.topLeft,
+    end: Alignment.bottomRight,
+    colors: [Color(0xFF1E3A8A), Color(0xFF3B82F6), Color(0xFF6366F1)],
+  );
+
   @override
   Widget build(BuildContext context) {
+    final topPad = MediaQuery.of(context).padding.top;
     return Scaffold(
-      backgroundColor: AppTheme.background,
-      body: SafeArea(
-        bottom: false,
-        child: Column(
-          children: [
-            const SyncStatusBanner(),
-            Expanded(child: ScrollConfiguration(
-          behavior:
-              ScrollConfiguration.of(context).copyWith(overscroll: false),
-          child: RefreshIndicator.adaptive(
-            color: AppTheme.primary,
-            onRefresh: _refresh,
-            displacement: 40,
-            edgeOffset: 10,
-            child: CustomScrollView(
-              physics: const AlwaysScrollableScrollPhysics(
-                parent: ClampingScrollPhysics(),
-              ),
-              slivers: [
-                // ── Header ──────────────────────────────────────────
-                // Two-row layout (UI_RULES.md #1): four-widget Row was
-                // overflowing on 360dp screens — the greeting was
-                // wrapping to "¡Buen / os días! / B... / Don / Brayan".
-                // Splitting into [greeting | actions] + [business |
-                // status] frees the full screen width for the owner
-                // name and keeps every header action one tap away.
-                SliverToBoxAdapter(
+      backgroundColor: const Color(0xFFF8FAFC),
+      body: Column(
+        children: [
+          const SyncStatusBanner(),
+          Expanded(child: ScrollConfiguration(
+        behavior:
+            ScrollConfiguration.of(context).copyWith(overscroll: false),
+        child: RefreshIndicator.adaptive(
+          color: Colors.white,
+          onRefresh: _refresh,
+          displacement: 40,
+          edgeOffset: 10,
+          child: CustomScrollView(
+            physics: const AlwaysScrollableScrollPhysics(
+              parent: ClampingScrollPhysics(),
+            ),
+            slivers: [
+              // ── Gradient Hero Header ────────────────────────────
+              SliverToBoxAdapter(
+                child: Container(
+                  decoration: const BoxDecoration(
+                    gradient: _heroGradient,
+                    borderRadius: BorderRadius.only(
+                      bottomLeft: Radius.circular(32),
+                      bottomRight: Radius.circular(32),
+                    ),
+                  ),
                   child: Padding(
-                    padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
+                    padding: EdgeInsets.fromLTRB(22, topPad + 18, 22, 24),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        // Line 1 — greeting + ownerName | bell + account
+                        // Row 1 — greeting + actions
                         Row(
-                          crossAxisAlignment: CrossAxisAlignment.center,
                           children: [
                             Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(_greeting(),
-                                      style: const TextStyle(
-                                          fontSize: 18,
-                                          color: AppTheme.textSecondary),
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                      softWrap: false),
-                                  Text(widget.ownerName,
-                                      style: const TextStyle(
-                                        fontSize: 30,
-                                        fontWeight: FontWeight.bold,
-                                        color: AppTheme.textPrimary,
-                                      ),
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                      softWrap: false),
-                                ],
-                              ),
+                              child: Text(_greeting(),
+                                  style: TextStyle(
+                                      fontSize: 16,
+                                      color: Colors.white.withValues(alpha: 0.75)),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis),
                             ),
-                            const SizedBox(width: 8),
-                            // KDS bell — polls every 15s for pending
-                            // online orders. The reverse-QR scanner
-                            // moved to the POS AppBar (2026-04-25): a
-                            // cash-confirmation belongs inside the
-                            // cash-register context, not on the
-                            // landing dashboard.
-                            const OnlineOrdersBell(),
-                            const SizedBox(width: 4),
-                            // Account menu — every role needs a way
-                            // to close their session. Owners had it
-                            // inside Configuración; cashiers / waiters
-                            // never reached that hub, so logout had
-                            // to live here.
+                            const OnlineOrdersBell(iconColor: Colors.white),
+                            const SizedBox(width: 2),
                             _AccountMenuButton(
                               ownerName: widget.ownerName,
                               businessName: widget.businessName,
                               onLogout: _onLogout,
+                              iconColor: Colors.white,
                             ),
                           ],
                         ),
+                        const SizedBox(height: 4),
+                        Text(widget.ownerName,
+                            style: const TextStyle(
+                              fontSize: 28,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.white,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis),
                         const SizedBox(height: 6),
-                        // Line 2 — businessName | storefront status
                         Row(
                           children: [
-                            Expanded(
+                            Flexible(
                               child: Text(widget.businessName,
-                                  style: const TextStyle(
-                                      fontSize: 18,
-                                      color: AppTheme.primary,
-                                      fontWeight: FontWeight.w600),
+                                  style: TextStyle(
+                                      fontSize: 17,
+                                      color: Colors.white.withValues(alpha: 0.85),
+                                      fontWeight: FontWeight.w500),
                                   maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  softWrap: false),
+                                  overflow: TextOverflow.ellipsis),
                             ),
                             const SizedBox(width: 12),
                             _StoreStatusPill(
@@ -396,112 +384,141 @@ class _DashboardScreenState extends State<DashboardScreen> {
                             ),
                           ],
                         ),
+                        const SizedBox(height: 4),
+                        Row(
+                          children: [
+                            Icon(Icons.calendar_today_rounded,
+                                size: 14, color: Colors.white.withValues(alpha: 0.6)),
+                            const SizedBox(width: 5),
+                            Text(_todayLabel(),
+                                style: TextStyle(
+                                    fontSize: 14,
+                                    color: Colors.white.withValues(alpha: 0.6))),
+                          ],
+                        ),
                       ],
                     ),
                   ),
                 ),
+              ),
 
-                // ── Date ────────────────────────────────────────────
-                SliverToBoxAdapter(
+              // ── Glass Stats Cards ──────────────────────────────
+              SliverToBoxAdapter(
+                child: Transform.translate(
+                  offset: const Offset(0, -20),
                   child: Padding(
-                    padding: const EdgeInsets.fromLTRB(20, 12, 20, 10),
-                    child: Row(
-                      children: [
-                        const Icon(Icons.calendar_today_rounded,
-                            size: 16, color: AppTheme.primary),
-                        const SizedBox(width: 6),
-                        Text(_todayLabel(),
-                            style: const TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.w600,
-                                color: AppTheme.textSecondary)),
-                      ],
-                    ),
-                  ),
-                ),
-
-                // ── Stats Cards (REACTIVE) ──────────────────────────
-                // RBAC: cashier / waiter never see the gross sales
-                // total or the receipt count on the dashboard. The
-                // entire row collapses so we don't paint a placeholder
-                // box that hints at "there's something here you
-                // can't see" — that itself is a leak.
-                SliverToBoxAdapter(
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 20),
+                    padding: const EdgeInsets.symmetric(horizontal: 18),
                     child: Column(
                       children: [
                         if (context.watch<RoleManager>().canSeeFinances) ...[
-                          // Single full-width Ventas card. Used to be a
-                          // 3:2 row with "Ventas de hoy" + a duplicate
-                          // "Ventas" count tile that opened the same
-                          // FinancialDashboardScreen — pure redundancy.
-                          // The transaction count now lives inside this
-                          // card's trend line ("1 venta vs. ayer"), so
-                          // we can promote the card to full width and
-                          // free vertical real-estate for Más vendido
-                          // and Inventario below.
-                          Material(
-                            color: Colors.transparent,
-                            child: InkWell(
-                              borderRadius: BorderRadius.circular(20),
-                              onTap: () {
-                                HapticFeedback.lightImpact();
-                                Navigator.of(context).push(MaterialPageRoute(
-                                    builder: (_) =>
-                                        const FinancialDashboardScreen()));
-                              },
-                              child: StatCard(
-                                label: 'Ventas de hoy',
-                                value:
-                                    _formatCOP(_data.totalToday.round()),
-                                icon: Icons.payments_rounded,
-                                iconColor: AppTheme.primary,
-                                backgroundColor:
-                                    AppTheme.primary.withValues(alpha: 0.06),
-                                trend: _data.txCount > 0
-                                    ? '${_data.txCount} venta${_data.txCount > 1 ? 's' : ''}'
-                                    : 'primer día',
-                              ),
+                          _GlassCard(
+                            onTap: () {
+                              HapticFeedback.lightImpact();
+                              Navigator.of(context).push(MaterialPageRoute(
+                                  builder: (_) =>
+                                      const FinancialDashboardScreen()));
+                            },
+                            child: Row(
+                              children: [
+                                Container(
+                                  width: 52, height: 52,
+                                  decoration: BoxDecoration(
+                                    gradient: const LinearGradient(
+                                      colors: [Color(0xFF3B82F6), Color(0xFF6366F1)],
+                                    ),
+                                    borderRadius: BorderRadius.circular(16),
+                                  ),
+                                  child: const Icon(Icons.trending_up_rounded,
+                                      color: Colors.white, size: 28),
+                                ),
+                                const SizedBox(width: 16),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      const Text('Ventas de hoy',
+                                          style: TextStyle(
+                                              fontSize: 15,
+                                              color: AppTheme.textSecondary,
+                                              fontWeight: FontWeight.w500)),
+                                      const SizedBox(height: 2),
+                                      Text(_formatCOP(_data.totalToday.round()),
+                                          style: const TextStyle(
+                                              fontSize: 32,
+                                              fontWeight: FontWeight.w800,
+                                              color: AppTheme.textPrimary,
+                                              letterSpacing: -1)),
+                                    ],
+                                  ),
+                                ),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 10, vertical: 5),
+                                  decoration: BoxDecoration(
+                                    color: _data.txCount > 0
+                                        ? AppTheme.success.withValues(alpha: 0.12)
+                                        : AppTheme.warning.withValues(alpha: 0.12),
+                                    borderRadius: BorderRadius.circular(10),
+                                  ),
+                                  child: Text(
+                                    _data.txCount > 0
+                                        ? '${_data.txCount} venta${_data.txCount > 1 ? "s" : ""}'
+                                        : 'primer día',
+                                    style: TextStyle(
+                                        fontSize: 13,
+                                        fontWeight: FontWeight.w700,
+                                        color: _data.txCount > 0
+                                            ? AppTheme.success
+                                            : AppTheme.warning),
+                                  ),
+                                ),
+                              ],
                             ),
                           ),
                           const SizedBox(height: 12),
                         ],
-                        // Row 2: Top product + Inventory
                         Row(
                           children: [
                             Expanded(
-                              child: Material(
-                                color: Colors.transparent,
-                                child: InkWell(
-                                  borderRadius: BorderRadius.circular(20),
-                                  onTap: () {
-                                    HapticFeedback.lightImpact();
-                                    // Promote the read-only "Más vendido"
-                                    // tile to a real entry point: opens
-                                    // the Inteligencia de productos panel
-                                    // (top sellers / slow movers /
-                                    // expiring soon + Crear promoción
-                                    // shortcuts).
-                                    Navigator.of(context).push(
-                                        MaterialPageRoute(
-                                            builder: (_) =>
-                                                const ProductInsightsScreen()));
-                                  },
-                                  child: StatCard(
-                                    label: 'Más vendido',
-                                    value: _data.topProduct,
-                                    icon: Icons.star_rounded,
-                                    iconColor: const Color(0xFFF59E0B),
-                                    compact: true,
-                                  ),
+                              child: _GlassCard(
+                                onTap: () {
+                                  HapticFeedback.lightImpact();
+                                  Navigator.of(context).push(MaterialPageRoute(
+                                      builder: (_) =>
+                                          const ProductInsightsScreen()));
+                                },
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Container(
+                                      width: 40, height: 40,
+                                      decoration: BoxDecoration(
+                                        color: const Color(0xFFF59E0B).withValues(alpha: 0.15),
+                                        borderRadius: BorderRadius.circular(12),
+                                      ),
+                                      child: const Icon(Icons.star_rounded,
+                                          color: Color(0xFFF59E0B), size: 22),
+                                    ),
+                                    const SizedBox(height: 10),
+                                    const Text('Más vendido',
+                                        style: TextStyle(
+                                            fontSize: 14,
+                                            color: AppTheme.textSecondary)),
+                                    const SizedBox(height: 2),
+                                    Text(_data.topProduct,
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: const TextStyle(
+                                            fontSize: 18,
+                                            fontWeight: FontWeight.bold,
+                                            color: AppTheme.textPrimary)),
+                                  ],
                                 ),
                               ),
                             ),
                             const SizedBox(width: 12),
                             Expanded(
-                              child: _InventoryCardCompact(
-                                total: _data.prodCount,
+                              child: _GlassCard(
                                 onTap: () async {
                                   HapticFeedback.lightImpact();
                                   await Navigator.of(context).push(
@@ -511,6 +528,41 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                     ),
                                   );
                                 },
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Row(
+                                      children: [
+                                        Container(
+                                          width: 40, height: 40,
+                                          decoration: BoxDecoration(
+                                            color: const Color(0xFF6366F1).withValues(alpha: 0.15),
+                                            borderRadius: BorderRadius.circular(12),
+                                          ),
+                                          child: const Icon(Icons.inventory_2_rounded,
+                                              color: Color(0xFF6366F1), size: 22),
+                                        ),
+                                        const Spacer(),
+                                        Icon(Icons.chevron_right_rounded,
+                                            color: Colors.grey.shade400, size: 20),
+                                      ],
+                                    ),
+                                    const SizedBox(height: 10),
+                                    const Text('Inventario',
+                                        style: TextStyle(
+                                            fontSize: 14,
+                                            color: AppTheme.textSecondary)),
+                                    const SizedBox(height: 2),
+                                    Text(
+                                        _data.prodCount == 0
+                                            ? 'Vacío'
+                                            : '${_data.prodCount} ref.',
+                                        style: const TextStyle(
+                                            fontSize: 18,
+                                            fontWeight: FontWeight.bold,
+                                            color: AppTheme.textPrimary)),
+                                  ],
+                                ),
                               ),
                             ),
                           ],
@@ -519,70 +571,60 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     ),
                   ),
                 ),
+              ),
 
-                // ── Settings Card (owner/admin only) ─────────────────
-                SliverToBoxAdapter(
-                  child: !context
-                          .watch<RoleManager>()
-                          .canManageBusinessSettings
-                      ? const SizedBox.shrink()
-                      : Padding(
-                    padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
-                    child: Material(
-                      color: Colors.transparent,
-                      child: InkWell(
-                        borderRadius: BorderRadius.circular(20),
-                        onTap: () {
-                          HapticFeedback.lightImpact();
-                          Navigator.of(context).push(MaterialPageRoute(
-                            builder: (_) => const AdminHubScreen(),
-                          ));
-                        },
-                        child: Container(
-                          padding: const EdgeInsets.all(16),
+              // ── Quick Actions ───────────────────────────────────
+              SliverToBoxAdapter(
+                child: !context
+                        .watch<RoleManager>()
+                        .canManageBusinessSettings
+                    ? const SizedBox.shrink()
+                    : Padding(
+                  padding: const EdgeInsets.fromLTRB(18, 0, 18, 0),
+                  child: _GlassCard(
+                    onTap: () {
+                      HapticFeedback.lightImpact();
+                      Navigator.of(context).push(MaterialPageRoute(
+                        builder: (_) => const AdminHubScreen(),
+                      ));
+                    },
+                    child: Row(
+                      children: [
+                        Container(
+                          width: 48, height: 48,
                           decoration: BoxDecoration(
-                            color: AppTheme.primary.withValues(alpha: 0.06),
-                            borderRadius: BorderRadius.circular(20),
-                            border: Border.all(
-                              color: AppTheme.primary.withValues(alpha: 0.15)),
+                            gradient: const LinearGradient(
+                              colors: [Color(0xFF1E3A8A), Color(0xFF3B82F6)],
+                            ),
+                            borderRadius: BorderRadius.circular(14),
                           ),
-                          child: Row(
+                          child: const Icon(Icons.settings_rounded,
+                              color: Colors.white, size: 24),
+                        ),
+                        const SizedBox(width: 14),
+                        const Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Container(
-                                width: 48, height: 48,
-                                decoration: BoxDecoration(
-                                  color: AppTheme.primary.withValues(alpha: 0.12),
-                                  borderRadius: BorderRadius.circular(14),
-                                ),
-                                child: const Icon(Icons.settings_rounded,
-                                    color: AppTheme.primary, size: 26),
-                              ),
-                              const SizedBox(width: 14),
-                              const Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text('Ajustes de mi Negocio',
-                                        style: TextStyle(fontSize: 18,
-                                            fontWeight: FontWeight.bold,
-                                            color: AppTheme.textPrimary)),
-                                    Text('Mesas, Fiados, Empleados y Perfil',
-                                        style: TextStyle(fontSize: 16,
-                                            color: AppTheme.textSecondary),
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis),
-                                  ],
-                                ),
-                              ),
-                              const Icon(Icons.chevron_right_rounded,
-                                  color: AppTheme.primary, size: 26),
+                              Text('Ajustes de mi Negocio',
+                                  style: TextStyle(fontSize: 17,
+                                      fontWeight: FontWeight.bold,
+                                      color: AppTheme.textPrimary)),
+                              Text('Mesas, Fiados, Empleados y Perfil',
+                                  style: TextStyle(fontSize: 14,
+                                      color: AppTheme.textSecondary),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis),
                             ],
                           ),
                         ),
-                      ),
+                        const Icon(Icons.chevron_right_rounded,
+                            color: Color(0xFF3B82F6), size: 24),
+                      ],
                     ),
                   ),
                 ),
+              ),
 
                 // ── Marketing Hub Card ──────────────────────────────
                 // Full-width entry point for the SaaS Phase 1 marketing
@@ -591,7 +633,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 // the dashboard reads as a coherent stack of hubs.
                 SliverToBoxAdapter(
                   child: Padding(
-                    padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
+                    padding: const EdgeInsets.fromLTRB(18, 12, 18, 0),
                     child: _MarketingHubCard(
                       activePromos: _activePromosCount,
                       onTap: () async {
@@ -608,7 +650,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 // ── Recent Sales Header ─────────────────────────────
                 const SliverToBoxAdapter(
                   child: Padding(
-                    padding: EdgeInsets.fromLTRB(20, 20, 20, 4),
+                    padding: EdgeInsets.fromLTRB(22, 20, 22, 4),
                     child: Text('Últimas ventas',
                         style: TextStyle(
                             fontSize: 20,
@@ -660,14 +702,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
             ),
           ),
         )),
-          ],
-        ),
+        ],
       ),
       bottomNavigationBar: Container(
         padding: EdgeInsets.fromLTRB(
-            20, 12, 20, MediaQuery.of(context).padding.bottom + 12),
+            18, 12, 18, MediaQuery.of(context).padding.bottom + 12),
         decoration: BoxDecoration(
-          color: AppTheme.background,
+          color: const Color(0xFFF8FAFC),
           boxShadow: [
             BoxShadow(
               color: Colors.black.withValues(alpha: 0.06),
@@ -768,7 +809,52 @@ class _DashboardScreenState extends State<DashboardScreen> {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// INVENTORY CARD
+// GLASS CARD
+// ═══════════════════════════════════════════════════════════════════════════════
+
+class _GlassCard extends StatelessWidget {
+  final Widget child;
+  final VoidCallback? onTap;
+
+  const _GlassCard({required this.child, this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(22),
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.all(18),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(22),
+            border: Border.all(
+              color: Colors.white.withValues(alpha: 0.8),
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: const Color(0xFF1E3A8A).withValues(alpha: 0.06),
+                blurRadius: 24,
+                offset: const Offset(0, 8),
+              ),
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.03),
+                blurRadius: 6,
+                offset: const Offset(0, 2),
+              ),
+            ],
+          ),
+          child: child,
+        ),
+      ),
+    );
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// INVENTORY CARD (legacy — kept for compat, not used by the new layout)
 // ═══════════════════════════════════════════════════════════════════════════════
 
 class _InventoryCardCompact extends StatelessWidget {
@@ -963,11 +1049,13 @@ class _AccountMenuButton extends StatelessWidget {
   final String ownerName;
   final String businessName;
   final Future<void> Function() onLogout;
+  final Color iconColor;
 
   const _AccountMenuButton({
     required this.ownerName,
     required this.businessName,
     required this.onLogout,
+    this.iconColor = AppTheme.primary,
   });
 
   @override
@@ -979,11 +1067,11 @@ class _AccountMenuButton extends StatelessWidget {
         width: 40,
         height: 40,
         decoration: BoxDecoration(
-          color: AppTheme.primary.withValues(alpha: 0.10),
+          color: iconColor.withValues(alpha: 0.15),
           shape: BoxShape.circle,
         ),
-        child: const Icon(Icons.person_rounded,
-            color: AppTheme.primary, size: 24),
+        child: Icon(Icons.person_rounded,
+            color: iconColor, size: 24),
       ),
       onPressed: () {
         HapticFeedback.lightImpact();
@@ -1103,13 +1191,13 @@ class _StoreStatusPill extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final bg = isOpen
-        ? AppTheme.success.withValues(alpha: 0.12)
-        : Colors.grey.shade100;
+        ? Colors.white.withValues(alpha: 0.2)
+        : Colors.white.withValues(alpha: 0.1);
     final border = isOpen
-        ? AppTheme.success.withValues(alpha: 0.4)
-        : Colors.grey.shade300;
-    final fg = isOpen ? AppTheme.success : AppTheme.textSecondary;
-    final label = isOpen ? 'Tienda Abierta 🟢' : 'Tienda Cerrada 🔴';
+        ? const Color(0xFF4ADE80).withValues(alpha: 0.6)
+        : Colors.white.withValues(alpha: 0.3);
+    final fg = isOpen ? const Color(0xFF4ADE80) : Colors.white.withValues(alpha: 0.7);
+    final label = isOpen ? 'Abierta 🟢' : 'Cerrada 🔴';
 
     return Semantics(
       key: const Key('dashboard_store_status_pill'),

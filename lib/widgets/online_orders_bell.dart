@@ -24,11 +24,13 @@ class OnlineOrdersBell extends StatefulWidget {
     this.enabled = true,
     this.pollInterval = const Duration(seconds: 15),
     this.size = 44,
+    this.iconColor,
   });
 
   final bool enabled;
   final Duration pollInterval;
   final double size;
+  final Color? iconColor;
 
   @override
   State<OnlineOrdersBell> createState() => _OnlineOrdersBellState();
@@ -137,7 +139,7 @@ class _OnlineOrdersBellState extends State<OnlineOrdersBell> {
                     _count > 0
                         ? Icons.notifications_active_rounded
                         : Icons.notifications_none_rounded,
-                    color: _count > 0 ? AppTheme.error : AppTheme.textSecondary,
+                    color: _count > 0 ? AppTheme.error : (widget.iconColor ?? AppTheme.textSecondary),
                     size: 24,
                   ),
                 ),
