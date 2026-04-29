@@ -779,6 +779,12 @@ class _HeroHeaderDelegate extends SliverPersistentHeaderDelegate {
     required this.todayLabel,
   });
 
+  static const _heroGradient = LinearGradient(
+    begin: Alignment.topLeft,
+    end: Alignment.bottomRight,
+    colors: [Color(0xFF1E3A8A), Color(0xFF3B82F6), Color(0xFF6366F1)],
+  );
+
   static const double _expandedBody = 156;
   static const double _collapsedBody = 52;
 
@@ -800,7 +806,7 @@ class _HeroHeaderDelegate extends SliverPersistentHeaderDelegate {
       ),
       child: Container(
         decoration: BoxDecoration(
-          gradient: _DashboardScreenState._heroGradient,
+          gradient: _heroGradient,
           borderRadius: const BorderRadius.only(
             bottomLeft: Radius.circular(24),
             bottomRight: Radius.circular(24),

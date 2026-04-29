@@ -258,9 +258,10 @@ class _PosScreenBodyState extends State<_PosScreenBody> {
   /// Called when the barcode scanner returns a code. Finds the matching
   /// product locally or via API, plays a cash-register beep, vibrates,
   /// and shows a quantity picker modal.
-  Future<void> _onBarcodeScanned(BuildContext ctx, String barcode) async {
+  Future<void> _onBarcodeScanned(BuildContext _, String barcode) async {
+    if (!mounted) return;
     // 1. Try local cart products first (instant)
-    final cart = ctx.read<CartController>();
+    final cart = context.read<CartController>();
     final localMatch = cart.allProducts
         .where((p) =>
             p.barcode != null &&
@@ -271,7 +272,7 @@ class _PosScreenBodyState extends State<_PosScreenBody> {
     if (localMatch.isNotEmpty) {
       SystemSound.play(SystemSoundType.click);
       HapticFeedback.heavyImpact();
-      _showQuantityPicker(ctx, localMatch.first);
+      _showQuantityPicker(localMatch.first);
       return;
     }
 
@@ -285,17 +286,16 @@ class _PosScreenBodyState extends State<_PosScreenBody> {
 
       SystemSound.play(SystemSoundType.click);
       HapticFeedback.heavyImpact();
-      _showQuantityPicker(ctx, product);
+      _showQuantityPicker(product);
     } catch (_) {
-      // API failed — product was found by ScanScreen but we
-      // can't load full details. Silent failure.
+      // API failed — silent failure.
     }
   }
 
-  void _showQuantityPicker(BuildContext ctx, Product product) {
+  void _showQuantityPicker(Product product) {
     int qty = 1;
     showModalBottomSheet<int>(
-      context: ctx,
+      context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (sheetCtx) => StatefulBuilder(
@@ -385,8 +385,8 @@ class _PosScreenBodyState extends State<_PosScreenBody> {
         ),
       ),
     ).then((pickedQty) {
-      if (pickedQty == null || pickedQty < 1) return;
-      final cart = ctx.read<CartController>();
+      if (pickedQty == null || pickedQty < 1 || !mounted) return;
+      final cart = context.read<CartController>();
       for (int i = 0; i < pickedQty; i++) {
         cart.addProduct(product);
       }
