@@ -164,10 +164,14 @@ class _PosScreenBodyState extends State<_PosScreenBody> {
     }
     final ok = await svc.bindToCart(next);
     if (!ok) {
+      // Only block the switch on a real 409 conflict (another user
+      // holds the slot). Any other failure (network, 500, missing
+      // endpoint) degrades gracefully — let the cashier switch.
       if (mounted && svc.lastConflict != null) {
         _showLockSnackbar(svc.lastConflict!);
+        return;
       }
-      return;
+      // Non-conflict failure → switch anyway
     }
     ctrl.switchCart(next);
   }
