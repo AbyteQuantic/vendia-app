@@ -336,12 +336,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
               // ── Glass Stats Cards ──────────────────────────────
               SliverToBoxAdapter(
-                child: Transform.translate(
-                  offset: const Offset(0, -20),
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 18),
-                    child: Column(
-                      children: [
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(18, 16, 18, 0),
+                  child: Column(
+                    children: [
                         if (context.watch<RoleManager>().canSeeFinances) ...[
                           _GlassCard(
                             onTap: () {
@@ -503,7 +501,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     ),
                   ),
                 ),
-              ),
 
               // ── Quick Actions ───────────────────────────────────
               SliverToBoxAdapter(
@@ -765,7 +762,7 @@ class _HeroHeaderDelegate extends SliverPersistentHeaderDelegate {
     required this.todayLabel,
   });
 
-  static const double _expandedBody = 148;
+  static const double _expandedBody = 156;
   static const double _collapsedBody = 52;
 
   @override
