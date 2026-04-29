@@ -5,7 +5,7 @@ import '../../services/api_service.dart';
 import '../../services/auth_service.dart';
 import '../../services/role_manager.dart';
 import '../../theme/app_theme.dart';
-import '../dashboard/main_dashboard_screen.dart';
+import '../dashboard/dashboard_screen.dart';
 
 /// Workspace info passed from login response.
 class WorkspaceInfo {
@@ -116,7 +116,10 @@ class _WorkspaceSelectorScreenState extends State<WorkspaceSelectorScreen> {
 
       Navigator.of(context).pushReplacement(
         PageRouteBuilder(
-          pageBuilder: (_, animation, __) => const MainDashboardScreen(),
+          pageBuilder: (_, animation, __) => DashboardScreen(
+            ownerName: widget.userName,
+            businessName: ws.tenantName,
+          ),
           transitionsBuilder: (_, animation, __, child) => FadeTransition(
             opacity:
                 CurvedAnimation(parent: animation, curve: Curves.easeInOut),

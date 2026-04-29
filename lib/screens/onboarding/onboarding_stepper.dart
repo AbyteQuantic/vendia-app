@@ -4,7 +4,7 @@ import '../../services/api_service.dart';
 import '../../services/auth_service.dart';
 import '../../theme/app_theme.dart';
 import '../auth/login_screen.dart';
-import '../dashboard/main_dashboard_screen.dart';
+import '../dashboard/dashboard_screen.dart';
 import 'onboarding_stepper_controller.dart';
 import 'steps/step_owner.dart';
 import 'steps/step_business.dart';
@@ -119,7 +119,10 @@ class _OnboardingStepperState extends State<OnboardingStepper> {
   void _finishOnboarding() {
     Navigator.of(context).pushAndRemoveUntil(
       PageRouteBuilder(
-        pageBuilder: (_, animation, __) => const MainDashboardScreen(),
+        pageBuilder: (_, animation, __) => DashboardScreen(
+          ownerName: '${_ctrl.ownerName} ${_ctrl.ownerLastName}'.trim(),
+          businessName: _ctrl.businessName,
+        ),
         transitionsBuilder: (_, animation, __, child) => FadeTransition(
           opacity: CurvedAnimation(parent: animation, curve: Curves.easeInOut),
           child: child,

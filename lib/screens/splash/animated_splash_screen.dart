@@ -5,7 +5,7 @@ import 'package:rive/rive.dart' hide LinearGradient;
 import '../../services/auth_service.dart';
 import '../../theme/app_theme.dart';
 import '../auth/login_screen.dart';
-import '../dashboard/main_dashboard_screen.dart';
+import '../dashboard/dashboard_screen.dart';
 
 /// Splash screen animado con Rive (o fallback Flutter mientras no haya .riv).
 ///
@@ -142,7 +142,10 @@ class _AnimatedSplashScreenState extends State<AnimatedSplashScreen>
   }) {
     final route = hasSession
         ? PageRouteBuilder(
-            pageBuilder: (_, animation, __) => const MainDashboardScreen(),
+            pageBuilder: (_, animation, __) => DashboardScreen(
+              ownerName: ownerName,
+              businessName: businessName,
+            ),
             transitionsBuilder: (_, animation, __, child) => FadeTransition(
               opacity:
                   CurvedAnimation(parent: animation, curve: Curves.easeInOut),

@@ -5,7 +5,7 @@ import '../config/api_config.dart';
 import '../core/network/api_client.dart';
 import '../services/auth_service.dart';
 import 'auth/login_screen.dart';
-import 'dashboard/main_dashboard_screen.dart';
+import 'dashboard/dashboard_screen.dart';
 import 'onboarding/onboarding_stepper.dart';
 
 /// Pantalla de prueba de conexión al backend local.
@@ -65,7 +65,7 @@ class _ConnectionTestScreenState extends State<ConnectionTestScreen> {
       if (hasSession) {
         // Tiene token → directo al Dashboard
         Navigator.of(context).pushReplacement(
-          MaterialPageRoute(builder: (_) => const MainDashboardScreen()),
+          MaterialPageRoute(builder: (_) => DashboardScreen(ownerName: '', businessName: '')),
         );
       } else {
         // Sin sesión → Login
@@ -95,7 +95,7 @@ class _ConnectionTestScreenState extends State<ConnectionTestScreen> {
   void _goToDashboardDemo() {
     HapticFeedback.mediumImpact();
     Navigator.of(context).pushReplacement(
-      MaterialPageRoute(builder: (_) => const MainDashboardScreen()),
+      MaterialPageRoute(builder: (_) => DashboardScreen(ownerName: '', businessName: '')),
     );
   }
 
