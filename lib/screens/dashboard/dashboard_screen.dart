@@ -15,6 +15,7 @@ import '../auth/login_screen.dart';
 import '../inventory/add_merchandise_screen.dart';
 import '../online_store/promo_management_screen.dart';
 import '../pos/pos_screen.dart';
+import '../../database/sync/sales_sync.dart';
 import '../../widgets/sync_status_banner.dart';
 import 'admin_hub_screen.dart';
 import 'financial_dashboard_screen.dart';
@@ -80,7 +81,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
   @override
   void initState() {
     super.initState();
-    _loadData(); // Initial load
+    _loadData(); // Initial load from Isar
+    _syncFromServer(); // Pull fresh data from backend
     _loadActivePromosCount();
     _loadStoreStatus();
 
@@ -94,6 +96,17 @@ class _DashboardScreenState extends State<DashboardScreen> {
     _productsSub = isar.localProducts
         .watchLazy(fireImmediately: false)
         .listen((_) => _loadData());
+  }
+
+  /// Pull sales from the server so the dashboard is up to date even
+  /// after a fresh login or tenant switch that cleared Isar.
+  Future<void> _syncFromServer() async {
+    try {
+      await SalesSyncService.fullSync();
+      // Isar watchers auto-trigger _loadData() when new rows land.
+    } catch (_) {
+      // Offline — dashboard still renders from whatever is local.
+    }
   }
 
   Future<void> _loadStoreStatus() async {
