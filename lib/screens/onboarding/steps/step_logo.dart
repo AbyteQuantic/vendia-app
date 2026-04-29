@@ -350,16 +350,38 @@ class _StepLogoState extends State<StepLogo> {
             ),
           ),
           const SizedBox(height: 12),
-          Center(
-            child: Text(
-              hasLogo
-                  ? 'Su logo se aplicará automáticamente al crear la cuenta.'
-                  : 'También puede saltar este paso y configurarlo después.',
-              textAlign: TextAlign.center,
-              style: const TextStyle(
-                  fontSize: 14, color: AppTheme.textSecondary),
+          if (!hasLogo)
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: AppTheme.warning.withValues(alpha: 0.08),
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(
+                    color: AppTheme.warning.withValues(alpha: 0.3)),
+              ),
+              child: const Row(
+                children: [
+                  Icon(Icons.info_outline_rounded,
+                      color: AppTheme.warning, size: 20),
+                  SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'Necesita un logo para continuar. Genere uno con IA o suba una imagen.',
+                      style: TextStyle(fontSize: 14, color: AppTheme.textPrimary),
+                    ),
+                  ),
+                ],
+              ),
+            )
+          else
+            Center(
+              child: Text(
+                'Su logo se aplicará automáticamente al crear la cuenta.',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                    fontSize: 14, color: AppTheme.textSecondary),
+              ),
             ),
-          ),
         ],
       ),
     );

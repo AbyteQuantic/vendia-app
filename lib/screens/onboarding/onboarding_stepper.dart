@@ -155,6 +155,13 @@ class _OnboardingStepperState extends State<OnboardingStepper> {
       }
     }
 
+    // Paso 5 (logo): obligatorio tener logo antes de avanzar
+    if (step == 4) {
+      if (_ctrl.logoUrl.isEmpty) {
+        return;
+      }
+    }
+
     _ctrl.nextStep();
     _pageCtrl.animateToPage(
       _ctrl.currentStep,
