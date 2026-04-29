@@ -346,27 +346,40 @@ class _PosScreenBodyState extends State<_PosScreenBody> {
   }
 
   /// Called when the barcode scanner returns a code. Finds the matching
-  /// product in the POS controller's list, plays a cash-register beep,
-  /// vibrates, and shows a quantity picker modal.
-  void _onBarcodeScanned(BuildContext ctx, String barcode) {
+  /// product locally or via API, plays a cash-register beep, vibrates,
+  /// and shows a quantity picker modal.
+  Future<void> _onBarcodeScanned(BuildContext ctx, String barcode) async {
+    // 1. Try local cart products first (instant)
     final cart = ctx.read<CartController>();
-    final match = cart.allProducts
+    final localMatch = cart.allProducts
         .where((p) =>
             p.barcode != null &&
             p.barcode!.isNotEmpty &&
             p.barcode == barcode)
         .toList();
 
-    if (match.isEmpty) return; // ScanScreen already handled "not found"
+    if (localMatch.isNotEmpty) {
+      SystemSound.play(SystemSoundType.click);
+      HapticFeedback.heavyImpact();
+      _showQuantityPicker(ctx, localMatch.first);
+      return;
+    }
 
-    final product = match.first;
+    // 2. Fallback: fetch from API (cross-branch lookup)
+    try {
+      final api = ApiService(AuthService());
+      final data = await api.lookupProductByBarcode(barcode);
+      if (data == null || !mounted) return;
 
-    // Cash-register beep + strong vibration
-    SystemSound.play(SystemSoundType.click);
-    HapticFeedback.heavyImpact();
+      final product = Product.fromJson(data);
 
-    // Show quantity picker
-    _showQuantityPicker(ctx, product);
+      SystemSound.play(SystemSoundType.click);
+      HapticFeedback.heavyImpact();
+      _showQuantityPicker(ctx, product);
+    } catch (_) {
+      // API failed — product was found by ScanScreen but we
+      // can't load full details. Silent failure.
+    }
   }
 
   void _showQuantityPicker(BuildContext ctx, Product product) {
