@@ -298,6 +298,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
     colors: [Color(0xFF1E3A8A), Color(0xFF3B82F6), Color(0xFF6366F1)],
   );
 
+  // Collapsed toolbar height (name + icons only).
+  static const double _collapsedH = 64;
+  // Expanded header (name + business + status + date).
+  static const double _expandedH = 155;
+
   @override
   Widget build(BuildContext context) {
     final topPad = MediaQuery.of(context).padding.top;
@@ -313,90 +318,127 @@ class _DashboardScreenState extends State<DashboardScreen> {
           color: Colors.white,
           onRefresh: _refresh,
           displacement: 40,
-          edgeOffset: 10,
+          edgeOffset: _collapsedH + topPad + 20,
           child: CustomScrollView(
             physics: const AlwaysScrollableScrollPhysics(
               parent: ClampingScrollPhysics(),
             ),
             slivers: [
-              // ── Gradient Hero Header ────────────────────────────
-              SliverToBoxAdapter(
-                child: Container(
-                  decoration: const BoxDecoration(
-                    gradient: _heroGradient,
-                    borderRadius: BorderRadius.only(
-                      bottomLeft: Radius.circular(32),
-                      bottomRight: Radius.circular(32),
-                    ),
+              // ── Sticky Gradient Header ──────────────────────────
+              SliverAppBar(
+                pinned: true,
+                expandedHeight: _expandedH + topPad,
+                collapsedHeight: _collapsedH,
+                toolbarHeight: _collapsedH,
+                backgroundColor: const Color(0xFF1E3A8A),
+                surfaceTintColor: Colors.transparent,
+                automaticallyImplyLeading: false,
+                shape: const RoundedRectangleBorder(
+                  borderRadius: BorderRadius.only(
+                    bottomLeft: Radius.circular(24),
+                    bottomRight: Radius.circular(24),
                   ),
-                  child: Padding(
-                    padding: EdgeInsets.fromLTRB(22, topPad + 18, 22, 24),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        // Row 1 — greeting + actions
-                        Row(
-                          children: [
-                            Expanded(
-                              child: Text(_greeting(),
+                ),
+                // ── Collapsed bar: name + icons ──────────────────
+                title: Row(
+                  children: [
+                    Expanded(
+                      child: Text(widget.ownerName,
+                          style: const TextStyle(
+                            fontSize: 20,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.white,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis),
+                    ),
+                    _StoreStatusDot(isOpen: _isStoreOpen),
+                    const SizedBox(width: 4),
+                    const OnlineOrdersBell(
+                        iconColor: Color(0xFFFBBF24), size: 38),
+                    _AccountMenuButton(
+                      ownerName: widget.ownerName,
+                      businessName: widget.businessName,
+                      onLogout: _onLogout,
+                      iconColor: Colors.white,
+                    ),
+                  ],
+                ),
+                // ── Expanded content ─────────────────────────────
+                flexibleSpace: FlexibleSpaceBar(
+                  background: Container(
+                    decoration: const BoxDecoration(
+                      gradient: _heroGradient,
+                      borderRadius: BorderRadius.only(
+                        bottomLeft: Radius.circular(24),
+                        bottomRight: Radius.circular(24),
+                      ),
+                    ),
+                    child: Padding(
+                      padding: EdgeInsets.fromLTRB(22, topPad + 14, 22, 16),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          // Row 1 — actions (top right)
+                          Row(
+                            children: [
+                              const Spacer(),
+                              const OnlineOrdersBell(
+                                  iconColor: Color(0xFFFBBF24)),
+                              const SizedBox(width: 2),
+                              _AccountMenuButton(
+                                ownerName: widget.ownerName,
+                                businessName: widget.businessName,
+                                onLogout: _onLogout,
+                                iconColor: Colors.white,
+                              ),
+                            ],
+                          ),
+                          const Spacer(),
+                          // Owner name
+                          Text(widget.ownerName,
+                              style: const TextStyle(
+                                fontSize: 26,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.white,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis),
+                          const SizedBox(height: 6),
+                          // Business + store status
+                          Row(
+                            children: [
+                              Flexible(
+                                child: Text(widget.businessName,
+                                    style: TextStyle(
+                                        fontSize: 16,
+                                        color: Colors.white.withValues(alpha: 0.85),
+                                        fontWeight: FontWeight.w500),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis),
+                              ),
+                              const SizedBox(width: 10),
+                              _StoreStatusPill(
+                                isOpen: _isStoreOpen,
+                                loading: _loadingStoreStatus,
+                                onToggle: _toggleStoreStatus,
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 4),
+                          Row(
+                            children: [
+                              Icon(Icons.calendar_today_rounded,
+                                  size: 13, color: Colors.white.withValues(alpha: 0.55)),
+                              const SizedBox(width: 5),
+                              Text(_todayLabel(),
                                   style: TextStyle(
-                                      fontSize: 16,
-                                      color: Colors.white.withValues(alpha: 0.75)),
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis),
-                            ),
-                            const OnlineOrdersBell(iconColor: Colors.white),
-                            const SizedBox(width: 2),
-                            _AccountMenuButton(
-                              ownerName: widget.ownerName,
-                              businessName: widget.businessName,
-                              onLogout: _onLogout,
-                              iconColor: Colors.white,
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 4),
-                        Text(widget.ownerName,
-                            style: const TextStyle(
-                              fontSize: 28,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.white,
-                            ),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis),
-                        const SizedBox(height: 6),
-                        Row(
-                          children: [
-                            Flexible(
-                              child: Text(widget.businessName,
-                                  style: TextStyle(
-                                      fontSize: 17,
-                                      color: Colors.white.withValues(alpha: 0.85),
-                                      fontWeight: FontWeight.w500),
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis),
-                            ),
-                            const SizedBox(width: 12),
-                            _StoreStatusPill(
-                              isOpen: _isStoreOpen,
-                              loading: _loadingStoreStatus,
-                              onToggle: _toggleStoreStatus,
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 4),
-                        Row(
-                          children: [
-                            Icon(Icons.calendar_today_rounded,
-                                size: 14, color: Colors.white.withValues(alpha: 0.6)),
-                            const SizedBox(width: 5),
-                            Text(_todayLabel(),
-                                style: TextStyle(
-                                    fontSize: 14,
-                                    color: Colors.white.withValues(alpha: 0.6))),
-                          ],
-                        ),
-                      ],
+                                      fontSize: 13,
+                                      color: Colors.white.withValues(alpha: 0.55))),
+                            ],
+                          ),
+                        ],
+                      ),
                     ),
                   ),
                 ),
@@ -1175,6 +1217,25 @@ class _AccountMenuButton extends StatelessWidget {
 /// is_delivery_open to decide whether to allow add-to-cart, so this
 /// control must be one-tap-away and visually unmissable. Gerontodiseño
 /// choices: pill shape, high-contrast colours, emoji reinforces the
+/// Tiny dot indicator for the collapsed header — just a green/red circle.
+class _StoreStatusDot extends StatelessWidget {
+  final bool isOpen;
+  const _StoreStatusDot({required this.isOpen});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 12,
+      height: 12,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        color: isOpen ? const Color(0xFF4ADE80) : const Color(0xFFEF4444),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.4), width: 1.5),
+      ),
+    );
+  }
+}
+
 /// colour signal (colour-blind-safe), spinner covers PATCH latency,
 /// tap disabled while loading to prevent double-fire.
 class _StoreStatusPill extends StatelessWidget {
