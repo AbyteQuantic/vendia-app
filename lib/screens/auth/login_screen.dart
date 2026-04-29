@@ -6,7 +6,7 @@ import '../../services/app_error.dart';
 import '../../services/auth_service.dart';
 import '../../services/role_manager.dart';
 import '../../theme/app_theme.dart';
-import '../dashboard/dashboard_screen.dart';
+import '../dashboard/main_dashboard_screen.dart';
 import '../onboarding/onboarding_stepper.dart';
 import 'branch_selector_screen.dart'; // exports WorkspaceInfo + WorkspaceSelectorScreen
 
@@ -150,10 +150,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
       Navigator.of(context).pushReplacement(
         PageRouteBuilder(
-          pageBuilder: (_, animation, __) => DashboardScreen(
-            ownerName: data['owner_name'] as String? ?? '',
-            businessName: data['business_name'] as String? ?? '',
-          ),
+          pageBuilder: (_, animation, __) => const MainDashboardScreen(),
           transitionsBuilder: (_, animation, __, child) => FadeTransition(
             opacity:
                 CurvedAnimation(parent: animation, curve: Curves.easeInOut),
