@@ -23,7 +23,6 @@ import 'cuaderno_fiados_screen.dart';
 import '../../database/database_service.dart';
 import '../../services/api_service.dart';
 import '../../services/auth_service.dart';
-import '../../services/cart_session_service.dart';
 import '../../services/panic_trigger_service.dart';
 import '../../database/collections/local_sale.dart';
 import '../inventory/add_merchandise_screen.dart';
@@ -70,13 +69,6 @@ class _PosScreenBodyState extends State<_PosScreenBody> {
   // tree chasing storage reads.
   FeatureFlags _flags = const FeatureFlags();
 
-  // Cart-session locks: tracks which slot every device is currently
-  // editing in this tenant. Held by a single service for the whole POS
-  // lifecycle; we listen and rebuild the cart-tab strip on state
-  // changes. Released on dispose.
-  CartSessionService? _cartSessions;
-  String? _currentUserId;
-
   @override
   void initState() {
     super.initState();
@@ -85,12 +77,6 @@ class _PosScreenBodyState extends State<_PosScreenBody> {
     _loadPendingFiados();
     _loadNotifications();
     _loadFeatureFlags();
-    _bootstrapCartSessions();
-    // Poll every 20s while the POS is foregrounded so the bell badge
-    // reacts to fiado acceptances / new online orders without the
-    // cashier needing to pull-to-refresh. Also refreshes the open-
-    // tabs overlay so mesas with new deudas get their badge without
-    // the cashier having to re-enter the selector.
     _notificationsTimer =
         Timer.periodic(const Duration(seconds: 20), (_) {
       _loadNotifications();
@@ -102,78 +88,6 @@ class _PosScreenBodyState extends State<_PosScreenBody> {
   Future<void> _loadFeatureFlags() async {
     final flags = await AuthService().getFeatureFlags();
     if (mounted) setState(() => _flags = flags);
-  }
-
-  /// Spin up the lock service, claim slot 0 (the default tab the POS
-  /// opens on), and start the global poll. The service handles its
-  /// own heartbeat — we just listen for snapshot changes so the lock
-  /// badges repaint as other devices hold/release.
-  Future<void> _bootstrapCartSessions() async {
-    final auth = AuthService();
-    _currentUserId = await auth.getUserId();
-    final api = ApiService(auth);
-    final svc = CartSessionService(api);
-    svc.addListener(_onSessionsChanged);
-    if (!mounted) return;
-    setState(() => _cartSessions = svc);
-    svc.startPolling();
-    // Initial claim for the cart we land on (always 0 — same as
-    // CartController.activeIndex defaults).
-    final ok = await svc.bindToCart(0);
-    if (!ok && mounted && svc.lastConflict != null) {
-      _showLockSnackbar(svc.lastConflict!);
-    }
-  }
-
-  void _onSessionsChanged() {
-    if (mounted) setState(() {});
-  }
-
-  void _showLockSnackbar(CartSessionInfo holder) {
-    final label = holder.displayLabel;
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-      backgroundColor: AppTheme.error,
-      behavior: SnackBarBehavior.floating,
-      content: Row(
-        children: [
-          const Icon(Icons.lock_rounded, color: Colors.white, size: 22),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Text(
-              'Cuenta C${holder.cartIndex + 1} en uso por $label',
-              style: const TextStyle(fontSize: 16, color: Colors.white),
-            ),
-          ),
-        ],
-      ),
-    ));
-  }
-
-  /// Wraps CartController.switchCart with the claim/release dance so
-  /// every tab change reaches the backend. On conflict we DON'T
-  /// switch — the previous tab stays active and the user gets a
-  /// snackbar telling them why.
-  Future<void> _switchCartWithLock(CartController ctrl, int next) async {
-    final svc = _cartSessions;
-    if (svc == null) {
-      ctrl.switchCart(next);
-      return;
-    }
-    if (svc.heldIndex != null && svc.heldIndex != next) {
-      await svc.release();
-    }
-    final ok = await svc.bindToCart(next);
-    if (!ok) {
-      // Only block the switch on a real 409 conflict (another user
-      // holds the slot). Any other failure (network, 500, missing
-      // endpoint) degrades gracefully — let the cashier switch.
-      if (mounted && svc.lastConflict != null) {
-        _showLockSnackbar(svc.lastConflict!);
-        return;
-      }
-      // Non-conflict failure → switch anyway
-    }
-    ctrl.switchCart(next);
   }
 
   Future<void> _loadTables() async {
@@ -337,14 +251,6 @@ class _PosScreenBodyState extends State<_PosScreenBody> {
   @override
   void dispose() {
     _notificationsTimer?.cancel();
-    final svc = _cartSessions;
-    if (svc != null) {
-      svc.removeListener(_onSessionsChanged);
-      // Best-effort release — server's 5-min stale-prune is the
-      // safety net if this fire-and-forget never lands.
-      svc.release();
-      svc.dispose();
-    }
     _searchCtrl.dispose();
     super.dispose();
   }
@@ -1386,13 +1292,13 @@ class _PosScreenBodyState extends State<_PosScreenBody> {
                   // claim the new slot (and release the old) before
                   // CartController flips. On 409 we keep the old tab
                   // and snackbar.
-                  onTabSelected: (next) => _switchCartWithLock(ctrl, next),
+                  onTabSelected: (next) {
+                    HapticFeedback.lightImpact();
+                    ctrl.switchCart(next);
+                  },
                   onActiveTabTapped: () => _showContextSheet(ctrl),
                   cartCounts: List.generate(10, ctrl.cartCount),
                   contexts: List.generate(10, ctrl.contextAt),
-                  locks: _cartSessions?.sessions ?? const {},
-                  currentUserId: _currentUserId,
-                  onLockedTap: _showLockSnackbar,
                 ),
 
                 // ── Search ──
@@ -2273,17 +2179,6 @@ class _CartTabs extends StatelessWidget {
   final VoidCallback onActiveTabTapped;
   final List<int> cartCounts;
   final List<AccountContext> contexts;
-  /// Per-cart-index lock info from the server. Each entry means the
-  /// slot is held by some user; if `userId` matches the current user
-  /// we treat it as our own (no lock badge).
-  final Map<int, CartSessionInfo> locks;
-  /// Current user id — used to distinguish "my held slot" from
-  /// "someone else's held slot" so we paint the lock badge only on
-  /// the latter.
-  final String? currentUserId;
-  /// Called when the cashier taps a slot that's locked by another
-  /// user. Lets the parent show a snackbar with the holder's name.
-  final void Function(CartSessionInfo holder)? onLockedTap;
 
   const _CartTabs({
     required this.activeIndex,
@@ -2291,9 +2186,6 @@ class _CartTabs extends StatelessWidget {
     required this.onActiveTabTapped,
     required this.cartCounts,
     required this.contexts,
-    this.locks = const {},
-    this.currentUserId,
-    this.onLockedTap,
   });
 
   @override
@@ -2312,15 +2204,6 @@ class _CartTabs extends StatelessWidget {
           final hasContext = ctx.type != AccountType.mostrador;
           // Occupied = has context but empty cart (sent to kitchen, waiting)
           final isOccupied = hasContext && count == 0 && !isActive;
-
-          // Lock attribution: if a CartSessionInfo for this index
-          // exists AND its userId differs from ours, treat the slot
-          // as held by another device. Same-user holds are silent
-          // (we own it, no badge).
-          final lock = locks[i];
-          final isLockedByOther = lock != null &&
-              currentUserId != null &&
-              lock.userId != currentUserId;
 
           // Tab label: context name or default "C{n}"
           final label = hasContext ? ctx.tabLabel : 'C${i + 1}';
@@ -2354,14 +2237,6 @@ class _CartTabs extends StatelessWidget {
             padding: const EdgeInsets.symmetric(horizontal: 3),
             child: GestureDetector(
               onTap: () {
-                HapticFeedback.lightImpact();
-                if (isLockedByOther) {
-                  // Surface the lock to the user — we don't switch
-                  // away from the current cart and the parent shows
-                  // a snackbar naming the holder.
-                  onLockedTap?.call(lock);
-                  return;
-                }
                 if (isActive) {
                   onActiveTabTapped();
                 } else {
@@ -2377,15 +2252,11 @@ class _CartTabs extends StatelessWidget {
                   gradient: isActive ? LinearGradient(colors: gradient!) : null,
                   color: isActive
                       ? null
-                      : isLockedByOther
-                          ? const Color(0xFFFEE2E2) // soft red for locked
-                          : isOccupied
-                              ? const Color(0xFFE8F0FE)
-                              : Colors.white,
+                      : isOccupied
+                          ? const Color(0xFFE8F0FE)
+                          : Colors.white,
                   borderRadius: BorderRadius.circular(14),
-                  border: isLockedByOther
-                      ? Border.all(color: AppTheme.error, width: 2)
-                      : hasItems
+                  border: hasItems
                           ? Border.all(
                               color: const Color(0xFFF59E0B), width: 2)
                           : isOccupied
@@ -2396,21 +2267,7 @@ class _CartTabs extends StatelessWidget {
                 child: Stack(
                   clipBehavior: Clip.none,
                   children: [
-                    // Lock badge (top-right) — outranks the "occupied"
-                    // restaurant dot because lock state is more urgent
-                    // for the cashier than "kitchen has the order".
-                    if (isLockedByOther)
-                      const Positioned(
-                        top: -4,
-                        right: -4,
-                        child: CircleAvatar(
-                          radius: 8,
-                          backgroundColor: AppTheme.error,
-                          child: Icon(Icons.lock_rounded,
-                              size: 10, color: Colors.white),
-                        ),
-                      )
-                    else if (isOccupied)
+                    if (isOccupied)
                       const Positioned(
                         top: -3, right: -3,
                         child: CircleAvatar(
