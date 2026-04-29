@@ -98,14 +98,31 @@ class _DashboardScreenState extends State<DashboardScreen> {
         .listen((_) => _loadData());
   }
 
-  /// Pull sales from the server so the dashboard is up to date even
-  /// after a fresh login or tenant switch that cleared Isar.
+  /// Pull sales + products from the server so the dashboard is up to date
+  /// even after a fresh login or tenant switch that cleared Isar.
   Future<void> _syncFromServer() async {
+    // Run both syncs in parallel for speed
+    await Future.wait([
+      SalesSyncService.fullSync().catchError((_) {}),
+      _syncProducts(),
+    ]);
+  }
+
+  /// Fetch all tenant products from the API and upsert into Isar.
+  /// This ensures every device (owner, cashier) sees the same catalog.
+  Future<void> _syncProducts() async {
     try {
-      await SalesSyncService.fullSync();
-      // Isar watchers auto-trigger _loadData() when new rows land.
+      final api = ApiService(AuthService());
+      final res = await api.fetchProducts(perPage: 500);
+      final items = ((res['data'] as List?) ?? [])
+          .cast<Map<String, dynamic>>()
+          .map((e) => LocalProduct.fromJson(e))
+          .toList();
+      if (items.isNotEmpty) {
+        await _db.replaceAllProducts(items);
+      }
     } catch (_) {
-      // Offline — dashboard still renders from whatever is local.
+      // Offline — keep whatever is in Isar.
     }
   }
 
