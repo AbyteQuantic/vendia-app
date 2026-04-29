@@ -29,8 +29,9 @@ class OnboardingStepperScreen extends StatelessWidget {
       create: (_) => OnboardingStepperController(
         apiCall: (payload) => api.registerTenantFull(payload),
         saveSession: (data) async {
-          // Wipe local Isar data so the new tenant starts clean.
-          await DatabaseService.instance.clearAllData();
+          // Wipe local Isar data if switching to a different tenant.
+          final tenantId = (data['tenant_id'] ?? data['tenant']?['id'] ?? '').toString();
+          await DatabaseService.instance.clearIfTenantChanged(tenantId);
 
           // Backend returns feature_flags + business_types at the root
           // of the register/login response (migration 021). Fold them

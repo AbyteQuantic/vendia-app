@@ -1,5 +1,6 @@
 import 'package:isar/isar.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'collections/local_catalog_product.dart';
 import 'collections/local_product.dart';
 import 'collections/local_sale.dart';
@@ -43,16 +44,30 @@ class DatabaseService {
     );
   }
 
-  /// Wipe all local collections so a fresh login/register starts clean.
-  /// Called on login and after onboarding to prevent cross-tenant data leaks.
-  Future<void> clearAllData() async {
+  static const _prefKeyLastTenant = 'vendia_last_tenant_id';
+
+  /// Wipe tenant-scoped local collections when switching to a different tenant.
+  /// Compares [newTenantId] against the previously stored tenant; skips the
+  /// wipe when re-logging into the same account so today's sales survive.
+  Future<void> clearIfTenantChanged(String? newTenantId) async {
+    if (newTenantId == null || newTenantId.isEmpty) return;
+
+    final prefs = await SharedPreferences.getInstance();
+    final prev = prefs.getString(_prefKeyLastTenant);
+
+    // Always record the current tenant for the next comparison
+    await prefs.setString(_prefKeyLastTenant, newTenantId);
+
+    // Same tenant → nothing to clear
+    if (prev == newTenantId) return;
+
+    // Different tenant (or first-ever login) → wipe stale data
     await isar.writeTxn(() async {
       await isar.localProducts.clear();
       await isar.localSales.clear();
       await isar.localCustomers.clear();
       await isar.localCredits.clear();
       await isar.pendingOperations.clear();
-      // Keep localCatalogProducts — it's a shared OFF catalog, not tenant data
     });
   }
 

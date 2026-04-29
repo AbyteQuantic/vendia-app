@@ -112,7 +112,7 @@ class _WorkspaceSelectorScreenState extends State<WorkspaceSelectorScreen> {
       );
 
       if (!mounted) return;
-      await DatabaseService.instance.clearAllData();
+      await DatabaseService.instance.clearIfTenantChanged(ws.tenantId);
       if (!mounted) return;
       await context.read<RoleManager>().refresh();
       if (!mounted) return;

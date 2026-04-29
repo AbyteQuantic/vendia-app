@@ -146,9 +146,9 @@ class _LoginScreenState extends State<LoginScreen> {
       }
 
       if (!mounted) return;
-      // Wipe local Isar data so a different tenant never sees stale
-      // products/sales/credits from the previous session.
-      await DatabaseService.instance.clearAllData();
+      // Wipe local Isar data only when switching to a different tenant.
+      final tenantId = (data['tenant_id'] ?? '').toString();
+      await DatabaseService.instance.clearIfTenantChanged(tenantId);
       if (!mounted) return;
       await context.read<RoleManager>().refresh();
       if (!mounted) return;
