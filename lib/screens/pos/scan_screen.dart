@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
+import '../../database/database_service.dart';
 import '../../services/api_service.dart';
 import '../../services/app_error.dart';
 import '../../services/auth_service.dart';
@@ -49,8 +50,19 @@ class _ScanScreenState extends State<ScanScreen> {
 
   Future<void> _lookupProduct(String barcode) async {
     try {
+      // 1. Search local Isar first (instant, works offline)
+      final localMatch = await DatabaseService.instance
+          .getProductByBarcode(barcode);
+      if (localMatch != null) {
+        if (!mounted) return;
+        HapticFeedback.mediumImpact();
+        Navigator.of(context).pop(barcode);
+        return;
+      }
+
+      // 2. Fallback: search the full server catalog
       final api = ApiService(AuthService());
-      final response = await api.fetchProducts();
+      final response = await api.fetchProducts(perPage: 500);
       final allProducts = (response['data'] as List?) ?? [];
       final results = allProducts
           .cast<Map<String, dynamic>>()
@@ -61,7 +73,6 @@ class _ScanScreenState extends State<ScanScreen> {
 
       if (results.isNotEmpty) {
         HapticFeedback.mediumImpact();
-        // Pop with barcode string — caller decides what to do
         Navigator.of(context).pop(barcode);
       } else {
         _showNotFoundDialog(barcode);
