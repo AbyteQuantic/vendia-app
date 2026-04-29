@@ -29,6 +29,7 @@ class PosController extends ChangeNotifier {
 
   List<Product> _products = [];
   List<Product> get products => _filteredProducts;
+  List<Product> get allProducts => _products;
 
   String _searchQuery = '';
   List<CartItem> _cart = [];

@@ -345,6 +345,131 @@ class _PosScreenBodyState extends State<_PosScreenBody> {
     super.dispose();
   }
 
+  /// Called when the barcode scanner returns a code. Finds the matching
+  /// product in the POS controller's list, plays a cash-register beep,
+  /// vibrates, and shows a quantity picker modal.
+  void _onBarcodeScanned(BuildContext ctx, String barcode) {
+    final cart = ctx.read<CartController>();
+    final match = cart.allProducts
+        .where((p) =>
+            p.barcode != null &&
+            p.barcode!.isNotEmpty &&
+            p.barcode == barcode)
+        .toList();
+
+    if (match.isEmpty) return; // ScanScreen already handled "not found"
+
+    final product = match.first;
+
+    // Cash-register beep + strong vibration
+    SystemSound.play(SystemSoundType.click);
+    HapticFeedback.heavyImpact();
+
+    // Show quantity picker
+    _showQuantityPicker(ctx, product);
+  }
+
+  void _showQuantityPicker(BuildContext ctx, Product product) {
+    int qty = 1;
+    showModalBottomSheet<int>(
+      context: ctx,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (sheetCtx) => StatefulBuilder(
+        builder: (sheetCtx, setSt) => Container(
+          decoration: const BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+          ),
+          padding: EdgeInsets.fromLTRB(
+              24, 20, 24, MediaQuery.of(sheetCtx).padding.bottom + 20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 40, height: 4,
+                margin: const EdgeInsets.only(bottom: 20),
+                decoration: BoxDecoration(
+                  color: Colors.grey.shade300,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              Text(product.name,
+                  style: const TextStyle(
+                      fontSize: 22,
+                      fontWeight: FontWeight.bold,
+                      color: AppTheme.textPrimary),
+                  textAlign: TextAlign.center,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis),
+              const SizedBox(height: 4),
+              Text(
+                '\$${product.price.toStringAsFixed(0)}',
+                style: TextStyle(
+                    fontSize: 18,
+                    color: Colors.grey.shade600,
+                    fontWeight: FontWeight.w600),
+              ),
+              const SizedBox(height: 24),
+              // Quantity selector
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  _QtyButton(
+                    icon: Icons.remove_rounded,
+                    onTap: () {
+                      if (qty > 1) setSt(() => qty--);
+                      HapticFeedback.lightImpact();
+                    },
+                  ),
+                  Container(
+                    width: 80,
+                    alignment: Alignment.center,
+                    child: Text('$qty',
+                        style: const TextStyle(
+                            fontSize: 40,
+                            fontWeight: FontWeight.w800,
+                            color: AppTheme.textPrimary)),
+                  ),
+                  _QtyButton(
+                    icon: Icons.add_rounded,
+                    onTap: () {
+                      setSt(() => qty++);
+                      HapticFeedback.lightImpact();
+                    },
+                  ),
+                ],
+              ),
+              const SizedBox(height: 24),
+              SizedBox(
+                width: double.infinity,
+                height: 64,
+                child: ElevatedButton.icon(
+                  onPressed: () {
+                    HapticFeedback.mediumImpact();
+                    Navigator.of(sheetCtx).pop(qty);
+                  },
+                  icon: const Icon(Icons.add_shopping_cart_rounded, size: 26),
+                  label: Text(
+                    'Agregar $qty al carrito',
+                    style: const TextStyle(
+                        fontSize: 20, fontWeight: FontWeight.w700),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    ).then((pickedQty) {
+      if (pickedQty == null || pickedQty < 1) return;
+      final cart = ctx.read<CartController>();
+      for (int i = 0; i < pickedQty; i++) {
+        cart.addProduct(product);
+      }
+    });
+  }
+
   Future<void> _addProductWithContainerCheck(
       CartController ctrl, Product product) async {
     if (product.requiresContainer && product.containerPrice > 0) {
@@ -1286,13 +1411,15 @@ class _PosScreenBodyState extends State<_PosScreenBody> {
                             icon: const Icon(Icons.qr_code_scanner_rounded,
                                 color: AppTheme.primary, size: 24),
                             tooltip: 'Escanear código de barras',
-                            onPressed: () {
+                            onPressed: () async {
                               HapticFeedback.lightImpact();
-                              Navigator.of(context).push(
+                              final barcode = await Navigator.of(context).push<String>(
                                 MaterialPageRoute(
                                   builder: (_) => const ScanScreen(),
                                 ),
                               );
+                              if (barcode == null || !mounted) return;
+                              _onBarcodeScanned(context, barcode);
                             },
                           ),
                         ],
@@ -3000,3 +3127,25 @@ class _ServiceChargeSheetState extends State<_ServiceChargeSheet> {
   }
 }
 
+/// Round +/- button for the barcode quantity picker.
+class _QtyButton extends StatelessWidget {
+  final IconData icon;
+  final VoidCallback onTap;
+  const _QtyButton({required this.icon, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: 56,
+        height: 56,
+        decoration: BoxDecoration(
+          color: AppTheme.primary.withValues(alpha: 0.1),
+          shape: BoxShape.circle,
+        ),
+        child: Icon(icon, color: AppTheme.primary, size: 32),
+      ),
+    );
+  }
+}
