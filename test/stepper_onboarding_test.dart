@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 
-import 'package:vendia_pos/screens/dashboard/main_dashboard_screen.dart';
+import 'package:vendia_pos/screens/dashboard/dashboard_screen.dart';
 import 'package:vendia_pos/screens/onboarding/onboarding_stepper.dart';
 import 'package:vendia_pos/screens/onboarding/onboarding_stepper_controller.dart';
 
@@ -32,18 +32,20 @@ final _successResponse = {
   },
 };
 
+late OnboardingStepperController _testCtrl;
+
 Widget buildTestWidget({
   Future<Map<String, dynamic>> Function(Map<String, dynamic>)? apiCall,
   Future<void> Function(Map<String, dynamic>)? saveSession,
 }) {
-  final ctrl = OnboardingStepperController(
+  _testCtrl = OnboardingStepperController(
     apiCall: apiCall ?? (_) async => _successResponse,
     saveSession: saveSession ?? (_) async {},
   );
 
   return MaterialApp(
     home: ChangeNotifierProvider<OnboardingStepperController>.value(
-      value: ctrl,
+      value: _testCtrl,
       child: const OnboardingStepper(),
     ),
   );
@@ -93,8 +95,10 @@ Future<void> selectAndAdvanceStep4Config(WidgetTester tester) async {
   await tester.pumpAndSettle();
 }
 
-/// Logo step is optional — skip forward to employees.
+/// Logo step now requires a logo — set a fake URL before advancing.
 Future<void> advanceStep5Logo(WidgetTester tester) async {
+  _testCtrl.setLogoUrl('https://example.com/fake-logo.webp');
+  await tester.pump();
   await tester.tap(find.byKey(const Key('btn_next')));
   await tester.pumpAndSettle();
 }
@@ -383,7 +387,7 @@ void main() {
       await tester.pump();
       await tester.tap(find.byKey(const Key('btn_submit')));
       // Pump once for the async submit to resolve; avoid
-      // pumpAndSettle which would try to render MainDashboardScreen
+      // pumpAndSettle which would try to render DashboardScreen
       // (see "registro exitoso guarda JWT..." for the rationale).
       await tester.pump();
 
@@ -420,7 +424,7 @@ void main() {
       await tester.tap(find.byKey(const Key('emp_no')));
       await tester.pump();
       await tester.tap(find.byKey(const Key('btn_submit')));
-      // Don't pumpAndSettle — the stepper pushes MainDashboardScreen
+      // Don't pumpAndSettle — the stepper pushes DashboardScreen
       // which pulls in SyncService/RoleManager providers that aren't
       // wired in this isolated test tree. Pump a single frame so the
       // status-change listener fires and we can observe the side
@@ -446,7 +450,7 @@ void main() {
       await tester.pumpAndSettle();
 
       // Submit failed — we stay on step_employees, not on the dashboard.
-      expect(find.byType(MainDashboardScreen), findsNothing);
+      expect(find.byType(DashboardScreen), findsNothing);
       expect(find.byKey(const Key('step_employees')), findsOneWidget);
     });
   });
