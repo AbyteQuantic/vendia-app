@@ -765,8 +765,8 @@ class _HeroHeaderDelegate extends SliverPersistentHeaderDelegate {
     required this.todayLabel,
   });
 
-  static const double _expandedBody = 130;
-  static const double _collapsedBody = 56;
+  static const double _expandedBody = 148;
+  static const double _collapsedBody = 52;
 
   @override
   double get maxExtent => topPadding + _expandedBody;
@@ -777,6 +777,7 @@ class _HeroHeaderDelegate extends SliverPersistentHeaderDelegate {
   Widget build(BuildContext context, double shrinkOffset, bool overlapsContent) {
     final range = maxExtent - minExtent;
     final t = (shrinkOffset / range).clamp(0.0, 1.0);
+    final detailsOpacity = (1.0 - t * 1.8).clamp(0.0, 1.0);
 
     return Container(
       decoration: BoxDecoration(
@@ -795,82 +796,93 @@ class _HeroHeaderDelegate extends SliverPersistentHeaderDelegate {
               ]
             : null,
       ),
-      child: Padding(
-        padding: EdgeInsets.fromLTRB(20, topPadding + 10, 12, 12),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // ── Top row: name + icons (always visible) ──────────
-            Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    ownerName,
-                    style: TextStyle(
-                      fontSize: 22 - (4 * t), // 22 → 18
-                      fontWeight: FontWeight.bold,
-                      color: Colors.white,
-                    ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
-                _StoreStatusDot(isOpen: isStoreOpen),
-                const SizedBox(width: 2),
-                const OnlineOrdersBell(
-                    iconColor: Color(0xFFFBBF24), size: 40),
-                _AccountMenuButton(
-                  ownerName: ownerName,
-                  businessName: businessName,
-                  onLogout: onLogout,
-                  iconColor: Colors.white,
-                ),
-              ],
-            ),
-            // ── Expandable details (fade out on scroll) ──────────
-            if (t < 0.95) ...[
-              const SizedBox(height: 6),
-              Opacity(
-                opacity: (1 - t * 1.5).clamp(0.0, 1.0),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
+      child: SafeArea(
+        bottom: false,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 6, 8, 10),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // ── Row 1: name + icons (always visible) ──────────
+              Row(
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
                       children: [
-                        Flexible(
-                          child: Text(businessName,
+                        Text(
+                          ownerName,
+                          style: TextStyle(
+                            fontSize: 20 - (2 * t), // 20 → 18
+                            fontWeight: FontWeight.bold,
+                            color: Colors.white,
+                            height: 1.2,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        // Business name sits right under owner name,
+                        // fades and shrinks on collapse
+                        if (detailsOpacity > 0)
+                          Opacity(
+                            opacity: detailsOpacity,
+                            child: Text(
+                              businessName,
                               style: TextStyle(
-                                  fontSize: 15,
-                                  color: Colors.white.withValues(alpha: 0.85),
-                                  fontWeight: FontWeight.w500),
+                                fontSize: 14,
+                                color: Colors.white.withValues(alpha: 0.8),
+                                fontWeight: FontWeight.w500,
+                                height: 1.3,
+                              ),
                               maxLines: 1,
-                              overflow: TextOverflow.ellipsis),
-                        ),
-                        const SizedBox(width: 10),
-                        _StoreStatusPill(
-                          isOpen: isStoreOpen,
-                          loading: loadingStoreStatus,
-                          onToggle: onToggleStore,
-                        ),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
                       ],
                     ),
-                    const SizedBox(height: 4),
-                    Row(
-                      children: [
-                        Icon(Icons.calendar_today_rounded,
-                            size: 12, color: Colors.white.withValues(alpha: 0.5)),
-                        const SizedBox(width: 5),
-                        Text(todayLabel,
+                  ),
+                  const OnlineOrdersBell(
+                      iconColor: Color(0xFFFBBF24), size: 40),
+                  _AccountMenuButton(
+                    ownerName: ownerName,
+                    businessName: businessName,
+                    onLogout: onLogout,
+                    iconColor: Colors.white,
+                  ),
+                ],
+              ),
+              // ── Expandable details (fade out on scroll) ────────
+              if (detailsOpacity > 0) ...[
+                const SizedBox(height: 8),
+                Opacity(
+                  opacity: detailsOpacity,
+                  child: Row(
+                    children: [
+                      _StoreStatusPill(
+                        isOpen: isStoreOpen,
+                        loading: loadingStoreStatus,
+                        onToggle: onToggleStore,
+                      ),
+                      const SizedBox(width: 12),
+                      Icon(Icons.calendar_today_rounded,
+                          size: 12, color: Colors.white.withValues(alpha: 0.5)),
+                      const SizedBox(width: 5),
+                      Flexible(
+                        child: Text(todayLabel,
                             style: TextStyle(
                                 fontSize: 12,
-                                color: Colors.white.withValues(alpha: 0.5))),
-                      ],
-                    ),
-                  ],
+                                color: Colors.white.withValues(alpha: 0.5)),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis),
+                      ),
+                    ],
+                  ),
                 ),
-              ),
+              ],
             ],
-          ],
+          ),
         ),
       ),
     );
