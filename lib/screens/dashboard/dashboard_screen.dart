@@ -10,7 +10,6 @@ import '../../services/auth_service.dart';
 import '../../services/role_manager.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/online_orders_bell.dart';
-import '../../widgets/stat_card.dart';
 import '../auth/login_screen.dart';
 import '../inventory/add_merchandise_screen.dart';
 import '../online_store/promo_management_screen.dart';
@@ -61,6 +60,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   // Isar lazy streams — fire a void event on every collection change
   late final StreamSubscription _salesSub;
   late final StreamSubscription _productsSub;
+  Timer? _loadDebounce;
 
   // Reactive data holder
   _DashboardData _data = const _DashboardData(
@@ -91,11 +91,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
     // Listen for changes in sales & products collections
     _salesSub = isar.localSales
         .watchLazy(fireImmediately: false)
-        .listen((_) => _loadData());
+        .listen((_) => _debouncedLoad());
 
     _productsSub = isar.localProducts
         .watchLazy(fireImmediately: false)
-        .listen((_) => _loadData());
+        .listen((_) => _debouncedLoad());
   }
 
   /// Pull sales + products from the server so the dashboard is up to date
@@ -181,10 +181,19 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   @override
+  @override
   void dispose() {
+    _loadDebounce?.cancel();
     _salesSub.cancel();
     _productsSub.cancel();
     super.dispose();
+  }
+
+  /// Debounce Isar change events so rapid writes during sync don't
+  /// trigger N concurrent _loadData reads.
+  void _debouncedLoad() {
+    _loadDebounce?.cancel();
+    _loadDebounce = Timer(const Duration(milliseconds: 300), _loadData);
   }
 
   Future<void> _loadData() async {
@@ -733,13 +742,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
-  String _greeting() {
-    final h = TimeOfDay.now().hour;
-    if (h < 12) return '¡Buenos días! ☀️';
-    if (h < 18) return '¡Buenas tardes! 👋';
-    return '¡Buenas noches! 🌙';
-  }
-
   String _todayLabel() {
     final now = DateTime.now();
     const months = [
@@ -958,73 +960,6 @@ class _GlassCard extends StatelessWidget {
             ],
           ),
           child: child,
-        ),
-      ),
-    );
-  }
-}
-
-// ═══════════════════════════════════════════════════════════════════════════════
-// INVENTORY CARD (legacy — kept for compat, not used by the new layout)
-// ═══════════════════════════════════════════════════════════════════════════════
-
-class _InventoryCardCompact extends StatelessWidget {
-  final int total;
-  final VoidCallback onTap;
-
-  const _InventoryCardCompact({required this.total, required this.onTap});
-
-  @override
-  Widget build(BuildContext context) {
-    final value = total == 0 ? 'Vacío' : '$total ref.';
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.all(14),
-        decoration: BoxDecoration(
-          color: AppTheme.surfaceGrey,
-          borderRadius: BorderRadius.circular(20),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.04),
-              blurRadius: 8,
-              offset: const Offset(0, 3),
-            ),
-          ],
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Container(
-                  width: 40,
-                  height: 40,
-                  decoration: BoxDecoration(
-                    color: AppTheme.primary.withValues(alpha: 0.12),
-                    borderRadius: BorderRadius.circular(14),
-                  ),
-                  child: const Icon(Icons.inventory_2_rounded,
-                      color: AppTheme.primary, size: 22),
-                ),
-                const Spacer(),
-                Icon(Icons.chevron_right_rounded,
-                    color: Colors.grey.shade400, size: 22),
-              ],
-            ),
-            const SizedBox(height: 8),
-            const Text('Inventario',
-                style: TextStyle(
-                    fontSize: 16,
-                    color: AppTheme.textSecondary,
-                    fontWeight: FontWeight.w500)),
-            const SizedBox(height: 2),
-            Text(value,
-                style: const TextStyle(
-                    fontSize: 22,
-                    fontWeight: FontWeight.bold,
-                    color: AppTheme.textPrimary)),
-          ],
         ),
       ),
     );
@@ -1286,24 +1221,6 @@ class _AccountMenuButton extends StatelessWidget {
 /// is_delivery_open to decide whether to allow add-to-cart, so this
 /// control must be one-tap-away and visually unmissable. Gerontodiseño
 /// choices: pill shape, high-contrast colours, emoji reinforces the
-/// Tiny dot indicator for the collapsed header — just a green/red circle.
-class _StoreStatusDot extends StatelessWidget {
-  final bool isOpen;
-  const _StoreStatusDot({required this.isOpen});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: 12,
-      height: 12,
-      decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        color: isOpen ? const Color(0xFF4ADE80) : const Color(0xFFEF4444),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.4), width: 1.5),
-      ),
-    );
-  }
-}
 
 /// colour signal (colour-blind-safe), spinner covers PATCH latency,
 /// tap disabled while loading to prevent double-fire.

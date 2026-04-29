@@ -663,7 +663,7 @@ class _PosScreenBodyState extends State<_PosScreenBody> {
   void _showFiadoSelector(CartController ctrl) {
     final nameCtrl = TextEditingController();
     final phoneCtrl = TextEditingController();
-    showModalBottomSheet(
+    showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
@@ -755,7 +755,10 @@ class _PosScreenBodyState extends State<_PosScreenBody> {
           ),
         ),
       ),
-    );
+    ).then((_) {
+      nameCtrl.dispose();
+      phoneCtrl.dispose();
+    });
   }
 
   // ── Smart Action Button Handler ──────────────────────────────────────────
@@ -1041,16 +1044,51 @@ class _PosScreenBodyState extends State<_PosScreenBody> {
               Padding(
                 padding: const EdgeInsets.only(bottom: 10),
                 child: GestureDetector(
-                  onTap: () {
+                  onTap: () async {
                     HapticFeedback.heavyImpact();
                     Navigator.of(sheetCtx).pop();
-                    // TODO: persist sale with table_id + payment method to DB/API
-                    // TODO: send KDS notification for table
+
+                    // Persist sale to Isar + deduct stock
+                    final db = DatabaseService.instance;
+                    final saleUuid = const Uuid().v4();
+                    final saleItems = ctrl.activeCart.map((item) {
+                      return SaleItemEmbed()
+                        ..productUuid = item.product.uuid.isNotEmpty
+                            ? item.product.uuid
+                            : item.product.id.toString()
+                        ..productName = item.product.name
+                        ..quantity = item.quantity
+                        ..unitPrice = item.product.price
+                        ..isContainerCharge = false;
+                    }).toList();
+
+                    final employeeName = await AuthService().getOwnerName() ?? '';
+                    final localSale = LocalSale()
+                      ..uuid = saleUuid
+                      ..total = ctrl.activeTotal
+                      ..paymentMethod = method.$1.toLowerCase()
+                      ..employeeName = employeeName
+                      ..isCreditSale = false
+                      ..items = saleItems
+                      ..createdAt = DateTime.now()
+                      ..synced = false;
+
+                    await db.insertSaleAndDeductStock(localSale);
+
+                    final cartSnapshot = List<CartItem>.from(ctrl.activeCart);
                     ctrl.clearActiveCart();
+
+                    _syncSaleToBackend(
+                      cartSnapshot,
+                      method.$1.toLowerCase(),
+                      saleUuid,
+                    );
+
+                    if (!mounted) return;
                     ScaffoldMessenger.of(context).showSnackBar(
                       SnackBar(
                         content: Text(
-                          '✅ Cobrado con ${method.$1} y enviado a ${ctx.tableLabel}',
+                          'Cobrado con ${method.$1} y enviado a ${ctx.tableLabel}',
                           style: const TextStyle(fontSize: 16),
                         ),
                         backgroundColor: const Color(0xFF0D9668),
