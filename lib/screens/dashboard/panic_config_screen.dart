@@ -209,17 +209,25 @@ class _PanicConfigScreenState extends State<PanicConfigScreen> {
                   height: 56,
                   child: ElevatedButton.icon(
                     onPressed: () async {
-                      if (nameCtrl.text.trim().isEmpty ||
-                          phoneCtrl.text.trim().length < 7) return;
+                      final name = nameCtrl.text.trim();
+                      final phone = phoneCtrl.text.trim().replaceAll(RegExp(r'[^\d+]'), '');
+                      if (name.isEmpty || phone.length < 7) {
+                        return;
+                      }
                       Navigator.of(ctx).pop();
                       try {
                         await _api.createEmergencyContact({
-                          'name': nameCtrl.text.trim(),
-                          'phone_number': phoneCtrl.text.trim(),
+                          'name': name,
+                          'phone_number': phone,
                           'contact_method': method,
                         });
                         _load();
-                      } catch (_) {}
+                      } catch (e) {
+                        if (mounted) {
+                          _showSnack('Error al agregar contacto: $e',
+                              isError: true);
+                        }
+                      }
                     },
                     icon: const Icon(Icons.check_rounded),
                     label: const Text('Agregar',
