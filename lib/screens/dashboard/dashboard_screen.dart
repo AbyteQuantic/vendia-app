@@ -298,11 +298,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
     colors: [Color(0xFF1E3A8A), Color(0xFF3B82F6), Color(0xFF6366F1)],
   );
 
-  // Collapsed toolbar height (name + icons only).
-  static const double _collapsedH = 64;
-  // Expanded header (name + business + status + date).
-  static const double _expandedH = 155;
-
   @override
   Widget build(BuildContext context) {
     final topPad = MediaQuery.of(context).padding.top;
@@ -318,129 +313,24 @@ class _DashboardScreenState extends State<DashboardScreen> {
           color: Colors.white,
           onRefresh: _refresh,
           displacement: 40,
-          edgeOffset: _collapsedH + topPad + 20,
+          edgeOffset: topPad + 76,
           child: CustomScrollView(
             physics: const AlwaysScrollableScrollPhysics(
               parent: ClampingScrollPhysics(),
             ),
             slivers: [
               // ── Sticky Gradient Header ──────────────────────────
-              SliverAppBar(
+              SliverPersistentHeader(
                 pinned: true,
-                expandedHeight: _expandedH + topPad,
-                collapsedHeight: _collapsedH,
-                toolbarHeight: _collapsedH,
-                backgroundColor: const Color(0xFF1E3A8A),
-                surfaceTintColor: Colors.transparent,
-                automaticallyImplyLeading: false,
-                shape: const RoundedRectangleBorder(
-                  borderRadius: BorderRadius.only(
-                    bottomLeft: Radius.circular(24),
-                    bottomRight: Radius.circular(24),
-                  ),
-                ),
-                // ── Collapsed bar: name + icons ──────────────────
-                title: Row(
-                  children: [
-                    Expanded(
-                      child: Text(widget.ownerName,
-                          style: const TextStyle(
-                            fontSize: 20,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.white,
-                          ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis),
-                    ),
-                    _StoreStatusDot(isOpen: _isStoreOpen),
-                    const SizedBox(width: 4),
-                    const OnlineOrdersBell(
-                        iconColor: Color(0xFFFBBF24), size: 38),
-                    _AccountMenuButton(
-                      ownerName: widget.ownerName,
-                      businessName: widget.businessName,
-                      onLogout: _onLogout,
-                      iconColor: Colors.white,
-                    ),
-                  ],
-                ),
-                // ── Expanded content ─────────────────────────────
-                flexibleSpace: FlexibleSpaceBar(
-                  background: Container(
-                    decoration: const BoxDecoration(
-                      gradient: _heroGradient,
-                      borderRadius: BorderRadius.only(
-                        bottomLeft: Radius.circular(24),
-                        bottomRight: Radius.circular(24),
-                      ),
-                    ),
-                    child: Padding(
-                      padding: EdgeInsets.fromLTRB(22, topPad + 14, 22, 16),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          // Row 1 — actions (top right)
-                          Row(
-                            children: [
-                              const Spacer(),
-                              const OnlineOrdersBell(
-                                  iconColor: Color(0xFFFBBF24)),
-                              const SizedBox(width: 2),
-                              _AccountMenuButton(
-                                ownerName: widget.ownerName,
-                                businessName: widget.businessName,
-                                onLogout: _onLogout,
-                                iconColor: Colors.white,
-                              ),
-                            ],
-                          ),
-                          const Spacer(),
-                          // Owner name
-                          Text(widget.ownerName,
-                              style: const TextStyle(
-                                fontSize: 26,
-                                fontWeight: FontWeight.bold,
-                                color: Colors.white,
-                              ),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis),
-                          const SizedBox(height: 6),
-                          // Business + store status
-                          Row(
-                            children: [
-                              Flexible(
-                                child: Text(widget.businessName,
-                                    style: TextStyle(
-                                        fontSize: 16,
-                                        color: Colors.white.withValues(alpha: 0.85),
-                                        fontWeight: FontWeight.w500),
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis),
-                              ),
-                              const SizedBox(width: 10),
-                              _StoreStatusPill(
-                                isOpen: _isStoreOpen,
-                                loading: _loadingStoreStatus,
-                                onToggle: _toggleStoreStatus,
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 4),
-                          Row(
-                            children: [
-                              Icon(Icons.calendar_today_rounded,
-                                  size: 13, color: Colors.white.withValues(alpha: 0.55)),
-                              const SizedBox(width: 5),
-                              Text(_todayLabel(),
-                                  style: TextStyle(
-                                      fontSize: 13,
-                                      color: Colors.white.withValues(alpha: 0.55))),
-                            ],
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
+                delegate: _HeroHeaderDelegate(
+                  topPadding: topPad,
+                  ownerName: widget.ownerName,
+                  businessName: widget.businessName,
+                  isStoreOpen: _isStoreOpen,
+                  loadingStoreStatus: _loadingStoreStatus,
+                  onToggleStore: _toggleStoreStatus,
+                  onLogout: _onLogout,
+                  todayLabel: _todayLabel(),
                 ),
               ),
 
@@ -848,6 +738,151 @@ class _DashboardScreenState extends State<DashboardScreen> {
     ];
     return '${days[now.weekday - 1]}, ${now.day} de ${months[now.month - 1]}';
   }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// HERO HEADER DELEGATE
+// ═══════════════════════════════════════════════════════════════════════════════
+
+class _HeroHeaderDelegate extends SliverPersistentHeaderDelegate {
+  final double topPadding;
+  final String ownerName;
+  final String businessName;
+  final bool isStoreOpen;
+  final bool loadingStoreStatus;
+  final ValueChanged<bool> onToggleStore;
+  final Future<void> Function() onLogout;
+  final String todayLabel;
+
+  _HeroHeaderDelegate({
+    required this.topPadding,
+    required this.ownerName,
+    required this.businessName,
+    required this.isStoreOpen,
+    required this.loadingStoreStatus,
+    required this.onToggleStore,
+    required this.onLogout,
+    required this.todayLabel,
+  });
+
+  static const double _expandedBody = 130;
+  static const double _collapsedBody = 56;
+
+  @override
+  double get maxExtent => topPadding + _expandedBody;
+  @override
+  double get minExtent => topPadding + _collapsedBody;
+
+  @override
+  Widget build(BuildContext context, double shrinkOffset, bool overlapsContent) {
+    final range = maxExtent - minExtent;
+    final t = (shrinkOffset / range).clamp(0.0, 1.0);
+
+    return Container(
+      decoration: BoxDecoration(
+        gradient: _DashboardScreenState._heroGradient,
+        borderRadius: const BorderRadius.only(
+          bottomLeft: Radius.circular(24),
+          bottomRight: Radius.circular(24),
+        ),
+        boxShadow: t > 0.3
+            ? [
+                BoxShadow(
+                  color: const Color(0xFF1E3A8A).withValues(alpha: 0.3),
+                  blurRadius: 12,
+                  offset: const Offset(0, 4),
+                ),
+              ]
+            : null,
+      ),
+      child: Padding(
+        padding: EdgeInsets.fromLTRB(20, topPadding + 10, 12, 12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // ── Top row: name + icons (always visible) ──────────
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    ownerName,
+                    style: TextStyle(
+                      fontSize: 22 - (4 * t), // 22 → 18
+                      fontWeight: FontWeight.bold,
+                      color: Colors.white,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+                _StoreStatusDot(isOpen: isStoreOpen),
+                const SizedBox(width: 2),
+                const OnlineOrdersBell(
+                    iconColor: Color(0xFFFBBF24), size: 40),
+                _AccountMenuButton(
+                  ownerName: ownerName,
+                  businessName: businessName,
+                  onLogout: onLogout,
+                  iconColor: Colors.white,
+                ),
+              ],
+            ),
+            // ── Expandable details (fade out on scroll) ──────────
+            if (t < 0.95) ...[
+              const SizedBox(height: 6),
+              Opacity(
+                opacity: (1 - t * 1.5).clamp(0.0, 1.0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Flexible(
+                          child: Text(businessName,
+                              style: TextStyle(
+                                  fontSize: 15,
+                                  color: Colors.white.withValues(alpha: 0.85),
+                                  fontWeight: FontWeight.w500),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis),
+                        ),
+                        const SizedBox(width: 10),
+                        _StoreStatusPill(
+                          isOpen: isStoreOpen,
+                          loading: loadingStoreStatus,
+                          onToggle: onToggleStore,
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 4),
+                    Row(
+                      children: [
+                        Icon(Icons.calendar_today_rounded,
+                            size: 12, color: Colors.white.withValues(alpha: 0.5)),
+                        const SizedBox(width: 5),
+                        Text(todayLabel,
+                            style: TextStyle(
+                                fontSize: 12,
+                                color: Colors.white.withValues(alpha: 0.5))),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  @override
+  bool shouldRebuild(covariant _HeroHeaderDelegate old) =>
+      old.isStoreOpen != isStoreOpen ||
+      old.loadingStoreStatus != loadingStoreStatus ||
+      old.ownerName != ownerName ||
+      old.businessName != businessName ||
+      old.todayLabel != todayLabel;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
