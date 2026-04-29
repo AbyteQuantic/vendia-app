@@ -60,18 +60,15 @@ class _ScanScreenState extends State<ScanScreen> {
         return;
       }
 
-      // 2. Fallback: search the full server catalog
+      // 2. Dedicated barcode lookup — searches the ENTIRE tenant
+      //    catalog without branch filters so employees in any
+      //    branch can find any product.
       final api = ApiService(AuthService());
-      final response = await api.fetchProducts(perPage: 500);
-      final allProducts = (response['data'] as List?) ?? [];
-      final results = allProducts
-          .cast<Map<String, dynamic>>()
-          .where((p) => p['barcode'] == barcode)
-          .toList();
+      final match = await api.lookupProductByBarcode(barcode);
 
       if (!mounted) return;
 
-      if (results.isNotEmpty) {
+      if (match != null) {
         HapticFeedback.mediumImpact();
         Navigator.of(context).pop(barcode);
       } else {

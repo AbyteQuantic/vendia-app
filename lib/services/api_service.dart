@@ -360,6 +360,19 @@ class ApiService {
     }
   }
 
+  /// Lookup a product by barcode across the entire tenant (no branch filter).
+  /// Returns null if not found (404).
+  Future<Map<String, dynamic>?> lookupProductByBarcode(String code) async {
+    try {
+      final response = await _dio.get('/api/v1/products/by-barcode',
+          queryParameters: {'code': code});
+      return _extractData(response);
+    } on DioException catch (e) {
+      if (e.response?.statusCode == 404) return null;
+      throw AppError.fromDioException(e);
+    }
+  }
+
   Future<Map<String, dynamic>> createProduct(
       Map<String, dynamic> data) async {
     try {
