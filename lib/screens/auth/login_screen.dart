@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
+import '../../database/database_service.dart';
 import '../../services/api_service.dart';
 import '../../services/app_error.dart';
 import '../../services/auth_service.dart';
@@ -144,6 +145,10 @@ class _LoginScreenState extends State<LoginScreen> {
         );
       }
 
+      if (!mounted) return;
+      // Wipe local Isar data so a different tenant never sees stale
+      // products/sales/credits from the previous session.
+      await DatabaseService.instance.clearAllData();
       if (!mounted) return;
       await context.read<RoleManager>().refresh();
       if (!mounted) return;

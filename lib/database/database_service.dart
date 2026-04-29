@@ -43,6 +43,19 @@ class DatabaseService {
     );
   }
 
+  /// Wipe all local collections so a fresh login/register starts clean.
+  /// Called on login and after onboarding to prevent cross-tenant data leaks.
+  Future<void> clearAllData() async {
+    await isar.writeTxn(() async {
+      await isar.localProducts.clear();
+      await isar.localSales.clear();
+      await isar.localCustomers.clear();
+      await isar.localCredits.clear();
+      await isar.pendingOperations.clear();
+      // Keep localCatalogProducts — it's a shared OFF catalog, not tenant data
+    });
+  }
+
   // ── Products ────────────────────────────────────────────────────────────────
 
   Future<List<LocalProduct>> getAllProducts() async {

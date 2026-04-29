@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import '../../database/database_service.dart';
 import '../../services/api_service.dart';
 import '../../services/auth_service.dart';
 import '../../theme/app_theme.dart';
@@ -28,6 +29,9 @@ class OnboardingStepperScreen extends StatelessWidget {
       create: (_) => OnboardingStepperController(
         apiCall: (payload) => api.registerTenantFull(payload),
         saveSession: (data) async {
+          // Wipe local Isar data so the new tenant starts clean.
+          await DatabaseService.instance.clearAllData();
+
           // Backend returns feature_flags + business_types at the root
           // of the register/login response (migration 021). Fold them
           // into both the tenant map and the legacy path so the
