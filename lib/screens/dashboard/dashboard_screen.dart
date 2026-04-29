@@ -796,12 +796,9 @@ class _HeroHeaderDelegate extends SliverPersistentHeaderDelegate {
               ]
             : null,
       ),
-      child: SafeArea(
-        bottom: false,
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(20, 6, 8, 10),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
+      child: Padding(
+        padding: EdgeInsets.fromLTRB(20, topPadding + 6, 8, 10),
+        child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               // ── Row 1: name + icons (always visible) ──────────
@@ -884,17 +881,16 @@ class _HeroHeaderDelegate extends SliverPersistentHeaderDelegate {
             ],
           ),
         ),
-      ),
-    );
+      );
   }
 
   @override
-  bool shouldRebuild(covariant _HeroHeaderDelegate old) =>
-      old.isStoreOpen != isStoreOpen ||
-      old.loadingStoreStatus != loadingStoreStatus ||
-      old.ownerName != ownerName ||
-      old.businessName != businessName ||
-      old.todayLabel != todayLabel;
+  bool shouldRebuild(covariant _HeroHeaderDelegate o) =>
+      o.isStoreOpen != isStoreOpen ||
+      o.loadingStoreStatus != loadingStoreStatus ||
+      o.ownerName != ownerName ||
+      o.businessName != businessName ||
+      o.todayLabel != todayLabel;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
