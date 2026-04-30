@@ -141,8 +141,8 @@ class _IaResultScreenState extends State<IaResultScreen> {
             ..requiresContainer = false
             ..containerPrice = 0
             ..presentation = p.presentation
-            ..barcode = ''
-            ..content = ''
+            ..barcode = p.barcode
+            ..content = p.content
             ..expiryDate = p.expiryDate
             ..clientUpdatedAt = DateTime.now();
           await db.upsertProduct(product);
@@ -289,10 +289,14 @@ class _IaResultScreenState extends State<IaResultScreen> {
     final p = _products[index];
     final nameCtrl = TextEditingController(text: p.name);
     final presCtrl = TextEditingController(text: p.presentation);
+    final barcodeCtrl = TextEditingController(text: p.barcode);
+    final contentCtrl = TextEditingController(text: p.content);
     final qtyCtrl = TextEditingController(text: p.quantity.toString());
     final buyCtrl = TextEditingController(text: p.purchasePrice.round().toString());
     final sellCtrl = TextEditingController(text: p.sellPrice.round().toString());
     DateTime? draftExpiry = p.expiryDate;
+    String? draftPhotoPath = p.photoPath;
+    String? draftPhotoUrl = p.photoUrl;
 
     showModalBottomSheet(
       context: context,
@@ -302,71 +306,158 @@ class _IaResultScreenState extends State<IaResultScreen> {
         padding: EdgeInsets.only(bottom: MediaQuery.of(ctx).viewInsets.bottom),
         child: Container(
           constraints: BoxConstraints(
-            maxHeight: MediaQuery.of(ctx).size.height * 0.8,
+            maxHeight: MediaQuery.of(ctx).size.height * 0.9,
           ),
           decoration: const BoxDecoration(
             color: Colors.white,
             borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
           ),
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.fromLTRB(24, 16, 24, 24),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Center(
-                  child: Container(
-                    width: 40, height: 4,
-                    margin: const EdgeInsets.only(bottom: 16),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFD6D0C8),
-                      borderRadius: BorderRadius.circular(2),
+          child: StatefulBuilder(
+            builder: (sbCtx, sbSet) => SingleChildScrollView(
+              padding: const EdgeInsets.fromLTRB(24, 16, 24, 24),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Center(
+                    child: Container(
+                      width: 40, height: 4,
+                      margin: const EdgeInsets.only(bottom: 16),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFD6D0C8),
+                        borderRadius: BorderRadius.circular(2),
+                      ),
                     ),
                   ),
-                ),
-                const Text('Editar Producto',
-                    style: TextStyle(
-                        fontSize: 22, fontWeight: FontWeight.bold,
-                        color: AppTheme.textPrimary)),
-                const SizedBox(height: 16),
+                  const Text('Editar Producto',
+                      style: TextStyle(
+                          fontSize: 22, fontWeight: FontWeight.bold,
+                          color: AppTheme.textPrimary)),
+                  const SizedBox(height: 16),
 
-                _EditField(label: 'Nombre', controller: nameCtrl),
-                const SizedBox(height: 12),
-                _EditField(label: 'Presentación', controller: presCtrl,
-                    hint: 'Ej: PACA X12, 350ml'),
-                const SizedBox(height: 12),
-                Row(
-                  children: [
-                    Expanded(child: _EditField(
-                        label: 'Cantidad', controller: qtyCtrl,
-                        numeric: true)),
-                    const SizedBox(width: 12),
-                    Expanded(child: _EditField(
-                        label: 'P. Compra', controller: buyCtrl,
-                        numeric: true, prefix: '\$')),
-                  ],
-                ),
-                const SizedBox(height: 12),
-                _EditField(
-                    label: 'Precio Venta', controller: sellCtrl,
-                    numeric: true, prefix: '\$'),
-                const SizedBox(height: 6),
-                Text(
-                  'Sugerido: \$${suggestPrice(double.tryParse(buyCtrl.text) ?? 0, _marginPercent)} (+${_marginPercent.round()}%)',
-                  style: const TextStyle(
-                      fontSize: 14, color: AppTheme.success,
-                      fontWeight: FontWeight.w600),
-                ),
-                const SizedBox(height: 14),
-                // Expiry date (optional). Pre-filled when Gemini detected
-                // a date on the invoice — shopkeeper just confirms.
-                const Text('Fecha de vencimiento',
-                    style: TextStyle(
-                        fontSize: 15, fontWeight: FontWeight.w600,
-                        color: AppTheme.textSecondary)),
-                const SizedBox(height: 6),
-                StatefulBuilder(
-                  builder: (sbCtx, sbSet) => InkWell(
+                  // ── Photo section ──
+                  Row(
+                    children: [
+                      // Thumbnail
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(14),
+                        child: Container(
+                          width: 80, height: 80,
+                          color: AppTheme.surfaceGrey,
+                          child: _editThumb(draftPhotoPath, draftPhotoUrl),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                _editPhotoBtn(
+                                  icon: Icons.camera_alt_rounded,
+                                  label: 'Foto',
+                                  color: AppTheme.primary,
+                                  onTap: () async {
+                                    final picked = await ImagePicker().pickImage(
+                                      source: ImageSource.camera,
+                                      imageQuality: 85, maxWidth: 1024,
+                                    );
+                                    if (picked == null) return;
+                                    sbSet(() {
+                                      draftPhotoPath = picked.path;
+                                      draftPhotoUrl = null;
+                                    });
+                                  },
+                                ),
+                                const SizedBox(width: 6),
+                                _editPhotoBtn(
+                                  icon: Icons.photo_library_rounded,
+                                  label: 'Galeria',
+                                  color: const Color(0xFF6D28D9),
+                                  onTap: () async {
+                                    final picked = await ImagePicker().pickImage(
+                                      source: ImageSource.gallery,
+                                      imageQuality: 85, maxWidth: 1024,
+                                    );
+                                    if (picked == null) return;
+                                    sbSet(() {
+                                      draftPhotoPath = picked.path;
+                                      draftPhotoUrl = null;
+                                    });
+                                  },
+                                ),
+                                const SizedBox(width: 6),
+                                _editPhotoBtn(
+                                  icon: Icons.auto_awesome_rounded,
+                                  label: 'IA',
+                                  color: const Color(0xFF7C3AED),
+                                  onTap: () {
+                                    Navigator.of(ctx).pop();
+                                    _enhanceOrGenerateFor(index);
+                                  },
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+
+                  // ── Name ──
+                  _EditField(label: 'Nombre del producto', controller: nameCtrl),
+                  const SizedBox(height: 12),
+
+                  // ── Barcode ──
+                  _EditField(label: 'Codigo SKU / Barras', controller: barcodeCtrl,
+                      hint: 'Ej: 7702535011119'),
+                  const SizedBox(height: 12),
+
+                  // ── Presentation ──
+                  _EditField(label: 'Presentacion', controller: presCtrl,
+                      hint: 'Ej: Botella, Lata, Bolsa'),
+                  const SizedBox(height: 12),
+
+                  // ── Content ──
+                  _EditField(label: 'Contenido', controller: contentCtrl,
+                      hint: 'Ej: 350ml, 500g, 1L'),
+                  const SizedBox(height: 12),
+
+                  // ── Prices ──
+                  Row(
+                    children: [
+                      Expanded(child: _EditField(
+                          label: 'P. Compra', controller: buyCtrl,
+                          numeric: true, prefix: '\$')),
+                      const SizedBox(width: 12),
+                      Expanded(child: _EditField(
+                          label: 'P. Venta', controller: sellCtrl,
+                          numeric: true, prefix: '\$')),
+                    ],
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    'Sugerido: \$${suggestPrice(double.tryParse(buyCtrl.text) ?? 0, _marginPercent)} (+${_marginPercent.round()}%)',
+                    style: const TextStyle(
+                        fontSize: 14, color: AppTheme.success,
+                        fontWeight: FontWeight.w600),
+                  ),
+                  const SizedBox(height: 12),
+
+                  // ── Quantity ──
+                  _EditField(label: 'Cantidad', controller: qtyCtrl,
+                      numeric: true),
+                  const SizedBox(height: 14),
+
+                  // ── Expiry date ──
+                  const Text('Fecha de vencimiento',
+                      style: TextStyle(
+                          fontSize: 15, fontWeight: FontWeight.w600,
+                          color: AppTheme.textSecondary)),
+                  const SizedBox(height: 6),
+                  InkWell(
                     onTap: () async {
                       final picked = await _pickExpiry(sbCtx,
                           current: draftExpiry);
@@ -406,11 +497,9 @@ class _IaResultScreenState extends State<IaResultScreen> {
                               style: TextStyle(
                                 fontSize: 17,
                                 fontWeight: draftExpiry != null
-                                    ? FontWeight.w600
-                                    : FontWeight.w400,
+                                    ? FontWeight.w600 : FontWeight.w400,
                                 fontStyle: draftExpiry != null
-                                    ? FontStyle.normal
-                                    : FontStyle.italic,
+                                    ? FontStyle.normal : FontStyle.italic,
                                 color: draftExpiry != null
                                     ? AppTheme.textPrimary
                                     : Colors.grey.shade500,
@@ -419,45 +508,90 @@ class _IaResultScreenState extends State<IaResultScreen> {
                           ),
                           if (draftExpiry != null)
                             IconButton(
-                              onPressed: () =>
-                                  sbSet(() => draftExpiry = null),
+                              onPressed: () => sbSet(() => draftExpiry = null),
                               icon: const Icon(Icons.close_rounded,
-                                  size: 22,
-                                  color: AppTheme.textSecondary),
+                                  size: 22, color: AppTheme.textSecondary),
                               tooltip: 'Quitar fecha',
                             ),
                         ],
                       ),
                     ),
                   ),
-                ),
-                const SizedBox(height: 20),
-                SizedBox(
-                  height: 60,
-                  child: ElevatedButton.icon(
-                    onPressed: () {
-                      HapticFeedback.mediumImpact();
-                      setState(() {
-                        p.name = nameCtrl.text.trim();
-                        p.presentation = presCtrl.text.trim();
-                        p.quantity = int.tryParse(qtyCtrl.text) ?? p.quantity;
-                        p.purchasePrice = double.tryParse(buyCtrl.text) ?? p.purchasePrice;
-                        p.sellPrice = double.tryParse(sellCtrl.text) ?? p.sellPrice;
-                        p.expiryDate = draftExpiry;
-                      });
-                      Navigator.of(ctx).pop();
-                    },
-                    icon: const Icon(Icons.check_rounded, size: 22),
-                    label: const Text('Guardar cambios',
-                        style: TextStyle(fontSize: 18)),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: AppTheme.primary,
+                  const SizedBox(height: 20),
+
+                  // ── Save button ──
+                  SizedBox(
+                    height: 60,
+                    child: ElevatedButton.icon(
+                      onPressed: () {
+                        HapticFeedback.mediumImpact();
+                        setState(() {
+                          p.name = nameCtrl.text.trim();
+                          p.presentation = presCtrl.text.trim();
+                          p.barcode = barcodeCtrl.text.trim();
+                          p.content = contentCtrl.text.trim();
+                          p.quantity = int.tryParse(qtyCtrl.text) ?? p.quantity;
+                          p.purchasePrice = double.tryParse(buyCtrl.text) ?? p.purchasePrice;
+                          p.sellPrice = double.tryParse(sellCtrl.text) ?? p.sellPrice;
+                          p.expiryDate = draftExpiry;
+                          p.photoPath = draftPhotoPath;
+                          p.photoUrl = draftPhotoUrl;
+                        });
+                        Navigator.of(ctx).pop();
+                      },
+                      icon: const Icon(Icons.check_rounded, size: 22),
+                      label: const Text('Guardar cambios',
+                          style: TextStyle(fontSize: 18)),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: AppTheme.primary,
+                      ),
                     ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
+        ),
+      ),
+    );
+  }
+
+  Widget _editThumb(String? photoPath, String? photoUrl) {
+    if (photoPath != null && photoPath.isNotEmpty) {
+      return Image.file(File(photoPath), fit: BoxFit.cover);
+    }
+    if (photoUrl != null && photoUrl.isNotEmpty) {
+      return Image.network(photoUrl, fit: BoxFit.cover,
+          errorBuilder: (_, __, ___) => const Icon(
+              Icons.broken_image_outlined, size: 28, color: AppTheme.textSecondary));
+    }
+    return const Center(
+        child: Icon(Icons.add_a_photo_rounded, size: 28,
+            color: AppTheme.textSecondary));
+  }
+
+  Widget _editPhotoBtn({
+    required IconData icon,
+    required String label,
+    required Color color,
+    required VoidCallback onTap,
+  }) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+        decoration: BoxDecoration(
+          color: color.withValues(alpha: 0.08),
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 14, color: color),
+            const SizedBox(width: 3),
+            Text(label, style: TextStyle(fontSize: 11,
+                fontWeight: FontWeight.w700, color: color)),
+          ],
         ),
       ),
     );
@@ -1124,6 +1258,8 @@ class _EditField extends StatelessWidget {
 class _EditableProduct {
   String name;
   String presentation;
+  String barcode;
+  String content;
   int quantity;
   double purchasePrice;
   double sellPrice;
@@ -1146,6 +1282,8 @@ class _EditableProduct {
     required this.purchasePrice,
     required this.sellPrice,
     required this.confidence,
+    this.barcode = '',
+    this.content = '',
     this.expiryDate,
     this.photoPath,
     this.photoUrl,
