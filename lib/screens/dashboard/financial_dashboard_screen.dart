@@ -5,6 +5,8 @@ import '../../database/sync/sales_sync.dart';
 import '../../services/api_service.dart';
 import '../../services/auth_service.dart';
 import '../../theme/app_theme.dart';
+import '../history/receipt_detail_screen.dart';
+import '../history/sales_history_screen.dart';
 
 /// Owner / manager dashboard. Pulls a single comprehensive endpoint
 /// (`/analytics/financial-summary`) that returns the full cube and
@@ -399,10 +401,48 @@ class _SalesHistorySectionState extends State<_SalesHistorySection> {
                   style: TextStyle(
                       fontSize: 15, color: AppTheme.textSecondary))
               : Column(
-                  children: _sales
-                      .take(20)
-                      .map((s) => _SaleTile(s as Map<String, dynamic>))
-                      .toList(),
+                  children: [
+                    ..._sales
+                        .take(5)
+                        .map((s) => _SaleTile(
+                              s as Map<String, dynamic>,
+                              onTap: () {
+                                HapticFeedback.lightImpact();
+                                Navigator.of(context).push(MaterialPageRoute(
+                                  builder: (_) =>
+                                      ReceiptDetailScreen(sale: s),
+                                ));
+                              },
+                            )),
+                    const SizedBox(height: 8),
+                    SizedBox(
+                      width: double.infinity,
+                      height: 46,
+                      child: OutlinedButton.icon(
+                        onPressed: () {
+                          HapticFeedback.lightImpact();
+                          Navigator.of(context).push(MaterialPageRoute(
+                            builder: (_) => const SalesHistoryScreen(),
+                          ));
+                        },
+                        icon: const Icon(Icons.history_rounded, size: 18),
+                        label: Text(
+                          _sales.length > 5
+                              ? 'Ver las ${_sales.length} ventas'
+                              : 'Ver historial completo',
+                          style: const TextStyle(
+                              fontSize: 14, fontWeight: FontWeight.w700),
+                        ),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: AppTheme.primary,
+                          side: BorderSide(
+                              color: AppTheme.primary.withValues(alpha: 0.4)),
+                          shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(14)),
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
     );
   }
@@ -410,7 +450,8 @@ class _SalesHistorySectionState extends State<_SalesHistorySection> {
 
 class _SaleTile extends StatelessWidget {
   final Map<String, dynamic> sale;
-  const _SaleTile(this.sale);
+  final VoidCallback? onTap;
+  const _SaleTile(this.sale, {this.onTap});
 
   @override
   Widget build(BuildContext context) {
@@ -433,51 +474,58 @@ class _SaleTile extends StatelessWidget {
     final timeStr =
         '${createdAt.hour.toString().padLeft(2, '0')}:${createdAt.minute.toString().padLeft(2, '0')}';
 
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8),
-      child: Row(
-        children: [
-          Container(
-            width: 40,
-            height: 40,
-            decoration: BoxDecoration(
-              color: _methodColor(method).withValues(alpha: 0.12),
-              borderRadius: BorderRadius.circular(12),
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(12),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 8),
+        child: Row(
+          children: [
+            Container(
+              width: 40,
+              height: 40,
+              decoration: BoxDecoration(
+                color: _methodColor(method).withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Icon(_methodIcon(method),
+                  size: 20, color: _methodColor(method)),
             ),
-            child: Icon(_methodIcon(method),
-                size: 20, color: _methodColor(method)),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(label,
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(label,
+                      style: const TextStyle(
+                          fontSize: 16, fontWeight: FontWeight.w600),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis),
+                  const SizedBox(height: 2),
+                  Text(
+                    '${employee.isEmpty ? "Sin asignar" : employee} · '
+                    '$timeStr · '
+                    '${_methodLabel(method)} · '
+                    '${_channelLabel(source)}',
                     style: const TextStyle(
-                        fontSize: 16, fontWeight: FontWeight.w600),
+                        fontSize: 13, color: AppTheme.textSecondary),
                     maxLines: 1,
-                    overflow: TextOverflow.ellipsis),
-                const SizedBox(height: 2),
-                Text(
-                  '${employee.isEmpty ? "Sin asignar" : employee} · '
-                  '$timeStr · '
-                  '${_methodLabel(method)} · '
-                  '${_channelLabel(source)}',
-                  style: const TextStyle(
-                      fontSize: 13, color: AppTheme.textSecondary),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ],
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
+              ),
             ),
-          ),
-          const SizedBox(width: 8),
-          Text(_formatMoney(total),
-              style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
-                  color: _methodColor(method))),
-        ],
+            const SizedBox(width: 8),
+            Text(_formatMoney(total),
+                style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                    color: _methodColor(method))),
+            const SizedBox(width: 4),
+            Icon(Icons.chevron_right_rounded,
+                size: 18, color: Colors.grey.shade300),
+          ],
+        ),
       ),
     );
   }
