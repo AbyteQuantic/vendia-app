@@ -960,19 +960,44 @@ class _HourHeatmap extends StatelessWidget {
       required this.firstSaleAt,
       required this.peakHour});
 
+  static String _fmtHour(int h) {
+    if (h == 0) return '12 am';
+    if (h < 12) return '$h am';
+    if (h == 12) return '12 pm';
+    return '${h - 12} pm';
+  }
+
+  static String _fmtCOP(double v) {
+    final s = v.round().toString();
+    final buf = StringBuffer('\$');
+    final start = s.length % 3;
+    if (start > 0) buf.write(s.substring(0, start));
+    for (int i = start; i < s.length; i += 3) {
+      if (i > 0) buf.write('.');
+      buf.write(s.substring(i, i + 3));
+    }
+    return buf.toString();
+  }
+
   @override
   Widget build(BuildContext context) {
     if (byHour.isEmpty) {
       return const Text('Sin ventas en este período.',
           style: TextStyle(fontSize: 15, color: AppTheme.textSecondary));
     }
-    final byHourMap = <int, double>{
-      for (final h in byHour)
-        ((h['hour'] as num?)?.toInt() ?? 0):
-            ((h['total'] as num?)?.toDouble() ?? 0)
-    };
-    final maxVal =
-        byHourMap.values.fold<double>(0, (a, b) => b > a ? b : a);
+
+    // Build sorted list of hours with sales only
+    final entries = <({int hour, double total, int count})>[];
+    for (final h in byHour) {
+      final hour = (h['hour'] as num?)?.toInt() ?? 0;
+      final total = (h['total'] as num?)?.toDouble() ?? 0;
+      final count = (h['count'] as num?)?.toInt() ?? 0;
+      if (total > 0) entries.add((hour: hour, total: total, count: count));
+    }
+    entries.sort((a, b) => a.hour.compareTo(b.hour));
+    final maxTotal = entries.fold<double>(0, (a, b) => b.total > a ? b.total : a);
+
+    // First sale time
     String firstStr = '—';
     if (firstSaleAt != null) {
       final dt = DateTime.tryParse(firstSaleAt!)?.toLocal();
@@ -987,10 +1012,13 @@ class _HourHeatmap extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        // Stats row
         Row(children: [
           Expanded(
             child: _MiniStat(
-                label: 'Primera venta', value: firstStr, color: AppTheme.success),
+                label: 'Primera venta',
+                value: firstStr,
+                color: AppTheme.success),
           ),
           const SizedBox(width: 10),
           Expanded(
@@ -998,48 +1026,87 @@ class _HourHeatmap extends StatelessWidget {
                 label: 'Hora pico',
                 value: peakH == null
                     ? '—'
-                    : '${peakH.toString().padLeft(2, '0')}:00 · ${peakShare.toStringAsFixed(0)}%',
+                    : '${_fmtHour(peakH)} · ${peakShare.toStringAsFixed(0)}%',
                 color: AppTheme.primary),
           ),
         ]),
-        const SizedBox(height: 14),
-        SizedBox(
-          height: 90,
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: List.generate(24, (h) {
-              final v = byHourMap[h] ?? 0;
-              final ratio = maxVal > 0 ? v / maxVal : 0.0;
-              return Expanded(
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 1.5),
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.end,
-                    children: [
-                      Container(
-                        height: (60 * ratio).clamp(2, 60).toDouble(),
-                        decoration: BoxDecoration(
-                          color: ratio > 0
-                              ? AppTheme.primary
-                                  .withValues(alpha: 0.4 + 0.6 * ratio)
-                              : AppTheme.borderColor,
-                          borderRadius: BorderRadius.circular(3),
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      if (h % 3 == 0)
-                        Text('$h',
-                            style: const TextStyle(
-                                fontSize: 10, color: AppTheme.textSecondary))
-                      else
-                        const SizedBox(height: 12),
-                    ],
+        const SizedBox(height: 16),
+
+        // Horizontal bar chart — one row per hour with sales
+        if (entries.isEmpty)
+          const Text('Sin datos por hora.',
+              style: TextStyle(fontSize: 14, color: AppTheme.textSecondary))
+        else
+          ...entries.map((e) {
+            final ratio = maxTotal > 0 ? e.total / maxTotal : 0.0;
+            final isPeak = e.hour == peakH;
+            return Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Row(
+                children: [
+                  SizedBox(
+                    width: 48,
+                    child: Text(_fmtHour(e.hour),
+                        style: TextStyle(
+                            fontSize: 13,
+                            fontWeight:
+                                isPeak ? FontWeight.w800 : FontWeight.w500,
+                            color: isPeak
+                                ? AppTheme.primary
+                                : AppTheme.textSecondary)),
                   ),
-                ),
-              );
-            }),
-          ),
-        ),
+                  Expanded(
+                    child: Stack(
+                      children: [
+                        Container(
+                          height: 28,
+                          decoration: BoxDecoration(
+                            color: AppTheme.borderColor.withValues(alpha: 0.3),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                        ),
+                        FractionallySizedBox(
+                          widthFactor: ratio.clamp(0.05, 1.0),
+                          child: Container(
+                            height: 28,
+                            decoration: BoxDecoration(
+                              gradient: LinearGradient(
+                                colors: isPeak
+                                    ? [const Color(0xFF3B82F6), const Color(0xFF6366F1)]
+                                    : [const Color(0xFF93C5FD), const Color(0xFF3B82F6)],
+                              ),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            alignment: Alignment.centerLeft,
+                            padding: const EdgeInsets.only(left: 8),
+                            child: Text(
+                              '${e.count} venta${e.count > 1 ? "s" : ""}',
+                              style: const TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w700,
+                                  color: Colors.white),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  SizedBox(
+                    width: 70,
+                    child: Text(_fmtCOP(e.total),
+                        textAlign: TextAlign.right,
+                        style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w700,
+                            color: isPeak
+                                ? AppTheme.primary
+                                : AppTheme.textPrimary)),
+                  ),
+                ],
+              ),
+            );
+          }),
       ],
     );
   }
