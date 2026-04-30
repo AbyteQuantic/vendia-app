@@ -995,8 +995,6 @@ class _HourHeatmap extends StatelessWidget {
       if (total > 0) entries.add((hour: hour, total: total, count: count));
     }
     entries.sort((a, b) => a.hour.compareTo(b.hour));
-    final maxTotal = entries.fold<double>(0, (a, b) => b.total > a ? b.total : a);
-
     // First sale time
     String firstStr = '—';
     if (firstSaleAt != null) {
@@ -1032,76 +1030,53 @@ class _HourHeatmap extends StatelessWidget {
         ]),
         const SizedBox(height: 16),
 
-        // Horizontal bar chart — one row per hour with sales
+        // Simple table: hour | count | amount
         if (entries.isEmpty)
           const Text('Sin datos por hora.',
               style: TextStyle(fontSize: 14, color: AppTheme.textSecondary))
         else
           ...entries.map((e) {
-            final ratio = maxTotal > 0 ? e.total / maxTotal : 0.0;
             final isPeak = e.hour == peakH;
             return Padding(
-              padding: const EdgeInsets.only(bottom: 8),
+              padding: const EdgeInsets.only(bottom: 6),
               child: Row(
                 children: [
                   SizedBox(
-                    width: 48,
-                    child: Text(_fmtHour(e.hour),
-                        style: TextStyle(
-                            fontSize: 13,
-                            fontWeight:
-                                isPeak ? FontWeight.w800 : FontWeight.w500,
-                            color: isPeak
-                                ? AppTheme.primary
-                                : AppTheme.textSecondary)),
-                  ),
-                  Expanded(
-                    child: Stack(
-                      children: [
-                        Container(
-                          height: 28,
-                          decoration: BoxDecoration(
-                            color: AppTheme.borderColor.withValues(alpha: 0.3),
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                        ),
-                        FractionallySizedBox(
-                          widthFactor: ratio.clamp(0.05, 1.0),
-                          child: Container(
-                            height: 28,
-                            decoration: BoxDecoration(
-                              gradient: LinearGradient(
-                                colors: isPeak
-                                    ? [const Color(0xFF3B82F6), const Color(0xFF6366F1)]
-                                    : [const Color(0xFF93C5FD), const Color(0xFF3B82F6)],
-                              ),
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            alignment: Alignment.centerLeft,
-                            padding: const EdgeInsets.only(left: 8),
-                            child: Text(
-                              '${e.count} venta${e.count > 1 ? "s" : ""}',
-                              style: const TextStyle(
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.w700,
-                                  color: Colors.white),
-                            ),
-                          ),
-                        ),
-                      ],
+                    width: 50,
+                    child: Text(
+                      _fmtHour(e.hour),
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: isPeak ? FontWeight.w800 : FontWeight.w500,
+                        color: isPeak ? AppTheme.primary : AppTheme.textSecondary,
+                      ),
                     ),
                   ),
-                  const SizedBox(width: 8),
-                  SizedBox(
-                    width: 70,
-                    child: Text(_fmtCOP(e.total),
-                        textAlign: TextAlign.right,
-                        style: TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w700,
-                            color: isPeak
-                                ? AppTheme.primary
-                                : AppTheme.textPrimary)),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                    decoration: BoxDecoration(
+                      color: isPeak
+                          ? AppTheme.primary.withValues(alpha: 0.12)
+                          : AppTheme.surfaceGrey,
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Text(
+                      '${e.count} venta${e.count > 1 ? "s" : ""}',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                        color: isPeak ? AppTheme.primary : AppTheme.textSecondary,
+                      ),
+                    ),
+                  ),
+                  const Spacer(),
+                  Text(
+                    _fmtCOP(e.total),
+                    style: TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w700,
+                      color: isPeak ? AppTheme.primary : AppTheme.textPrimary,
+                    ),
                   ),
                 ],
               ),
@@ -1152,15 +1127,9 @@ class _WeekdayBars extends StatelessWidget {
   const _WeekdayBars(
       {required this.byWeekday, required this.best, required this.worst});
 
-  static const _names = [
-    'D',
-    'L',
-    'M',
-    'X',
-    'J',
-    'V',
-    'S'
-  ]; // Sun..Sat short labels
+  static const _fullNames = [
+    'Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb',
+  ];
 
   @override
   Widget build(BuildContext context) {
@@ -1174,6 +1143,8 @@ class _WeekdayBars extends StatelessWidget {
             ((w['total'] as num?)?.toDouble() ?? 0)
     };
     final max = byMap.values.fold<double>(0, (a, b) => b > a ? b : a);
+    final bestDay = (best?['weekday'] as num?)?.toInt();
+    final worstDay = (worst?['weekday'] as num?)?.toInt();
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -1191,47 +1162,66 @@ class _WeekdayBars extends StatelessWidget {
               total: (worst?['total'] as num?)?.toDouble() ?? 0,
               color: AppTheme.error),
         const SizedBox(height: 14),
-        SizedBox(
-          height: 110,
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: List.generate(7, (dow) {
-              final v = byMap[dow] ?? 0;
-              final ratio = max > 0 ? v / max : 0.0;
-              return Expanded(
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 4),
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.end,
-                    children: [
-                      if (v > 0)
-                        Text(_formatMoney(v),
-                            style: const TextStyle(
-                                fontSize: 11,
-                                color: AppTheme.textSecondary,
-                                fontWeight: FontWeight.w600)),
-                      const SizedBox(height: 4),
-                      Container(
-                        height: (70 * ratio).clamp(4, 70).toDouble(),
-                        decoration: BoxDecoration(
-                          color: AppTheme.primary
-                              .withValues(alpha: 0.35 + 0.65 * ratio),
-                          borderRadius: BorderRadius.circular(6),
-                        ),
-                      ),
-                      const SizedBox(height: 6),
-                      Text(_names[dow],
-                          style: const TextStyle(
-                              fontSize: 13,
-                              fontWeight: FontWeight.bold,
-                              color: AppTheme.textPrimary)),
-                    ],
+        // Horizontal bars — one per day, no overflow
+        ...List.generate(7, (dow) {
+          final v = byMap[dow] ?? 0;
+          final ratio = max > 0 ? v / max : 0.0;
+          final isBest = dow == bestDay;
+          final isWorst = dow == worstDay && !isBest;
+          final barColor = isBest
+              ? AppTheme.success
+              : isWorst
+                  ? AppTheme.error
+                  : AppTheme.primary;
+          return Padding(
+            padding: const EdgeInsets.only(bottom: 6),
+            child: Row(
+              children: [
+                SizedBox(
+                  width: 36,
+                  child: Text(
+                    _fullNames[dow],
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: (isBest || isWorst)
+                          ? FontWeight.w800
+                          : FontWeight.w500,
+                      color: (isBest || isWorst)
+                          ? barColor
+                          : AppTheme.textSecondary,
+                    ),
                   ),
                 ),
-              );
-            }),
-          ),
-        ),
+                Expanded(
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(6),
+                    child: LinearProgressIndicator(
+                      value: ratio.clamp(0, 1).toDouble(),
+                      minHeight: 14,
+                      backgroundColor: AppTheme.surfaceGrey,
+                      valueColor: AlwaysStoppedAnimation(
+                        barColor.withValues(alpha: v > 0 ? 0.7 : 0.2),
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                SizedBox(
+                  width: 72,
+                  child: Text(
+                    v > 0 ? _formatMoney(v) : '—',
+                    textAlign: TextAlign.right,
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                      color: v > 0 ? AppTheme.textPrimary : AppTheme.textSecondary,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          );
+        }),
       ],
     );
   }
