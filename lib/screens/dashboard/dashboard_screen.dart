@@ -201,8 +201,18 @@ class _DashboardScreenState extends State<DashboardScreen> {
     final sales = await _db.getSalesToday();
     sales.sort((a, b) => b.createdAt.compareTo(a.createdAt));
 
-    final allProducts = await _db.getAllProducts();
-    final prodCount = allProducts.length;
+    // Product count from API (branch-scoped) instead of local Isar
+    // which doesn't store branch_id and would show cross-branch totals.
+    int prodCount = 0;
+    try {
+      final api = ApiService(AuthService());
+      final analytics = await api.fetchAnalyticsDashboard();
+      prodCount = (analytics['product_count'] as num?)?.toInt() ?? 0;
+    } catch (_) {
+      // Fallback to local count if offline
+      final allProducts = await _db.getAllProducts();
+      prodCount = allProducts.length;
+    }
 
     final totalToday = sales.fold<double>(0, (sum, s) => sum + s.total);
     final top = _topProduct(sales);
