@@ -60,6 +60,7 @@ class _PosScreenBodyState extends State<_PosScreenBody> {
   // simple; the mesa button already renders the same label so the
   // match is exact.
   Map<String, double> _openTabTotalsByLabel = const {};
+  List<Map<String, dynamic>> _openTabRows = const [];
   int _pendingFiados = 0;
   List<Map<String, dynamic>> _notifications = [];
   int _unreadNotifications = 0;
@@ -138,7 +139,12 @@ class _PosScreenBodyState extends State<_PosScreenBody> {
           map[label] = total;
         }
       }
-      if (mounted) setState(() => _openTabTotalsByLabel = map);
+      if (mounted) {
+        setState(() {
+          _openTabTotalsByLabel = map;
+          _openTabRows = rows;
+        });
+      }
     } catch (_) {
       // Silent: the selector falls back to plain buttons.
     }
@@ -1343,6 +1349,41 @@ class _PosScreenBodyState extends State<_PosScreenBody> {
                   contexts: List.generate(10, ctrl.contextAt),
                 ),
 
+                // ── Open Tables Banner ──
+                if (_openTabTotalsByLabel.isNotEmpty)
+                  _OpenTablesBanner(
+                    openTabRows: _openTabRows,
+                    openTabTotals: _openTabTotalsByLabel,
+                    formatMoney: _formatMoney,
+                    onOpenMesa: (label, sessionToken) {
+                      HapticFeedback.mediumImpact();
+                      ctrl.setContext(AccountContext(
+                        type: AccountType.mesa,
+                        tableLabel: label,
+                      ));
+                    },
+                    onPayMesa: (label, sessionToken, orderId) {
+                      HapticFeedback.mediumImpact();
+                      if (sessionToken != null && sessionToken.isNotEmpty) {
+                        Navigator.of(context).push(MaterialPageRoute(
+                          builder: (_) => TabReviewScreen(
+                            sessionToken: sessionToken,
+                            tableLabel: label,
+                            orderId: orderId,
+                          ),
+                        ));
+                      }
+                    },
+                    onQrMesa: (label, sessionToken) {
+                      HapticFeedback.lightImpact();
+                      showTableQrSheet(
+                        context,
+                        tableLabel: label,
+                        knownSessionToken: sessionToken,
+                      );
+                    },
+                  ),
+
                 // ── Search ──
                 Padding(
                   padding: const EdgeInsets.fromLTRB(16, 6, 16, 6),
@@ -2415,6 +2456,169 @@ class _CartTabs extends StatelessWidget {
             ),
           );
         },
+      ),
+    );
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// OPEN TABLES BANNER — shows all server-side open accounts
+// ═══════════════════════════════════════════════════════════════════════════════
+
+class _OpenTablesBanner extends StatelessWidget {
+  final List<Map<String, dynamic>> openTabRows;
+  final Map<String, double> openTabTotals;
+  final String Function(double) formatMoney;
+  final void Function(String label, String? sessionToken) onOpenMesa;
+  final void Function(String label, String? sessionToken, String? orderId) onPayMesa;
+  final void Function(String label, String? sessionToken) onQrMesa;
+
+  const _OpenTablesBanner({
+    required this.openTabRows,
+    required this.openTabTotals,
+    required this.formatMoney,
+    required this.onOpenMesa,
+    required this.onPayMesa,
+    required this.onQrMesa,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    // Build unique rows sorted by label
+    final entries = <String, Map<String, dynamic>>{};
+    for (final row in openTabRows) {
+      final label = (row['label'] as String?)?.trim() ?? '';
+      if (label.isEmpty) continue;
+      entries[label] = row;
+    }
+    if (entries.isEmpty) return const SizedBox.shrink();
+
+    final sorted = entries.entries.toList()
+      ..sort((a, b) => a.key.compareTo(b.key));
+
+    return Container(
+      margin: const EdgeInsets.fromLTRB(12, 4, 12, 2),
+      padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFFF8E1),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: const Color(0xFFF59E0B).withValues(alpha: 0.4)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.table_restaurant_rounded,
+                  size: 16, color: Color(0xFFF59E0B)),
+              const SizedBox(width: 6),
+              Text(
+                '${sorted.length} mesa${sorted.length > 1 ? "s" : ""} con cuenta abierta',
+                style: const TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                  color: Color(0xFFB45309),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          SizedBox(
+            height: 44,
+            child: ListView.separated(
+              scrollDirection: Axis.horizontal,
+              itemCount: sorted.length,
+              separatorBuilder: (_, __) => const SizedBox(width: 8),
+              itemBuilder: (_, i) {
+                final label = sorted[i].key;
+                final row = sorted[i].value;
+                final total = openTabTotals[label] ?? 0;
+                final token = row['session_token'] as String?;
+                final orderId = row['order_id'] as String? ?? row['id'] as String?;
+
+                return Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(
+                        color: const Color(0xFFF59E0B).withValues(alpha: 0.5)),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      // Label + total — tap to open mesa
+                      GestureDetector(
+                        onTap: () => onOpenMesa(label, token),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              label,
+                              style: const TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w800,
+                                color: AppTheme.textPrimary,
+                              ),
+                            ),
+                            const SizedBox(width: 4),
+                            Text(
+                              formatMoney(total),
+                              style: const TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w700,
+                                color: Color(0xFFB45309),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(width: 6),
+                      // Pay button
+                      _openTabAction(
+                        icon: Icons.payments_rounded,
+                        color: AppTheme.success,
+                        tooltip: 'Cobrar',
+                        onTap: () => onPayMesa(label, token, orderId),
+                      ),
+                      const SizedBox(width: 4),
+                      // QR button
+                      _openTabAction(
+                        icon: Icons.qr_code_2_rounded,
+                        color: const Color(0xFF7C3AED),
+                        tooltip: 'QR',
+                        onTap: () => onQrMesa(label, token),
+                      ),
+                    ],
+                  ),
+                );
+              },
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _openTabAction({
+    required IconData icon,
+    required Color color,
+    required String tooltip,
+    required VoidCallback onTap,
+  }) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Tooltip(
+        message: tooltip,
+        child: Container(
+          width: 28,
+          height: 28,
+          decoration: BoxDecoration(
+            color: color.withValues(alpha: 0.12),
+            borderRadius: BorderRadius.circular(7),
+          ),
+          child: Icon(icon, size: 16, color: color),
+        ),
       ),
     );
   }
