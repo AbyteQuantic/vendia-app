@@ -1,8 +1,13 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:uuid/uuid.dart';
 import '../../database/database_service.dart';
 import '../../database/collections/local_product.dart';
+import '../../services/api_service.dart';
+import '../../services/auth_service.dart';
 import '../../services/margin_service.dart';
 import '../../theme/app_theme.dart';
 
@@ -96,6 +101,7 @@ class _IaResultScreenState extends State<IaResultScreen> {
           ..name = p.name
           ..price = p.sellPrice
           ..stock = p.quantity
+          ..imageUrl = p.photoUrl
           ..isAvailable = true
           ..requiresContainer = false
           ..containerPrice = 0
@@ -138,6 +144,78 @@ class _IaResultScreenState extends State<IaResultScreen> {
   void _deleteProduct(int index) {
     HapticFeedback.lightImpact();
     setState(() => _products.removeAt(index));
+  }
+
+  Future<void> _takePhotoFor(int index) async {
+    final picker = ImagePicker();
+    final picked = await picker.pickImage(
+      source: ImageSource.camera,
+      imageQuality: 85,
+      maxWidth: 1024,
+      maxHeight: 1024,
+    );
+    if (picked == null || !mounted) return;
+    setState(() {
+      _products[index].photoPath = picked.path;
+      _products[index].photoUrl = null;
+    });
+  }
+
+  Future<void> _pickFromGalleryFor(int index) async {
+    final picker = ImagePicker();
+    final picked = await picker.pickImage(
+      source: ImageSource.gallery,
+      imageQuality: 85,
+      maxWidth: 1024,
+      maxHeight: 1024,
+    );
+    if (picked == null || !mounted) return;
+    setState(() {
+      _products[index].photoPath = picked.path;
+      _products[index].photoUrl = null;
+    });
+  }
+
+  Future<void> _enhanceOrGenerateFor(int index) async {
+    final p = _products[index];
+    setState(() => p.enhancing = true);
+    try {
+      final api = ApiService(AuthService());
+      // Create the product first so we have a UUID for the enhance endpoint
+      final uuid = const Uuid().v4();
+      final createPayload = <String, dynamic>{
+        'id': uuid,
+        'name': p.name,
+        'price': p.sellPrice,
+        'stock': p.quantity,
+      };
+      await api.createProduct(createPayload);
+
+      Map<String, dynamic> result;
+      if (p.photoPath != null) {
+        // Upload + enhance existing photo
+        await api.uploadProductPhoto(uuid, File(p.photoPath!));
+        result = await api.enhanceProductPhoto(uuid);
+      } else {
+        // Generate from scratch using product name
+        result = await api.generateProductImage(uuid);
+      }
+      if (!mounted) return;
+      final url = result['photo_url'] as String? ?? result['image_url'] as String?;
+      setState(() {
+        p.photoUrl = url;
+        p.photoPath = null;
+        p.enhancing = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => p.enhancing = false);
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text('Error IA: $e', style: const TextStyle(fontSize: 14)),
+        backgroundColor: AppTheme.error,
+        behavior: SnackBarBehavior.floating,
+      ));
+    }
   }
 
   static const _monthAbbr = [
@@ -449,6 +527,9 @@ class _IaResultScreenState extends State<IaResultScreen> {
                       formatCOP: _formatCOP,
                       onEdit: () => _editProduct(i),
                       onDelete: () => _deleteProduct(i),
+                      onTakePhoto: () => _takePhotoFor(i),
+                      onPickGallery: () => _pickFromGalleryFor(i),
+                      onEnhance: () => _enhanceOrGenerateFor(i),
                     ),
                   ),
           ),
@@ -517,6 +598,9 @@ class _ProductCard extends StatelessWidget {
   final String Function(double) formatCOP;
   final VoidCallback onEdit;
   final VoidCallback onDelete;
+  final VoidCallback onTakePhoto;
+  final VoidCallback onPickGallery;
+  final VoidCallback onEnhance;
 
   const _ProductCard({
     required this.product,
@@ -524,6 +608,9 @@ class _ProductCard extends StatelessWidget {
     required this.formatCOP,
     required this.onEdit,
     required this.onDelete,
+    required this.onTakePhoto,
+    required this.onPickGallery,
+    required this.onEnhance,
   });
 
   @override
@@ -553,28 +640,77 @@ class _ProductCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Name + confidence badge
+          // Photo + Name row
           Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Expanded(
-                child: Text(product.name,
-                    style: const TextStyle(
-                        fontSize: 18, fontWeight: FontWeight.bold,
-                        color: AppTheme.textPrimary)),
-              ),
-              if (isLowConfidence)
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 8, vertical: 3),
-                  decoration: BoxDecoration(
-                    color: AppTheme.warning.withValues(alpha: 0.1),
-                    borderRadius: BorderRadius.circular(8),
+              // Photo thumbnail
+              GestureDetector(
+                onTap: onTakePhoto,
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(14),
+                  child: Container(
+                    width: 72, height: 72,
+                    color: AppTheme.surfaceGrey,
+                    child: _buildThumb(),
                   ),
-                  child: const Text('Revisar',
-                      style: TextStyle(fontSize: 12,
-                          color: AppTheme.warning,
-                          fontWeight: FontWeight.bold)),
                 ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(product.name,
+                              style: const TextStyle(
+                                  fontSize: 17, fontWeight: FontWeight.bold,
+                                  color: AppTheme.textPrimary),
+                              maxLines: 2, overflow: TextOverflow.ellipsis),
+                        ),
+                        if (isLowConfidence)
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 8, vertical: 3),
+                            decoration: BoxDecoration(
+                              color: AppTheme.warning.withValues(alpha: 0.1),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: const Text('Revisar',
+                                style: TextStyle(fontSize: 11,
+                                    color: AppTheme.warning,
+                                    fontWeight: FontWeight.bold)),
+                          ),
+                      ],
+                    ),
+                    const SizedBox(height: 6),
+                    // Photo action buttons
+                    Row(
+                      children: [
+                        _miniBtn(Icons.camera_alt_rounded, 'Foto',
+                            AppTheme.primary, onTakePhoto),
+                        const SizedBox(width: 6),
+                        _miniBtn(Icons.photo_library_rounded, 'Galería',
+                            const Color(0xFF6D28D9), onPickGallery),
+                        const SizedBox(width: 6),
+                        _miniBtn(
+                            product.enhancing
+                                ? Icons.hourglass_top_rounded
+                                : (product.hasPhoto
+                                    ? Icons.auto_fix_high_rounded
+                                    : Icons.auto_awesome_rounded),
+                            product.enhancing
+                                ? '...'
+                                : (product.hasPhoto ? 'Mejorar' : 'IA'),
+                            const Color(0xFF7C3AED),
+                            product.enhancing ? null : onEnhance),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
             ],
           ),
           if (product.presentation.isNotEmpty)
@@ -696,6 +832,47 @@ class _ProductCard extends StatelessWidget {
       ),
     );
   }
+
+  Widget _buildThumb() {
+    if (product.enhancing) {
+      return const Center(
+          child: SizedBox(width: 24, height: 24,
+              child: CircularProgressIndicator(strokeWidth: 2.5)));
+    }
+    if (product.photoPath != null && product.photoPath!.isNotEmpty) {
+      return Image.file(File(product.photoPath!), fit: BoxFit.cover);
+    }
+    if (product.photoUrl != null && product.photoUrl!.isNotEmpty) {
+      return Image.network(product.photoUrl!, fit: BoxFit.cover,
+          errorBuilder: (_, __, ___) => const Icon(
+              Icons.broken_image_outlined, size: 28, color: AppTheme.textSecondary));
+    }
+    return const Center(
+        child: Icon(Icons.add_a_photo_rounded, size: 28,
+            color: AppTheme.textSecondary));
+  }
+
+  Widget _miniBtn(IconData icon, String label, Color color, VoidCallback? onTap) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+        decoration: BoxDecoration(
+          color: color.withValues(alpha: 0.08),
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 14, color: color),
+            const SizedBox(width: 3),
+            Text(label, style: TextStyle(fontSize: 11,
+                fontWeight: FontWeight.w700, color: color)),
+          ],
+        ),
+      ),
+    );
+  }
 }
 
 class _PriceChip extends StatelessWidget {
@@ -797,6 +974,9 @@ class _EditableProduct {
   double sellPrice;
   double confidence;
   DateTime? expiryDate;
+  String? photoPath;
+  String? photoUrl;
+  bool enhancing;
 
   _EditableProduct({
     required this.name,
@@ -806,5 +986,12 @@ class _EditableProduct {
     required this.sellPrice,
     required this.confidence,
     this.expiryDate,
+    this.photoPath,
+    this.photoUrl,
+    this.enhancing = false,
   });
+
+  bool get hasPhoto =>
+      (photoPath != null && photoPath!.isNotEmpty) ||
+      (photoUrl != null && photoUrl!.isNotEmpty);
 }
