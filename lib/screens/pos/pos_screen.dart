@@ -525,6 +525,191 @@ class _PosScreenBodyState extends State<_PosScreenBody> {
     return labels;
   }
 
+  Widget _buildActiveMesaBar(CartController ctrl) {
+    final ctx = ctrl.activeContext;
+    final label = ctx.tableLabel ?? 'Mesa';
+    final serverTotal = _openTabTotalsByLabel[label] ?? 0;
+    final token = ctx.sessionToken;
+    final orderId = ctx.orderId;
+
+    // Find status from open tab rows
+    String status = 'nuevo';
+    for (final row in _openTabRows) {
+      if ((row['label'] as String?)?.trim() == label) {
+        status = (row['status'] as String?) ?? 'nuevo';
+        break;
+      }
+    }
+
+    final statusLabel = switch (status) {
+      'nuevo' => 'Pendiente',
+      'preparando' => 'En cocina',
+      'listo' => 'Listo para cobrar',
+      _ => 'Abierta',
+    };
+    final statusColor = switch (status) {
+      'listo' => AppTheme.success,
+      'preparando' => const Color(0xFF3B82F6),
+      _ => const Color(0xFFF59E0B),
+    };
+
+    return Container(
+      margin: const EdgeInsets.fromLTRB(12, 4, 12, 2),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: statusColor.withValues(alpha: 0.06),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: statusColor.withValues(alpha: 0.3)),
+      ),
+      child: Row(
+        children: [
+          // Mesa label + status
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Icon(Icons.table_restaurant_rounded,
+                        size: 16, color: statusColor),
+                    const SizedBox(width: 4),
+                    Text(label,
+                        style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w800,
+                            color: statusColor)),
+                    const SizedBox(width: 8),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 6, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: statusColor.withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: Text(statusLabel,
+                          style: TextStyle(
+                              fontSize: 10,
+                              fontWeight: FontWeight.w700,
+                              color: statusColor)),
+                    ),
+                  ],
+                ),
+                if (serverTotal > 0)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 2),
+                    child: Text(
+                      'Deuda: ${_formatMoney(serverTotal)}',
+                      style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w700,
+                          color: statusColor),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+          // Ver cuenta (receipt icon)
+          _mesaActionButton(
+            icon: Icons.receipt_long_rounded,
+            label: 'Cuenta',
+            color: const Color(0xFF3B82F6),
+            onTap: () {
+              HapticFeedback.lightImpact();
+              final resolvedToken = token ??
+                  (() {
+                    for (final row in _openTabRows) {
+                      if ((row['label'] as String?)?.trim() == label) {
+                        return row['session_token'] as String?;
+                      }
+                    }
+                    return null;
+                  })();
+              final resolvedOrderId = orderId ??
+                  (() {
+                    for (final row in _openTabRows) {
+                      if ((row['label'] as String?)?.trim() == label) {
+                        return (row['order_id'] as String?) ??
+                            (row['id'] as String?);
+                      }
+                    }
+                    return null;
+                  })();
+              if (resolvedToken != null && resolvedToken.isNotEmpty) {
+                Navigator.of(context).push(MaterialPageRoute(
+                  builder: (_) => TabReviewScreen(
+                    sessionToken: resolvedToken,
+                    tableLabel: label,
+                    orderId: resolvedOrderId,
+                  ),
+                ));
+              } else {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Envia productos primero para ver la cuenta'),
+                    behavior: SnackBarBehavior.floating,
+                  ),
+                );
+              }
+            },
+          ),
+          const SizedBox(width: 6),
+          // Cobrar
+          _mesaActionButton(
+            icon: Icons.payments_rounded,
+            label: 'Cobrar',
+            color: AppTheme.success,
+            onTap: () {
+              HapticFeedback.lightImpact();
+              _showContextSheet(ctrl);
+            },
+          ),
+          const SizedBox(width: 6),
+          // QR
+          _mesaActionButton(
+            icon: Icons.qr_code_2_rounded,
+            label: 'QR',
+            color: const Color(0xFF7C3AED),
+            onTap: () {
+              HapticFeedback.lightImpact();
+              showTableQrSheet(
+                context,
+                tableLabel: label,
+                knownSessionToken: token,
+              );
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _mesaActionButton({
+    required IconData icon,
+    required String label,
+    required Color color,
+    required VoidCallback onTap,
+  }) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+        decoration: BoxDecoration(
+          color: color.withValues(alpha: 0.1),
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: color.withValues(alpha: 0.3)),
+        ),
+        child: Column(
+          children: [
+            Icon(icon, size: 18, color: color),
+            Text(label,
+                style: TextStyle(
+                    fontSize: 9, fontWeight: FontWeight.w700, color: color)),
+          ],
+        ),
+      ),
+    );
+  }
+
   void _showMesaSelector(CartController ctrl, AccountType mesaType) {
     final isImmediate = mesaType == AccountType.mesaInmediata;
     final accentColor = isImmediate ? const Color(0xFFEA580C) : AppTheme.primary;
@@ -1432,6 +1617,11 @@ class _PosScreenBodyState extends State<_PosScreenBody> {
                       );
                     },
                   ),
+
+                // ── Active Mesa Info Bar ──
+                if (ctrl.activeContext.type == AccountType.mesa ||
+                    ctrl.activeContext.type == AccountType.mesaInmediata)
+                  _buildActiveMesaBar(ctrl),
 
                 // ── Search ──
                 Padding(
@@ -2693,9 +2883,9 @@ class _OpenTablesBanner extends StatelessWidget {
                                   color: cfg.color)),
                           const SizedBox(width: 8),
                           _openTabAction(
-                            icon: Icons.payments_rounded,
-                            color: AppTheme.success,
-                            tooltip: 'Cobrar',
+                            icon: Icons.receipt_long_rounded,
+                            color: const Color(0xFF3B82F6),
+                            tooltip: 'Ver cuenta',
                             onTap: () => onPayMesa(label, token, orderId),
                           ),
                           const SizedBox(width: 4),
