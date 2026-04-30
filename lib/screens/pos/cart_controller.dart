@@ -246,28 +246,48 @@ class CartController extends ChangeNotifier {
   AccountContext get activeContext => _contexts[_activeIndex];
   AccountContext contextAt(int index) => _contexts[index];
 
+  /// Returns the tab index that already holds [label], or -1.
+  int _tabIndexForMesa(String label) {
+    for (int i = 0; i < _cartCount; i++) {
+      final c = _contexts[i];
+      if ((c.type == AccountType.mesa || c.type == AccountType.mesaInmediata) &&
+          c.tableLabel == label) {
+        return i;
+      }
+    }
+    return -1;
+  }
+
   void setContext(AccountContext ctx) {
+    // ── Duplicate-mesa guard ──
+    // If the label is already on another tab, auto-switch there
+    // instead of creating a duplicate.
+    final isMesa = ctx.type == AccountType.mesa ||
+        ctx.type == AccountType.mesaInmediata;
+    final label = (ctx.tableLabel ?? '').trim();
+    if (isMesa && label.isNotEmpty) {
+      final existing = _tabIndexForMesa(label);
+      if (existing != -1 && existing != _activeIndex) {
+        // Switch to the tab that already owns this mesa
+        _activeIndex = existing;
+        notifyListeners();
+        return;
+      }
+    }
+
     final previous = _contexts[_activeIndex];
     _contexts[_activeIndex] = ctx;
     notifyListeners();
     _persistContexts();
 
-    final switchedToNewMesa = (ctx.type == AccountType.mesa ||
-            ctx.type == AccountType.mesaInmediata) &&
-        (ctx.tableLabel ?? '').trim().isNotEmpty &&
+    final switchedToNewMesa = isMesa &&
+        label.isNotEmpty &&
         (previous.type != ctx.type ||
-            (previous.tableLabel ?? '') != (ctx.tableLabel ?? ''));
+            (previous.tableLabel ?? '') != label);
 
     if (switchedToNewMesa) {
-      // Pulling the server-side tab takes priority over pushing.
-      // If the cashier ALREADY had items in this tab (rare: they
-      // pre-loaded the cart then stamped it "Mesa 3"), hydrate
-      // will merge; see _hydrateActiveTab for the merge policy.
       unawaited(_hydrateActiveTab());
     } else {
-      // Same mesa or a mostrador/fiado context → the classic path
-      // still applies: push local cart to the backend so the QR
-      // stays live.
       _scheduleTableTabSync(_activeIndex);
     }
   }
