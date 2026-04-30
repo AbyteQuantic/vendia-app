@@ -648,10 +648,10 @@ class ApiService {
     int perPage = 20,
   }) async {
     try {
-      final params = <String, dynamic>{
+      final params = _branchParams({
         'page': page,
         'per_page': perPage,
-      };
+      });
       if (date != null) params['date'] = date;
       if (startDate != null) params['start_date'] = startDate;
       if (endDate != null) params['end_date'] = endDate;
@@ -1256,9 +1256,21 @@ class ApiService {
   // 14. ANALYTICS
   // ═══════════════════════════════════════════════════════════════════════════
 
+  /// Branch-scoped query params — injected into all analytics calls
+  /// so the backend's ResolveBranchScope picks up the active sede.
+  Map<String, dynamic> _branchParams([Map<String, dynamic>? extra]) {
+    final params = <String, dynamic>{};
+    if (currentBranchId != null && currentBranchId!.isNotEmpty) {
+      params['branch_id'] = currentBranchId!;
+    }
+    if (extra != null) params.addAll(extra);
+    return params;
+  }
+
   Future<Map<String, dynamic>> fetchAnalyticsDashboard() async {
     try {
-      final response = await _dio.get('/api/v1/analytics/dashboard');
+      final response = await _dio.get('/api/v1/analytics/dashboard',
+          queryParameters: _branchParams());
       return _extractData(response);
     } on DioException catch (e) {
       throw AppError.fromDioException(e);
@@ -1269,7 +1281,7 @@ class ApiService {
       {String period = '7d'}) async {
     try {
       final response = await _dio.get('/api/v1/analytics/top-products',
-          queryParameters: {'period': period});
+          queryParameters: _branchParams({'period': period}));
       return _extractList(response);
     } on DioException catch (e) {
       throw AppError.fromDioException(e);
@@ -1278,7 +1290,8 @@ class ApiService {
 
   Future<Map<String, dynamic>> fetchPhotoCoverage() async {
     try {
-      final response = await _dio.get('/api/v1/analytics/photo-coverage');
+      final response = await _dio.get('/api/v1/analytics/photo-coverage',
+          queryParameters: _branchParams());
       return _extractData(response);
     } on DioException catch (e) {
       throw AppError.fromDioException(e);
@@ -1287,8 +1300,8 @@ class ApiService {
 
   Future<List<Map<String, dynamic>>> fetchSalesByEmployee() async {
     try {
-      final response =
-          await _dio.get('/api/v1/analytics/sales-by-employee');
+      final response = await _dio.get('/api/v1/analytics/sales-by-employee',
+          queryParameters: _branchParams());
       return _extractList(response);
     } on DioException catch (e) {
       throw AppError.fromDioException(e);
@@ -1297,8 +1310,8 @@ class ApiService {
 
   Future<Map<String, dynamic>> fetchInventoryHealth() async {
     try {
-      final response =
-          await _dio.get('/api/v1/analytics/inventory-health');
+      final response = await _dio.get('/api/v1/analytics/inventory-health',
+          queryParameters: _branchParams());
       return _extractData(response);
     } on DioException catch (e) {
       throw AppError.fromDioException(e);
@@ -1307,8 +1320,8 @@ class ApiService {
 
   Future<List<Map<String, dynamic>>> fetchIngestionMethod() async {
     try {
-      final response =
-          await _dio.get('/api/v1/analytics/ingestion-method');
+      final response = await _dio.get('/api/v1/analytics/ingestion-method',
+          queryParameters: _branchParams());
       return _extractList(response);
     } on DioException catch (e) {
       throw AppError.fromDioException(e);
@@ -1782,7 +1795,7 @@ class ApiService {
     try {
       final response = await _dio.get(
         '/api/v1/analytics/financial-summary',
-        queryParameters: {'period': period},
+        queryParameters: _branchParams({'period': period}),
       );
       return _extractData(response);
     } on DioException catch (e) {
@@ -1791,10 +1804,7 @@ class ApiService {
   }
 
   /// Full dashboard payload — same endpoint, but with the optional
-  /// employee/source/payment-method filters wired through. The
-  /// backend extends the response with by_channel, by_hour,
-  /// by_weekday, peak_hour, top_employees, etc. (see
-  /// handlers/analytics_tenant.go FinancialSummary).
+  /// employee/source/payment-method filters wired through.
   Future<Map<String, dynamic>> fetchFinancialSummaryFull({
     String period = 'today',
     String? employee,
@@ -1804,7 +1814,7 @@ class ApiService {
     DateTime? until,
   }) async {
     try {
-      final params = <String, dynamic>{'period': period};
+      final params = _branchParams({'period': period});
       if (employee != null && employee.isNotEmpty) {
         params['employee'] = employee;
       }
@@ -1832,7 +1842,7 @@ class ApiService {
     try {
       final response = await _dio.get(
         '/api/v1/analytics/products-insights',
-        queryParameters: {'period': period},
+        queryParameters: _branchParams({'period': period}),
       );
       return _extractData(response);
     } on DioException catch (e) {
@@ -1848,7 +1858,11 @@ class ApiService {
     try {
       final response = await _dio.get(
         '/api/v1/analytics/sales-history',
-        queryParameters: {'period': period, 'page': page, 'per_page': perPage},
+        queryParameters: _branchParams({
+          'period': period,
+          'page': page,
+          'per_page': perPage,
+        }),
       );
       final body = response.data as Map<String, dynamic>;
       return (body['data'] as List?) ?? [];
