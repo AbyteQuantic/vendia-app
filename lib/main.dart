@@ -81,12 +81,18 @@ class _VendIAAppState extends State<VendIAApp> {
   /// Load branches into BranchProvider so the dashboard shows the branch name.
   Future<void> _loadBranches() async {
     try {
-      final hasSession = await AuthService().hasSession();
+      final auth = AuthService();
+      final hasSession = await auth.hasSession();
       if (!hasSession) return;
-      final api = ApiService(AuthService());
+      final api = ApiService(auth);
       final raw = await api.fetchBranches();
       final branches = raw.map((json) => Branch.fromJson(json)).toList();
       _branchProvider.setBranches(branches);
+      // Select the branch from the saved session (employee's assigned branch)
+      final savedBranchId = await auth.getBranchId();
+      if (savedBranchId != null && savedBranchId.isNotEmpty) {
+        _branchProvider.selectBranchById(savedBranchId);
+      }
     } catch (e) {
       debugPrint('[BRANCHES] load failed: $e');
     }

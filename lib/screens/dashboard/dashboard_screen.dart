@@ -872,17 +872,35 @@ class _HeroHeaderDelegate extends SliverPersistentHeaderDelegate {
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
                                 ),
-                                if (branchName != null && branchName!.isNotEmpty)
-                                  Text(
-                                    '📍 $branchName',
-                                    style: TextStyle(
-                                      fontSize: 12,
-                                      color: Colors.white.withValues(alpha: 0.6),
-                                      height: 1.2,
-                                    ),
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
+                                Builder(
+                                  builder: (ctx) {
+                                    final bp = ctx.watch<BranchProvider>();
+                                    final name = bp.currentBranch?.name ?? branchName ?? 'Principal';
+                                    final multi = bp.isMultiBranch;
+                                    return GestureDetector(
+                                      onTap: multi ? () => _showBranchPicker(ctx, bp) : null,
+                                      child: Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          Text(
+                                            '📍 $name',
+                                            style: TextStyle(
+                                              fontSize: 12,
+                                              color: Colors.white.withValues(alpha: 0.7),
+                                              height: 1.2,
+                                            ),
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                          ),
+                                          if (multi)
+                                            Icon(Icons.keyboard_arrow_down_rounded,
+                                                size: 16,
+                                                color: Colors.white.withValues(alpha: 0.6)),
+                                        ],
+                                      ),
+                                    );
+                                  },
+                                ),
                               ],
                             ),
                           ),
@@ -1120,6 +1138,68 @@ class _MarketingHubCard extends StatelessWidget {
 /// Visible to every role — owners had logout inside Configuración,
 /// but cashiers and waiters never reach that hub, so the only escape
 /// from a session was wiping the app.
+void _showBranchPicker(BuildContext context, BranchProvider provider) {
+  HapticFeedback.lightImpact();
+  final branches = provider.branches.where((b) => b.isActive).toList();
+  showModalBottomSheet(
+    context: context,
+    backgroundColor: Colors.transparent,
+    builder: (_) => Container(
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 40, height: 4,
+            margin: const EdgeInsets.only(bottom: 16),
+            decoration: BoxDecoration(
+              color: const Color(0xFFD6D0C8),
+              borderRadius: BorderRadius.circular(2),
+            ),
+          ),
+          const Text('Seleccionar Sucursal',
+              style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
+          const SizedBox(height: 16),
+          ...branches.map((b) {
+            final isSelected = b.id == provider.currentBranchId;
+            return Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: ListTile(
+                onTap: () {
+                  HapticFeedback.lightImpact();
+                  provider.selectBranch(b);
+                  Navigator.of(context).pop();
+                },
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(14)),
+                tileColor: isSelected
+                    ? AppTheme.primary.withValues(alpha: 0.08)
+                    : Colors.grey.shade50,
+                leading: Icon(
+                  isSelected ? Icons.check_circle_rounded : Icons.location_on_outlined,
+                  color: isSelected ? AppTheme.primary : AppTheme.textSecondary,
+                ),
+                title: Text(b.name,
+                    style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: isSelected ? FontWeight.w800 : FontWeight.w500,
+                        color: isSelected ? AppTheme.primary : AppTheme.textPrimary)),
+                trailing: isSelected
+                    ? const Icon(Icons.check_rounded, color: AppTheme.primary)
+                    : null,
+              ),
+            );
+          }),
+        ],
+      ),
+    ),
+  );
+}
+
 class _AccountMenuButton extends StatelessWidget {
   final String ownerName;
   final String businessName;
