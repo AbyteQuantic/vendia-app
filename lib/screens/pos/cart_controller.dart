@@ -669,21 +669,58 @@ class CartController extends ChangeNotifier {
     final cart = _carts[index];
     if (cart.isEmpty) return null;
 
-    final items = cart.map((line) {
-      return {
-        'product_uuid': line.product.uuid,
-        'product_name': line.isService && line.customDescription != null
-            ? line.customDescription!
-            : line.product.name,
-        'quantity': line.quantity,
-        'unit_price': line.isService && line.customUnitPrice != null
-            ? line.customUnitPrice
-            : line.product.price,
-      };
-    }).toList();
-
     try {
       final api = apiOverride ?? ApiService(AuthService());
+
+      // ── Merge with server items ──
+      // Fetch existing server-side items so we APPEND instead of
+      // overwriting. The backend's upsert replaces all items, so
+      // we must send the full combined list.
+      final merged = <String, Map<String, dynamic>>{};
+      try {
+        final tab = await api.fetchTableTabByLabel(label);
+        final serverItems = (tab?['items'] as List?) ?? const [];
+        for (final raw in serverItems) {
+          if (raw is! Map) continue;
+          final m = raw.cast<String, dynamic>();
+          final uuid = (m['product_uuid'] as String?) ?? '';
+          if (uuid.isEmpty) continue;
+          merged[uuid] = {
+            'product_uuid': uuid,
+            'product_name': (m['product_name'] as String?) ?? '',
+            'quantity': (m['quantity'] as num?)?.toInt() ?? 0,
+            'unit_price': (m['unit_price'] as num?)?.toDouble() ?? 0,
+          };
+        }
+      } catch (_) {
+        // No server tab yet — fresh table, nothing to merge.
+      }
+
+      // Layer local cart on top: if the same product exists on the
+      // server, add the local quantity; otherwise insert a new line.
+      for (final line in cart) {
+        final uuid = line.product.uuid;
+        final name = line.isService && line.customDescription != null
+            ? line.customDescription!
+            : line.product.name;
+        final price = line.isService && line.customUnitPrice != null
+            ? line.customUnitPrice!
+            : line.product.price;
+        if (merged.containsKey(uuid)) {
+          merged[uuid]!['quantity'] =
+              (merged[uuid]!['quantity'] as int) + line.quantity;
+        } else {
+          merged[uuid] = {
+            'product_uuid': uuid,
+            'product_name': name,
+            'quantity': line.quantity,
+            'unit_price': price,
+          };
+        }
+      }
+
+      final items = merged.values.toList();
+
       final data = await api.upsertTableTab(
         label: label,
         items: items,
