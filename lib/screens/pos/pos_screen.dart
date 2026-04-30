@@ -2818,7 +2818,7 @@ class _OpenTablesBanner extends StatelessWidget {
           ),
           const SizedBox(height: 6),
           SizedBox(
-            height: 56,
+            height: 38,
             child: ListView.separated(
               scrollDirection: Axis.horizontal,
               itemCount: sorted.length,
@@ -2832,72 +2832,47 @@ class _OpenTablesBanner extends StatelessWidget {
                 final status = (row['status'] as String?) ?? 'nuevo';
                 final cfg = _statusConfig[status] ?? _statusConfig['nuevo']!;
 
-                return Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: cfg.color.withValues(alpha: 0.5)),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      // Label + status + total
-                      Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          GestureDetector(
-                            onTap: () => onOpenMesa(label, token),
-                            child: Text(
-                              label,
-                              style: const TextStyle(
-                                fontSize: 13,
+                return GestureDetector(
+                  onTap: () => onOpenMesa(label, token),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: cfg.color.withValues(alpha: 0.5)),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(cfg.icon, size: 12, color: cfg.color),
+                        const SizedBox(width: 4),
+                        Text(label,
+                            style: const TextStyle(
+                                fontSize: 12,
                                 fontWeight: FontWeight.w800,
-                                color: AppTheme.textPrimary,
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 6),
-                          Text(
-                            formatMoney(total),
+                                color: AppTheme.textPrimary)),
+                        const SizedBox(width: 4),
+                        Text(formatMoney(total),
                             style: TextStyle(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w700,
-                              color: cfg.color,
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 2),
-                      // Status + actions
-                      Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(cfg.icon, size: 12, color: cfg.color),
-                          const SizedBox(width: 3),
-                          Text(cfg.label,
-                              style: TextStyle(
-                                  fontSize: 10,
-                                  fontWeight: FontWeight.w700,
-                                  color: cfg.color)),
-                          const SizedBox(width: 8),
-                          _openTabAction(
-                            icon: Icons.receipt_long_rounded,
-                            color: const Color(0xFF3B82F6),
-                            tooltip: 'Ver cuenta',
-                            onTap: () => onPayMesa(label, token, orderId),
-                          ),
-                          const SizedBox(width: 4),
-                          _openTabAction(
-                            icon: Icons.qr_code_2_rounded,
-                            color: const Color(0xFF7C3AED),
-                            tooltip: 'QR',
-                            onTap: () => onQrMesa(label, token),
-                          ),
-                        ],
-                      ),
-                    ],
+                                fontSize: 12,
+                                fontWeight: FontWeight.w700,
+                                color: cfg.color)),
+                        const SizedBox(width: 6),
+                        _openTabAction(
+                          icon: Icons.receipt_long_rounded,
+                          color: const Color(0xFF3B82F6),
+                          tooltip: 'Ver cuenta',
+                          onTap: () => onPayMesa(label, token, orderId),
+                        ),
+                        const SizedBox(width: 3),
+                        _openTabAction(
+                          icon: Icons.qr_code_2_rounded,
+                          color: const Color(0xFF7C3AED),
+                          tooltip: 'QR',
+                          onTap: () => onQrMesa(label, token),
+                        ),
+                      ],
+                    ),
                   ),
                 );
               },
