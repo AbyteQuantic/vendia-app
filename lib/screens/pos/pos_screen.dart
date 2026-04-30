@@ -512,6 +512,19 @@ class _PosScreenBodyState extends State<_PosScreenBody> {
     );
   }
 
+  /// Returns labels of mesas already assigned to a cart tab.
+  Set<String> _assignedMesaLabels(CartController ctrl) {
+    final labels = <String>{};
+    for (int i = 0; i < 10; i++) {
+      final ctx = ctrl.contextAt(i);
+      if ((ctx.type == AccountType.mesa || ctx.type == AccountType.mesaInmediata) &&
+          ctx.tableLabel != null && ctx.tableLabel!.isNotEmpty) {
+        labels.add(ctx.tableLabel!);
+      }
+    }
+    return labels;
+  }
+
   void _showMesaSelector(CartController ctrl, AccountType mesaType) {
     final isImmediate = mesaType == AccountType.mesaInmediata;
     final accentColor = isImmediate ? const Color(0xFFEA580C) : AppTheme.primary;
@@ -573,8 +586,24 @@ class _PosScreenBodyState extends State<_PosScreenBody> {
                       // spots a big debt before tapping.
                       final openTotal = _openTabTotalsByLabel[label];
                       final isOccupied = openTotal != null && openTotal > 0;
+                      // Check if already assigned to another tab
+                      final assignedLabels = _assignedMesaLabels(ctrl);
+                      final currentLabel = ctrl.activeContext.tableLabel;
+                      final isAssignedElsewhere = assignedLabels.contains(label) &&
+                          label != currentLabel;
                       return GestureDetector(
                         onTap: () {
+                          if (isAssignedElsewhere) {
+                            HapticFeedback.heavyImpact();
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text('$label ya tiene una cuenta abierta en otro tab'),
+                                backgroundColor: AppTheme.warning,
+                                behavior: SnackBarBehavior.floating,
+                              ),
+                            );
+                            return;
+                          }
                           HapticFeedback.mediumImpact();
                           ctrl.setContext(AccountContext(
                             type: mesaType,
@@ -582,19 +611,25 @@ class _PosScreenBodyState extends State<_PosScreenBody> {
                           ));
                           Navigator.of(context).pop();
                         },
-                        child: Stack(
+                        child: Opacity(
+                          opacity: isAssignedElsewhere ? 0.4 : 1.0,
+                          child: Stack(
                           clipBehavior: Clip.none,
                           children: [
                             Container(
                               decoration: BoxDecoration(
-                                color: isOccupied
-                                    ? AppTheme.warning.withValues(alpha: 0.10)
-                                    : accentColor.withValues(alpha: 0.08),
+                                color: isAssignedElsewhere
+                                    ? Colors.grey.shade100
+                                    : isOccupied
+                                        ? AppTheme.warning.withValues(alpha: 0.10)
+                                        : accentColor.withValues(alpha: 0.08),
                                 borderRadius: BorderRadius.circular(14),
                                 border: Border.all(
-                                  color: isOccupied
-                                      ? AppTheme.warning.withValues(alpha: 0.55)
-                                      : accentColor.withValues(alpha: 0.3),
+                                  color: isAssignedElsewhere
+                                      ? Colors.grey.shade300
+                                      : isOccupied
+                                          ? AppTheme.warning.withValues(alpha: 0.55)
+                                          : accentColor.withValues(alpha: 0.3),
                                   width: isOccupied ? 1.8 : 1,
                                 ),
                               ),
@@ -655,8 +690,23 @@ class _PosScreenBodyState extends State<_PosScreenBody> {
                                   ),
                                 ),
                               ),
+                            if (isAssignedElsewhere)
+                              Positioned(
+                                top: 4,
+                                right: 4,
+                                child: Container(
+                                  padding: const EdgeInsets.all(2),
+                                  decoration: const BoxDecoration(
+                                    color: Colors.grey,
+                                    shape: BoxShape.circle,
+                                  ),
+                                  child: const Icon(Icons.lock_rounded,
+                                      size: 10, color: Colors.white),
+                                ),
+                              ),
                           ],
                         ),
+                      ),
                       );
                     },
                   ),
@@ -1336,10 +1386,6 @@ class _PosScreenBodyState extends State<_PosScreenBody> {
                 // ── Cart tabs ──
                 _CartTabs(
                   activeIndex: ctrl.activeIndex,
-                  // Tab change goes through the lock service so we
-                  // claim the new slot (and release the old) before
-                  // CartController flips. On 409 we keep the old tab
-                  // and snackbar.
                   onTabSelected: (next) {
                     HapticFeedback.lightImpact();
                     ctrl.switchCart(next);
@@ -1347,6 +1393,8 @@ class _PosScreenBodyState extends State<_PosScreenBody> {
                   onActiveTabTapped: () => _showContextSheet(ctrl),
                   cartCounts: List.generate(10, ctrl.cartCount),
                   contexts: List.generate(10, ctrl.contextAt),
+                  openTabTotals: _openTabTotalsByLabel,
+                  openTabRows: _openTabRows,
                 ),
 
                 // ── Open Tables Banner ──
@@ -1354,6 +1402,7 @@ class _PosScreenBodyState extends State<_PosScreenBody> {
                   _OpenTablesBanner(
                     openTabRows: _openTabRows,
                     openTabTotals: _openTabTotalsByLabel,
+                    assignedLabels: _assignedMesaLabels(ctrl),
                     formatMoney: _formatMoney,
                     onOpenMesa: (label, sessionToken) {
                       HapticFeedback.mediumImpact();
@@ -1968,6 +2017,7 @@ class _BottomBar extends StatelessWidget {
               onTap: hasItems ? onAction : null,
               child: Container(
                 height: 56,
+                padding: const EdgeInsets.symmetric(horizontal: 12),
                 decoration: BoxDecoration(
                   gradient: hasItems
                       ? LinearGradient(colors: btn.gradient)
@@ -1976,12 +2026,16 @@ class _BottomBar extends StatelessWidget {
                   borderRadius: BorderRadius.circular(18),
                 ),
                 alignment: Alignment.center,
-                child: Text(
-                  btn.label,
-                  style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                    color: hasItems ? Colors.white : const Color(0xFF999999),
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: Text(
+                    btn.label,
+                    maxLines: 1,
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                      color: hasItems ? Colors.white : const Color(0xFF999999),
+                    ),
                   ),
                 ),
               ),
@@ -2284,6 +2338,8 @@ class _CartTabs extends StatelessWidget {
   final VoidCallback onActiveTabTapped;
   final List<int> cartCounts;
   final List<AccountContext> contexts;
+  final Map<String, double> openTabTotals;
+  final List<Map<String, dynamic>> openTabRows;
 
   const _CartTabs({
     required this.activeIndex,
@@ -2291,7 +2347,17 @@ class _CartTabs extends StatelessWidget {
     required this.onActiveTabTapped,
     required this.cartCounts,
     required this.contexts,
+    this.openTabTotals = const {},
+    this.openTabRows = const [],
   });
+
+  String? _statusForLabel(String label) {
+    for (final row in openTabRows) {
+      final rowLabel = (row['label'] as String?)?.trim() ?? '';
+      if (rowLabel == label) return row['status'] as String?;
+    }
+    return null;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -2444,9 +2510,35 @@ class _CartTabs extends StatelessWidget {
                           color: Colors.white.withValues(alpha: 0.85),
                         ),
                       ),
-                    if (isOccupied)
-                      const Icon(Icons.restaurant_rounded,
-                          size: 10, color: Color(0xFF3B82F6)),
+                    if (hasContext && ctx.tableLabel != null) ...[
+                      () {
+                        final status = _statusForLabel(ctx.tableLabel!);
+                        final statusLabel = switch (status) {
+                          'nuevo' => 'Pendiente',
+                          'preparando' => 'En cocina',
+                          'listo' => 'Listo',
+                          _ => null,
+                        };
+                        final serverTotal = openTabTotals[ctx.tableLabel];
+                        if (statusLabel != null || (serverTotal != null && serverTotal > 0)) {
+                          return Text(
+                            statusLabel ?? (serverTotal != null ? 'Debe' : ''),
+                            style: TextStyle(
+                              fontSize: 8,
+                              fontWeight: FontWeight.w700,
+                              color: isActive
+                                  ? Colors.white.withValues(alpha: 0.9)
+                                  : switch (status) {
+                                      'listo' => const Color(0xFF10B981),
+                                      'preparando' => const Color(0xFF3B82F6),
+                                      _ => const Color(0xFFF59E0B),
+                                    },
+                            ),
+                          );
+                        }
+                        return const SizedBox.shrink();
+                      }(),
+                    ],
                   ],
                 ),
                     ), // Center
@@ -2468,6 +2560,7 @@ class _CartTabs extends StatelessWidget {
 class _OpenTablesBanner extends StatelessWidget {
   final List<Map<String, dynamic>> openTabRows;
   final Map<String, double> openTabTotals;
+  final Set<String> assignedLabels;
   final String Function(double) formatMoney;
   final void Function(String label, String? sessionToken) onOpenMesa;
   final void Function(String label, String? sessionToken, String? orderId) onPayMesa;
@@ -2476,19 +2569,27 @@ class _OpenTablesBanner extends StatelessWidget {
   const _OpenTablesBanner({
     required this.openTabRows,
     required this.openTabTotals,
+    required this.assignedLabels,
     required this.formatMoney,
     required this.onOpenMesa,
     required this.onPayMesa,
     required this.onQrMesa,
   });
 
+  static const _statusConfig = <String, ({String label, Color color, IconData icon})>{
+    'nuevo': (label: 'Pendiente', color: Color(0xFFF59E0B), icon: Icons.hourglass_top_rounded),
+    'preparando': (label: 'Preparando', color: Color(0xFF3B82F6), icon: Icons.restaurant_rounded),
+    'listo': (label: 'Listo', color: Color(0xFF10B981), icon: Icons.check_circle_rounded),
+  };
+
   @override
   Widget build(BuildContext context) {
-    // Build unique rows sorted by label
+    // Build unique rows, filter out those already assigned to a cart tab
     final entries = <String, Map<String, dynamic>>{};
     for (final row in openTabRows) {
       final label = (row['label'] as String?)?.trim() ?? '';
       if (label.isEmpty) continue;
+      if (assignedLabels.contains(label)) continue; // already on a tab
       entries[label] = row;
     }
     if (entries.isEmpty) return const SizedBox.shrink();
@@ -2513,18 +2614,21 @@ class _OpenTablesBanner extends StatelessWidget {
                   size: 16, color: Color(0xFFF59E0B)),
               const SizedBox(width: 6),
               Text(
-                '${sorted.length} mesa${sorted.length > 1 ? "s" : ""} con cuenta abierta',
+                '${sorted.length} mesa${sorted.length > 1 ? "s" : ""} sin asignar',
                 style: const TextStyle(
                   fontSize: 13,
                   fontWeight: FontWeight.w700,
                   color: Color(0xFFB45309),
                 ),
               ),
+              const Spacer(),
+              const Text('Toca para abrir',
+                  style: TextStyle(fontSize: 11, color: Color(0xFFB45309))),
             ],
           ),
           const SizedBox(height: 6),
           SizedBox(
-            height: 44,
+            height: 56,
             child: ListView.separated(
               scrollDirection: Axis.horizontal,
               itemCount: sorted.length,
@@ -2535,59 +2639,73 @@ class _OpenTablesBanner extends StatelessWidget {
                 final total = openTabTotals[label] ?? 0;
                 final token = row['session_token'] as String?;
                 final orderId = row['order_id'] as String? ?? row['id'] as String?;
+                final status = (row['status'] as String?) ?? 'nuevo';
+                final cfg = _statusConfig[status] ?? _statusConfig['nuevo']!;
 
                 return Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8),
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                   decoration: BoxDecoration(
                     color: Colors.white,
-                    borderRadius: BorderRadius.circular(10),
-                    border: Border.all(
-                        color: const Color(0xFFF59E0B).withValues(alpha: 0.5)),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: cfg.color.withValues(alpha: 0.5)),
                   ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      // Label + total — tap to open mesa
-                      GestureDetector(
-                        onTap: () => onOpenMesa(label, token),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Text(
+                      // Label + status + total
+                      Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          GestureDetector(
+                            onTap: () => onOpenMesa(label, token),
+                            child: Text(
                               label,
                               style: const TextStyle(
-                                fontSize: 12,
+                                fontSize: 13,
                                 fontWeight: FontWeight.w800,
                                 color: AppTheme.textPrimary,
                               ),
                             ),
-                            const SizedBox(width: 4),
-                            Text(
-                              formatMoney(total),
-                              style: const TextStyle(
-                                fontSize: 12,
-                                fontWeight: FontWeight.w700,
-                                color: Color(0xFFB45309),
-                              ),
+                          ),
+                          const SizedBox(width: 6),
+                          Text(
+                            formatMoney(total),
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w700,
+                              color: cfg.color,
                             ),
-                          ],
-                        ),
+                          ),
+                        ],
                       ),
-                      const SizedBox(width: 6),
-                      // Pay button
-                      _openTabAction(
-                        icon: Icons.payments_rounded,
-                        color: AppTheme.success,
-                        tooltip: 'Cobrar',
-                        onTap: () => onPayMesa(label, token, orderId),
-                      ),
-                      const SizedBox(width: 4),
-                      // QR button
-                      _openTabAction(
-                        icon: Icons.qr_code_2_rounded,
-                        color: const Color(0xFF7C3AED),
-                        tooltip: 'QR',
-                        onTap: () => onQrMesa(label, token),
+                      const SizedBox(height: 2),
+                      // Status + actions
+                      Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(cfg.icon, size: 12, color: cfg.color),
+                          const SizedBox(width: 3),
+                          Text(cfg.label,
+                              style: TextStyle(
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.w700,
+                                  color: cfg.color)),
+                          const SizedBox(width: 8),
+                          _openTabAction(
+                            icon: Icons.payments_rounded,
+                            color: AppTheme.success,
+                            tooltip: 'Cobrar',
+                            onTap: () => onPayMesa(label, token, orderId),
+                          ),
+                          const SizedBox(width: 4),
+                          _openTabAction(
+                            icon: Icons.qr_code_2_rounded,
+                            color: const Color(0xFF7C3AED),
+                            tooltip: 'QR',
+                            onTap: () => onQrMesa(label, token),
+                          ),
+                        ],
                       ),
                     ],
                   ),
@@ -2611,13 +2729,13 @@ class _OpenTablesBanner extends StatelessWidget {
       child: Tooltip(
         message: tooltip,
         child: Container(
-          width: 28,
-          height: 28,
+          width: 24,
+          height: 24,
           decoration: BoxDecoration(
             color: color.withValues(alpha: 0.12),
-            borderRadius: BorderRadius.circular(7),
+            borderRadius: BorderRadius.circular(6),
           ),
-          child: Icon(icon, size: 16, color: color),
+          child: Icon(icon, size: 14, color: color),
         ),
       ),
     );
