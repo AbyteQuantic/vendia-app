@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../../database/sync/sales_sync.dart';
 import '../../services/api_service.dart';
 import '../../services/auth_service.dart';
 import '../../theme/app_theme.dart';
@@ -51,6 +52,16 @@ class _FinancialDashboardScreenState extends State<FinancialDashboardScreen> {
   void initState() {
     super.initState();
     _api = ApiService(AuthService());
+    _pushThenLoad();
+  }
+
+  /// Push any unsynced local sales FIRST, then load the financial
+  /// summary from the server. This ensures sales made offline or
+  /// not yet synced appear in the dashboard.
+  Future<void> _pushThenLoad() async {
+    try {
+      await SalesSyncService.pushToServer();
+    } catch (_) {}
     _load();
   }
 
@@ -148,7 +159,7 @@ class _FinancialDashboardScreenState extends State<FinancialDashboardScreen> {
         ],
       ),
       body: RefreshIndicator(
-        onRefresh: _load,
+        onRefresh: _pushThenLoad,
         color: AppTheme.primary,
         child: _loading
             ? const Center(child: CircularProgressIndicator())
