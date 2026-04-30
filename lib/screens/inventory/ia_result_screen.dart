@@ -10,6 +10,7 @@ import '../../services/api_service.dart';
 import '../../services/auth_service.dart';
 import '../../services/margin_service.dart';
 import '../../theme/app_theme.dart';
+import '../../utils/product_matcher.dart';
 
 /// Colombian rounding: ceil to nearest $50 COP
 int roundCOP(double amount) {
@@ -66,6 +67,23 @@ class _IaResultScreenState extends State<IaResultScreen> {
       );
     }).toList();
     _loadMargin();
+    _runMatching();
+  }
+
+  Future<void> _runMatching() async {
+    final db = DatabaseService.instance;
+    final catalog = await db.getAllProducts();
+    if (!mounted || catalog.isEmpty) return;
+    var changed = false;
+    for (final p in _products) {
+      final match = findBestMatch(p.name, catalog);
+      if (match != null) {
+        p.matchedProduct = match.product;
+        p.matchScore = match.score;
+        changed = true;
+      }
+    }
+    if (changed) setState(() {});
   }
 
   Future<void> _loadMargin() async {
@@ -95,31 +113,53 @@ class _IaResultScreenState extends State<IaResultScreen> {
 
     try {
       final db = DatabaseService.instance;
+      int created = 0;
+      int updated = 0;
       for (final p in _products) {
-        final product = LocalProduct()
-          ..uuid = const Uuid().v4()
-          ..name = p.name
-          ..price = p.sellPrice
-          ..stock = p.quantity
-          ..imageUrl = p.photoUrl
-          ..isAvailable = true
-          ..requiresContainer = false
-          ..containerPrice = 0
-          ..presentation = p.presentation
-          ..barcode = ''
-          ..content = ''
-          ..expiryDate = p.expiryDate
-          ..clientUpdatedAt = DateTime.now();
-        await db.upsertProduct(product);
+        if (p.useExisting && p.matchedProduct != null) {
+          // Merge into existing product
+          final existing = p.matchedProduct!;
+          existing.stock += p.quantity;
+          existing.price = p.sellPrice;
+          if (p.photoUrl != null && p.photoUrl!.isNotEmpty) {
+            existing.imageUrl = p.photoUrl;
+          }
+          if (p.expiryDate != null) {
+            existing.expiryDate = p.expiryDate;
+          }
+          existing.clientUpdatedAt = DateTime.now();
+          await db.upsertProduct(existing);
+          updated++;
+        } else {
+          final product = LocalProduct()
+            ..uuid = const Uuid().v4()
+            ..name = p.name
+            ..price = p.sellPrice
+            ..stock = p.quantity
+            ..imageUrl = p.photoUrl
+            ..isAvailable = true
+            ..requiresContainer = false
+            ..containerPrice = 0
+            ..presentation = p.presentation
+            ..barcode = ''
+            ..content = ''
+            ..expiryDate = p.expiryDate
+            ..clientUpdatedAt = DateTime.now();
+          await db.upsertProduct(product);
+          created++;
+        }
       }
 
       if (!mounted) return;
       HapticFeedback.heavyImpact();
       Navigator.of(context).popUntil((route) => route.isFirst);
+      final parts = <String>[];
+      if (created > 0) parts.add('$created creados');
+      if (updated > 0) parts.add('$updated actualizados');
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            '${_products.length} productos guardados en inventario',
+            '${_products.length} productos guardados (${parts.join(", ")})',
             style: const TextStyle(fontSize: 16),
           ),
           backgroundColor: AppTheme.success,
@@ -530,6 +570,9 @@ class _IaResultScreenState extends State<IaResultScreen> {
                       onTakePhoto: () => _takePhotoFor(i),
                       onPickGallery: () => _pickFromGalleryFor(i),
                       onEnhance: () => _enhanceOrGenerateFor(i),
+                      onToggleMatch: (useExisting) {
+                        setState(() => _products[i].useExisting = useExisting);
+                      },
                     ),
                   ),
           ),
@@ -601,6 +644,7 @@ class _ProductCard extends StatelessWidget {
   final VoidCallback onTakePhoto;
   final VoidCallback onPickGallery;
   final VoidCallback onEnhance;
+  final ValueChanged<bool> onToggleMatch;
 
   const _ProductCard({
     required this.product,
@@ -611,6 +655,7 @@ class _ProductCard extends StatelessWidget {
     required this.onTakePhoto,
     required this.onPickGallery,
     required this.onEnhance,
+    required this.onToggleMatch,
   });
 
   @override
@@ -713,6 +758,8 @@ class _ProductCard extends StatelessWidget {
               ),
             ],
           ),
+          // Match banner
+          if (product.matchedProduct != null) _buildMatchBanner(),
           if (product.presentation.isNotEmpty)
             Padding(
               padding: const EdgeInsets.only(top: 2),
@@ -829,6 +876,114 @@ class _ProductCard extends StatelessWidget {
             ],
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildMatchBanner() {
+    final match = product.matchedProduct!;
+    final decided = product.useExisting;
+    // Amber when undecided (null), green when accepted
+    final bannerColor = decided ? AppTheme.success : const Color(0xFFF59E0B);
+    return Container(
+      margin: const EdgeInsets.only(top: 8),
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: bannerColor.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: bannerColor.withValues(alpha: 0.4)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.sync_rounded, size: 16, color: bannerColor),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text(
+                  'Ya existe: "${match.name}" (stock: ${match.stock})',
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    color: bannerColor,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Expanded(
+                child: _bannerAction(
+                  label: 'Sumar al existente',
+                  icon: Icons.add_circle_outline_rounded,
+                  active: decided,
+                  color: AppTheme.success,
+                  onTap: () => onToggleMatch(true),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: _bannerAction(
+                  label: 'Crear nuevo',
+                  icon: Icons.fiber_new_rounded,
+                  active: !decided,
+                  color: AppTheme.textSecondary,
+                  onTap: () => onToggleMatch(false),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _bannerAction({
+    required String label,
+    required IconData icon,
+    required bool active,
+    required Color color,
+    required VoidCallback onTap,
+  }) {
+    return GestureDetector(
+      onTap: () {
+        HapticFeedback.lightImpact();
+        onTap();
+      },
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+        decoration: BoxDecoration(
+          color: active ? color.withValues(alpha: 0.15) : Colors.white,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(
+            color: active ? color : AppTheme.borderColor,
+            width: active ? 1.5 : 1,
+          ),
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(icon, size: 14, color: active ? color : AppTheme.textSecondary),
+            const SizedBox(width: 4),
+            Flexible(
+              child: Text(
+                label,
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: active ? FontWeight.w700 : FontWeight.w500,
+                  color: active ? color : AppTheme.textSecondary,
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -978,6 +1133,12 @@ class _EditableProduct {
   String? photoUrl;
   bool enhancing;
 
+  /// Matched existing product from local catalog (null = no match found)
+  LocalProduct? matchedProduct;
+  double matchScore;
+  /// User decision: true = merge into existing, false = create new
+  bool useExisting;
+
   _EditableProduct({
     required this.name,
     required this.presentation,
@@ -989,6 +1150,9 @@ class _EditableProduct {
     this.photoPath,
     this.photoUrl,
     this.enhancing = false,
+    this.matchedProduct,
+    this.matchScore = 0.0,
+    this.useExisting = false,
   });
 
   bool get hasPhoto =>
