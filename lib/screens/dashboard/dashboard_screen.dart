@@ -225,30 +225,38 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   Future<void> _loadData() async {
-    final sales = await _db.getSalesToday();
-    sales.sort((a, b) => b.createdAt.compareTo(a.createdAt));
-
-    // Product count from API (branch-scoped) instead of local Isar
-    // which doesn't store branch_id and would show cross-branch totals.
+    // All dashboard KPIs from the branch-scoped analytics endpoint.
+    // This single call gives us product_count, total_sales_today,
+    // transaction_count — all filtered by the active branch.
     int prodCount = 0;
+    double totalToday = 0;
+    int txCount = 0;
+
     try {
       final api = ApiService(AuthService());
       final analytics = await api.fetchAnalyticsDashboard();
       prodCount = (analytics['product_count'] as num?)?.toInt() ?? 0;
+      totalToday = (analytics['total_sales_today'] as num?)?.toDouble() ?? 0;
+      txCount = (analytics['transaction_count'] as num?)?.toInt() ?? 0;
     } catch (_) {
-      // Fallback to local count if offline
+      // Fallback to local Isar if offline
+      final sales = await _db.getSalesToday();
+      totalToday = sales.fold<double>(0, (sum, s) => sum + s.total);
+      txCount = sales.length;
       final allProducts = await _db.getAllProducts();
       prodCount = allProducts.length;
     }
 
-    final totalToday = sales.fold<double>(0, (sum, s) => sum + s.total);
+    // Recent sales still from Isar (for the list view)
+    final sales = await _db.getSalesToday();
+    sales.sort((a, b) => b.createdAt.compareTo(a.createdAt));
     final top = _topProduct(sales);
 
     if (mounted) {
       setState(() {
         _data = _DashboardData(
           totalToday: totalToday,
-          txCount: sales.length,
+          txCount: txCount > 0 ? txCount : sales.length,
           topProduct: top,
           prodCount: prodCount,
           recentSales: sales.take(10).toList(),
