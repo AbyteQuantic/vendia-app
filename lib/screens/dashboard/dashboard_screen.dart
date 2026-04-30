@@ -363,7 +363,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
               // ── Glass Stats Cards ──────────────────────────────
               SliverToBoxAdapter(
                 child: Padding(
-                  padding: const EdgeInsets.fromLTRB(18, 16, 18, 0),
+                  padding: const EdgeInsets.fromLTRB(18, 16, 18, 8),
                   child: Column(
                     children: [
                         if (context.watch<RoleManager>().canSeeFinances) ...[
@@ -535,7 +535,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         .canManageBusinessSettings
                     ? const SizedBox.shrink()
                     : Padding(
-                  padding: const EdgeInsets.fromLTRB(18, 0, 18, 0),
+                  padding: const EdgeInsets.fromLTRB(18, 8, 18, 0),
                   child: _GlassCard(
                     onTap: () {
                       HapticFeedback.lightImpact();
@@ -824,9 +824,10 @@ class _HeroHeaderDelegate extends SliverPersistentHeaderDelegate {
               : null,
         ),
         child: Padding(
-          padding: EdgeInsets.fromLTRB(20, topPadding + 6, 8, 10),
+          padding: EdgeInsets.fromLTRB(20, topPadding + 6, 8, 8),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisAlignment: MainAxisAlignment.center,
             children: [
               // ── Row 1: name + icons (always visible) ──────────
               Row(
@@ -877,34 +878,40 @@ class _HeroHeaderDelegate extends SliverPersistentHeaderDelegate {
                   ),
                 ],
               ),
-              // ── Expandable details (fade out on scroll) ────────
-              if (detailsOpacity > 0) ...[
-                const SizedBox(height: 8),
-                Opacity(
-                  opacity: detailsOpacity,
-                  child: Row(
-                    children: [
-                      _StoreStatusPill(
-                        isOpen: isStoreOpen,
-                        loading: loadingStoreStatus,
-                        onToggle: onToggleStore,
+              // ── Expandable details (fade + shrink on scroll) ─────
+              ClipRect(
+                child: Align(
+                  alignment: Alignment.topLeft,
+                  heightFactor: detailsOpacity.clamp(0.0, 1.0),
+                  child: Opacity(
+                    opacity: detailsOpacity,
+                    child: Padding(
+                      padding: const EdgeInsets.only(top: 8),
+                      child: Row(
+                        children: [
+                          _StoreStatusPill(
+                            isOpen: isStoreOpen,
+                            loading: loadingStoreStatus,
+                            onToggle: onToggleStore,
+                          ),
+                          const SizedBox(width: 12),
+                          Icon(Icons.calendar_today_rounded,
+                              size: 12, color: Colors.white.withValues(alpha: 0.5)),
+                          const SizedBox(width: 5),
+                          Flexible(
+                            child: Text(todayLabel,
+                                style: TextStyle(
+                                    fontSize: 12,
+                                    color: Colors.white.withValues(alpha: 0.5)),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis),
+                          ),
+                        ],
                       ),
-                      const SizedBox(width: 12),
-                      Icon(Icons.calendar_today_rounded,
-                          size: 12, color: Colors.white.withValues(alpha: 0.5)),
-                      const SizedBox(width: 5),
-                      Flexible(
-                        child: Text(todayLabel,
-                            style: TextStyle(
-                                fontSize: 12,
-                                color: Colors.white.withValues(alpha: 0.5)),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis),
-                      ),
-                    ],
+                    ),
                   ),
                 ),
-              ],
+              ),
             ],
           ),
         ),
