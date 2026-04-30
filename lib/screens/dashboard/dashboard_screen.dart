@@ -82,14 +82,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
   @override
   void initState() {
     super.initState();
-    _loadData(); // Initial load from Isar
-    _syncFromServer(); // Pull fresh data from backend
+    _loadData();
+    _syncFromServer();
     _loadActivePromosCount();
     _loadStoreStatus();
 
     final isar = _db.isar;
 
-    // Listen for changes in sales & products collections
     _salesSub = isar.localSales
         .watchLazy(fireImmediately: false)
         .listen((_) => _debouncedLoad());
@@ -97,6 +96,24 @@ class _DashboardScreenState extends State<DashboardScreen> {
     _productsSub = isar.localProducts
         .watchLazy(fireImmediately: false)
         .listen((_) => _debouncedLoad());
+
+    // Reload all dashboard data when the branch changes
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      context.read<BranchProvider>().addListener(_onBranchChanged);
+    });
+  }
+
+  String? _prevBranchId;
+
+  void _onBranchChanged() {
+    final newId = context.read<BranchProvider>().currentBranchId;
+    if (_prevBranchId != null && newId != _prevBranchId) {
+      _loadData();
+      _syncFromServer();
+      _loadActivePromosCount();
+      _loadStoreStatus();
+    }
+    _prevBranchId = newId;
   }
 
   /// Pull sales + products from the server so the dashboard is up to date
@@ -187,6 +204,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
     _loadDebounce?.cancel();
     _salesSub.cancel();
     _productsSub.cancel();
+    try {
+      context.read<BranchProvider>().removeListener(_onBranchChanged);
+    } catch (_) {}
     super.dispose();
   }
 
@@ -1182,6 +1202,8 @@ void _showBranchPicker(BuildContext context, BranchProvider provider) {
                 onTap: () {
                   HapticFeedback.lightImpact();
                   provider.selectBranch(b);
+                  // Persist so next app start uses this branch
+                  AuthService().saveBranchId(b.id);
                   Navigator.of(context).pop();
                 },
                 shape: RoundedRectangleBorder(

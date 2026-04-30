@@ -210,6 +210,7 @@ class AuthService {
 
   Future<String?> getUserId() => _storage.read(key: _keyUserId);
   Future<String?> getBranchId() => _storage.read(key: _keyBranchId);
+  Future<void> saveBranchId(String id) => _storage.write(key: _keyBranchId, value: id);
   Future<String?> getRole() => _storage.read(key: _keyRole);
 
   /// Logout — clear all secure storage.
