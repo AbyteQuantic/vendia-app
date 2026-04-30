@@ -1,17 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../../database/sync/sales_sync.dart';
 import '../../services/api_service.dart';
 import '../../services/auth_service.dart';
 import '../../theme/app_theme.dart';
 import 'receipt_detail_screen.dart';
 
-/// Sales history — unified ledger (POS + WEB + TABLE).
-///
-/// Filters: Hoy / Ayer / Esta semana / Este mes / Personalizado.
-/// The "Personalizado" chip opens a date-range picker; the others
-/// resolve client-side to a [start, end] pair so the backend only
-/// has to honour the start_date/end_date contract.
 class SalesHistoryScreen extends StatefulWidget {
   const SalesHistoryScreen({super.key});
 
@@ -24,12 +19,11 @@ enum _Range { today, yesterday, week, month, custom }
 class _SalesHistoryScreenState extends State<SalesHistoryScreen> {
   _Range _selected = _Range.today;
   DateTimeRange? _customRange;
-  String _query = '';
-  String? _source; // null = all
-  String? _paymentMethod;
+  final _searchCtrl = TextEditingController();
   bool _loading = true;
   String? _errorMessage;
   List<Map<String, dynamic>> _sales = const [];
+  List<Map<String, dynamic>> _filtered = const [];
 
   late final ApiService _api;
 
@@ -37,13 +31,21 @@ class _SalesHistoryScreenState extends State<SalesHistoryScreen> {
   void initState() {
     super.initState();
     _api = ApiService(AuthService());
+    _searchCtrl.addListener(_applyFilter);
+    _pushThenLoad();
+  }
+
+  @override
+  void dispose() {
+    _searchCtrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _pushThenLoad() async {
+    try { await SalesSyncService.pushToServer(); } catch (_) {}
     _load();
   }
 
-  /// Resolve the active filter to a (start, end) pair. Inclusive on
-  /// both ends — the backend accepts end-of-day implicitly via its
-  /// `end_date + 1d` strict-less-than handling, so we just send the
-  /// dates as YYYY-MM-DD.
   ({DateTime start, DateTime end})? _resolveRange() {
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
@@ -54,20 +56,13 @@ class _SalesHistoryScreenState extends State<SalesHistoryScreen> {
         final y = today.subtract(const Duration(days: 1));
         return (start: y, end: y);
       case _Range.week:
-        // Week starts on Monday in es-CO. weekday is 1..7 Mon..Sun.
         final start = today.subtract(Duration(days: today.weekday - 1));
         return (start: start, end: today);
       case _Range.month:
-        return (
-          start: DateTime(today.year, today.month, 1),
-          end: today,
-        );
+        return (start: DateTime(today.year, today.month, 1), end: today);
       case _Range.custom:
         if (_customRange == null) return null;
-        return (
-          start: _customRange!.start,
-          end: _customRange!.end,
-        );
+        return (start: _customRange!.start, end: _customRange!.end);
     }
   }
 
@@ -75,67 +70,63 @@ class _SalesHistoryScreenState extends State<SalesHistoryScreen> {
       '${d.year.toString().padLeft(4, '0')}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
 
   Future<void> _load() async {
-    setState(() {
-      _loading = true;
-      _errorMessage = null;
-    });
+    setState(() { _loading = true; _errorMessage = null; });
     try {
       final range = _resolveRange();
       final res = await _api.fetchSalesHistory(
         startDate: range == null ? null : _yyyymmdd(range.start),
         endDate: range == null ? null : _yyyymmdd(range.end),
-        source: _source,
-        paymentMethod: _paymentMethod,
-        query: _query.trim().isEmpty ? null : _query.trim(),
         page: 1,
-        perPage: 50,
+        perPage: 100,
       );
       final data = (res['data'] as List<dynamic>? ?? [])
           .whereType<Map<String, dynamic>>()
           .toList();
       if (!mounted) return;
-      setState(() {
-        _sales = data;
-        _loading = false;
-      });
+      setState(() { _sales = data; _loading = false; });
+      _applyFilter();
     } catch (e) {
       if (!mounted) return;
-      setState(() {
-        _loading = false;
-        _errorMessage = 'No pudimos cargar el historial: $e';
-      });
+      setState(() { _loading = false; _errorMessage = '$e'; });
     }
   }
 
-  Future<void> _pickCustomRange() async {
-    final now = DateTime.now();
-    final picked = await showDateRangePicker(
-      context: context,
-      firstDate: DateTime(now.year - 2),
-      lastDate: now,
-      initialDateRange: _customRange ??
-          DateTimeRange(
-            start: now.subtract(const Duration(days: 6)),
-            end: now,
-          ),
-      helpText: 'Elige el rango',
-      cancelText: 'Cancelar',
-      confirmText: 'Aplicar',
-    );
-    if (picked == null) return;
+  void _applyFilter() {
+    final q = _searchCtrl.text.trim().toLowerCase();
+    if (q.isEmpty) {
+      setState(() => _filtered = _sales);
+      return;
+    }
     setState(() {
-      _customRange = picked;
-      _selected = _Range.custom;
+      _filtered = _sales.where((s) {
+        final customer = _customerLabel(s).toLowerCase();
+        final employee = ((s['employee_name'] as String?) ?? '').toLowerCase();
+        final items = _itemsSummary(s).toLowerCase();
+        final date = _formatDate(s['created_at'] as String?).toLowerCase();
+        return customer.contains(q) ||
+            employee.contains(q) ||
+            items.contains(q) ||
+            date.contains(q);
+      }).toList();
     });
-    _load();
   }
 
-  IconData _methodIcon(String method) => switch (method) {
-        'card' => Icons.credit_card_rounded,
-        'transfer' => Icons.swap_horiz_rounded,
-        'credit' => Icons.menu_book_rounded,
-        _ => Icons.payments_rounded,
-      };
+  String _customerLabel(Map<String, dynamic> sale) {
+    final name = (sale['customer_name_snapshot'] as String?) ?? '';
+    if (name.isNotEmpty) return name;
+    final method = (sale['payment_method'] as String?) ?? '';
+    if (method == 'credit') return 'Fiado';
+    return 'Venta Mostrador';
+  }
+
+  String _itemsSummary(Map<String, dynamic> sale) {
+    final items = (sale['items'] as List?) ?? [];
+    if (items.isEmpty) return '';
+    final first = items.first;
+    final name = (first is Map ? first['name'] : null) as String? ?? '';
+    if (items.length == 1) return name;
+    return '$name + ${items.length - 1} mas';
+  }
 
   String _formatCOP(num value) {
     final v = value.round();
@@ -151,50 +142,119 @@ class _SalesHistoryScreenState extends State<SalesHistoryScreen> {
   }
 
   String _formatTime(String? iso) {
-    if (iso == null || iso.isEmpty) return '';
-    try {
-      final d = DateTime.parse(iso).toLocal();
-      final hh = d.hour.toString().padLeft(2, '0');
-      final mm = d.minute.toString().padLeft(2, '0');
-      return '$hh:$mm';
-    } catch (_) {
-      return '';
-    }
+    if (iso == null) return '';
+    final d = DateTime.tryParse(iso)?.toLocal();
+    if (d == null) return '';
+    final h = d.hour > 12 ? d.hour - 12 : (d.hour == 0 ? 12 : d.hour);
+    final ampm = d.hour >= 12 ? 'pm' : 'am';
+    return '$h:${d.minute.toString().padLeft(2, '0')} $ampm';
+  }
+
+  String _formatDate(String? iso) {
+    if (iso == null) return '';
+    final d = DateTime.tryParse(iso)?.toLocal();
+    if (d == null) return '';
+    const months = ['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
+    return '${d.day} ${months[d.month - 1]}';
+  }
+
+  IconData _methodIcon(String method) => switch (method) {
+    'card' || 'tarjeta' => Icons.credit_card_rounded,
+    'transfer' || 'nequi' || 'daviplata' => Icons.phone_android_rounded,
+    'credit' => Icons.menu_book_rounded,
+    _ => Icons.payments_rounded,
+  };
+
+  Color _methodColor(String method) => switch (method) {
+    'credit' => const Color(0xFFF59E0B),
+    'card' || 'tarjeta' => const Color(0xFF3B82F6),
+    'transfer' || 'nequi' || 'daviplata' => const Color(0xFF6D28D9),
+    _ => AppTheme.success,
+  };
+
+  Future<void> _pickCustomRange() async {
+    final now = DateTime.now();
+    final picked = await showDateRangePicker(
+      context: context,
+      firstDate: DateTime(now.year - 2),
+      lastDate: now,
+      initialDateRange: _customRange ??
+          DateTimeRange(start: now.subtract(const Duration(days: 6)), end: now),
+    );
+    if (picked == null) return;
+    setState(() { _customRange = picked; _selected = _Range.custom; });
+    _load();
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppTheme.background,
+      backgroundColor: const Color(0xFFF8FAFC),
       appBar: AppBar(
-        backgroundColor: AppTheme.background,
+        backgroundColor: const Color(0xFFF8FAFC),
         elevation: 0,
         leading: IconButton(
           icon: const Icon(Icons.arrow_back_rounded,
               color: AppTheme.textPrimary, size: 28),
           onPressed: () => Navigator.of(context).pop(),
         ),
-        title: const Text(
-          'Historial de Ventas',
-          style: TextStyle(
-            fontSize: 22,
-            fontWeight: FontWeight.bold,
-            color: AppTheme.textPrimary,
-          ),
-        ),
-        actions: [
-          IconButton(
-            tooltip: 'Actualizar',
-            icon: const Icon(Icons.refresh_rounded,
-                color: AppTheme.textPrimary),
-            onPressed: _load,
-          ),
-        ],
+        title: const Text('Historial de Ventas',
+            style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold,
+                color: AppTheme.textPrimary)),
       ),
       body: Column(
         children: [
+          // Search bar
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
+            child: TextField(
+              controller: _searchCtrl,
+              style: const TextStyle(fontSize: 16),
+              decoration: InputDecoration(
+                hintText: 'Buscar por cliente, producto o fecha...',
+                hintStyle: TextStyle(fontSize: 15, color: Colors.grey.shade400),
+                prefixIcon: const Icon(Icons.search_rounded, size: 22),
+                suffixIcon: _searchCtrl.text.isNotEmpty
+                    ? IconButton(
+                        icon: const Icon(Icons.close_rounded, size: 20),
+                        onPressed: () { _searchCtrl.clear(); })
+                    : null,
+                filled: true,
+                fillColor: Colors.white,
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(16),
+                  borderSide: BorderSide.none,
+                ),
+                contentPadding: const EdgeInsets.symmetric(vertical: 14),
+              ),
+            ),
+          ),
+          // Date chips
           _buildChips(),
-          _buildSourceChips(),
+          const SizedBox(height: 4),
+          // Results count
+          if (!_loading && _errorMessage == null)
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20),
+              child: Row(
+                children: [
+                  Text(
+                    '${_filtered.length} venta${_filtered.length != 1 ? "s" : ""}',
+                    style: const TextStyle(
+                        fontSize: 14, fontWeight: FontWeight.w700,
+                        color: AppTheme.textSecondary),
+                  ),
+                  const Spacer(),
+                  if (_filtered.isNotEmpty)
+                    Text(
+                      'Total: ${_formatCOP(_filtered.fold<num>(0, (sum, s) => sum + ((s['total'] as num?) ?? 0)))}',
+                      style: const TextStyle(
+                          fontSize: 14, fontWeight: FontWeight.w800,
+                          color: AppTheme.primary),
+                    ),
+                ],
+              ),
+            ),
           const SizedBox(height: 8),
           Expanded(child: _buildList()),
         ],
@@ -205,97 +265,58 @@ class _SalesHistoryScreenState extends State<SalesHistoryScreen> {
   Widget _buildChips() {
     return SingleChildScrollView(
       scrollDirection: Axis.horizontal,
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+      padding: const EdgeInsets.symmetric(horizontal: 16),
       child: Row(
         children: [
-          _RangeChip(
-            label: 'Hoy',
-            selected: _selected == _Range.today,
-            onTap: () => setState(() {
-              _selected = _Range.today;
-              _customRange = null;
+          for (final (label, range) in [
+            ('Hoy', _Range.today),
+            ('Ayer', _Range.yesterday),
+            ('Semana', _Range.week),
+            ('Mes', _Range.month),
+          ])
+            _chip(label, _selected == range, () {
+              setState(() { _selected = range; _customRange = null; });
               _load();
             }),
-          ),
-          _RangeChip(
-            label: 'Ayer',
-            selected: _selected == _Range.yesterday,
-            onTap: () => setState(() {
-              _selected = _Range.yesterday;
-              _customRange = null;
-              _load();
-            }),
-          ),
-          _RangeChip(
-            label: 'Esta semana',
-            selected: _selected == _Range.week,
-            onTap: () => setState(() {
-              _selected = _Range.week;
-              _customRange = null;
-              _load();
-            }),
-          ),
-          _RangeChip(
-            label: 'Este mes',
-            selected: _selected == _Range.month,
-            onTap: () => setState(() {
-              _selected = _Range.month;
-              _customRange = null;
-              _load();
-            }),
-          ),
-          _RangeChip(
-            label: _customRange == null
-                ? 'Personalizado'
-                : '${_yyyymmdd(_customRange!.start)} → ${_yyyymmdd(_customRange!.end)}',
-            selected: _selected == _Range.custom,
+          _chip(
+            _customRange == null ? 'Fechas' : '${_yyyymmdd(_customRange!.start)} → ${_yyyymmdd(_customRange!.end)}',
+            _selected == _Range.custom,
+            _pickCustomRange,
             icon: Icons.calendar_today_rounded,
-            onTap: _pickCustomRange,
           ),
         ],
       ),
     );
   }
 
-  Widget _buildSourceChips() {
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      padding: const EdgeInsets.symmetric(horizontal: 16),
-      child: Row(
-        children: [
-          _SourceChip(
-            label: 'Todos',
-            active: _source == null,
-            onTap: () => setState(() {
-              _source = null;
-              _load();
-            }),
+  Widget _chip(String label, bool selected, VoidCallback onTap, {IconData? icon}) {
+    return Padding(
+      padding: const EdgeInsets.only(right: 8),
+      child: GestureDetector(
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+          decoration: BoxDecoration(
+            color: selected ? AppTheme.primary : Colors.white,
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(
+              color: selected ? AppTheme.primary : Colors.grey.shade200),
           ),
-          _SourceChip(
-            label: 'Mostrador',
-            active: _source == 'POS',
-            onTap: () => setState(() {
-              _source = 'POS';
-              _load();
-            }),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (icon != null) ...[
+                Icon(icon, size: 14,
+                    color: selected ? Colors.white : AppTheme.textSecondary),
+                const SizedBox(width: 5),
+              ],
+              Text(label,
+                  style: TextStyle(
+                      fontSize: 13, fontWeight: FontWeight.w700,
+                      color: selected ? Colors.white : AppTheme.textPrimary)),
+            ],
           ),
-          _SourceChip(
-            label: 'Mesa',
-            active: _source == 'TABLE',
-            onTap: () => setState(() {
-              _source = 'TABLE';
-              _load();
-            }),
-          ),
-          _SourceChip(
-            label: 'Web',
-            active: _source == 'WEB',
-            onTap: () => setState(() {
-              _source = 'WEB';
-              _load();
-            }),
-          ),
-        ],
+        ),
       ),
     );
   }
@@ -305,302 +326,119 @@ class _SalesHistoryScreenState extends State<SalesHistoryScreen> {
       return const Center(child: CircularProgressIndicator());
     }
     if (_errorMessage != null) {
-      return Center(
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(_errorMessage!, textAlign: TextAlign.center),
-              const SizedBox(height: 12),
-              FilledButton(
-                onPressed: _load,
-                child: const Text('Reintentar'),
-              ),
-            ],
-          ),
-        ),
-      );
+      return Center(child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text('Error: $_errorMessage', textAlign: TextAlign.center),
+          const SizedBox(height: 12),
+          FilledButton(onPressed: _load, child: const Text('Reintentar')),
+        ],
+      ));
     }
-    if (_sales.isEmpty) {
-      return const Center(
-        child: Padding(
-          padding: EdgeInsets.all(32),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(Icons.receipt_long_rounded,
-                  size: 64, color: AppTheme.textSecondary),
-              SizedBox(height: 16),
-              Text(
-                'Sin ventas en este rango',
-                style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.w700,
-                    color: AppTheme.textPrimary),
-              ),
-              SizedBox(height: 4),
-              Text(
-                'Cambia el filtro para ver otros días.',
-                textAlign: TextAlign.center,
-                style: TextStyle(color: AppTheme.textSecondary),
-              ),
-            ],
-          ),
-        ),
-      );
+    if (_filtered.isEmpty) {
+      return const Center(child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(Icons.receipt_long_rounded, size: 56, color: AppTheme.textSecondary),
+          SizedBox(height: 12),
+          Text('Sin ventas en este rango',
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700,
+                  color: AppTheme.textPrimary)),
+          SizedBox(height: 4),
+          Text('Cambia el filtro o busca otra cosa.',
+              style: TextStyle(color: AppTheme.textSecondary)),
+        ],
+      ));
     }
     return RefreshIndicator.adaptive(
-      onRefresh: _load,
+      onRefresh: _pushThenLoad,
       child: ListView.builder(
-        padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
-        itemCount: _sales.length,
+        padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+        itemCount: _filtered.length,
         itemBuilder: (_, i) {
-          final sale = _sales[i];
+          final sale = _filtered[i];
           final total = (sale['total'] as num?) ?? 0;
           final method = (sale['payment_method'] as String?) ?? 'cash';
-          final source = (sale['source'] as String?) ?? 'POS';
-          final receiptNumber = (sale['receipt_number'] as num?)?.toInt() ?? 0;
-          return _SaleCard(
-            time: _formatTime(sale['created_at'] as String?),
-            total: _formatCOP(total),
-            method: method,
-            receipt: receiptNumber > 0 ? '#$receiptNumber' : '—',
-            source: source,
-            methodIcon: _methodIcon(method),
-            onTap: () {
-              HapticFeedback.lightImpact();
-              Navigator.of(context).push(
-                MaterialPageRoute(
-                  builder: (_) => ReceiptDetailScreen(sale: sale),
-                ),
-              );
-            },
-          );
-        },
-      ),
-    );
-  }
-}
+          final customer = _customerLabel(sale);
+          final items = _itemsSummary(sale);
+          final employee = (sale['employee_name'] as String?) ?? '';
+          final time = _formatTime(sale['created_at'] as String?);
+          final date = _formatDate(sale['created_at'] as String?);
+          final color = _methodColor(method);
 
-class _RangeChip extends StatelessWidget {
-  const _RangeChip({
-    required this.label,
-    required this.selected,
-    required this.onTap,
-    this.icon,
-  });
-
-  final String label;
-  final bool selected;
-  final VoidCallback onTap;
-  final IconData? icon;
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(right: 8),
-      child: GestureDetector(
-        onTap: onTap,
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 150),
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-          decoration: BoxDecoration(
-            color: selected
-                ? AppTheme.primary
-                : Colors.white,
-            borderRadius: BorderRadius.circular(999),
-            border: Border.all(
-              color: selected
-                  ? AppTheme.primary
-                  : Colors.grey.shade200,
-            ),
-            boxShadow: selected
-                ? [
-                    BoxShadow(
-                      color: AppTheme.primary.withValues(alpha: 0.18),
-                      blurRadius: 8,
-                      offset: const Offset(0, 3),
-                    ),
-                  ]
-                : null,
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              if (icon != null) ...[
-                Icon(icon,
-                    size: 14,
-                    color: selected ? Colors.white : AppTheme.textSecondary),
-                const SizedBox(width: 6),
-              ],
-              Text(
-                label,
-                style: TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w800,
-                  color: selected ? Colors.white : AppTheme.textPrimary,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _SourceChip extends StatelessWidget {
-  const _SourceChip({
-    required this.label,
-    required this.active,
-    required this.onTap,
-  });
-
-  final String label;
-  final bool active;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(right: 6),
-      child: GestureDetector(
-        onTap: onTap,
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-          decoration: BoxDecoration(
-            color: active
-                ? AppTheme.primary.withValues(alpha: 0.1)
-                : Colors.transparent,
-            borderRadius: BorderRadius.circular(8),
-            border: Border.all(
-              color: active
-                  ? AppTheme.primary.withValues(alpha: 0.4)
-                  : Colors.grey.shade200,
-            ),
-          ),
-          child: Text(
-            label,
-            style: TextStyle(
-              fontSize: 12,
-              fontWeight: FontWeight.w700,
-              color: active ? AppTheme.primary : AppTheme.textSecondary,
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _SaleCard extends StatelessWidget {
-  const _SaleCard({
-    required this.time,
-    required this.total,
-    required this.method,
-    required this.receipt,
-    required this.source,
-    required this.methodIcon,
-    required this.onTap,
-  });
-
-  final String time;
-  final String total;
-  final String method;
-  final String receipt;
-  final String source;
-  final IconData methodIcon;
-  final VoidCallback onTap;
-
-  static const _sourceLabels = {
-    'POS': 'Mostrador',
-    'TABLE': 'Mesa',
-    'WEB': 'Web',
-  };
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
-      child: Material(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        elevation: 0,
-        child: InkWell(
-          onTap: onTap,
-          borderRadius: BorderRadius.circular(16),
-          child: Padding(
-            padding: const EdgeInsets.all(14),
-            child: Row(
-              children: [
-                Container(
-                  width: 44,
-                  height: 44,
-                  decoration: BoxDecoration(
-                    color: AppTheme.primary.withValues(alpha: 0.08),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child:
-                      Icon(methodIcon, color: AppTheme.primary, size: 22),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+          return Padding(
+            padding: const EdgeInsets.only(bottom: 10),
+            child: Material(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(18),
+              child: InkWell(
+                borderRadius: BorderRadius.circular(18),
+                onTap: () {
+                  HapticFeedback.lightImpact();
+                  Navigator.of(context).push(MaterialPageRoute(
+                    builder: (_) => ReceiptDetailScreen(sale: sale),
+                  ));
+                },
+                child: Padding(
+                  padding: const EdgeInsets.all(14),
+                  child: Row(
                     children: [
-                      Row(
-                        children: [
-                          Text(
-                            receipt,
-                            style: const TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.bold,
-                              color: AppTheme.textPrimary,
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 6, vertical: 2),
-                            decoration: BoxDecoration(
-                              color: Colors.grey.shade100,
-                              borderRadius: BorderRadius.circular(6),
-                            ),
-                            child: Text(
-                              _sourceLabels[source] ?? source,
-                              style: const TextStyle(
-                                fontSize: 10,
-                                fontWeight: FontWeight.w800,
-                                color: AppTheme.textSecondary,
-                                letterSpacing: 0.5,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                      Text(
-                        time,
-                        style: const TextStyle(
-                          fontSize: 13,
-                          color: AppTheme.textSecondary,
+                      // Method icon
+                      Container(
+                        width: 46, height: 46,
+                        decoration: BoxDecoration(
+                          color: color.withValues(alpha: 0.1),
+                          borderRadius: BorderRadius.circular(14),
                         ),
+                        child: Icon(_methodIcon(method), color: color, size: 24),
+                      ),
+                      const SizedBox(width: 12),
+                      // Details
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(customer,
+                                style: const TextStyle(
+                                    fontSize: 16, fontWeight: FontWeight.w700,
+                                    color: AppTheme.textPrimary),
+                                maxLines: 1, overflow: TextOverflow.ellipsis),
+                            if (items.isNotEmpty)
+                              Text(items,
+                                  style: const TextStyle(
+                                      fontSize: 13, color: AppTheme.textSecondary),
+                                  maxLines: 1, overflow: TextOverflow.ellipsis),
+                            const SizedBox(height: 2),
+                            Text(
+                              '$employee  $date  $time',
+                              style: TextStyle(
+                                  fontSize: 12, color: Colors.grey.shade400),
+                              maxLines: 1, overflow: TextOverflow.ellipsis,
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      // Total + chevron
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        children: [
+                          Text(_formatCOP(total),
+                              style: TextStyle(
+                                  fontSize: 17, fontWeight: FontWeight.w800,
+                                  color: color)),
+                          const SizedBox(height: 2),
+                          Icon(Icons.chevron_right_rounded,
+                              size: 20, color: Colors.grey.shade300),
+                        ],
                       ),
                     ],
                   ),
                 ),
-                Text(
-                  total,
-                  style: const TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.w800,
-                    color: AppTheme.primary,
-                  ),
-                ),
-              ],
+              ),
             ),
-          ),
-        ),
+          );
+        },
       ),
     );
   }
