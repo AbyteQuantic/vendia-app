@@ -1265,24 +1265,28 @@ class _PosScreenBodyState extends State<_PosScreenBody> {
                       const Spacer(),
                       PanicButton(onPanicTriggered: PanicTriggerService.trigger),
                       const SizedBox(width: 6),
-                      // Reverse-QR scanner — moved here from the
-                      // dashboard header (UX audit 2026-04-25).
-                      // Confirming a customer's cash payment is a
-                      // transactional action, so it lives in the
-                      // POS context where the cashier already is
-                      // when they need it.
-                      IconButton(
+                      // Reverse-QR scanner — confirm customer payment
+                      GestureDetector(
                         key: const Key('pos_scan_payment'),
-                        tooltip: 'Escanear pago de cliente',
-                        icon: const Icon(Icons.qr_code_scanner_rounded,
-                            color: AppTheme.textPrimary, size: 26),
-                        onPressed: () {
+                        onTap: () {
                           HapticFeedback.lightImpact();
                           Navigator.of(context).push(MaterialPageRoute(
                             builder: (_) =>
                                 const ConfirmPaymentScannerScreen(),
                           ));
                         },
+                        child: Tooltip(
+                          message: 'Confirmar pago',
+                          child: Container(
+                            width: 40, height: 40,
+                            decoration: BoxDecoration(
+                              color: AppTheme.success.withValues(alpha: 0.12),
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: const Icon(Icons.payments_rounded,
+                                color: AppTheme.success, size: 22),
+                          ),
+                        ),
                       ),
                       const SizedBox(width: 6),
                       _HeaderBadgeIcon(
@@ -1368,20 +1372,29 @@ class _PosScreenBodyState extends State<_PosScreenBody> {
                                   )
                                 : const SizedBox.shrink(),
                           ),
-                          IconButton(
-                            icon: const Icon(Icons.qr_code_scanner_rounded,
-                                color: AppTheme.primary, size: 24),
-                            tooltip: 'Escanear código de barras',
-                            onPressed: () async {
-                              HapticFeedback.lightImpact();
-                              final barcode = await Navigator.of(context).push<String>(
-                                MaterialPageRoute(
-                                  builder: (_) => const ScanScreen(),
+                          Padding(
+                            padding: const EdgeInsets.only(right: 6),
+                            child: GestureDetector(
+                              onTap: () async {
+                                HapticFeedback.lightImpact();
+                                final barcode = await Navigator.of(context).push<String>(
+                                  MaterialPageRoute(
+                                    builder: (_) => const ScanScreen(),
+                                  ),
+                                );
+                                if (barcode == null || !mounted) return;
+                                _onBarcodeScanned(context, barcode);
+                              },
+                              child: Container(
+                                width: 38, height: 38,
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFF6D28D9).withValues(alpha: 0.12),
+                                  borderRadius: BorderRadius.circular(10),
                                 ),
-                              );
-                              if (barcode == null || !mounted) return;
-                              _onBarcodeScanned(context, barcode);
-                            },
+                                child: const Icon(Icons.qr_code_scanner_rounded,
+                                    color: Color(0xFF6D28D9), size: 22),
+                              ),
+                            ),
                           ),
                         ],
                       ),
@@ -1458,7 +1471,7 @@ class _PosScreenBodyState extends State<_PosScreenBody> {
         maxCrossAxisExtent: 220,
         crossAxisSpacing: 12,
         mainAxisSpacing: 12,
-        mainAxisExtent: 260,
+        mainAxisExtent: 290,
       ),
       itemCount: products.length,
       itemBuilder: (_, i) {
@@ -1544,7 +1557,7 @@ class _ProductCard extends StatelessWidget {
             // physical device (UI_RULES.md #3 — must render clean on
             // 360dp). Giving content a bit more room absorbs the
             // overflow without shrinking the image meaningfully.
-            final imageH = (box.maxHeight * 0.45).roundToDouble();
+            final imageH = (box.maxHeight * 0.40).roundToDouble();
             final contentH = box.maxHeight - imageH;
 
             return Column(
@@ -1605,11 +1618,11 @@ class _ProductCard extends StatelessWidget {
                               Flexible(
                                 child: Text(
                                   product.name,
-                                  maxLines: 2,
+                                  maxLines: 3,
                                   overflow: TextOverflow.ellipsis,
                                   softWrap: true,
                                   style: const TextStyle(
-                                    fontSize: 14,
+                                    fontSize: 13,
                                     fontWeight: FontWeight.w600,
                                     color: AppTheme.textPrimary,
                                     height: 1.2,
@@ -1877,19 +1890,32 @@ class _BottomBar extends StatelessWidget {
 
           const SizedBox(width: 10),
 
-          // QR
+          // QR — share table account
           if (hasItems)
             GestureDetector(
               onTap: onQr,
               child: Container(
-                width: 48,
                 height: 48,
+                padding: const EdgeInsets.symmetric(horizontal: 10),
                 decoration: BoxDecoration(
-                  color: AppTheme.primary.withValues(alpha: 0.1),
+                  color: const Color(0xFF7C3AED).withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(14),
+                  border: Border.all(
+                      color: const Color(0xFF7C3AED).withValues(alpha: 0.3)),
                 ),
-                child: const Icon(Icons.qr_code_2_rounded,
-                    size: 24, color: AppTheme.primary),
+                child: const Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.qr_code_2_rounded,
+                        size: 22, color: Color(0xFF7C3AED)),
+                    SizedBox(width: 4),
+                    Text('QR',
+                        style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w800,
+                            color: Color(0xFF7C3AED))),
+                  ],
+                ),
               ),
             ),
 
@@ -2268,8 +2294,8 @@ class _CartTabs extends StatelessWidget {
             }
           }
 
-          // Dynamic width: wider for context labels
-          final tabWidth = hasContext ? 72.0 : 48.0;
+          // Dynamic width: wider for context labels, widest for occupied
+          final tabWidth = isOccupied ? 80.0 : hasContext ? 72.0 : 48.0;
 
           return Padding(
             padding: const EdgeInsets.symmetric(horizontal: 3),
@@ -2291,8 +2317,10 @@ class _CartTabs extends StatelessWidget {
                   color: isActive
                       ? null
                       : isOccupied
-                          ? const Color(0xFFE8F0FE)
-                          : Colors.white,
+                          ? const Color(0xFFDDECFF)
+                          : hasItems
+                              ? const Color(0xFFFFF8E1)
+                              : Colors.white,
                   borderRadius: BorderRadius.circular(14),
                   border: hasItems
                           ? Border.all(
@@ -2306,13 +2334,36 @@ class _CartTabs extends StatelessWidget {
                   clipBehavior: Clip.none,
                   children: [
                     if (isOccupied)
-                      const Positioned(
-                        top: -3, right: -3,
-                        child: CircleAvatar(
-                          radius: 5,
-                          backgroundColor: Color(0xFF3B82F6),
-                          child: Icon(Icons.restaurant_rounded,
-                              size: 7, color: Colors.white),
+                      Positioned(
+                        top: -4, right: -4,
+                        child: Container(
+                          padding: const EdgeInsets.all(3),
+                          decoration: const BoxDecoration(
+                            color: Color(0xFF3B82F6),
+                            shape: BoxShape.circle,
+                          ),
+                          child: const Icon(Icons.restaurant_rounded,
+                              size: 10, color: Colors.white),
+                        ),
+                      ),
+                    if (hasItems && !isActive)
+                      Positioned(
+                        top: -4, right: -4,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 5, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFF59E0B),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Text(
+                            '$count',
+                            style: const TextStyle(
+                              fontSize: 9,
+                              fontWeight: FontWeight.w800,
+                              color: Colors.white,
+                            ),
+                          ),
                         ),
                       ),
                     Center(
@@ -2352,15 +2403,9 @@ class _CartTabs extends StatelessWidget {
                           color: Colors.white.withValues(alpha: 0.85),
                         ),
                       ),
-                    if (hasItems)
-                      Text(
-                        '$count',
-                        style: const TextStyle(
-                          fontSize: 9,
-                          fontWeight: FontWeight.w600,
-                          color: Color(0xFFF59E0B),
-                        ),
-                      ),
+                    if (isOccupied)
+                      const Icon(Icons.restaurant_rounded,
+                          size: 10, color: Color(0xFF3B82F6)),
                   ],
                 ),
                     ), // Center
