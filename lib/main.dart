@@ -10,6 +10,7 @@ import 'database/sync/sync_service.dart';
 import 'services/active_fiado_service.dart';
 import 'services/api_service.dart';
 import 'services/auth_service.dart';
+import 'models/branch.dart';
 import 'services/branch_provider.dart';
 import 'services/role_manager.dart';
 import 'theme/app_theme.dart';
@@ -66,6 +67,7 @@ class _VendIAAppState extends State<VendIAApp> {
     _syncService.startBackgroundSync();
     _syncCatalogInBackground();
     _syncSalesOnStart();
+    _loadBranches();
   }
 
   /// Sync sales bidirectionally: pull from server + push unsynced local sales.
@@ -74,6 +76,20 @@ class _VendIAAppState extends State<VendIAApp> {
     final hasSession = await AuthService().hasSession();
     if (!hasSession) return;
     await SalesSyncService.fullSync();
+  }
+
+  /// Load branches into BranchProvider so the dashboard shows the branch name.
+  Future<void> _loadBranches() async {
+    try {
+      final hasSession = await AuthService().hasSession();
+      if (!hasSession) return;
+      final api = ApiService(AuthService());
+      final raw = await api.fetchBranches();
+      final branches = raw.map((json) => Branch.fromJson(json)).toList();
+      _branchProvider.setBranches(branches);
+    } catch (e) {
+      debugPrint('[BRANCHES] load failed: $e');
+    }
   }
 
   /// Sync the OFF catalog to Isar in background for offline-first autocomplete.

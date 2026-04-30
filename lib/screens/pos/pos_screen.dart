@@ -12,6 +12,7 @@ import '../../widgets/notification_center_sheet.dart';
 import '../../widgets/panic_button.dart';
 import '../../widgets/table_qr_sheet.dart';
 import '../../widgets/stock_badge.dart';
+import '../../utils/beep.dart';
 import '../../widgets/sync_status_banner.dart';
 import 'cart_controller.dart';
 import 'account_qr_screen.dart';
@@ -276,8 +277,7 @@ class _PosScreenBodyState extends State<_PosScreenBody> {
         .toList();
 
     if (localMatch.isNotEmpty) {
-      SystemSound.play(SystemSoundType.click);
-      HapticFeedback.heavyImpact();
+      playBeep();
       _showQuantityPicker(localMatch.first);
       return;
     }
@@ -290,8 +290,7 @@ class _PosScreenBodyState extends State<_PosScreenBody> {
 
       final product = Product.fromJson(data);
 
-      SystemSound.play(SystemSoundType.click);
-      HapticFeedback.heavyImpact();
+      playBeep();
       _showQuantityPicker(product);
     } catch (_) {
       // API failed — silent failure.

@@ -669,8 +669,6 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
           'barcode': _skuCtrl.text.trim(),
           'presentation': _presentation,
           'content': _contentCtrl.text.trim(),
-          // Always send the field (even empty) so the user can clear a
-          // previously-set date on a re-save.
           'expiry_date': expiryIso ?? '',
           if (_pendingCatalogImageId != null)
             'catalog_image_id': _pendingCatalogImageId,
@@ -691,6 +689,21 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
           if (_pendingCatalogImageId != null)
             'catalog_image_id': _pendingCatalogImageId,
         });
+      }
+
+      // Upload local photo if taken from camera/gallery
+      if (_photoPath != null && _photoPath!.isNotEmpty && _photoUrl == null) {
+        try {
+          final uploadRes = await api.uploadProductPhoto(id, File(_photoPath!));
+          final url = (uploadRes['photo_url'] as String?) ??
+              (uploadRes['image_url'] as String?);
+          if (url != null && url.isNotEmpty) {
+            _photoUrl = url;
+            await api.updateProduct(id, {'image_url': url});
+          }
+        } catch (_) {
+          // Photo upload failed — product saved without image
+        }
       }
 
       // Save to local Isar for offline
