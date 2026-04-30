@@ -7,6 +7,7 @@ import '../../database/collections/local_sale.dart';
 import '../../database/collections/local_product.dart';
 import '../../services/api_service.dart';
 import '../../services/auth_service.dart';
+import '../../services/branch_provider.dart';
 import '../../services/role_manager.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/online_orders_bell.dart';
@@ -352,6 +353,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   topPadding: topPad,
                   ownerName: widget.ownerName,
                   businessName: widget.businessName,
+                  branchName: context.watch<BranchProvider>().currentBranch?.name,
                   isStoreOpen: _isStoreOpen,
                   loadingStoreStatus: _loadingStoreStatus,
                   onToggleStore: _toggleStoreStatus,
@@ -764,6 +766,7 @@ class _HeroHeaderDelegate extends SliverPersistentHeaderDelegate {
   final double topPadding;
   final String ownerName;
   final String businessName;
+  final String? branchName;
   final bool isStoreOpen;
   final bool loadingStoreStatus;
   final ValueChanged<bool> onToggleStore;
@@ -774,6 +777,7 @@ class _HeroHeaderDelegate extends SliverPersistentHeaderDelegate {
     required this.topPadding,
     required this.ownerName,
     required this.businessName,
+    this.branchName,
     required this.isStoreOpen,
     required this.loadingStoreStatus,
     required this.onToggleStore,
@@ -787,7 +791,7 @@ class _HeroHeaderDelegate extends SliverPersistentHeaderDelegate {
     colors: [Color(0xFF1E3A8A), Color(0xFF3B82F6), Color(0xFF6366F1)],
   );
 
-  static const double _expandedBody = 156;
+  static const double _expandedBody = 170;
   static const double _collapsedBody = 52;
 
   @override
@@ -848,21 +852,38 @@ class _HeroHeaderDelegate extends SliverPersistentHeaderDelegate {
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                         ),
-                        // Business name sits right under owner name,
+                        // Business + branch name under owner name,
                         // fades and shrinks on collapse
                         if (detailsOpacity > 0)
                           Opacity(
                             opacity: detailsOpacity,
-                            child: Text(
-                              businessName,
-                              style: TextStyle(
-                                fontSize: 14,
-                                color: Colors.white.withValues(alpha: 0.8),
-                                fontWeight: FontWeight.w500,
-                                height: 1.3,
-                              ),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Text(
+                                  businessName,
+                                  style: TextStyle(
+                                    fontSize: 14,
+                                    color: Colors.white.withValues(alpha: 0.8),
+                                    fontWeight: FontWeight.w500,
+                                    height: 1.3,
+                                  ),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                                if (branchName != null && branchName!.isNotEmpty)
+                                  Text(
+                                    '📍 $branchName',
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      color: Colors.white.withValues(alpha: 0.6),
+                                      height: 1.2,
+                                    ),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                              ],
                             ),
                           ),
                       ],
@@ -925,6 +946,7 @@ class _HeroHeaderDelegate extends SliverPersistentHeaderDelegate {
       o.loadingStoreStatus != loadingStoreStatus ||
       o.ownerName != ownerName ||
       o.businessName != businessName ||
+      o.branchName != branchName ||
       o.todayLabel != todayLabel;
 }
 
