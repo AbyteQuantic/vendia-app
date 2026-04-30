@@ -99,21 +99,28 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
     // Reload all dashboard data when the branch changes
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      context.read<BranchProvider>().addListener(_onBranchChanged);
+      final bp = context.read<BranchProvider>();
+      _prevBranchId = bp.currentBranchId;
+      bp.addListener(_onBranchChanged);
     });
   }
 
   String? _prevBranchId;
 
   void _onBranchChanged() {
+    if (!mounted) return;
     final newId = context.read<BranchProvider>().currentBranchId;
-    if (_prevBranchId != null && newId != _prevBranchId) {
-      _loadData();
-      _syncFromServer();
-      _loadActivePromosCount();
-      _loadStoreStatus();
+    if (newId != _prevBranchId) {
+      _prevBranchId = newId;
+      // Small delay to let ApiService.currentBranchId sync
+      Future.delayed(const Duration(milliseconds: 100), () {
+        if (!mounted) return;
+        _loadData();
+        _syncFromServer();
+        _loadActivePromosCount();
+        _loadStoreStatus();
+      });
     }
-    _prevBranchId = newId;
   }
 
   /// Pull sales + products from the server so the dashboard is up to date
