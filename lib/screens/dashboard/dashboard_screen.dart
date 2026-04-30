@@ -28,7 +28,9 @@ class _DashboardData {
   final int txCount;
   final String topProduct;
   final int prodCount;
-  final List<LocalSale> recentSales;
+  /// Recent sales — either from API (Map) or local Isar (LocalSale).
+  /// The tile builder handles both types.
+  final List<dynamic> recentSales;
 
   const _DashboardData({
     required this.totalToday,
@@ -225,19 +227,48 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   Future<void> _loadData() async {
-    // All dashboard KPIs from the branch-scoped analytics endpoint.
-    // This single call gives us product_count, total_sales_today,
-    // transaction_count — all filtered by the active branch.
     int prodCount = 0;
     double totalToday = 0;
     int txCount = 0;
+    String top = '—';
+    List<dynamic> recentSales = [];
 
     try {
       final api = ApiService(AuthService());
-      final analytics = await api.fetchAnalyticsDashboard();
+
+      // Parallel: KPIs + recent sales (both branch-scoped)
+      final results = await Future.wait([
+        api.fetchAnalyticsDashboard(),
+        api.fetchSalesHistoryByPeriod(period: 'today', page: 1, perPage: 10),
+      ]);
+
+      final analytics = results[0] as Map<String, dynamic>;
       prodCount = (analytics['product_count'] as num?)?.toInt() ?? 0;
       totalToday = (analytics['total_sales_today'] as num?)?.toDouble() ?? 0;
       txCount = (analytics['transaction_count'] as num?)?.toInt() ?? 0;
+
+      final apiSales = results[1] as List<dynamic>;
+      recentSales = apiSales;
+
+      // Top product from API sales items
+      if (apiSales.isNotEmpty) {
+        final counts = <String, int>{};
+        for (final s in apiSales) {
+          if (s is! Map) continue;
+          final items = (s['Items'] ?? s['items'] ?? []) as List;
+          for (final it in items) {
+            if (it is! Map) continue;
+            final name = (it['name'] ?? it['product_name'] ?? '') as String;
+            final qty = (it['quantity'] as num?)?.toInt() ?? 1;
+            if (name.isNotEmpty) counts[name] = (counts[name] ?? 0) + qty;
+          }
+        }
+        if (counts.isNotEmpty) {
+          final sorted = counts.entries.toList()
+            ..sort((a, b) => b.value.compareTo(a.value));
+          top = sorted.first.key;
+        }
+      }
     } catch (_) {
       // Fallback to local Isar if offline
       final sales = await _db.getSalesToday();
@@ -245,21 +276,19 @@ class _DashboardScreenState extends State<DashboardScreen> {
       txCount = sales.length;
       final allProducts = await _db.getAllProducts();
       prodCount = allProducts.length;
+      sales.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+      top = _topProduct(sales);
+      recentSales = sales.take(10).toList();
     }
-
-    // Recent sales still from Isar (for the list view)
-    final sales = await _db.getSalesToday();
-    sales.sort((a, b) => b.createdAt.compareTo(a.createdAt));
-    final top = _topProduct(sales);
 
     if (mounted) {
       setState(() {
         _data = _DashboardData(
           totalToday: totalToday,
-          txCount: txCount > 0 ? txCount : sales.length,
+          txCount: txCount,
           topProduct: top,
           prodCount: prodCount,
-          recentSales: sales.take(10).toList(),
+          recentSales: recentSales,
         );
       });
     }
@@ -736,13 +765,37 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
-  Widget _buildSaleTile(LocalSale sale) {
-    final label = sale.items.isNotEmpty
-        ? sale.items.first.productName +
-            (sale.items.length > 1
-                ? ' + ${sale.items.length - 1} más'
-                : '')
-        : 'Venta';
+  Widget _buildSaleTile(dynamic sale) {
+    String label;
+    String method;
+    DateTime createdAt;
+    double total;
+
+    if (sale is LocalSale) {
+      label = sale.items.isNotEmpty
+          ? sale.items.first.productName +
+              (sale.items.length > 1 ? ' + ${sale.items.length - 1} mas' : '')
+          : 'Venta';
+      method = sale.paymentMethod;
+      createdAt = sale.createdAt;
+      total = sale.total;
+    } else if (sale is Map) {
+      final items = (sale['Items'] ?? sale['items'] ?? []) as List;
+      if (items.isNotEmpty) {
+        final first = items.first as Map;
+        final name = (first['name'] ?? first['product_name'] ?? 'Producto') as String;
+        label = items.length > 1 ? '$name + ${items.length - 1} mas' : name;
+      } else {
+        label = 'Venta';
+      }
+      method = (sale['payment_method'] as String?) ?? 'cash';
+      createdAt = DateTime.tryParse(sale['created_at']?.toString() ?? '')
+              ?.toLocal() ??
+          DateTime.now();
+      total = (sale['total'] as num?)?.toDouble() ?? 0;
+    } else {
+      return const SizedBox.shrink();
+    }
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
@@ -755,8 +808,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
               color: AppTheme.primary.withValues(alpha: 0.1),
               borderRadius: BorderRadius.circular(20),
             ),
-            child: Icon(_payIcon(sale.paymentMethod),
-                color: AppTheme.primary, size: 24),
+            child: Icon(_payIcon(method), color: AppTheme.primary, size: 24),
           ),
           const SizedBox(width: 14),
           Expanded(
@@ -772,14 +824,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         color: AppTheme.textPrimary)),
                 const SizedBox(height: 2),
                 Text(
-                  '${_payLabel(sale.paymentMethod)} · ${_timeAgo(sale.createdAt)}',
+                  '${_payLabel(method)} · ${_timeAgo(createdAt)}',
                   style: const TextStyle(
                       fontSize: 15, color: AppTheme.textSecondary),
                 ),
               ],
             ),
           ),
-          Text(_formatCOP(sale.total.round()),
+          Text(_formatCOP(total.round()),
               style: const TextStyle(
                   fontSize: 18,
                   fontWeight: FontWeight.bold,
