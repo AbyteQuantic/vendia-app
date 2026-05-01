@@ -499,13 +499,14 @@ class ApiService {
   }
 
   Future<Map<String, dynamic>> generateProductImage(String uuid, {
-    String? name, String? presentation, String? content,
+    String? name, String? presentation, String? content, String? barcode,
   }) async {
     try {
       final params = <String, String>{};
       if (name != null && name.isNotEmpty) params['name'] = name;
       if (presentation != null && presentation.isNotEmpty) params['presentation'] = presentation;
       if (content != null && content.isNotEmpty) params['content'] = content;
+      if (barcode != null && barcode.isNotEmpty) params['barcode'] = barcode;
       final response = await _dio.post(
         '/api/v1/products/$uuid/generate-image',
         queryParameters: params.isEmpty ? null : params,

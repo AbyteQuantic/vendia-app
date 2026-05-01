@@ -264,6 +264,7 @@ class _IaResultScreenState extends State<IaResultScreen> {
           name: p.name,
           presentation: p.presentation,
           content: p.content,
+          barcode: p.barcode,
         );
       }
       if (!mounted) return;
