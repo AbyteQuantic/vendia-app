@@ -766,18 +766,30 @@ class _PosScreenBodyState extends State<_PosScreenBody> {
       try {
         final tab = await api.fetchTableTabByLabel(label);
         orderId = tab?['order_id'] as String?;
-      } catch (_) {}
+        debugPrint('[CANCEL_MESA] Tab lookup for "$label": orderId=$orderId');
+      } catch (e) {
+        debugPrint('[CANCEL_MESA] Tab lookup failed: $e');
+      }
 
       // Fallback: scan all open accounts for this label
       if (orderId == null || orderId.isEmpty) {
-        final accounts = await api.fetchOpenAccounts();
-        for (final row in accounts) {
-          if ((row['label'] as String?)?.trim() == label) {
-            orderId = row['id'] as String?;
-            break;
+        try {
+          final accounts = await api.fetchOpenAccounts();
+          debugPrint('[CANCEL_MESA] Open accounts: ${accounts.length}');
+          for (final row in accounts) {
+            final rowLabel = (row['label'] as String?)?.trim();
+            debugPrint('[CANCEL_MESA] Checking "$rowLabel" vs "$label", id=${row['id']}');
+            if (rowLabel == label) {
+              orderId = row['id'] as String?;
+              break;
+            }
           }
+        } catch (e) {
+          debugPrint('[CANCEL_MESA] Open accounts fetch failed: $e');
         }
       }
+
+      debugPrint('[CANCEL_MESA] Final orderId=$orderId');
 
       if (orderId == null || orderId.isEmpty) {
         if (mounted) {
@@ -813,6 +825,7 @@ class _PosScreenBodyState extends State<_PosScreenBody> {
         );
       }
     } catch (e) {
+      debugPrint('[CANCEL_MESA] Error: $e');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
