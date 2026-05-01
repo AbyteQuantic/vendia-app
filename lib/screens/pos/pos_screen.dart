@@ -761,9 +761,23 @@ class _PosScreenBodyState extends State<_PosScreenBody> {
     try {
       final api = ApiService(AuthService());
 
-      // Always fetch fresh from backend — most reliable source
-      final tab = await api.fetchTableTabByLabel(label);
-      final orderId = (tab?['order_id'] as String?);
+      // Resolve order ID: try tab endpoint, then scan open accounts
+      String? orderId;
+      try {
+        final tab = await api.fetchTableTabByLabel(label);
+        orderId = tab?['order_id'] as String?;
+      } catch (_) {}
+
+      // Fallback: scan all open accounts for this label
+      if (orderId == null || orderId.isEmpty) {
+        final accounts = await api.fetchOpenAccounts();
+        for (final row in accounts) {
+          if ((row['label'] as String?)?.trim() == label) {
+            orderId = row['id'] as String?;
+            break;
+          }
+        }
+      }
 
       if (orderId == null || orderId.isEmpty) {
         if (mounted) {
