@@ -808,8 +808,9 @@ class _PosScreenBodyState extends State<_PosScreenBody> {
         }
       }
 
-      // Refresh open tabs
+      // Refresh open tabs + products (stock restored on cancel)
       _loadOpenTabs();
+      ctrl.refreshProducts();
 
       if (mounted) {
         HapticFeedback.heavyImpact();

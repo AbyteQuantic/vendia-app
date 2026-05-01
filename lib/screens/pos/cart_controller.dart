@@ -524,6 +524,9 @@ class CartController extends ChangeNotifier {
     });
   }
 
+  /// Re-fetch products from the server so stock updates are visible.
+  Future<void> refreshProducts() => _loadProducts();
+
   /// Public entry point for tests and force-refresh flows.
   /// Fires the server lookup for the currently active tab; no-op
   /// when the active context isn't a mesa. Safe to call multiple
