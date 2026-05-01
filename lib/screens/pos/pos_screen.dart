@@ -759,23 +759,11 @@ class _PosScreenBodyState extends State<_PosScreenBody> {
     if (confirmed != true || !mounted) return;
 
     try {
-      // Find the order ID for this label
       final api = ApiService(AuthService());
-      String? orderId;
-      for (final row in _openTabRows) {
-        if ((row['label'] as String?)?.trim() == label) {
-          orderId = (row['id'] as String?) ?? (row['order_id'] as String?);
-          break;
-        }
-      }
-      // Also check the cart context
-      orderId ??= ctrl.activeContext.orderId;
 
-      if (orderId == null || orderId.isEmpty) {
-        // Try fetching from the tab endpoint
-        final tab = await api.fetchTableTabByLabel(label);
-        orderId = (tab?['order_id'] as String?) ?? (tab?['id'] as String?);
-      }
+      // Always fetch fresh from backend — most reliable source
+      final tab = await api.fetchTableTabByLabel(label);
+      final orderId = (tab?['order_id'] as String?);
 
       if (orderId == null || orderId.isEmpty) {
         if (mounted) {
