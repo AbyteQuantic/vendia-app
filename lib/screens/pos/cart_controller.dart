@@ -704,8 +704,6 @@ class CartController extends ChangeNotifier {
         );
         return null;
       }
-      // Only notify if something actually changed — avoids
-      // spurious rebuilds while the cashier is scrolling.
       final before = _contexts[index];
       if (before.sessionToken != token || before.orderId != orderId) {
         _contexts[index] = before.copyWith(
@@ -715,6 +713,8 @@ class CartController extends ChangeNotifier {
         notifyListeners();
         _persistContexts();
       }
+      // Refresh products so stock updates are visible in the grid
+      unawaited(_loadProducts());
       return token;
     } on AppError catch (e) {
       developer.log(

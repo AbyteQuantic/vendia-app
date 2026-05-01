@@ -116,9 +116,16 @@ class DatabaseService {
   /// Sync products from server to local Isar (upsert by UUID).
   /// Does NOT clear existing products — prevents data loss on partial fetches.
   Future<void> replaceAllProducts(List<LocalProduct> products) async {
-    if (products.isEmpty) return; // never wipe local data with empty response
+    if (products.isEmpty) return;
+    // Deduplicate by uuid — keep the last occurrence (freshest data)
+    final byUuid = <String, LocalProduct>{};
+    for (final p in products) {
+      byUuid[p.uuid] = p;
+    }
+    final unique = byUuid.values.toList();
     await isar.writeTxn(() async {
-      await isar.localProducts.putAll(products); // unique index on uuid does upsert
+      await isar.localProducts.clear();
+      await isar.localProducts.putAll(unique);
     });
   }
 
