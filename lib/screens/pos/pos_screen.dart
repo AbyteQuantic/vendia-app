@@ -652,14 +652,48 @@ class _PosScreenBodyState extends State<_PosScreenBody> {
             },
           ),
           const SizedBox(width: 6),
-          // Cobrar
+          // Cobrar — goes to TabReviewScreen for payment flow
           _mesaActionButton(
             icon: Icons.payments_rounded,
             label: 'Cobrar',
             color: AppTheme.success,
             onTap: () {
               HapticFeedback.lightImpact();
-              _showContextSheet(ctrl);
+              final resolvedToken = token ??
+                  (() {
+                    for (final row in _openTabRows) {
+                      if ((row['label'] as String?)?.trim() == label) {
+                        return row['session_token'] as String?;
+                      }
+                    }
+                    return null;
+                  })();
+              final resolvedOrderId = orderId ??
+                  (() {
+                    for (final row in _openTabRows) {
+                      if ((row['label'] as String?)?.trim() == label) {
+                        return (row['order_id'] as String?) ??
+                            (row['id'] as String?);
+                      }
+                    }
+                    return null;
+                  })();
+              if (resolvedToken != null && resolvedToken.isNotEmpty) {
+                Navigator.of(context).push(MaterialPageRoute(
+                  builder: (_) => TabReviewScreen(
+                    sessionToken: resolvedToken,
+                    tableLabel: label,
+                    orderId: resolvedOrderId,
+                  ),
+                ));
+              } else {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Envia productos primero para cobrar'),
+                    behavior: SnackBarBehavior.floating,
+                  ),
+                );
+              }
             },
           ),
           const SizedBox(width: 6),
