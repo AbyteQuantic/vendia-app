@@ -216,29 +216,55 @@ class _IaResultScreenState extends State<IaResultScreen> {
     });
   }
 
+  bool _canGenerateImage(_EditableProduct p) {
+    return p.name.trim().length >= 3;
+  }
+
   Future<void> _enhanceOrGenerateFor(int index) async {
     final p = _products[index];
+
+    if (!_canGenerateImage(p)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Agrega el nombre del producto (min. 3 letras) y la '
+            'presentacion para que la IA genere una imagen fiel.',
+            style: TextStyle(fontSize: 14),
+          ),
+          backgroundColor: AppTheme.warning,
+          behavior: SnackBarBehavior.floating,
+          duration: Duration(seconds: 4),
+        ),
+      );
+      return;
+    }
+
     setState(() => p.enhancing = true);
     try {
       final api = ApiService(AuthService());
-      // Create the product first so we have a UUID for the enhance endpoint
+      // Create a temp product so the generate endpoint has a UUID.
+      // price=50 is the minimum valid COP value.
       final uuid = const Uuid().v4();
-      final createPayload = <String, dynamic>{
+      await api.createProduct({
         'id': uuid,
         'name': p.name,
-        'price': p.sellPrice,
-        'stock': p.quantity,
-      };
-      await api.createProduct(createPayload);
+        'price': p.sellPrice > 0 ? p.sellPrice : 50,
+        'stock': p.quantity > 0 ? p.quantity : 1,
+        'presentation': p.presentation,
+        'content': p.content,
+      });
 
       Map<String, dynamic> result;
       if (p.photoPath != null) {
-        // Upload + enhance existing photo
         await api.uploadProductPhoto(uuid, File(p.photoPath!));
         result = await api.enhanceProductPhoto(uuid);
       } else {
-        // Generate from scratch using product name
-        result = await api.generateProductImage(uuid);
+        result = await api.generateProductImage(
+          uuid,
+          name: p.name,
+          presentation: p.presentation,
+          content: p.content,
+        );
       }
       if (!mounted) return;
       final url = result['photo_url'] as String? ?? result['image_url'] as String?;
