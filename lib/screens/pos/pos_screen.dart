@@ -711,9 +711,116 @@ class _PosScreenBodyState extends State<_PosScreenBody> {
               );
             },
           ),
+          const SizedBox(width: 6),
+          // Cancel / delete account
+          _mesaActionButton(
+            icon: Icons.delete_outline_rounded,
+            label: 'Anular',
+            color: AppTheme.error,
+            onTap: () => _confirmCancelMesa(ctrl, label),
+          ),
         ],
       ),
     );
+  }
+
+  Future<void> _confirmCancelMesa(CartController ctrl, String label) async {
+    HapticFeedback.mediumImpact();
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Text('Anular cuenta',
+            style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+        content: Text(
+          'Esta seguro que desea anular la cuenta de $label?\n\n'
+          'Esta accion no se puede deshacer.',
+          style: const TextStyle(fontSize: 16, height: 1.4),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('Cancelar', style: TextStyle(fontSize: 16)),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppTheme.error,
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12)),
+            ),
+            child: const Text('Si, anular',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+
+    try {
+      // Find the order ID for this label
+      final api = ApiService(AuthService());
+      String? orderId;
+      for (final row in _openTabRows) {
+        if ((row['label'] as String?)?.trim() == label) {
+          orderId = (row['id'] as String?) ?? (row['order_id'] as String?);
+          break;
+        }
+      }
+      // Also check the cart context
+      orderId ??= ctrl.activeContext.orderId;
+
+      if (orderId == null || orderId.isEmpty) {
+        // Try fetching from the tab endpoint
+        final tab = await api.fetchTableTabByLabel(label);
+        orderId = (tab?['order_id'] as String?) ?? (tab?['id'] as String?);
+      }
+
+      if (orderId == null || orderId.isEmpty) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('No se encontro la cuenta para anular'),
+              backgroundColor: AppTheme.error,
+              behavior: SnackBarBehavior.floating,
+            ),
+          );
+        }
+        return;
+      }
+
+      await api.updateOrderStatus(orderId, 'cancelado');
+
+      // Clear the local cart tab if it was this mesa
+      if (ctrl.activeContext.tableLabel == label) {
+        ctrl.clearActiveCart();
+      }
+
+      // Refresh open tabs
+      _loadOpenTabs();
+
+      if (mounted) {
+        HapticFeedback.heavyImpact();
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Cuenta de $label anulada'),
+            backgroundColor: AppTheme.success,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error al anular: $e'),
+            backgroundColor: AppTheme.error,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    }
   }
 
   Widget _mesaActionButton({
@@ -1649,6 +1756,7 @@ class _PosScreenBodyState extends State<_PosScreenBody> {
                         knownSessionToken: sessionToken,
                       );
                     },
+                    onCancelMesa: (label) => _confirmCancelMesa(ctrl, label),
                   ),
 
                 // ── Active Mesa Info Bar ──
@@ -2788,6 +2896,7 @@ class _OpenTablesBanner extends StatelessWidget {
   final void Function(String label, String? sessionToken) onOpenMesa;
   final void Function(String label, String? sessionToken, String? orderId) onPayMesa;
   final void Function(String label, String? sessionToken) onQrMesa;
+  final void Function(String label)? onCancelMesa;
 
   const _OpenTablesBanner({
     required this.openTabRows,
@@ -2797,6 +2906,7 @@ class _OpenTablesBanner extends StatelessWidget {
     required this.onOpenMesa,
     required this.onPayMesa,
     required this.onQrMesa,
+    this.onCancelMesa,
   });
 
   static const _statusConfig = <String, ({String label, Color color, IconData icon})>{
@@ -2904,6 +3014,15 @@ class _OpenTablesBanner extends StatelessWidget {
                           tooltip: 'QR',
                           onTap: () => onQrMesa(label, token),
                         ),
+                        if (onCancelMesa != null) ...[
+                          const SizedBox(width: 3),
+                          _openTabAction(
+                            icon: Icons.close_rounded,
+                            color: AppTheme.error,
+                            tooltip: 'Anular',
+                            onTap: () => onCancelMesa!(label),
+                          ),
+                        ],
                       ],
                     ),
                   ),
