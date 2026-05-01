@@ -59,6 +59,8 @@ class _IaResultScreenState extends State<IaResultScreen> {
       return _EditableProduct(
         name: p['name'] as String? ?? '',
         presentation: p['presentation'] as String? ?? '',
+        content: p['content'] as String? ?? '',
+        barcode: p['barcode'] as String? ?? '',
         quantity: (p['quantity'] as num?)?.toInt() ?? 1,
         purchasePrice: purchasePrice,
         sellPrice: suggestPrice(purchasePrice, _marginPercent).toDouble(),
