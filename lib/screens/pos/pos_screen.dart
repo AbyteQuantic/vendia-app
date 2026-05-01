@@ -791,24 +791,21 @@ class _PosScreenBodyState extends State<_PosScreenBody> {
 
       debugPrint('[CANCEL_MESA] Final orderId=$orderId');
 
-      if (orderId == null || orderId.isEmpty) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('No se encontro la cuenta para anular'),
-              backgroundColor: AppTheme.error,
-              behavior: SnackBarBehavior.floating,
-            ),
-          );
-        }
-        return;
+      if (orderId != null && orderId.isNotEmpty) {
+        await api.updateOrderStatus(orderId, 'cancelado');
       }
 
-      await api.updateOrderStatus(orderId, 'cancelado');
-
-      // Clear the local cart tab if it was this mesa
-      if (ctrl.activeContext.tableLabel == label) {
-        ctrl.clearActiveCart();
+      // Always clear the local cart tab for this mesa — even if
+      // the server ticket was already closed/cancelled/missing.
+      // This handles stale local state from old sessions.
+      for (int i = 0; i < 10; i++) {
+        final c = ctrl.contextAt(i);
+        if ((c.type == AccountType.mesa || c.type == AccountType.mesaInmediata) &&
+            c.tableLabel == label) {
+          ctrl.switchCart(i);
+          ctrl.clearActiveCart();
+          debugPrint('[CANCEL_MESA] Cleared local cart tab $i for $label');
+        }
       }
 
       // Refresh open tabs
