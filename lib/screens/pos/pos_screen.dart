@@ -1214,6 +1214,10 @@ class _PosScreenBodyState extends State<_PosScreenBody> {
       }
       await api.createSale(payload);
       debugPrint('[SALE_SYNC] ok uuid=$saleUuid credit=${creditAccountId ?? "-"}');
+      // Refresh products so stock deduction is visible in POS grid
+      try {
+        context.read<CartController>().refreshProducts();
+      } catch (_) {}
       // Mark as synced in Isar
       final db = DatabaseService.instance;
       final allSales = await db.getSalesToday();
@@ -1526,11 +1530,42 @@ class _PosScreenBodyState extends State<_PosScreenBody> {
   void _registerFiado(CartController ctrl) {
     final ctx = ctrl.activeContext;
     final total = ctrl.formattedTotal;
+    final cartSnapshot = List<CartItem>.from(ctrl.activeCart);
+    final saleTotal = ctrl.activeTotal;
     final items = ctrl.activeCart
         .map((i) => '• ${i.product.name} x${i.quantity} = ${i.formattedSubtotal}')
         .join('\n');
 
-    // TODO: persist credit to local DB / API
+    // Save as credit sale via backend (deducts stock + creates sale)
+    final saleUuid = const Uuid().v4();
+    final db = DatabaseService.instance;
+    () async {
+      // Local Isar sale
+      final saleItems = cartSnapshot.map((item) {
+        return SaleItemEmbed()
+          ..productUuid = item.product.uuid
+          ..productName = item.product.name
+          ..quantity = item.quantity
+          ..unitPrice = item.product.price
+          ..isContainerCharge = false;
+      }).toList();
+      final localSale = LocalSale()
+        ..uuid = saleUuid
+        ..paymentMethod = 'credit'
+        ..total = saleTotal
+        ..items = saleItems
+        ..createdAt = DateTime.now()
+        ..synced = false;
+      await db.insertSaleAndDeductStock(localSale);
+
+      // Backend sync (creates Sale with payment_method=credit, deducts stock)
+      _syncSaleToBackend(
+        cartSnapshot,
+        'credit',
+        saleUuid,
+        creditAccountId: null,
+      );
+    }();
     ctrl.clearActiveCart();
 
     showDialog(
