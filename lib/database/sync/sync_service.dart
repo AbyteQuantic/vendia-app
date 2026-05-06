@@ -5,6 +5,7 @@ import '../../config/api_config.dart';
 import '../../services/auth_service.dart';
 import '../database_service.dart';
 import '../collections/pending_operation.dart';
+import '../collections/local_payment_method.dart';
 import '../collections/local_product.dart';
 import 'connectivity_monitor.dart';
 
@@ -155,6 +156,27 @@ class SyncService extends ChangeNotifier {
       await _db.replaceAllProducts(products);
     } catch (_) {
       // Silent fail on pull — local data still works
+    }
+
+    // Pull tenant payment methods so the checkout can render the
+    // owner-configured set (e.g. Nequi, Daviplata) for cashiers as
+    // well. Tenant scope is already enforced by the endpoint.
+    try {
+      final token = await _auth.getToken();
+      if (token == null) return;
+
+      final pmResponse = await _dio.get(
+        '/api/v1/store/payment-methods',
+        options: Options(headers: {'Authorization': 'Bearer $token'}),
+      );
+      final pmList = (pmResponse.data['data'] as List?) ?? [];
+      final methods = pmList
+          .map((e) =>
+              LocalPaymentMethod.fromJson(e as Map<String, dynamic>))
+          .toList();
+      await _db.replaceAllPaymentMethods(methods);
+    } catch (_) {
+      // Silent: leave the previous cache in place
     }
   }
 

@@ -2,6 +2,7 @@ import 'package:isar/isar.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'collections/local_catalog_product.dart';
+import 'collections/local_payment_method.dart';
 import 'collections/local_product.dart';
 import 'collections/local_sale.dart';
 import 'collections/local_customer.dart';
@@ -37,6 +38,7 @@ class DatabaseService {
         LocalCatalogProductSchema,
         LocalCreditSchema,
         LocalCustomerSchema,
+        LocalPaymentMethodSchema,
         LocalProductSchema,
         LocalSaleSchema,
         LocalTableTabSchema,
@@ -585,6 +587,35 @@ class DatabaseService {
         final next = p.reservedStock - removed.quantity;
         p.reservedStock = next < 0 ? 0 : next;
         await isar.localProducts.put(p);
+      }
+    });
+  }
+
+  // ── Payment methods ─────────────────────────────────────────────────────
+
+  Future<List<LocalPaymentMethod>> getActivePaymentMethods() async {
+    return isar.localPaymentMethods
+        .filter()
+        .isActiveEqualTo(true)
+        .findAll();
+  }
+
+  Stream<List<LocalPaymentMethod>> watchActivePaymentMethods() {
+    return isar.localPaymentMethods
+        .filter()
+        .isActiveEqualTo(true)
+        .watch(fireImmediately: true);
+  }
+
+  /// Replace the entire payment-methods cache with the server snapshot.
+  /// Single writeTxn keeps deletes + inserts atomic; the stream emits
+  /// once with the consolidated list.
+  Future<void> replaceAllPaymentMethods(
+      List<LocalPaymentMethod> methods) async {
+    await isar.writeTxn(() async {
+      await isar.localPaymentMethods.clear();
+      if (methods.isNotEmpty) {
+        await isar.localPaymentMethods.putAll(methods);
       }
     });
   }
