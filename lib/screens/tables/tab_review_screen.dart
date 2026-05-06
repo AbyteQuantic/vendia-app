@@ -4,6 +4,8 @@ import 'package:flutter/services.dart';
 import '../../services/api_service.dart';
 import '../../services/auth_service.dart';
 import '../../theme/app_theme.dart';
+import '../../database/database_service.dart';
+import '../../database/collections/local_table_tab.dart';
 
 /// Tab Review — tendero-side read of an open table ticket. Shows
 /// items with their exact time of order, the abonos the customer
@@ -327,7 +329,18 @@ class _TabReviewScreenState extends State<TabReviewScreen> {
           ),
         ],
       ),
-      body: _buildBody(),
+      body: StreamBuilder<LocalTableTab?>(
+        stream: DatabaseService.instance
+            .watchTableTabByLabel(widget.tableLabel),
+        builder: (ctx, snap) {
+          final tab = snap.data;
+          if (tab != null) {
+            return _buildReactiveContent(tab);
+          }
+          // Fallback: use legacy polling content if no ISAR data
+          return _buildLegacyContent();
+        },
+      ),
       bottomNavigationBar: widget.orderId == null
           ? null
           : SafeArea(
@@ -350,7 +363,69 @@ class _TabReviewScreenState extends State<TabReviewScreen> {
     );
   }
 
-  Widget _buildBody() {
+  Widget _buildReactiveContent(LocalTableTab tab) {
+    final items = tab.items;
+    final abonos = (_data?['partial_payments'] as List<dynamic>? ?? [])
+        .cast<Map<String, dynamic>>();
+    final total = tab.grossTotal;
+    final paid = tab.abonosTotal;
+    final remaining = tab.pendingBalance;
+
+    return RefreshIndicator.adaptive(
+      onRefresh: _load,
+      child: ListView(
+        padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+        children: [
+          _sectionTitle('Productos (${items.length})'),
+          const SizedBox(height: 8),
+          if (items.isEmpty)
+            _emptyHint('Sin productos registrados todavía.')
+          else
+            ...items.map((it) {
+              return _ItemRow(
+                key: ValueKey(it.productUuid),
+                name: it.productName,
+                quantity: it.quantity,
+                unitPrice: it.unitPrice,
+                subtotal: it.quantity * it.unitPrice,
+                emoji: '',
+                time: _fmtTime(it.sentAt?.toIso8601String()),
+                fmtCOP: _fmtCOP,
+                canDelete: false,
+                onDelete: null,
+              );
+            }),
+          const SizedBox(height: 24),
+          _sectionTitle('Abonos registrados (${abonos.length})'),
+          const SizedBox(height: 8),
+          if (abonos.isEmpty)
+            _emptyHint('Aún no hay abonos en esta cuenta.')
+          else
+            ...abonos.map((a) => _AbonoRow(
+                  method: (a['payment_method'] as String?) ?? 'Efectivo',
+                  amount: (a['amount'] as num?)?.toDouble() ?? 0,
+                  time: _fmtTime(a['created_at'] as String?),
+                  receiptUrl: (a['receipt_url'] as String?) ?? '',
+                  onShowReceipt: () => _showReceipt(
+                    a['receipt_url'] as String,
+                    method: (a['payment_method'] as String?) ?? 'Efectivo',
+                    amount: (a['amount'] as num?)?.toDouble() ?? 0,
+                  ),
+                  fmtCOP: _fmtCOP,
+                )),
+          const SizedBox(height: 24),
+          _TotalsCard(
+            total: total,
+            paid: paid,
+            remaining: remaining,
+            fmtCOP: _fmtCOP,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildLegacyContent() {
     if (_loading && _data == null) {
       return const Center(child: CircularProgressIndicator());
     }

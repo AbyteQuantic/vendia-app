@@ -22,6 +22,8 @@ import 'checkout_screen.dart';
 import 'sale_success_screen.dart';
 import 'cuaderno_fiados_screen.dart';
 import '../../database/database_service.dart';
+import '../../database/collections/local_table_tab.dart';
+import '../../database/collections/local_product.dart';
 import '../../services/api_service.dart';
 import '../../services/auth_service.dart';
 import '../../services/panic_trigger_service.dart';
@@ -546,206 +548,217 @@ class _PosScreenBodyState extends State<_PosScreenBody> {
   Widget _buildActiveMesaBar(CartController ctrl) {
     final ctx = ctrl.activeContext;
     final label = ctx.tableLabel ?? 'Mesa';
-    final serverTotal = _openTabTotalsByLabel[label] ?? 0;
     final token = ctx.sessionToken;
     final orderId = ctx.orderId;
 
-    // Find status from open tab rows
-    String status = 'nuevo';
-    for (final row in _openTabRows) {
-      if ((row['label'] as String?)?.trim() == label) {
-        status = (row['status'] as String?) ?? 'nuevo';
-        break;
-      }
-    }
+    return StreamBuilder<LocalTableTab?>(
+      stream: DatabaseService.instance.watchTableTabByLabel(label),
+      builder: (context, snap) {
+        final tab = snap.data;
+        final pending = tab?.pendingBalance
+            ?? (_openTabTotalsByLabel[label] ?? 0);
 
-    final statusLabel = switch (status) {
-      'nuevo' => 'Pendiente',
-      'preparando' => 'En cocina',
-      'listo' => 'Listo para cobrar',
-      _ => 'Abierta',
-    };
-    final statusColor = switch (status) {
-      'listo' => AppTheme.success,
-      'preparando' => const Color(0xFF3B82F6),
-      _ => const Color(0xFFF59E0B),
-    };
+        // Find status from open tab rows or use tab status
+        String status = tab?.status ?? 'nuevo';
+        if (status.isEmpty) {
+          status = 'nuevo';
+          for (final row in _openTabRows) {
+            if ((row['label'] as String?)?.trim() == label) {
+              status = (row['status'] as String?) ?? 'nuevo';
+              break;
+            }
+          }
+        }
 
-    return Container(
-      margin: const EdgeInsets.fromLTRB(12, 4, 12, 2),
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-      decoration: BoxDecoration(
-        color: statusColor.withValues(alpha: 0.06),
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: statusColor.withValues(alpha: 0.3)),
-      ),
-      child: Row(
-        children: [
-          // Mesa label + status
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
+        final statusLabel = switch (status) {
+          'nuevo' => 'Pendiente',
+          'preparando' => 'En cocina',
+          'listo' => 'Listo para cobrar',
+          _ => 'Abierta',
+        };
+        final statusColor = switch (status) {
+          'listo' => AppTheme.success,
+          'preparando' => const Color(0xFF3B82F6),
+          _ => const Color(0xFFF59E0B),
+        };
+
+        return Container(
+          margin: const EdgeInsets.fromLTRB(12, 4, 12, 2),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          decoration: BoxDecoration(
+            color: statusColor.withValues(alpha: 0.06),
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: statusColor.withValues(alpha: 0.3)),
+          ),
+          child: Row(
+            children: [
+              // Mesa label + status
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Icon(Icons.table_restaurant_rounded,
-                        size: 16, color: statusColor),
-                    const SizedBox(width: 4),
-                    Text(label,
-                        style: TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.w800,
-                            color: statusColor)),
-                    const SizedBox(width: 8),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 6, vertical: 2),
-                      decoration: BoxDecoration(
-                        color: statusColor.withValues(alpha: 0.12),
-                        borderRadius: BorderRadius.circular(6),
-                      ),
-                      child: Text(statusLabel,
-                          style: TextStyle(
-                              fontSize: 10,
-                              fontWeight: FontWeight.w700,
-                              color: statusColor)),
+                    Row(
+                      children: [
+                        Icon(Icons.table_restaurant_rounded,
+                            size: 16, color: statusColor),
+                        const SizedBox(width: 4),
+                        Text(label,
+                            style: TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w800,
+                                color: statusColor)),
+                        const SizedBox(width: 8),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 6, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: statusColor.withValues(alpha: 0.12),
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          child: Text(statusLabel,
+                              style: TextStyle(
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.w700,
+                                  color: statusColor)),
+                        ),
+                      ],
                     ),
+                    if (pending > 0)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 2),
+                        child: Text(
+                          'Deuda: ${_formatMoney(pending)}',
+                          style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w700,
+                              color: statusColor),
+                        ),
+                      ),
                   ],
                 ),
-                if (serverTotal > 0)
-                  Padding(
-                    padding: const EdgeInsets.only(top: 2),
-                    child: Text(
-                      'Deuda: ${_formatMoney(serverTotal)}',
-                      style: TextStyle(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w700,
-                          color: statusColor),
-                    ),
-                  ),
-              ],
-            ),
-          ),
-          // Ver cuenta (receipt icon)
-          _mesaActionButton(
-            icon: Icons.receipt_long_rounded,
-            label: 'Cuenta',
-            color: const Color(0xFF3B82F6),
-            onTap: () {
-              HapticFeedback.lightImpact();
-              final resolvedToken = token ??
-                  (() {
-                    for (final row in _openTabRows) {
-                      if ((row['label'] as String?)?.trim() == label) {
-                        return row['session_token'] as String?;
-                      }
-                    }
-                    return null;
-                  })();
-              final resolvedOrderId = orderId ??
-                  (() {
-                    for (final row in _openTabRows) {
-                      if ((row['label'] as String?)?.trim() == label) {
-                        return (row['order_id'] as String?) ??
-                            (row['id'] as String?);
-                      }
-                    }
-                    return null;
-                  })();
-              if (resolvedToken != null && resolvedToken.isNotEmpty) {
-                Navigator.of(context).push(MaterialPageRoute(
-                  builder: (_) => TabReviewScreen(
-                    sessionToken: resolvedToken,
+              ),
+              // Ver cuenta (receipt icon)
+              _mesaActionButton(
+                icon: Icons.receipt_long_rounded,
+                label: 'Cuenta',
+                color: const Color(0xFF3B82F6),
+                onTap: () {
+                  HapticFeedback.lightImpact();
+                  final resolvedToken = token ??
+                      (() {
+                        for (final row in _openTabRows) {
+                          if ((row['label'] as String?)?.trim() == label) {
+                            return row['session_token'] as String?;
+                          }
+                        }
+                        return null;
+                      })();
+                  final resolvedOrderId = orderId ??
+                      (() {
+                        for (final row in _openTabRows) {
+                          if ((row['label'] as String?)?.trim() == label) {
+                            return (row['order_id'] as String?) ??
+                                (row['id'] as String?);
+                          }
+                        }
+                        return null;
+                      })();
+                  if (resolvedToken != null && resolvedToken.isNotEmpty) {
+                    Navigator.of(context).push(MaterialPageRoute(
+                      builder: (_) => TabReviewScreen(
+                        sessionToken: resolvedToken,
+                        tableLabel: label,
+                        orderId: resolvedOrderId,
+                        onItemRemoved: (uuid, qty) {
+                          context.read<CartController>().onTabItemRemoved(uuid, qty);
+                        },
+                      ),
+                    ));
+                  } else {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('Envia productos primero para ver la cuenta'),
+                        behavior: SnackBarBehavior.floating,
+                      ),
+                    );
+                  }
+                },
+              ),
+              const SizedBox(width: 6),
+              // Cobrar — goes to TabReviewScreen for payment flow
+              _mesaActionButton(
+                icon: Icons.payments_rounded,
+                label: 'Cobrar',
+                color: AppTheme.success,
+                onTap: () {
+                  HapticFeedback.lightImpact();
+                  final resolvedToken = token ??
+                      (() {
+                        for (final row in _openTabRows) {
+                          if ((row['label'] as String?)?.trim() == label) {
+                            return row['session_token'] as String?;
+                          }
+                        }
+                        return null;
+                      })();
+                  final resolvedOrderId = orderId ??
+                      (() {
+                        for (final row in _openTabRows) {
+                          if ((row['label'] as String?)?.trim() == label) {
+                            return (row['order_id'] as String?) ??
+                                (row['id'] as String?);
+                          }
+                        }
+                        return null;
+                      })();
+                  if (resolvedToken != null && resolvedToken.isNotEmpty) {
+                    Navigator.of(context).push(MaterialPageRoute(
+                      builder: (_) => TabReviewScreen(
+                        sessionToken: resolvedToken,
+                        tableLabel: label,
+                        orderId: resolvedOrderId,
+                        onItemRemoved: (uuid, qty) {
+                          context.read<CartController>().onTabItemRemoved(uuid, qty);
+                        },
+                      ),
+                    ));
+                  } else {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('Envia productos primero para cobrar'),
+                        behavior: SnackBarBehavior.floating,
+                      ),
+                    );
+                  }
+                },
+              ),
+              const SizedBox(width: 6),
+              // QR
+              _mesaActionButton(
+                icon: Icons.qr_code_2_rounded,
+                label: 'QR',
+                color: const Color(0xFF7C3AED),
+                onTap: () {
+                  HapticFeedback.lightImpact();
+                  showTableQrSheet(
+                    context,
                     tableLabel: label,
-                    orderId: resolvedOrderId,
-                    onItemRemoved: (uuid, qty) {
-                      context.read<CartController>().onTabItemRemoved(uuid, qty);
-                    },
-                  ),
-                ));
-              } else {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('Envia productos primero para ver la cuenta'),
-                    behavior: SnackBarBehavior.floating,
-                  ),
-                );
-              }
-            },
+                    knownSessionToken: token,
+                  );
+                },
+              ),
+              const SizedBox(width: 6),
+              // Cancel / delete account
+              _mesaActionButton(
+                icon: Icons.delete_outline_rounded,
+                label: 'Anular',
+                color: AppTheme.error,
+                onTap: () => _confirmCancelMesa(ctrl, label),
+              ),
+            ],
           ),
-          const SizedBox(width: 6),
-          // Cobrar — goes to TabReviewScreen for payment flow
-          _mesaActionButton(
-            icon: Icons.payments_rounded,
-            label: 'Cobrar',
-            color: AppTheme.success,
-            onTap: () {
-              HapticFeedback.lightImpact();
-              final resolvedToken = token ??
-                  (() {
-                    for (final row in _openTabRows) {
-                      if ((row['label'] as String?)?.trim() == label) {
-                        return row['session_token'] as String?;
-                      }
-                    }
-                    return null;
-                  })();
-              final resolvedOrderId = orderId ??
-                  (() {
-                    for (final row in _openTabRows) {
-                      if ((row['label'] as String?)?.trim() == label) {
-                        return (row['order_id'] as String?) ??
-                            (row['id'] as String?);
-                      }
-                    }
-                    return null;
-                  })();
-              if (resolvedToken != null && resolvedToken.isNotEmpty) {
-                Navigator.of(context).push(MaterialPageRoute(
-                  builder: (_) => TabReviewScreen(
-                    sessionToken: resolvedToken,
-                    tableLabel: label,
-                    orderId: resolvedOrderId,
-                    onItemRemoved: (uuid, qty) {
-                      context.read<CartController>().onTabItemRemoved(uuid, qty);
-                    },
-                  ),
-                ));
-              } else {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('Envia productos primero para cobrar'),
-                    behavior: SnackBarBehavior.floating,
-                  ),
-                );
-              }
-            },
-          ),
-          const SizedBox(width: 6),
-          // QR
-          _mesaActionButton(
-            icon: Icons.qr_code_2_rounded,
-            label: 'QR',
-            color: const Color(0xFF7C3AED),
-            onTap: () {
-              HapticFeedback.lightImpact();
-              showTableQrSheet(
-                context,
-                tableLabel: label,
-                knownSessionToken: token,
-              );
-            },
-          ),
-          const SizedBox(width: 6),
-          // Cancel / delete account
-          _mesaActionButton(
-            icon: Icons.delete_outline_rounded,
-            label: 'Anular',
-            color: AppTheme.error,
-            onTap: () => _confirmCancelMesa(ctrl, label),
-          ),
-        ],
-      ),
+        );
+      },
     );
   }
 
@@ -3438,31 +3451,42 @@ class _ProductDetailSheet extends StatelessWidget {
           ),
           Padding(
             padding: const EdgeInsets.fromLTRB(20, 8, 20, 0),
-            child: Row(
-              children: [
-                Container(
-                  width: 8,
-                  height: 8,
-                  decoration: BoxDecoration(
-                    color:
-                        product.stock > 0 ? AppTheme.success : AppTheme.error,
-                    shape: BoxShape.circle,
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Text(
-                  product.stock > 0
-                      ? '${product.stock} en stock'
-                      : 'Sin stock',
-                  style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.w500,
-                    color: product.stock > 0
-                        ? AppTheme.textSecondary
-                        : AppTheme.error,
-                  ),
-                ),
-              ],
+            child: StreamBuilder<LocalProduct?>(
+              stream: DatabaseService.instance
+                  .watchProductByUuid(product.uuid),
+              initialData: null,
+              builder: (ctx, snap) {
+                final available =
+                    snap.data?.availableStock ?? product.stock;
+                final hasStock = available > 0;
+                return Row(
+                  children: [
+                    Container(
+                      width: 8,
+                      height: 8,
+                      decoration: BoxDecoration(
+                        color: hasStock
+                            ? AppTheme.success
+                            : AppTheme.error,
+                        shape: BoxShape.circle,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      hasStock
+                          ? '$available en stock'
+                          : 'Sin stock',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w500,
+                        color: hasStock
+                            ? AppTheme.textSecondary
+                            : AppTheme.error,
+                      ),
+                    ),
+                  ],
+                );
+              },
             ),
           ),
           Padding(
