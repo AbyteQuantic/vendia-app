@@ -461,4 +461,51 @@ class DatabaseService {
       }
     });
   }
+
+  /// Remove the Nth occurrence of [productUuid] from the local tab
+  /// and recompute totals. Used by the delete-row flow in
+  /// TabReviewScreen so the stream emits immediately after backend
+  /// confirms the removal. Releases the reservation for the deleted
+  /// quantity.
+  Future<void> removeTabItem({
+    required String label,
+    required String productUuid,
+    required int occurrence,
+  }) async {
+    await isar.writeTxn(() async {
+      final tab = await isar.localTableTabs
+          .filter()
+          .labelEqualTo(label)
+          .findFirst();
+      if (tab == null) return;
+      final indices = <int>[];
+      for (var idx = 0; idx < tab.items.length; idx++) {
+        if (tab.items[idx].productUuid == productUuid) indices.add(idx);
+      }
+      if (occurrence < 0 || occurrence >= indices.length) return;
+      final removeIdx = indices[occurrence];
+      final removed = tab.items[removeIdx];
+      final newItems = List<LocalTabItem>.from(tab.items)
+        ..removeAt(removeIdx);
+      tab.items = newItems;
+      tab.grossTotal = newItems.fold<double>(
+          0.0, (s, i) => s + (i.unitPrice * i.quantity));
+      final pending = tab.grossTotal - tab.abonosTotal;
+      tab.pendingBalance = pending < 0 ? 0 : pending;
+      tab.updatedAt = DateTime.now();
+      tab.synced = false;
+      await isar.localTableTabs.put(tab);
+
+      // Release the reservation for the removed quantity.
+      final p = await isar.localProducts
+          .filter()
+          .uuidEqualTo(productUuid)
+          .findFirst();
+      if (p != null) {
+        final next = p.reservedStock - removed.quantity;
+        p.reservedStock = next < 0 ? 0 : next;
+        await isar.localProducts.put(p);
+      }
+    });
+  }
 }

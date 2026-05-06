@@ -101,6 +101,23 @@ class _TabReviewScreenState extends State<TabReviewScreen> {
         paymentMethodId: result.methodId,
       );
       if (!mounted) return;
+
+      // Optimistic update: reflect the abono on the local stream
+      // immediately. Backend reconciliation (via _load) will overwrite
+      // with authoritative value if it differs.
+      try {
+        final currentTab = await DatabaseService.instance
+            .watchTableTabByLabel(widget.tableLabel)
+            .first;
+        final newAbonos = (currentTab?.abonosTotal ?? 0) + result.amount;
+        await DatabaseService.instance.applyServerTabSnapshot({
+          'label': widget.tableLabel,
+          'abonos_total': newAbonos,
+        });
+      } on StateError catch (_) {
+        // ISAR not initialized in tests — fine
+      }
+
       HapticFeedback.mediumImpact();
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -371,6 +388,27 @@ class _TabReviewScreenState extends State<TabReviewScreen> {
     final paid = tab.abonosTotal;
     final remaining = tab.pendingBalance;
 
+    // Build server itemIds by productUuid in arrival order to match local items
+    final serverItems = (_data?['items'] as List<dynamic>?)
+            ?.cast<Map<String, dynamic>>() ??
+        const [];
+    // Group server itemIds by productUuid in arrival order, so the
+    // Nth local row with uuid X maps to the Nth server item with uuid X.
+    final serverIdsByUuid = <String, List<String>>{};
+    for (final s in serverItems) {
+      final u = (s['product_uuid'] as String?) ?? '';
+      final id = (s['id'] as String?) ?? '';
+      if (u.isEmpty || id.isEmpty) continue;
+      (serverIdsByUuid[u] ??= []).add(id);
+    }
+
+    final status = tab.status;
+    final isOpen = status == 'nuevo' ||
+        status == 'preparando' ||
+        status == 'listo' ||
+        status.isEmpty;
+    final canDeleteRows = isOpen && widget.orderId != null;
+
     return RefreshIndicator.adaptive(
       onRefresh: _load,
       child: ListView(
@@ -384,6 +422,15 @@ class _TabReviewScreenState extends State<TabReviewScreen> {
             ...items.asMap().entries.map((e) {
               final i = e.key;
               final it = e.value;
+              // 0-based occurrence of this item among uuid siblings earlier in the list.
+              final occurrence = items
+                  .take(i)
+                  .where((p) => p.productUuid == it.productUuid)
+                  .length;
+              final candidates = serverIdsByUuid[it.productUuid] ?? const [];
+              final serverItemId =
+                  occurrence < candidates.length ? candidates[occurrence] : '';
+
               final keyStr =
                   '$i|${it.productUuid}|${it.sentAt?.toIso8601String() ?? ''}';
               return _ItemRow(
@@ -395,8 +442,26 @@ class _TabReviewScreenState extends State<TabReviewScreen> {
                 emoji: '',
                 time: _fmtTime(it.sentAt?.toIso8601String()),
                 fmtCOP: _fmtCOP,
-                canDelete: false,
-                onDelete: null,
+                canDelete: canDeleteRows && serverItemId.isNotEmpty,
+                onDelete: (canDeleteRows && serverItemId.isNotEmpty)
+                    ? () async {
+                        final removed = await _confirmRemoveItem(
+                          itemId: serverItemId,
+                          productUuid: it.productUuid,
+                          name: it.productName,
+                          quantity: it.quantity,
+                        );
+                        if (removed) {
+                          try {
+                            await DatabaseService.instance.removeTabItem(
+                              label: widget.tableLabel,
+                              productUuid: it.productUuid,
+                              occurrence: occurrence,
+                            );
+                          } on StateError catch (_) {}
+                        }
+                      }
+                    : null,
               );
             }),
           const SizedBox(height: 24),
