@@ -730,8 +730,11 @@ class CartController extends ChangeNotifier {
       // Step 2: Backend confirmed → atomic ISAR commit (reserve stock +
       // append items + recompute totals). This is the SSOT write that
       // streams broadcast to header, POS cards, and TabReviewScreen.
-      // ISAR errors are tolerated so widget tests without an initialized
-      // database still exercise the API/context path.
+      // Only StateError ("DatabaseService not initialized") is tolerated
+      // so widget tests without an initialized Isar still exercise the
+      // API/context path. Real Isar exceptions MUST propagate so the
+      // outer catch logs them and the cashier sees the error snackbar
+      // instead of a phantom "all good" with stale stock.
       try {
         await DatabaseService.instance
             .commitOrderToTab(label: label, lines: lines);
@@ -740,9 +743,9 @@ class CartController extends ChangeNotifier {
           'session_token': token,
           'order_id': orderId,
         });
-      } catch (e) {
+      } on StateError catch (e) {
         developer.log(
-          '[TABLE_TAB] ISAR commit skipped: $e',
+          '[TABLE_TAB] ISAR not initialized (test env): $e',
           name: 'CartController',
         );
       }

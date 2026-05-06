@@ -2169,8 +2169,16 @@ class _ProductCard extends StatelessWidget {
                               const Spacer(),
                               Align(
                                 alignment: Alignment.centerLeft,
-                                child: StockBadge(
-                                  stock: (product.stock - quantity).clamp(0, 999999),
+                                child: StreamBuilder<LocalProduct?>(
+                                  stream: DatabaseService.instance
+                                      .watchProductByUuid(product.uuid),
+                                  builder: (ctx, snap) {
+                                    final base = snap.data?.availableStock ??
+                                        product.stock;
+                                    return StockBadge(
+                                      stock: (base - quantity).clamp(0, 999999),
+                                    );
+                                  },
                                 ),
                               ),
                             ],
