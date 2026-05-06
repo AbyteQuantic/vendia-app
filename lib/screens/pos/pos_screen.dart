@@ -1972,9 +1972,14 @@ class _PosScreenBodyState extends State<_PosScreenBody> {
       ),
       itemCount: products.length,
       itemBuilder: (_, i) {
-        final product = products[i];
         return Consumer<CartController>(
           builder: (_, c, __) {
+            // Re-read product from the LIVE list on every rebuild so
+            // stock changes from _deductStockForSentItems / onTabItemRemoved
+            // are reflected instantly in StockBadge without a full reload.
+            final liveProducts = c.filteredProducts;
+            if (i >= liveProducts.length) return const SizedBox.shrink();
+            final product = liveProducts[i];
             final qty = c.getQuantity(product);
             return _ProductCard(
               product: product,
@@ -2143,7 +2148,9 @@ class _ProductCard extends StatelessWidget {
                               const Spacer(),
                               Align(
                                 alignment: Alignment.centerLeft,
-                                child: StockBadge(stock: product.stock),
+                                child: StockBadge(
+                                  stock: (product.stock - quantity).clamp(0, 999999),
+                                ),
                               ),
                             ],
                           ),
