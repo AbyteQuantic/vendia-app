@@ -458,7 +458,7 @@ class CartController extends ChangeNotifier {
 
   void increment(Product product) {
     final item =
-        activeCart.where((i) => i.product.id == product.id).firstOrNull;
+        activeCart.where((i) => i.product.uuid == product.uuid).firstOrNull;
     if (item == null) return;
     item.quantity++;
     notifyListeners();
@@ -466,7 +466,7 @@ class CartController extends ChangeNotifier {
   }
 
   void decrement(Product product) {
-    final index = activeCart.indexWhere((i) => i.product.id == product.id);
+    final index = activeCart.indexWhere((i) => i.product.uuid == product.uuid);
     if (index == -1) return;
     if (activeCart[index].quantity <= 1) {
       activeCart.removeAt(index);
@@ -507,6 +507,13 @@ class CartController extends ChangeNotifier {
       await DatabaseService.instance.adjustStock(productUuid, quantity);
     } catch (_) {
       // ISAR not initialized (tests) or disk error — continue gracefully
+    }
+    try {
+      await DatabaseService.instance.releaseReservation({
+        productUuid: quantity,
+      });
+    } on StateError catch (_) {
+      // ISAR not initialized in tests — fine
     }
     final idx = _products.indexWhere((p) => p.uuid == productUuid);
     if (idx != -1) {

@@ -132,7 +132,7 @@ class CartSheet extends StatelessWidget {
                                         _QtyButton(
                                           icon: Icons.remove,
                                           onTap: () => ctrl.decreaseQuantity(
-                                              item.product.id),
+                                              item.product.uuid),
                                         ),
                                         const SizedBox(width: 12),
                                         SizedBox(

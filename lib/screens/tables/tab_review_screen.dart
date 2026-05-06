@@ -381,9 +381,13 @@ class _TabReviewScreenState extends State<TabReviewScreen> {
           if (items.isEmpty)
             _emptyHint('Sin productos registrados todavía.')
           else
-            ...items.map((it) {
+            ...items.asMap().entries.map((e) {
+              final i = e.key;
+              final it = e.value;
+              final keyStr =
+                  '$i|${it.productUuid}|${it.sentAt?.toIso8601String() ?? ''}';
               return _ItemRow(
-                key: ValueKey(it.productUuid),
+                key: ValueKey(keyStr),
                 name: it.productName,
                 quantity: it.quantity,
                 unitPrice: it.unitPrice,
@@ -482,10 +486,14 @@ class _TabReviewScreenState extends State<TabReviewScreen> {
           if (items.isEmpty)
             _emptyHint('Sin productos registrados todavía.')
           else
-            ...items.map((it) {
+            ...items.asMap().entries.map((e) {
+              final i = e.key;
+              final it = e.value;
               final itemId = (it['id'] as String?) ?? '';
+              final keyStr =
+                  itemId.isNotEmpty ? itemId : '$i|${it.hashCode}';
               return _ItemRow(
-                key: ValueKey(itemId.isNotEmpty ? itemId : it.hashCode),
+                key: ValueKey(keyStr),
                 name: (it['product_name'] as String?) ?? '—',
                 quantity: (it['quantity'] as num?)?.toInt() ?? 1,
                 unitPrice: (it['unit_price'] as num?)?.toDouble() ?? 0,
@@ -636,7 +644,6 @@ class _ItemRow extends StatelessWidget {
           if (canDelete) ...[
             const SizedBox(width: 4),
             IconButton(
-              key: const Key('item_delete_btn'),
               tooltip: 'Eliminar producto',
               icon: const Icon(Icons.delete_rounded,
                   color: AppTheme.error, size: 22),
