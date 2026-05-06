@@ -116,13 +116,8 @@ class CartController extends ChangeNotifier {
 
   // ── Background table-tab persistence ───────────────────────────
   //
-  // Per-tab debounced writer. Each tab index has at most one in-
-  // flight Timer. When a cashier taps "+" three times on Mesa 1
-  // we only hit the backend once, 800ms after the last tap.
-  // On "Enviar a mesa" / payment the caller can bypass the
-  // debounce with flushTableTab(index: activeIndex).
+  // Per-tab sync timers (now unused, kept for cleanup in dispose)
   final Map<int, Timer> _syncTimers = {};
-  static const Duration _syncDebounce = Duration(milliseconds: 800);
 
   // Per-tab hydration flag. The POS listens on this to decide
   // whether to show a skeleton over the cart while we fetch the
@@ -500,32 +495,6 @@ class CartController extends ChangeNotifier {
 
   // ── Table-tab sync ─────────────────────────────────────────────────────────
 
-  /// Debounced background sync for the tab at [index]. No-op when
-  /// the tab is not a mesa or has no items yet (a brand-new mesa
-  /// with zero lines doesn't need a ticket, and we'd only pollute
-  /// the KDS with empties).
-  ///
-  /// When [flush] is true the debounce is skipped and the request
-  /// fires immediately — used by "Enviar a mesa" so the QR is
-  /// ready the instant the cashier opens the account sheet.
-  void _scheduleTableTabSync(int index, {bool flush = false}) {
-    final ctx = _contexts[index];
-    final isTable = ctx.type == AccountType.mesa ||
-        ctx.type == AccountType.mesaInmediata;
-    if (!isTable) return;
-
-    final label = ctx.tableLabel?.trim();
-    if (label == null || label.isEmpty) return;
-
-    _syncTimers[index]?.cancel();
-    if (flush) {
-      unawaited(_performTableTabSync(index));
-      return;
-    }
-    _syncTimers[index] = Timer(_syncDebounce, () {
-      unawaited(_performTableTabSync(index));
-    });
-  }
 
   /// Re-fetch products from the server so stock updates are visible.
   Future<void> refreshProducts() => _loadProducts();
@@ -560,41 +529,6 @@ class CartController extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Deducts stock locally when items are sent to a table tab.
-  Future<void> _deductStockForSentItems(List<CartItem> items) async {
-    final deltas = <String, int>{};
-    for (final item in items) {
-      if (item.isService) continue;
-      final uuid = item.product.uuid;
-      deltas[uuid] = (deltas[uuid] ?? 0) - item.quantity;
-    }
-    if (deltas.isEmpty) return;
-    try {
-      await DatabaseService.instance.batchAdjustStock(deltas);
-    } catch (_) {
-      // ISAR not initialized (tests) or disk error — continue gracefully
-    }
-    for (final entry in deltas.entries) {
-      final idx = _products.indexWhere((p) => p.uuid == entry.key);
-      if (idx != -1) {
-        final old = _products[idx];
-        _products[idx] = Product(
-          id: old.id,
-          uuid: old.uuid,
-          name: old.name,
-          price: old.price,
-          stock: (old.stock + entry.value).clamp(0, 999999),
-          imageUrl: old.imageUrl,
-          isAvailable: old.isAvailable,
-          requiresContainer: old.requiresContainer,
-          containerPrice: old.containerPrice,
-          barcode: old.barcode,
-          presentation: old.presentation,
-          content: old.content,
-        );
-      }
-    }
-  }
 
   /// Public entry point for tests and force-refresh flows.
   /// Fires the server lookup for the currently active tab; no-op
@@ -738,13 +672,25 @@ class CartController extends ChangeNotifier {
     final cart = _carts[index];
     if (cart.isEmpty) return null;
 
-    try {
-      final api = apiOverride ?? ApiService(AuthService());
+    // Build the lines payload once; reused by API push and ISAR commit.
+    final lines = <({String productUuid, String productName, int quantity, double unitPrice})>[];
+    for (final line in cart) {
+      lines.add((
+        productUuid: line.product.uuid,
+        productName: line.isService && line.customDescription != null
+            ? line.customDescription!
+            : line.product.name,
+        quantity: line.quantity,
+        unitPrice: line.isService && line.customUnitPrice != null
+            ? line.customUnitPrice!
+            : line.product.price,
+      ));
+    }
 
-      // Build consolidated item list from local cart.
-      // Accumulate-only: we send ONLY what the cashier just added.
-      // The backend appends these to the existing tab without
-      // removing anything.
+    try {
+      // Step 1: Push to backend FIRST. If this fails the cart stays
+      // intact and ISAR is untouched, so the cashier can retry safely.
+      final api = apiOverride ?? ApiService(AuthService());
       final itemMap = <String, Map<String, dynamic>>{};
       for (final line in cart) {
         final uuid = line.product.uuid;
@@ -780,6 +726,28 @@ class CartController extends ChangeNotifier {
         );
         return null;
       }
+
+      // Step 2: Backend confirmed → atomic ISAR commit (reserve stock +
+      // append items + recompute totals). This is the SSOT write that
+      // streams broadcast to header, POS cards, and TabReviewScreen.
+      // ISAR errors are tolerated so widget tests without an initialized
+      // database still exercise the API/context path.
+      try {
+        await DatabaseService.instance
+            .commitOrderToTab(label: label, lines: lines);
+        await DatabaseService.instance.applyServerTabSnapshot({
+          'label': label,
+          'session_token': token,
+          'order_id': orderId,
+        });
+      } catch (e) {
+        developer.log(
+          '[TABLE_TAB] ISAR commit skipped: $e',
+          name: 'CartController',
+        );
+      }
+
+      // Step 3: Update context with server tokens.
       final before = _contexts[index];
       if (before.sessionToken != token || before.orderId != orderId) {
         _contexts[index] = before.copyWith(
@@ -789,12 +757,8 @@ class CartController extends ChangeNotifier {
         notifyListeners();
         _persistContexts();
       }
-      // Deduct local stock for sent items
-      await _deductStockForSentItems(cart);
-      // Clear the local cart after successful send so items don't
-      // get re-sent on the next debounce cycle. The server now holds
-      // the authoritative list; the cashier starts fresh for the next
-      // round of additions.
+
+      // Step 4: Clear local cart — items now live in LocalTableTab.
       _carts[index].clear();
       notifyListeners();
       _persistCarts();

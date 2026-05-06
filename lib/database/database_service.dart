@@ -6,6 +6,7 @@ import 'collections/local_product.dart';
 import 'collections/local_sale.dart';
 import 'collections/local_customer.dart';
 import 'collections/local_credit.dart';
+import 'collections/local_table_tab.dart';
 import 'collections/pending_operation.dart';
 
 class DatabaseService {
@@ -32,11 +33,12 @@ class DatabaseService {
     final dir = await getApplicationDocumentsDirectory();
     _isar = await Isar.open(
       [
-        LocalProductSchema,
         LocalCatalogProductSchema,
-        LocalSaleSchema,
-        LocalCustomerSchema,
         LocalCreditSchema,
+        LocalCustomerSchema,
+        LocalProductSchema,
+        LocalSaleSchema,
+        LocalTableTabSchema,
         PendingOperationSchema,
       ],
       directory: dir.path,
@@ -328,5 +330,135 @@ class DatabaseService {
   Future<void> close() async {
     await _isar?.close();
     _isar = null;
+  }
+
+  // ── Reactive Streams (SSOT P0 hotfix) ───────────────────────────────────
+
+  Stream<LocalProduct?> watchProductByUuid(String uuid) {
+    return isar.localProducts
+        .filter()
+        .uuidEqualTo(uuid)
+        .watch(fireImmediately: true)
+        .map((list) => list.isEmpty ? null : list.first);
+  }
+
+  Stream<LocalTableTab?> watchTableTabByLabel(String label) {
+    return isar.localTableTabs
+        .filter()
+        .labelEqualTo(label)
+        .watch(fireImmediately: true)
+        .map((list) => list.isEmpty ? null : list.first);
+  }
+
+  Stream<List<LocalTableTab>> watchAllOpenTabs() {
+    return isar.localTableTabs
+        .filter()
+        .pendingBalanceGreaterThan(0)
+        .watch(fireImmediately: true);
+  }
+
+  // ── Atomic order commit (SSOT P0 hotfix) ────────────────────────────────
+
+  /// ATOMIC: reserves stock + appends items to LocalTableTab in ONE writeTxn.
+  /// Returns the updated tab. Caller should enqueue server sync AFTER this
+  /// returns successfully — never inside the transaction.
+  Future<LocalTableTab> commitOrderToTab({
+    required String label,
+    required List<({String productUuid, String productName, int quantity, double unitPrice})> lines,
+  }) async {
+    return await isar.writeTxn(() async {
+      // 1) Reserve stock per product (idempotent if same uuid appears twice — sums)
+      final byUuid = <String, int>{};
+      for (final l in lines) {
+        byUuid[l.productUuid] = (byUuid[l.productUuid] ?? 0) + l.quantity;
+      }
+      for (final entry in byUuid.entries) {
+        final product = await isar.localProducts
+            .filter()
+            .uuidEqualTo(entry.key)
+            .findFirst();
+        if (product == null) continue;
+        final newReserved = product.reservedStock + entry.value;
+        product.reservedStock = newReserved > product.stock ? product.stock : newReserved;
+        await isar.localProducts.put(product);
+      }
+
+      // 2) Upsert LocalTableTab — APPEND items, recompute totals
+      var tab = await isar.localTableTabs
+          .filter()
+          .labelEqualTo(label)
+          .findFirst();
+      tab ??= LocalTableTab()
+        ..label = label
+        ..items = []
+        ..grossTotal = 0
+        ..abonosTotal = 0
+        ..pendingBalance = 0
+        ..status = 'nuevo'
+        ..synced = false
+        ..updatedAt = DateTime.now();
+
+      final now = DateTime.now();
+      final newItems = <LocalTabItem>[
+        ...tab.items,
+        ...lines.map((l) => LocalTabItem()
+          ..productUuid = l.productUuid
+          ..productName = l.productName
+          ..quantity = l.quantity
+          ..unitPrice = l.unitPrice
+          ..sentAt = now),
+      ];
+      tab.items = newItems;
+      tab.grossTotal = newItems.fold<double>(
+          0.0, (s, i) => s + (i.unitPrice * i.quantity));
+      final pending = tab.grossTotal - tab.abonosTotal;
+      tab.pendingBalance = pending < 0 ? 0 : pending;
+      tab.updatedAt = now;
+      tab.synced = false;
+      await isar.localTableTabs.put(tab);
+      return tab;
+    });
+  }
+
+  /// Reconciliation: backend confirms tab snapshot → update local tab.
+  /// Touches ONLY abonosTotal/pendingBalance/status/sessionToken/orderId/synced.
+  /// NEVER touches reservedStock — that's released only on final sale.
+  Future<void> applyServerTabSnapshot(Map<String, dynamic> data) async {
+    final label = (data['label'] as String?)?.trim();
+    if (label == null || label.isEmpty) return;
+    await isar.writeTxn(() async {
+      final tab = await isar.localTableTabs
+          .filter()
+          .labelEqualTo(label)
+          .findFirst();
+      if (tab == null) return;
+      final abonos = (data['abonos_total'] as num?)?.toDouble() ?? tab.abonosTotal;
+      final status = (data['status'] as String?) ?? tab.status;
+      tab.abonosTotal = abonos;
+      final pending = tab.grossTotal - tab.abonosTotal;
+      tab.pendingBalance = pending < 0 ? 0 : pending;
+      tab.status = status;
+      tab.sessionToken = (data['session_token'] as String?) ?? tab.sessionToken;
+      tab.orderId = (data['order_id'] as String?) ?? tab.orderId;
+      tab.synced = true;
+      await isar.localTableTabs.put(tab);
+    });
+  }
+
+  /// Release reservation: called when items are removed from tab or sale closes.
+  Future<void> releaseReservation(Map<String, int> deltas) async {
+    if (deltas.isEmpty) return;
+    await isar.writeTxn(() async {
+      for (final entry in deltas.entries) {
+        final p = await isar.localProducts
+            .filter()
+            .uuidEqualTo(entry.key)
+            .findFirst();
+        if (p == null) continue;
+        final next = p.reservedStock - entry.value;
+        p.reservedStock = next < 0 ? 0 : next;
+        await isar.localProducts.put(p);
+      }
+    });
   }
 }

@@ -12,6 +12,7 @@ class LocalProduct {
   late String name;
   late double price;
   late int stock;
+  late int reservedStock;
   String? imageUrl;
   late bool isAvailable;
   late bool requiresContainer;
@@ -33,6 +34,7 @@ class LocalProduct {
         'name': name,
         'price': price,
         'stock': stock,
+        'reserved_stock': reservedStock,
         'image_url': imageUrl,
         'is_available': isAvailable,
         'requires_container': requiresContainer,
@@ -69,6 +71,7 @@ class LocalProduct {
       ..name = json['name'] as String
       ..price = (json['price'] as num).toDouble()
       ..stock = json['stock'] as int? ?? 0
+      ..reservedStock = json['reserved_stock'] as int? ?? 0
       ..imageUrl = bestImage
       ..isAvailable = json['is_available'] as bool? ?? true
       ..requiresContainer = json['requires_container'] as bool? ?? false
@@ -80,5 +83,10 @@ class LocalProduct {
       ..clientUpdatedAt = json['client_updated_at'] != null
           ? DateTime.parse(json['client_updated_at'] as String)
           : DateTime.now();
+  }
+
+  int get availableStock {
+    final v = stock - reservedStock;
+    return v < 0 ? 0 : v;
   }
 }
