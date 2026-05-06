@@ -118,13 +118,13 @@ class PosController extends ChangeNotifier {
     notifyListeners();
   }
 
-  void removeFromCart(int productId) {
-    _cart.removeWhere((i) => i.product.id == productId);
+  void removeFromCart(String productUuid) {
+    _cart.removeWhere((i) => i.product.uuid == productUuid);
     notifyListeners();
   }
 
-  void decreaseQuantity(int productId) {
-    final idx = _cart.indexWhere((i) => i.product.id == productId);
+  void decreaseQuantity(String productUuid) {
+    final idx = _cart.indexWhere((i) => i.product.uuid == productUuid);
     if (idx < 0) return;
     if (_cart[idx].quantity <= 1) {
       _cart.removeAt(idx);
