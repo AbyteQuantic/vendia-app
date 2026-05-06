@@ -187,6 +187,7 @@ class PosController extends ChangeNotifier {
         ..paymentMethod = paymentMethod
         ..customerUuid = customerUuid
         ..isCreditSale = isCreditSale
+        ..saleOrigin = isCreditSale ? 'fiado' : 'counter'
         ..items = saleItems
         ..createdAt = DateTime.now()
         ..synced = false;

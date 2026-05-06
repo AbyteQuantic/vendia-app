@@ -562,7 +562,8 @@ String _methodLabel(String m) => switch (m) {
       'nequi' => 'Nequi',
       'daviplata' => 'Daviplata',
       'credit' => 'Fiado',
-      _ => m,
+      'multi' => 'Pago Mixto',
+      _ => m.isEmpty ? 'Otro' : m,
     };
 
 Color _methodColor(String m) => switch (m) {
@@ -710,27 +711,36 @@ class _HeroKpi extends StatelessWidget {
                 style: TextStyle(fontSize: 16, color: Colors.white)),
           ]),
           const SizedBox(height: 6),
-          Text(_formatMoney(total),
-              style: const TextStyle(
-                  fontSize: 38,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.white,
-                  height: 1.1)),
+          FittedBox(
+            fit: BoxFit.scaleDown,
+            alignment: Alignment.centerLeft,
+            child: Text(_formatMoney(total),
+                style: const TextStyle(
+                    fontSize: 38,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.white,
+                    height: 1.1)),
+          ),
           const SizedBox(height: 6),
-          Row(children: [
-            Text('$txCount transacciones',
-                style: TextStyle(
-                    fontSize: 15,
-                    color: Colors.white.withValues(alpha: 0.85))),
-            if (txCount > 0) ...[
-              const Text(' · ',
-                  style: TextStyle(color: Colors.white70, fontSize: 15)),
-              Text('Ticket prom. ${_formatMoney(avgTicket)}',
+          Wrap(
+            crossAxisAlignment: WrapCrossAlignment.center,
+            spacing: 6,
+            runSpacing: 4,
+            children: [
+              Text('$txCount transacciones',
                   style: TextStyle(
                       fontSize: 15,
                       color: Colors.white.withValues(alpha: 0.85))),
+              if (txCount > 0) ...[
+                const Text('·',
+                    style: TextStyle(color: Colors.white70, fontSize: 15)),
+                Text('Ticket prom. ${_formatMoney(avgTicket)}',
+                    style: TextStyle(
+                        fontSize: 15,
+                        color: Colors.white.withValues(alpha: 0.85))),
+              ],
             ],
-          ]),
+          ),
           if (vsPrevPct != null) ...[
             const SizedBox(height: 8),
             Row(children: [

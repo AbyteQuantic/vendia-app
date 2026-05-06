@@ -114,8 +114,13 @@ class _SalesHistoryScreenState extends State<SalesHistoryScreen> {
   String _customerLabel(Map<String, dynamic> sale) {
     final name = (sale['customer_name_snapshot'] as String?) ?? '';
     if (name.isNotEmpty) return name;
+    final origin = (sale['sale_origin'] as String?) ?? 'counter';
+    final tableLabel = (sale['table_label'] as String?) ?? '';
+    if (origin == 'mesa' && tableLabel.isNotEmpty) {
+      return tableLabel;
+    }
     final method = (sale['payment_method'] as String?) ?? '';
-    if (method == 'credit') return 'Fiado';
+    if (method == 'credit' || origin == 'fiado') return 'Fiado';
     return 'Venta Mostrador';
   }
 

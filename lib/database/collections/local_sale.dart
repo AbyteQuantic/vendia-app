@@ -21,6 +21,15 @@ class LocalSale {
   /// detail. Persisted so retries from SalesSyncService.pushToServer
   /// don't lose the link when the first sync fails.
   String? creditAccountId;
+
+  /// Sale origin: 'counter' (default), 'mesa', 'fiado'. Used by the
+  /// sales history to label rows like "Mesa 4" instead of always
+  /// "Venta Mostrador".
+  late String saleOrigin;
+
+  /// Mesa label when saleOrigin == 'mesa'. Null otherwise.
+  String? tableLabel;
+
   late List<SaleItemEmbed> items;
   late DateTime createdAt;
   late bool synced;
@@ -34,6 +43,8 @@ class LocalSale {
         'employee_name': employeeName,
         'is_credit_sale': isCreditSale,
         'credit_account_id': creditAccountId,
+        'sale_origin': saleOrigin,
+        'table_label': tableLabel,
         'items': items.map((i) => i.toJson()).toList(),
         'created_at': createdAt.toIso8601String(),
       };
@@ -48,6 +59,8 @@ class LocalSale {
       ..employeeName = json['employee_name'] as String?
       ..isCreditSale = json['is_credit_sale'] as bool? ?? false
       ..creditAccountId = json['credit_account_id'] as String?
+      ..saleOrigin = json['sale_origin'] as String? ?? 'counter'
+      ..tableLabel = json['table_label'] as String?
       ..items = rawItems
           .map((e) => SaleItemEmbed.fromJson(e as Map<String, dynamic>))
           .toList()
