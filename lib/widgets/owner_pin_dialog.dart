@@ -1,7 +1,10 @@
+import 'dart:developer' as developer;
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../services/api_service.dart';
+import '../services/app_error.dart';
 import '../services/auth_service.dart';
 import '../theme/app_theme.dart';
 
@@ -16,20 +19,30 @@ Future<bool> askOwnerPin(
   String title = 'Confirmación del propietario',
   String subtitle =
       'Pida al propietario que ingrese su PIN de 4 dígitos para continuar.',
+  ApiService? apiOverride,
 }) async {
   final result = await showDialog<bool>(
     context: context,
     barrierDismissible: false,
-    builder: (_) => _OwnerPinDialog(title: title, subtitle: subtitle),
+    builder: (_) => _OwnerPinDialog(
+      title: title,
+      subtitle: subtitle,
+      apiOverride: apiOverride,
+    ),
   );
   return result ?? false;
 }
 
 class _OwnerPinDialog extends StatefulWidget {
-  const _OwnerPinDialog({required this.title, required this.subtitle});
+  const _OwnerPinDialog({
+    required this.title,
+    required this.subtitle,
+    this.apiOverride,
+  });
 
   final String title;
   final String subtitle;
+  final ApiService? apiOverride;
 
   @override
   State<_OwnerPinDialog> createState() => _OwnerPinDialogState();
@@ -44,7 +57,7 @@ class _OwnerPinDialogState extends State<_OwnerPinDialog> {
   @override
   void initState() {
     super.initState();
-    _api = ApiService(AuthService());
+    _api = widget.apiOverride ?? ApiService(AuthService());
   }
 
   @override
@@ -63,19 +76,37 @@ class _OwnerPinDialogState extends State<_OwnerPinDialog> {
       _checking = true;
       _error = null;
     });
-    final ok = await _api.verifyOwnerPin(pin);
-    if (!mounted) return;
-    if (ok) {
-      HapticFeedback.mediumImpact();
-      Navigator.of(context).pop(true);
-      return;
+
+    String? errorMessage;
+    try {
+      final ok = await _api.verifyOwnerPin(pin);
+      if (!mounted) return;
+      if (ok) {
+        HapticFeedback.mediumImpact();
+        Navigator.of(context).pop(true);
+        return;
+      }
+      errorMessage = 'PIN incorrecto';
+    } on AppError catch (e) {
+      developer.log('verifyOwnerPin AppError: ${e.message}',
+          name: 'OwnerPinDialog');
+      errorMessage = 'Error de conexión. Intenta de nuevo.';
+    } catch (e, st) {
+      developer.log('verifyOwnerPin unexpected error: $e',
+          name: 'OwnerPinDialog', error: e, stackTrace: st);
+      errorMessage = 'Error al verificar. Intenta de nuevo.';
+    } finally {
+      // ALWAYS reset loading state when there's an error, so the
+      // cashier can retry or cancel — this is the freeze fix.
+      if (mounted && errorMessage != null) {
+        HapticFeedback.heavyImpact();
+        setState(() {
+          _checking = false;
+          _error = errorMessage;
+          _controller.clear();
+        });
+      }
     }
-    HapticFeedback.heavyImpact();
-    setState(() {
-      _checking = false;
-      _error = 'PIN incorrecto';
-      _controller.clear();
-    });
   }
 
   @override

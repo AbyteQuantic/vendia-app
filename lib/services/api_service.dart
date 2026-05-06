@@ -2362,17 +2362,36 @@ class ApiService {
   }
 
   /// Cashier submits the PIN dictated by the owner. Returns true on match.
-  /// Returns false on wrong PIN or if the owner has not yet set one.
+  /// Returns false on wrong PIN (401/403) or if the owner has not yet set one.
+  /// Throws AppError on network failures or timeout.
   Future<bool> verifyOwnerPin(String pin) async {
     try {
-      final resp = await _dio.post(
-        '/api/v1/tenant/owner-pin/verify',
-        data: {'pin': pin},
-      );
+      final resp = await _dio
+          .post(
+            '/api/v1/tenant/owner-pin/verify',
+            data: {'pin': pin},
+          )
+          .timeout(const Duration(seconds: 5));
       final body = resp.data;
-      if (body is Map && body['ok'] == true) return true;
-      return false;
-    } on DioException {
+      return body is Map && body['ok'] == true;
+    } on TimeoutException catch (e) {
+      // Network is hung — caller should show a connectivity message.
+      throw AppError.fromDioException(
+        DioException(
+          requestOptions: RequestOptions(path: '/api/v1/tenant/owner-pin/verify'),
+          type: DioExceptionType.connectionTimeout,
+          error: e,
+        ),
+      );
+    } on DioException catch (e) {
+      final code = e.response?.statusCode;
+      if (code == 401 || code == 403) return false;
+      if (e.type == DioExceptionType.connectionTimeout ||
+          e.type == DioExceptionType.receiveTimeout ||
+          e.type == DioExceptionType.sendTimeout ||
+          e.type == DioExceptionType.connectionError) {
+        throw AppError.fromDioException(e);
+      }
       return false;
     }
   }
