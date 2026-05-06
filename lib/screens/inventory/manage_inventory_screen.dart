@@ -6,6 +6,7 @@ import '../../theme/app_theme.dart';
 import '../../services/api_service.dart';
 import '../../services/auth_service.dart';
 import '../../utils/barcode_validator.dart';
+import '../../utils/currency_input.dart';
 import '../../widgets/stock_badge.dart';
 import '../pos/scan_screen.dart';
 import 'kardex_screen.dart';
@@ -623,7 +624,7 @@ class _EditProductSheetState extends State<_EditProductSheet> {
     final p = widget.product;
     _nameCtrl = TextEditingController(text: p['name'] as String? ?? '');
     _priceCtrl = TextEditingController(
-        text: ((p['price'] as num?)?.toDouble() ?? 0).toInt().toString());
+        text: CurrencyUtils.formatInt(((p['price'] as num?)?.toDouble() ?? 0).toInt()));
     _stockCtrl =
         TextEditingController(text: (p['stock'] as int? ?? 0).toString());
     _contentCtrl =
@@ -851,7 +852,7 @@ class _EditProductSheetState extends State<_EditProductSheet> {
       final id = widget.product['id'] as String? ?? '';
       await api.updateProduct(id, {
         'name': name,
-        'price': double.tryParse(_priceCtrl.text.trim()) ?? 0,
+        'price': CurrencyUtils.parseToDouble(_priceCtrl.text),
         'stock': int.tryParse(_stockCtrl.text.trim()) ?? 0,
         'presentation': _presentation,
         'content': _contentCtrl.text.trim(),
@@ -1194,6 +1195,7 @@ class _EditProductSheetState extends State<_EditProductSheet> {
                         TextField(
                           controller: _priceCtrl,
                           keyboardType: TextInputType.number,
+                          inputFormatters: const [CurrencyInputFormatter()],
                           style: const TextStyle(fontSize: 18),
                           decoration: _inputDecoration('\$ 0'),
                         ),
