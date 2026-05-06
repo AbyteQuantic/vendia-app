@@ -178,13 +178,17 @@ class _MainDashboardScreenState extends State<MainDashboardScreen> {
                       Row(
                         crossAxisAlignment: CrossAxisAlignment.center,
                         children: [
-                          const Text(
-                            'VendIA',
-                            style: TextStyle(
-                              fontSize: 28,
-                              fontWeight: FontWeight.bold,
-                              color: AppTheme.textPrimary,
-                              letterSpacing: -0.5,
+                          Flexible(
+                            fit: FlexFit.loose,
+                            child: const Text(
+                              'VendIA',
+                              style: TextStyle(
+                                fontSize: 28,
+                                fontWeight: FontWeight.bold,
+                                color: AppTheme.textPrimary,
+                                letterSpacing: -0.5,
+                              ),
+                              overflow: TextOverflow.ellipsis,
                             ),
                           ),
                           const Spacer(),
@@ -200,6 +204,8 @@ class _MainDashboardScreenState extends State<MainDashboardScreen> {
                         '¿Qué desea hacer hoy?',
                         style: TextStyle(
                             fontSize: 18, color: AppTheme.textSecondary),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                       ),
                       // Phase-6 branch indicator. The chip reads from
                       // BranchProvider which is kept in sync with
@@ -443,13 +449,17 @@ class _StoreStatusPill extends StatelessWidget {
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Text(
-                label,
-                style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w800,
-                  color: fg,
-                  letterSpacing: 0.2,
+              Flexible(
+                fit: FlexFit.loose,
+                child: Text(
+                  label,
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w800,
+                    color: fg,
+                    letterSpacing: 0.2,
+                  ),
+                  overflow: TextOverflow.ellipsis,
                 ),
               ),
               const SizedBox(width: 8),

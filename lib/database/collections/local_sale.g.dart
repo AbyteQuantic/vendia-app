@@ -53,23 +53,33 @@ const LocalSaleSchema = CollectionSchema(
       name: r'paymentMethod',
       type: IsarType.string,
     ),
-    r'serverId': PropertySchema(
+    r'saleOrigin': PropertySchema(
       id: 7,
+      name: r'saleOrigin',
+      type: IsarType.string,
+    ),
+    r'serverId': PropertySchema(
+      id: 8,
       name: r'serverId',
       type: IsarType.long,
     ),
     r'synced': PropertySchema(
-      id: 8,
+      id: 9,
       name: r'synced',
       type: IsarType.bool,
     ),
+    r'tableLabel': PropertySchema(
+      id: 10,
+      name: r'tableLabel',
+      type: IsarType.string,
+    ),
     r'total': PropertySchema(
-      id: 9,
+      id: 11,
       name: r'total',
       type: IsarType.double,
     ),
     r'uuid': PropertySchema(
-      id: 10,
+      id: 12,
       name: r'uuid',
       type: IsarType.string,
     )
@@ -136,6 +146,13 @@ int _localSaleEstimateSize(
     }
   }
   bytesCount += 3 + object.paymentMethod.length * 3;
+  bytesCount += 3 + object.saleOrigin.length * 3;
+  {
+    final value = object.tableLabel;
+    if (value != null) {
+      bytesCount += 3 + value.length * 3;
+    }
+  }
   bytesCount += 3 + object.uuid.length * 3;
   return bytesCount;
 }
@@ -158,10 +175,12 @@ void _localSaleSerialize(
     object.items,
   );
   writer.writeString(offsets[6], object.paymentMethod);
-  writer.writeLong(offsets[7], object.serverId);
-  writer.writeBool(offsets[8], object.synced);
-  writer.writeDouble(offsets[9], object.total);
-  writer.writeString(offsets[10], object.uuid);
+  writer.writeString(offsets[7], object.saleOrigin);
+  writer.writeLong(offsets[8], object.serverId);
+  writer.writeBool(offsets[9], object.synced);
+  writer.writeString(offsets[10], object.tableLabel);
+  writer.writeDouble(offsets[11], object.total);
+  writer.writeString(offsets[12], object.uuid);
 }
 
 LocalSale _localSaleDeserialize(
@@ -185,10 +204,12 @@ LocalSale _localSaleDeserialize(
       ) ??
       [];
   object.paymentMethod = reader.readString(offsets[6]);
-  object.serverId = reader.readLongOrNull(offsets[7]);
-  object.synced = reader.readBool(offsets[8]);
-  object.total = reader.readDouble(offsets[9]);
-  object.uuid = reader.readString(offsets[10]);
+  object.saleOrigin = reader.readString(offsets[7]);
+  object.serverId = reader.readLongOrNull(offsets[8]);
+  object.synced = reader.readBool(offsets[9]);
+  object.tableLabel = reader.readStringOrNull(offsets[10]);
+  object.total = reader.readDouble(offsets[11]);
+  object.uuid = reader.readString(offsets[12]);
   return object;
 }
 
@@ -220,12 +241,16 @@ P _localSaleDeserializeProp<P>(
     case 6:
       return (reader.readString(offset)) as P;
     case 7:
-      return (reader.readLongOrNull(offset)) as P;
+      return (reader.readString(offset)) as P;
     case 8:
-      return (reader.readBool(offset)) as P;
+      return (reader.readLongOrNull(offset)) as P;
     case 9:
-      return (reader.readDouble(offset)) as P;
+      return (reader.readBool(offset)) as P;
     case 10:
+      return (reader.readStringOrNull(offset)) as P;
+    case 11:
+      return (reader.readDouble(offset)) as P;
+    case 12:
       return (reader.readString(offset)) as P;
     default:
       throw IsarError('Unknown property with id $propertyId');
@@ -1224,6 +1249,140 @@ extension LocalSaleQueryFilter
     });
   }
 
+  QueryBuilder<LocalSale, LocalSale, QAfterFilterCondition> saleOriginEqualTo(
+    String value, {
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.equalTo(
+        property: r'saleOrigin',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<LocalSale, LocalSale, QAfterFilterCondition>
+      saleOriginGreaterThan(
+    String value, {
+    bool include = false,
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.greaterThan(
+        include: include,
+        property: r'saleOrigin',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<LocalSale, LocalSale, QAfterFilterCondition> saleOriginLessThan(
+    String value, {
+    bool include = false,
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.lessThan(
+        include: include,
+        property: r'saleOrigin',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<LocalSale, LocalSale, QAfterFilterCondition> saleOriginBetween(
+    String lower,
+    String upper, {
+    bool includeLower = true,
+    bool includeUpper = true,
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.between(
+        property: r'saleOrigin',
+        lower: lower,
+        includeLower: includeLower,
+        upper: upper,
+        includeUpper: includeUpper,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<LocalSale, LocalSale, QAfterFilterCondition>
+      saleOriginStartsWith(
+    String value, {
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.startsWith(
+        property: r'saleOrigin',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<LocalSale, LocalSale, QAfterFilterCondition> saleOriginEndsWith(
+    String value, {
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.endsWith(
+        property: r'saleOrigin',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<LocalSale, LocalSale, QAfterFilterCondition> saleOriginContains(
+      String value,
+      {bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.contains(
+        property: r'saleOrigin',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<LocalSale, LocalSale, QAfterFilterCondition> saleOriginMatches(
+      String pattern,
+      {bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.matches(
+        property: r'saleOrigin',
+        wildcard: pattern,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<LocalSale, LocalSale, QAfterFilterCondition>
+      saleOriginIsEmpty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.equalTo(
+        property: r'saleOrigin',
+        value: '',
+      ));
+    });
+  }
+
+  QueryBuilder<LocalSale, LocalSale, QAfterFilterCondition>
+      saleOriginIsNotEmpty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.greaterThan(
+        property: r'saleOrigin',
+        value: '',
+      ));
+    });
+  }
+
   QueryBuilder<LocalSale, LocalSale, QAfterFilterCondition> serverIdIsNull() {
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(const FilterCondition.isNull(
@@ -1300,6 +1459,157 @@ extension LocalSaleQueryFilter
       return query.addFilterCondition(FilterCondition.equalTo(
         property: r'synced',
         value: value,
+      ));
+    });
+  }
+
+  QueryBuilder<LocalSale, LocalSale, QAfterFilterCondition> tableLabelIsNull() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(const FilterCondition.isNull(
+        property: r'tableLabel',
+      ));
+    });
+  }
+
+  QueryBuilder<LocalSale, LocalSale, QAfterFilterCondition>
+      tableLabelIsNotNull() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(const FilterCondition.isNotNull(
+        property: r'tableLabel',
+      ));
+    });
+  }
+
+  QueryBuilder<LocalSale, LocalSale, QAfterFilterCondition> tableLabelEqualTo(
+    String? value, {
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.equalTo(
+        property: r'tableLabel',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<LocalSale, LocalSale, QAfterFilterCondition>
+      tableLabelGreaterThan(
+    String? value, {
+    bool include = false,
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.greaterThan(
+        include: include,
+        property: r'tableLabel',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<LocalSale, LocalSale, QAfterFilterCondition> tableLabelLessThan(
+    String? value, {
+    bool include = false,
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.lessThan(
+        include: include,
+        property: r'tableLabel',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<LocalSale, LocalSale, QAfterFilterCondition> tableLabelBetween(
+    String? lower,
+    String? upper, {
+    bool includeLower = true,
+    bool includeUpper = true,
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.between(
+        property: r'tableLabel',
+        lower: lower,
+        includeLower: includeLower,
+        upper: upper,
+        includeUpper: includeUpper,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<LocalSale, LocalSale, QAfterFilterCondition>
+      tableLabelStartsWith(
+    String value, {
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.startsWith(
+        property: r'tableLabel',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<LocalSale, LocalSale, QAfterFilterCondition> tableLabelEndsWith(
+    String value, {
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.endsWith(
+        property: r'tableLabel',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<LocalSale, LocalSale, QAfterFilterCondition> tableLabelContains(
+      String value,
+      {bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.contains(
+        property: r'tableLabel',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<LocalSale, LocalSale, QAfterFilterCondition> tableLabelMatches(
+      String pattern,
+      {bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.matches(
+        property: r'tableLabel',
+        wildcard: pattern,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<LocalSale, LocalSale, QAfterFilterCondition>
+      tableLabelIsEmpty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.equalTo(
+        property: r'tableLabel',
+        value: '',
+      ));
+    });
+  }
+
+  QueryBuilder<LocalSale, LocalSale, QAfterFilterCondition>
+      tableLabelIsNotEmpty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.greaterThan(
+        property: r'tableLabel',
+        value: '',
       ));
     });
   }
@@ -1583,6 +1893,18 @@ extension LocalSaleQuerySortBy on QueryBuilder<LocalSale, LocalSale, QSortBy> {
     });
   }
 
+  QueryBuilder<LocalSale, LocalSale, QAfterSortBy> sortBySaleOrigin() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'saleOrigin', Sort.asc);
+    });
+  }
+
+  QueryBuilder<LocalSale, LocalSale, QAfterSortBy> sortBySaleOriginDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'saleOrigin', Sort.desc);
+    });
+  }
+
   QueryBuilder<LocalSale, LocalSale, QAfterSortBy> sortByServerId() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'serverId', Sort.asc);
@@ -1604,6 +1926,18 @@ extension LocalSaleQuerySortBy on QueryBuilder<LocalSale, LocalSale, QSortBy> {
   QueryBuilder<LocalSale, LocalSale, QAfterSortBy> sortBySyncedDesc() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'synced', Sort.desc);
+    });
+  }
+
+  QueryBuilder<LocalSale, LocalSale, QAfterSortBy> sortByTableLabel() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'tableLabel', Sort.asc);
+    });
+  }
+
+  QueryBuilder<LocalSale, LocalSale, QAfterSortBy> sortByTableLabelDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'tableLabel', Sort.desc);
     });
   }
 
@@ -1718,6 +2052,18 @@ extension LocalSaleQuerySortThenBy
     });
   }
 
+  QueryBuilder<LocalSale, LocalSale, QAfterSortBy> thenBySaleOrigin() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'saleOrigin', Sort.asc);
+    });
+  }
+
+  QueryBuilder<LocalSale, LocalSale, QAfterSortBy> thenBySaleOriginDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'saleOrigin', Sort.desc);
+    });
+  }
+
   QueryBuilder<LocalSale, LocalSale, QAfterSortBy> thenByServerId() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'serverId', Sort.asc);
@@ -1739,6 +2085,18 @@ extension LocalSaleQuerySortThenBy
   QueryBuilder<LocalSale, LocalSale, QAfterSortBy> thenBySyncedDesc() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'synced', Sort.desc);
+    });
+  }
+
+  QueryBuilder<LocalSale, LocalSale, QAfterSortBy> thenByTableLabel() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'tableLabel', Sort.asc);
+    });
+  }
+
+  QueryBuilder<LocalSale, LocalSale, QAfterSortBy> thenByTableLabelDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'tableLabel', Sort.desc);
     });
   }
 
@@ -1811,6 +2169,13 @@ extension LocalSaleQueryWhereDistinct
     });
   }
 
+  QueryBuilder<LocalSale, LocalSale, QDistinct> distinctBySaleOrigin(
+      {bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addDistinctBy(r'saleOrigin', caseSensitive: caseSensitive);
+    });
+  }
+
   QueryBuilder<LocalSale, LocalSale, QDistinct> distinctByServerId() {
     return QueryBuilder.apply(this, (query) {
       return query.addDistinctBy(r'serverId');
@@ -1820,6 +2185,13 @@ extension LocalSaleQueryWhereDistinct
   QueryBuilder<LocalSale, LocalSale, QDistinct> distinctBySynced() {
     return QueryBuilder.apply(this, (query) {
       return query.addDistinctBy(r'synced');
+    });
+  }
+
+  QueryBuilder<LocalSale, LocalSale, QDistinct> distinctByTableLabel(
+      {bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addDistinctBy(r'tableLabel', caseSensitive: caseSensitive);
     });
   }
 
@@ -1888,6 +2260,12 @@ extension LocalSaleQueryProperty
     });
   }
 
+  QueryBuilder<LocalSale, String, QQueryOperations> saleOriginProperty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addPropertyName(r'saleOrigin');
+    });
+  }
+
   QueryBuilder<LocalSale, int?, QQueryOperations> serverIdProperty() {
     return QueryBuilder.apply(this, (query) {
       return query.addPropertyName(r'serverId');
@@ -1897,6 +2275,12 @@ extension LocalSaleQueryProperty
   QueryBuilder<LocalSale, bool, QQueryOperations> syncedProperty() {
     return QueryBuilder.apply(this, (query) {
       return query.addPropertyName(r'synced');
+    });
+  }
+
+  QueryBuilder<LocalSale, String?, QQueryOperations> tableLabelProperty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addPropertyName(r'tableLabel');
     });
   }
 

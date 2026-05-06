@@ -1363,13 +1363,15 @@ class _PosScreenBodyState extends State<_PosScreenBody> {
         }).toList();
 
         final employeeName = await AuthService().getOwnerName() ?? '';
+        final isCreditSale = result.paymentMethod == 'credit';
         final localSale = LocalSale()
           ..uuid = saleUuid
           ..total = saleTotal
           ..paymentMethod = result.paymentMethod
           ..employeeName = employeeName
-          ..isCreditSale = result.paymentMethod == 'credit'
+          ..isCreditSale = isCreditSale
           ..creditAccountId = result.creditAccountId
+          ..saleOrigin = isCreditSale ? 'fiado' : 'counter'
           ..items = saleItems
           ..createdAt = DateTime.now()
           ..synced = false;
@@ -1559,6 +1561,7 @@ class _PosScreenBodyState extends State<_PosScreenBody> {
                       ..paymentMethod = method.$1.toLowerCase()
                       ..employeeName = employeeName
                       ..isCreditSale = false
+                      ..saleOrigin = 'counter'
                       ..items = saleItems
                       ..createdAt = DateTime.now()
                       ..synced = false;
@@ -1645,6 +1648,7 @@ class _PosScreenBodyState extends State<_PosScreenBody> {
         ..uuid = saleUuid
         ..paymentMethod = 'credit'
         ..total = saleTotal
+        ..saleOrigin = 'fiado'
         ..items = saleItems
         ..createdAt = DateTime.now()
         ..synced = false;

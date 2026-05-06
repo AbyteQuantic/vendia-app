@@ -45,6 +45,8 @@ class SalesSyncService {
           ..paymentMethod = sale['payment_method'] as String? ?? 'cash'
           ..employeeName = sale['employee_name'] as String? ?? ''
           ..isCreditSale = sale['is_credit'] as bool? ?? false
+          ..saleOrigin = sale['sale_origin'] as String? ?? 'counter'
+          ..tableLabel = sale['table_label'] as String?
           ..items = items
           ..createdAt = DateTime.tryParse(sale['created_at'] as String? ?? '') ??
               DateTime.now()

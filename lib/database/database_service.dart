@@ -443,6 +443,8 @@ class DatabaseService {
       ..paymentMethod = 'multi'
       ..customerUuid = null
       ..isCreditSale = false
+      ..saleOrigin = 'mesa'
+      ..tableLabel = tab.label
       ..items = saleItems
       ..createdAt = DateTime.now()
       ..synced = false;
