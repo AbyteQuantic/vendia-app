@@ -389,6 +389,13 @@ class _TabReviewScreenState extends State<TabReviewScreen> {
     final paid = (data['paid_amount'] as num?)?.toDouble() ?? 0;
     final remaining = (data['remaining_balance'] as num?)?.toDouble() ??
         (total - paid);
+    // Business rule: delete only allowed on open accounts
+    final status = (data['status'] as String?) ?? '';
+    final isOpen = status.isEmpty ||
+        status == 'nuevo' ||
+        status == 'preparando' ||
+        status == 'listo';
+    final canDelete = isOpen && widget.orderId != null;
 
     return RefreshIndicator.adaptive(
       onRefresh: _load,
@@ -402,40 +409,24 @@ class _TabReviewScreenState extends State<TabReviewScreen> {
           else
             ...items.map((it) {
               final itemId = (it['id'] as String?) ?? '';
-              return Dismissible(
+              return _ItemRow(
                 key: ValueKey(itemId.isNotEmpty ? itemId : it.hashCode),
-                direction: widget.orderId != null
-                    ? DismissDirection.endToStart
-                    : DismissDirection.none,
-                background: Container(
-                  alignment: Alignment.centerRight,
-                  padding: const EdgeInsets.only(right: 20),
-                  margin: const EdgeInsets.only(bottom: 8),
-                  decoration: BoxDecoration(
-                    color: AppTheme.error,
-                    borderRadius: BorderRadius.circular(14),
-                  ),
-                  child: const Icon(Icons.delete_rounded,
-                      color: Colors.white, size: 24),
-                ),
-                confirmDismiss: (_) async {
-                  if (widget.orderId == null || itemId.isEmpty) return false;
-                  return _confirmRemoveItem(
-                    itemId: itemId,
-                    name: (it['product_name'] as String?) ?? '',
-                    productUuid: (it['product_uuid'] as String?) ?? '',
-                    quantity: (it['quantity'] as num?)?.toInt() ?? 1,
-                  );
-                },
-                child: _ItemRow(
-                  name: (it['product_name'] as String?) ?? '—',
-                  quantity: (it['quantity'] as num?)?.toInt() ?? 1,
-                  unitPrice: (it['unit_price'] as num?)?.toDouble() ?? 0,
-                  subtotal: (it['subtotal'] as num?)?.toDouble() ?? 0,
-                  emoji: (it['emoji'] as String?) ?? '',
-                  time: _fmtTime(it['added_at'] as String?),
-                  fmtCOP: _fmtCOP,
-                ),
+                name: (it['product_name'] as String?) ?? '—',
+                quantity: (it['quantity'] as num?)?.toInt() ?? 1,
+                unitPrice: (it['unit_price'] as num?)?.toDouble() ?? 0,
+                subtotal: (it['subtotal'] as num?)?.toDouble() ?? 0,
+                emoji: (it['emoji'] as String?) ?? '',
+                time: _fmtTime(it['added_at'] as String?),
+                fmtCOP: _fmtCOP,
+                canDelete: canDelete && itemId.isNotEmpty,
+                onDelete: canDelete && itemId.isNotEmpty
+                    ? () => _confirmRemoveItem(
+                          itemId: itemId,
+                          name: (it['product_name'] as String?) ?? '',
+                          productUuid: (it['product_uuid'] as String?) ?? '',
+                          quantity: (it['quantity'] as num?)?.toInt() ?? 1,
+                        )
+                    : null,
               );
             }),
           const SizedBox(height: 24),
@@ -497,6 +488,7 @@ class _TabReviewScreenState extends State<TabReviewScreen> {
 
 class _ItemRow extends StatelessWidget {
   const _ItemRow({
+    super.key,
     required this.name,
     required this.quantity,
     required this.unitPrice,
@@ -504,6 +496,8 @@ class _ItemRow extends StatelessWidget {
     required this.emoji,
     required this.time,
     required this.fmtCOP,
+    this.canDelete = false,
+    this.onDelete,
   });
 
   final String name;
@@ -513,12 +507,14 @@ class _ItemRow extends StatelessWidget {
   final String emoji;
   final String time;
   final String Function(num) fmtCOP;
+  final bool canDelete;
+  final VoidCallback? onDelete;
 
   @override
   Widget build(BuildContext context) {
     return Container(
       margin: const EdgeInsets.only(bottom: 8),
-      padding: const EdgeInsets.all(14),
+      padding: EdgeInsets.fromLTRB(14, 14, canDelete ? 6 : 14, 14),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(14),
@@ -562,6 +558,19 @@ class _ItemRow extends StatelessWidget {
               color: AppTheme.textPrimary,
             ),
           ),
+          if (canDelete) ...[
+            const SizedBox(width: 4),
+            IconButton(
+              key: const Key('item_delete_btn'),
+              tooltip: 'Eliminar producto',
+              icon: const Icon(Icons.delete_rounded,
+                  color: AppTheme.error, size: 22),
+              onPressed: onDelete,
+              constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
+              padding: EdgeInsets.zero,
+              visualDensity: VisualDensity.compact,
+            ),
+          ],
         ],
       ),
     );
