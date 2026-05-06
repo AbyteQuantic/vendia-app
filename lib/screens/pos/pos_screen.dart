@@ -123,6 +123,10 @@ class _PosScreenBodyState extends State<_PosScreenBody> {
   /// decorate occupied tables. We fold the payload into a
   /// `{label → total}` map so the render loop is O(1) per cell.
   ///
+  /// Also propagates server state to ISAR so web payments materialize
+  /// locally — applyServerTabSnapshot triggers auto-close when
+  /// pendingBalance <= 0 or status arrives as completed/paid.
+  ///
   /// Failures are silent: this is pure UI sugar, and the cashier
   /// can still pick any mesa without it — the hydration path on
   /// CartController will pull the real state when they do.
@@ -131,17 +135,50 @@ class _PosScreenBodyState extends State<_PosScreenBody> {
       final api = ApiService(AuthService());
       final rows = await api.fetchOpenAccounts();
       final map = <String, double>{};
+      final openLabels = <String>{};
       for (final row in rows) {
         final label = (row['label'] as String?)?.trim() ?? '';
         if (label.isEmpty) continue;
-        // Use pending_balance (total - abonos) if available,
-        // otherwise fall back to gross total.
+        openLabels.add(label);
         final pending = (row['pending_balance'] as num?)?.toDouble();
         final total = pending ?? (row['total'] as num?)?.toDouble() ?? 0;
         if (!map.containsKey(label) || map[label]! < total) {
           map[label] = total;
         }
+        // Propagate server state to ISAR so web payments materialize
+        // locally — applyServerTabSnapshot triggers auto-close when
+        // pendingBalance <= 0 or status arrives as completed/paid.
+        try {
+          final payload = <String, dynamic>{
+            'label': label,
+            if (row['abonos_total'] != null)
+              'abonos_total': (row['abonos_total'] as num?)?.toDouble(),
+            if (row['status'] != null) 'status': row['status'],
+            if (row['session_token'] != null)
+              'session_token': row['session_token'],
+            if (row['order_id'] != null || row['id'] != null)
+              'order_id': (row['order_id'] as String?) ??
+                  (row['id'] as String?),
+          };
+          await DatabaseService.instance.applyServerTabSnapshot(payload);
+        } on StateError catch (_) {
+          // ISAR not initialized in tests
+        }
       }
+      // Release the bubble for any cart context whose mesa label is no
+      // longer in the open list (server-closed).
+      try {
+        final cart = context.read<CartController>();
+        for (var i = 0; i < 10; i++) {
+          final ctx = cart.contextAt(i);
+          final lbl = (ctx.tableLabel ?? '').trim();
+          final isMesa = ctx.type == AccountType.mesa ||
+              ctx.type == AccountType.mesaInmediata;
+          if (isMesa && lbl.isNotEmpty && !openLabels.contains(lbl)) {
+            cart.clearContextForLabel(lbl);
+          }
+        }
+      } catch (_) {}
       if (mounted) {
         setState(() {
           _openTabTotalsByLabel = map;
