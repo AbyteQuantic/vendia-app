@@ -79,6 +79,28 @@ class _TabReviewScreenState extends State<TabReviewScreen> {
 
   Future<void> _registerManualAbono() async {
     if (widget.orderId == null) return;
+
+    // Read the authoritative pendingBalance from the ISAR stream first.
+    // _data only updates when _load() runs, which can lag right after
+    // an abono — the stream reflects commitOrderToTab / applyServerTabSnapshot
+    // immediately. Fall back to _data, then to 0.
+    double prefillRemaining = 0;
+    try {
+      final tab = await DatabaseService.instance
+          .watchTableTabByLabel(widget.tableLabel)
+          .first;
+      if (tab != null && tab.pendingBalance > 0) {
+        prefillRemaining = tab.pendingBalance;
+      }
+    } on StateError catch (_) {
+      // ISAR not initialized in tests — fine
+    }
+    if (prefillRemaining <= 0) {
+      prefillRemaining =
+          (_data?['remaining_balance'] as num?)?.toDouble() ?? 0;
+    }
+    if (!mounted) return;
+
     final result = await showModalBottomSheet<_AbonoResult?>(
       context: context,
       isScrollControlled: true,
@@ -86,10 +108,8 @@ class _TabReviewScreenState extends State<TabReviewScreen> {
       builder: (_) {
         final methods = (_data?['payment_methods'] as List<dynamic>? ?? [])
             .cast<Map<String, dynamic>>();
-        final remaining =
-            (_data?['remaining_balance'] as num?)?.toDouble() ?? 0;
         return _ManualAbonoSheet(
-          remaining: remaining,
+          remaining: prefillRemaining,
           methods: methods,
         );
       },
