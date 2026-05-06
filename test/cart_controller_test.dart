@@ -44,6 +44,19 @@ class _FakeTabApi extends ApiService {
   }
 
   @override
+  Future<Map<String, dynamic>> addItemsToTableTab({
+    required String label,
+    required List<Map<String, dynamic>> items,
+    String? customerName,
+    String? employeeName,
+  }) async {
+    calls++;
+    lastPayloads.add({'label': label, 'items': items});
+    if (throwError != null) throw throwError!;
+    return response ?? const {};
+  }
+
+  @override
   Future<Map<String, dynamic>?> fetchTableTabByLabel(String label) async {
     hydrateCalls++;
     if (tabByLabelDelay != null) {
@@ -598,6 +611,111 @@ void main() {
       expect(c.isHydratingTab(0), isTrue);
       await Future<void>.delayed(const Duration(milliseconds: 60));
       expect(c.isHydratingTab(0), isFalse);
+    });
+  });
+
+  // ── Stock sync methods ────────────────────────────────────────────────
+  //
+  // These tests verify the new centralized stock adjustment methods
+  // that keep ISAR and the in-memory product grid in sync when items
+  // are sent to a mesa or removed from an open tab.
+
+  group('onTabItemRemoved', () {
+    // NOTE: In test env, _products is empty (ISAR not initialized) so
+    // the in-memory update path targets an empty list. We verify
+    // the method doesn't crash and correctly guards edge cases.
+
+    test('notifies listeners even when product not found in-memory', () async {
+      final c = CartController();
+      int notifications = 0;
+      c.addListener(() => notifications++);
+
+      await c.onTabItemRemoved('mock-gaseosa-cola-350ml', 3);
+
+      // notifyListeners is always called at the end
+      expect(notifications, greaterThan(0));
+    });
+
+    test('is a no-op for empty productUuid (no notification)', () async {
+      final c = CartController();
+      // Wait for initial _loadProducts to settle
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+      int notifications = 0;
+      c.addListener(() => notifications++);
+
+      await c.onTabItemRemoved('', 5);
+
+      expect(notifications, 0);
+    });
+
+    test('is a no-op for quantity <= 0 (no notification)', () async {
+      final c = CartController();
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+      int notifications = 0;
+      c.addListener(() => notifications++);
+
+      await c.onTabItemRemoved('mock-gaseosa-cola-350ml', 0);
+
+      expect(notifications, 0);
+    });
+
+    test('handles unknown productUuid gracefully (no crash)', () async {
+      final c = CartController();
+      // Should not throw
+      await c.onTabItemRemoved('nonexistent-uuid-xyz', 2);
+      expect(true, isTrue);
+    });
+  });
+
+  group('flushTableTab stock deduction', () {
+    test('clears cart after successful flush (stock deduction runs silently)',
+        () async {
+      final api = _FakeTabApi(response: const {
+        'session_token': 'tok-deduct',
+        'order_id': 'ord-deduct',
+      });
+      final c = CartController(apiOverride: api);
+      final product = CartController.mockProducts[1]; // Agua
+
+      c.setContext(const AccountContext(
+        type: AccountType.mesa,
+        tableLabel: 'Mesa 7',
+      ));
+      c.addProduct(product);
+      c.addProduct(product); // qty = 2
+
+      final token = await c.flushTableTab();
+
+      expect(token, 'tok-deduct');
+      // Cart is cleared after flush
+      expect(c.activeCart, isEmpty);
+      // Context retains session
+      expect(c.activeContext.sessionToken, 'tok-deduct');
+    });
+
+    test('does NOT deduct stock for service items', () async {
+      final api = _FakeTabApi(response: const {
+        'session_token': 'tok-svc',
+        'order_id': 'ord-svc',
+      });
+      final c = CartController(apiOverride: api);
+
+      c.setContext(const AccountContext(
+        type: AccountType.mesa,
+        tableLabel: 'Mesa 8',
+      ));
+      c.addServiceCharge(description: 'Domicilio', unitPrice: 3000);
+
+      // mockProducts are returned by allProducts getter; they should
+      // remain unchanged since services don't touch stock
+      final stocksBefore =
+          c.allProducts.map((p) => '${p.uuid}:${p.stock}').toList();
+
+      await c.flushTableTab();
+
+      final stocksAfter =
+          c.allProducts.map((p) => '${p.uuid}:${p.stock}').toList();
+      expect(stocksAfter, equals(stocksBefore));
     });
   });
 }

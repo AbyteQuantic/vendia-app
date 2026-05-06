@@ -129,6 +129,42 @@ class DatabaseService {
     });
   }
 
+  // ── Stock Adjustment (Single Source of Truth) ──────────────────────────────
+
+  /// Adjusts local stock for a product by [delta] units.
+  /// Positive delta = restock (item cancelled/returned).
+  /// Negative delta = deduction (item sold/reserved).
+  /// Returns the new stock value, or null if product not found.
+  Future<int?> adjustStock(String productUuid, int delta) async {
+    return await isar.writeTxn(() async {
+      final product = await isar.localProducts
+          .filter()
+          .uuidEqualTo(productUuid)
+          .findFirst();
+      if (product == null) return null;
+      product.stock = (product.stock + delta).clamp(0, 999999);
+      await isar.localProducts.put(product);
+      return product.stock;
+    });
+  }
+
+  /// Batch adjust stock for multiple products in a single transaction.
+  /// [deltas] maps productUuid → delta (negative = deduct, positive = restock).
+  Future<void> batchAdjustStock(Map<String, int> deltas) async {
+    if (deltas.isEmpty) return;
+    await isar.writeTxn(() async {
+      for (final entry in deltas.entries) {
+        final product = await isar.localProducts
+            .filter()
+            .uuidEqualTo(entry.key)
+            .findFirst();
+        if (product == null) continue;
+        product.stock = (product.stock + entry.value).clamp(0, 999999);
+        await isar.localProducts.put(product);
+      }
+    });
+  }
+
   // ── Catalog (OFF cache for offline-first autocomplete) ─────────────────────
 
   Future<List<LocalCatalogProduct>> searchCatalog(String query) async {

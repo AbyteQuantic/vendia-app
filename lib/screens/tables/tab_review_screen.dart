@@ -20,6 +20,7 @@ class TabReviewScreen extends StatefulWidget {
     required this.sessionToken,
     required this.tableLabel,
     this.orderId,
+    this.onItemRemoved,
   });
 
   final String sessionToken;
@@ -28,6 +29,10 @@ class TabReviewScreen extends StatefulWidget {
   // Null disables the button — the cashier can still read the
   // cuenta but can't add abonos until the cart has synced.
   final String? orderId;
+
+  /// Called when an item is successfully removed from the tab.
+  /// The POS screen uses this to restore stock reactively.
+  final void Function(String productUuid, int quantity)? onItemRemoved;
 
   @override
   State<TabReviewScreen> createState() => _TabReviewScreenState();
@@ -113,6 +118,54 @@ class _TabReviewScreenState extends State<TabReviewScreen> {
           duration: const Duration(seconds: 4),
         ),
       );
+    }
+  }
+
+  Future<bool> _confirmRemoveItem({
+    required String itemId,
+    required String name,
+    required String productUuid,
+    required int quantity,
+  }) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Eliminar producto'),
+        content: Text('¿Quitar "$name" de la cuenta? El stock será devuelto.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancelar'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Eliminar',
+                style: TextStyle(color: AppTheme.error)),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || widget.orderId == null) return false;
+
+    try {
+      await _api.removeItemFromTab(widget.orderId!, itemId);
+      if (!mounted) return false;
+      HapticFeedback.mediumImpact();
+      // Notify parent to restore stock reactively
+      if (widget.onItemRemoved != null && productUuid.isNotEmpty) {
+        widget.onItemRemoved!(productUuid, quantity);
+      }
+      await _load();
+      return true;
+    } catch (e) {
+      if (!mounted) return false;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error al eliminar: $e'),
+          backgroundColor: AppTheme.error,
+        ),
+      );
+      return false;
     }
   }
 
@@ -347,7 +400,34 @@ class _TabReviewScreenState extends State<TabReviewScreen> {
           if (items.isEmpty)
             _emptyHint('Sin productos registrados todavía.')
           else
-            ...items.map((it) => _ItemRow(
+            ...items.map((it) {
+              final itemId = (it['id'] as String?) ?? '';
+              return Dismissible(
+                key: ValueKey(itemId.isNotEmpty ? itemId : it.hashCode),
+                direction: widget.orderId != null
+                    ? DismissDirection.endToStart
+                    : DismissDirection.none,
+                background: Container(
+                  alignment: Alignment.centerRight,
+                  padding: const EdgeInsets.only(right: 20),
+                  margin: const EdgeInsets.only(bottom: 8),
+                  decoration: BoxDecoration(
+                    color: AppTheme.error,
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  child: const Icon(Icons.delete_rounded,
+                      color: Colors.white, size: 24),
+                ),
+                confirmDismiss: (_) async {
+                  if (widget.orderId == null || itemId.isEmpty) return false;
+                  return _confirmRemoveItem(
+                    itemId: itemId,
+                    name: (it['product_name'] as String?) ?? '',
+                    productUuid: (it['product_uuid'] as String?) ?? '',
+                    quantity: (it['quantity'] as num?)?.toInt() ?? 1,
+                  );
+                },
+                child: _ItemRow(
                   name: (it['product_name'] as String?) ?? '—',
                   quantity: (it['quantity'] as num?)?.toInt() ?? 1,
                   unitPrice: (it['unit_price'] as num?)?.toDouble() ?? 0,
@@ -355,7 +435,9 @@ class _TabReviewScreenState extends State<TabReviewScreen> {
                   emoji: (it['emoji'] as String?) ?? '',
                   time: _fmtTime(it['added_at'] as String?),
                   fmtCOP: _fmtCOP,
-                )),
+                ),
+              );
+            }),
           const SizedBox(height: 24),
           _sectionTitle('Abonos registrados (${abonos.length})'),
           const SizedBox(height: 8),

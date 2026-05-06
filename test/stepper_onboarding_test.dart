@@ -210,7 +210,7 @@ void main() {
       expect(find.byKey(const Key('owner_name')), findsOneWidget);
     });
 
-    testWidgets('navega los 6 pasos hasta Empleados', skip: 'Requires Isar', (tester) async {
+    testWidgets('navega los 6 pasos hasta Empleados', skip: true, (tester) async {
       await tester.pumpWidget(buildTestWidget());
 
       await fillAndAdvanceStep1(tester);
@@ -345,7 +345,7 @@ void main() {
   });
 
   group('OnboardingStepper — Paso 6: Empleados', () {
-    testWidgets('muestra la pregunta de empleados y las 2 opciones', skip: 'Requires Isar',
+    testWidgets('muestra la pregunta de empleados y las 2 opciones', skip: true,
         (tester) async {
       await tester.pumpWidget(buildTestWidget());
       await advanceToEmployees(tester);
@@ -355,7 +355,7 @@ void main() {
       expect(find.byKey(const Key('emp_no')), findsOneWidget);
     });
 
-    testWidgets('seleccionar NO muestra mensaje de cajero por defecto', skip: 'Requires Isar',
+    testWidgets('seleccionar NO muestra mensaje de cajero por defecto', skip: true,
         (tester) async {
       await tester.pumpWidget(buildTestWidget());
       await advanceToEmployees(tester);
@@ -370,7 +370,7 @@ void main() {
     });
 
     testWidgets('muestra botón Finalizar Registro en el último paso',
-        skip: 'Requires Isar', (tester) async {
+        skip: true, (tester) async {
       await tester.pumpWidget(buildTestWidget());
       await advanceToEmployees(tester);
 
@@ -380,7 +380,7 @@ void main() {
 
   group('OnboardingStepper — Submit y Navegación', () {
     testWidgets('submit llama al API con el payload de la taxonomía unificada',
-        skip: 'Requires Isar', (tester) async {
+        skip: true, (tester) async {
       Map<String, dynamic>? capturedPayload;
 
       await tester.pumpWidget(buildTestWidget(
@@ -414,7 +414,7 @@ void main() {
 
     testWidgets(
         'registro exitoso guarda JWT y deja al controller en estado success',
-        skip: 'Requires Isar', (tester) async {
+        skip: true, (tester) async {
       String? savedToken;
       late OnboardingStepperController ctrl;
 
@@ -445,7 +445,7 @@ void main() {
       expect(ctrl.status, equals(StepperStatus.success));
     });
 
-    testWidgets('error del backend muestra mensaje de error en pantalla', skip: 'Requires Isar',
+    testWidgets('error del backend muestra mensaje de error en pantalla', skip: true,
         (tester) async {
       await tester.pumpWidget(buildTestWidget(
         apiCall: (_) async => throw Exception('409 Conflict'),

@@ -130,6 +130,9 @@ class CartController extends ChangeNotifier {
   // index (not label) because the cashier can swap tabs mid-
   // fetch; anchoring on the tab is what the UI cares about.
   final Set<int> _hydratingTabs = {};
+  // Tracks which cart indexes have been hydrated from the server
+  // during this sync cycle, so we don't re-fetch on every debounce.
+  final Set<int> _hydratedOnce = {};
 
   bool isHydratingTab(int index) => _hydratingTabs.contains(index);
 
@@ -277,6 +280,7 @@ class CartController extends ChangeNotifier {
 
     final previous = _contexts[_activeIndex];
     _contexts[_activeIndex] = ctx;
+    _hydratedOnce.remove(_activeIndex);
     notifyListeners();
     _persistContexts();
 
@@ -287,8 +291,6 @@ class CartController extends ChangeNotifier {
 
     if (switchedToNewMesa) {
       unawaited(_hydrateActiveTab());
-    } else {
-      _scheduleTableTabSync(_activeIndex);
     }
   }
 
@@ -442,7 +444,11 @@ class CartController extends ChangeNotifier {
     notifyListeners();
   }
 
-  void addProduct(Product product) {
+  /// Returns true if added, false if blocked (e.g. price is 0).
+  /// Does NOT auto-sync to the server. The cashier must press
+  /// "ENVIAR PEDIDO" (which calls flushTableTab) to send items.
+  bool addProduct(Product product) {
+    if (product.price <= 0) return false;
     final existing =
         activeCart.where((item) => item.product.uuid == product.uuid).firstOrNull;
     if (existing != null) {
@@ -452,7 +458,7 @@ class CartController extends ChangeNotifier {
     }
     notifyListeners();
     _persistCarts();
-    _scheduleTableTabSync(_activeIndex);
+    return true;
   }
 
   void increment(Product product) {
@@ -462,7 +468,6 @@ class CartController extends ChangeNotifier {
     item.quantity++;
     notifyListeners();
     _persistCarts();
-    _scheduleTableTabSync(_activeIndex);
   }
 
   void decrement(Product product) {
@@ -475,7 +480,6 @@ class CartController extends ChangeNotifier {
     }
     notifyListeners();
     _persistCarts();
-    _scheduleTableTabSync(_activeIndex);
   }
 
   void setQuantity(Product product, int qty) {
@@ -492,7 +496,6 @@ class CartController extends ChangeNotifier {
     }
     notifyListeners();
     _persistCarts();
-    _scheduleTableTabSync(_activeIndex);
   }
 
   // ── Table-tab sync ─────────────────────────────────────────────────────────
@@ -526,6 +529,72 @@ class CartController extends ChangeNotifier {
 
   /// Re-fetch products from the server so stock updates are visible.
   Future<void> refreshProducts() => _loadProducts();
+
+  /// Called after successfully removing an item from a server-side tab.
+  /// Restores local ISAR stock and refreshes the product grid.
+  Future<void> onTabItemRemoved(String productUuid, int quantity) async {
+    if (productUuid.isEmpty || quantity <= 0) return;
+    try {
+      await DatabaseService.instance.adjustStock(productUuid, quantity);
+    } catch (_) {
+      // ISAR not initialized (tests) or disk error — continue gracefully
+    }
+    final idx = _products.indexWhere((p) => p.uuid == productUuid);
+    if (idx != -1) {
+      final old = _products[idx];
+      _products[idx] = Product(
+        id: old.id,
+        uuid: old.uuid,
+        name: old.name,
+        price: old.price,
+        stock: (old.stock + quantity).clamp(0, 999999),
+        imageUrl: old.imageUrl,
+        isAvailable: old.isAvailable,
+        requiresContainer: old.requiresContainer,
+        containerPrice: old.containerPrice,
+        barcode: old.barcode,
+        presentation: old.presentation,
+        content: old.content,
+      );
+    }
+    notifyListeners();
+  }
+
+  /// Deducts stock locally when items are sent to a table tab.
+  Future<void> _deductStockForSentItems(List<CartItem> items) async {
+    final deltas = <String, int>{};
+    for (final item in items) {
+      if (item.isService) continue;
+      final uuid = item.product.uuid;
+      deltas[uuid] = (deltas[uuid] ?? 0) - item.quantity;
+    }
+    if (deltas.isEmpty) return;
+    try {
+      await DatabaseService.instance.batchAdjustStock(deltas);
+    } catch (_) {
+      // ISAR not initialized (tests) or disk error — continue gracefully
+    }
+    for (final entry in deltas.entries) {
+      final idx = _products.indexWhere((p) => p.uuid == entry.key);
+      if (idx != -1) {
+        final old = _products[idx];
+        _products[idx] = Product(
+          id: old.id,
+          uuid: old.uuid,
+          name: old.name,
+          price: old.price,
+          stock: (old.stock + entry.value).clamp(0, 999999),
+          imageUrl: old.imageUrl,
+          isAvailable: old.isAvailable,
+          requiresContainer: old.requiresContainer,
+          containerPrice: old.containerPrice,
+          barcode: old.barcode,
+          presentation: old.presentation,
+          content: old.content,
+        );
+      }
+    }
+  }
 
   /// Public entry point for tests and force-refresh flows.
   /// Fires the server lookup for the currently active tab; no-op
@@ -589,9 +658,6 @@ class CartController extends ChangeNotifier {
           notifyListeners();
           _persistContexts();
         }
-        // And schedule a debounced push so the freshly edited
-        // cart lands on top of the server state.
-        _scheduleTableTabSync(index);
         return;
       }
 
@@ -675,25 +741,32 @@ class CartController extends ChangeNotifier {
     try {
       final api = apiOverride ?? ApiService(AuthService());
 
-      // The local cart IS the source of truth after hydration.
-      // _hydrateActiveTab already loaded server items into the local
-      // cart, so the cashier's adds/removes are reflected here.
-      // We push the local cart as-is — the backend upsert replaces
-      // all server items with this list atomically.
-      final items = cart.map((line) {
-        return {
-          'product_uuid': line.product.uuid,
-          'product_name': line.isService && line.customDescription != null
-              ? line.customDescription!
-              : line.product.name,
-          'quantity': line.quantity,
-          'unit_price': line.isService && line.customUnitPrice != null
-              ? line.customUnitPrice
-              : line.product.price,
-        };
-      }).toList();
+      // Build consolidated item list from local cart.
+      // Accumulate-only: we send ONLY what the cashier just added.
+      // The backend appends these to the existing tab without
+      // removing anything.
+      final itemMap = <String, Map<String, dynamic>>{};
+      for (final line in cart) {
+        final uuid = line.product.uuid;
+        if (itemMap.containsKey(uuid)) {
+          itemMap[uuid]!['quantity'] =
+              (itemMap[uuid]!['quantity'] as int) + line.quantity;
+        } else {
+          itemMap[uuid] = {
+            'product_uuid': uuid,
+            'product_name': line.isService && line.customDescription != null
+                ? line.customDescription!
+                : line.product.name,
+            'quantity': line.quantity,
+            'unit_price': line.isService && line.customUnitPrice != null
+                ? line.customUnitPrice
+                : line.product.price,
+          };
+        }
+      }
+      final items = itemMap.values.toList();
 
-      final data = await api.upsertTableTab(
+      final data = await api.addItemsToTableTab(
         label: label,
         items: items,
         customerName: ctx.customerName,
@@ -716,8 +789,15 @@ class CartController extends ChangeNotifier {
         notifyListeners();
         _persistContexts();
       }
-      // Refresh products so stock updates are visible in the grid
-      unawaited(_loadProducts());
+      // Deduct local stock for sent items
+      await _deductStockForSentItems(cart);
+      // Clear the local cart after successful send so items don't
+      // get re-sent on the next debounce cycle. The server now holds
+      // the authoritative list; the cashier starts fresh for the next
+      // round of additions.
+      _carts[index].clear();
+      notifyListeners();
+      _persistCarts();
       return token;
     } on AppError catch (e) {
       developer.log(

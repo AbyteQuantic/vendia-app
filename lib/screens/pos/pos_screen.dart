@@ -132,10 +132,10 @@ class _PosScreenBodyState extends State<_PosScreenBody> {
       for (final row in rows) {
         final label = (row['label'] as String?)?.trim() ?? '';
         if (label.isEmpty) continue;
-        final total = (row['total'] as num?)?.toDouble() ?? 0;
-        // If two open tickets share a label (shouldn't happen
-        // post-upsert, but guard anyway) we keep the biggest —
-        // better to over-alert than to hide a debt.
+        // Use pending_balance (total - abonos) if available,
+        // otherwise fall back to gross total.
+        final pending = (row['pending_balance'] as num?)?.toDouble();
+        final total = pending ?? (row['total'] as num?)?.toDouble() ?? 0;
         if (!map.containsKey(label) || map[label]! < total) {
           map[label] = total;
         }
@@ -400,6 +400,22 @@ class _PosScreenBodyState extends State<_PosScreenBody> {
 
   Future<void> _addProductWithContainerCheck(
       CartController ctrl, Product product) async {
+    if (product.price <= 0) {
+      HapticFeedback.heavyImpact();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            '"${product.name}" no tiene precio asignado. Edítalo primero desde Mi Inventario.',
+            style: const TextStyle(fontSize: 15),
+          ),
+          backgroundColor: AppTheme.warning,
+          behavior: SnackBarBehavior.floating,
+          duration: const Duration(seconds: 4),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        ),
+      );
+      return;
+    }
     if (product.requiresContainer && product.containerPrice > 0) {
       final choice = await showDialog<ContainerChoice>(
         context: context,
@@ -488,6 +504,9 @@ class _PosScreenBodyState extends State<_PosScreenBody> {
                         sessionToken: sessionToken,
                         tableLabel: activeTableLabel,
                         orderId: activeCtx.orderId,
+                        onItemRemoved: (uuid, qty) {
+                          context.read<CartController>().onTabItemRemoved(uuid, qty);
+                        },
                       ),
                     ));
                   },
@@ -639,6 +658,9 @@ class _PosScreenBodyState extends State<_PosScreenBody> {
                     sessionToken: resolvedToken,
                     tableLabel: label,
                     orderId: resolvedOrderId,
+                    onItemRemoved: (uuid, qty) {
+                      context.read<CartController>().onTabItemRemoved(uuid, qty);
+                    },
                   ),
                 ));
               } else {
@@ -684,6 +706,9 @@ class _PosScreenBodyState extends State<_PosScreenBody> {
                     sessionToken: resolvedToken,
                     tableLabel: label,
                     orderId: resolvedOrderId,
+                    onItemRemoved: (uuid, qty) {
+                      context.read<CartController>().onTabItemRemoved(uuid, qty);
+                    },
                   ),
                 ));
               } else {
@@ -1792,6 +1817,9 @@ class _PosScreenBodyState extends State<_PosScreenBody> {
                             sessionToken: sessionToken,
                             tableLabel: label,
                             orderId: orderId,
+                            onItemRemoved: (uuid, qty) {
+                              context.read<CartController>().onTabItemRemoved(uuid, qty);
+                            },
                           ),
                         ));
                       }
@@ -2130,13 +2158,13 @@ class _ProductCard extends StatelessWidget {
                             children: [
                               Flexible(
                                 child: Text(
-                                  product.formattedPrice,
+                                  product.price <= 0 ? 'Sin precio' : product.formattedPrice,
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
-                                  style: const TextStyle(
+                                  style: TextStyle(
                                     fontSize: 16,
                                     fontWeight: FontWeight.bold,
-                                    color: AppTheme.primary,
+                                    color: product.price <= 0 ? AppTheme.error : AppTheme.primary,
                                   ),
                                 ),
                               ),
