@@ -1,11 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:provider/provider.dart';
 
 import '../../services/api_service.dart';
 import '../../services/auth_service.dart';
 import '../../theme/app_theme.dart';
 import '../../database/database_service.dart';
 import '../../database/collections/local_table_tab.dart';
+import '../pos/cart_controller.dart';
 
 /// Tab Review — tendero-side read of an open table ticket. Shows
 /// items with their exact time of order, the abonos the customer
@@ -45,6 +47,7 @@ class _TabReviewScreenState extends State<TabReviewScreen> {
   Map<String, dynamic>? _data;
   bool _loading = true;
   String? _errorMessage;
+  bool _closedHandled = false;
 
   @override
   void initState() {
@@ -351,10 +354,40 @@ class _TabReviewScreenState extends State<TabReviewScreen> {
             .watchTableTabByLabel(widget.tableLabel),
         builder: (ctx, snap) {
           final tab = snap.data;
-          if (tab != null) {
-            return _buildReactiveContent(tab);
+          final closed = tab != null &&
+              (tab.status == 'completed' || tab.status == 'paid');
+          if (closed && !_closedHandled) {
+            _closedHandled = true;
+            // Defer until after this build completes — can't pop inside builder.
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (!mounted) return;
+              // Best-effort: tell the backend (idempotent server-side).
+              if (widget.orderId != null) {
+                _api
+                    .closeOrder(widget.orderId!, 'multi')
+                    .catchError((_) => <String, dynamic>{});
+              }
+              // Release the mesa bubble in the POS header.
+              try {
+                // ignore: use_build_context_synchronously
+                ctx.read<CartController>().clearContextForLabel(widget.tableLabel);
+              } catch (_) {}
+              // Pop with a green confirmation.
+              // ignore: use_build_context_synchronously
+              ScaffoldMessenger.of(ctx).showSnackBar(
+                const SnackBar(
+                  content: Text('¡Cuenta Pagada y Cerrada!'),
+                  backgroundColor: AppTheme.success,
+                  behavior: SnackBarBehavior.floating,
+                  duration: Duration(seconds: 3),
+                ),
+              );
+              Navigator.of(ctx).maybePop();
+            });
+            // Show legacy/empty content until the pop fires.
+            return _buildLegacyContent();
           }
-          // Fallback: use legacy polling content if no ISAR data
+          if (tab != null) return _buildReactiveContent(tab);
           return _buildLegacyContent();
         },
       ),

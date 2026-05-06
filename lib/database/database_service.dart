@@ -8,6 +8,7 @@ import 'collections/local_customer.dart';
 import 'collections/local_credit.dart';
 import 'collections/local_table_tab.dart';
 import 'collections/pending_operation.dart';
+import '../utils/generate_id.dart';
 
 class DatabaseService {
   static DatabaseService? _instance;
@@ -420,6 +421,54 @@ class DatabaseService {
     });
   }
 
+  /// Internal: must run inside an existing writeTxn. Transitions a
+  /// fully-paid tab into a closed sale: records LocalSale, drains
+  /// reservedStock into actual stock deduction, marks tab completed.
+  /// Idempotent — caller checks pendingBalance & status first.
+  Future<void> _closeTabInTxn(LocalTableTab tab) async {
+    // 1) Build LocalSale for the ledger
+    final saleItems = tab.items.map((it) {
+      return SaleItemEmbed()
+        ..productUuid = it.productUuid
+        ..productName = it.productName
+        ..quantity = it.quantity
+        ..unitPrice = it.unitPrice
+        ..isContainerCharge = false;
+    }).toList();
+    final sale = LocalSale()
+      ..uuid = tab.orderId ?? generateId()
+      ..total = tab.grossTotal
+      ..paymentMethod = 'multi'
+      ..customerUuid = null
+      ..isCreditSale = false
+      ..items = saleItems
+      ..createdAt = DateTime.now()
+      ..synced = false;
+    await isar.localSales.put(sale);
+
+    // 2) Aggregate quantities per product
+    final byUuid = <String, int>{};
+    for (final it in tab.items) {
+      byUuid[it.productUuid] = (byUuid[it.productUuid] ?? 0) + it.quantity;
+    }
+    // 3) Transition: stock -= qty, reservedStock -= qty (lock-step)
+    for (final entry in byUuid.entries) {
+      final p = await isar.localProducts
+          .filter()
+          .uuidEqualTo(entry.key)
+          .findFirst();
+      if (p == null) continue;
+      p.stock = (p.stock - entry.value).clamp(0, 999999);
+      p.reservedStock = (p.reservedStock - entry.value).clamp(0, 999999);
+      await isar.localProducts.put(p);
+    }
+    // 4) Mark tab completed
+    tab.status = 'completed';
+    tab.synced = false;
+    tab.updatedAt = DateTime.now();
+    await isar.localTableTabs.put(tab);
+  }
+
   /// Reconciliation: backend confirms tab snapshot → update local tab.
   /// Touches ONLY abonosTotal/pendingBalance/status/sessionToken/orderId/synced.
   /// NEVER touches reservedStock — that's released only on final sale.
@@ -441,7 +490,38 @@ class DatabaseService {
       tab.sessionToken = (data['session_token'] as String?) ?? tab.sessionToken;
       tab.orderId = (data['order_id'] as String?) ?? tab.orderId;
       tab.synced = true;
+
+      // Auto-close if the new state means the tab is paid in full.
+      // Server may explicitly send status=completed/paid/closed; client
+      // may detect it via pending<=0 from the abonos delta. Both routes
+      // converge here so manual POS abonos AND web QR payments close
+      // the mesa locally and record a LocalSale.
+      final paidByMath = tab.pendingBalance <= 0 && tab.grossTotal > 0;
+      final paidByStatus =
+          status == 'completed' || status == 'paid' || status == 'closed';
+      final notYetClosed =
+          tab.status != 'completed' && tab.status != 'paid';
+      if (notYetClosed && (paidByMath || paidByStatus)) {
+        await _closeTabInTxn(tab);
+        return; // _closeTabInTxn already put() the tab
+      }
       await isar.localTableTabs.put(tab);
+    });
+  }
+
+  /// Closes the tab when pendingBalance <= 0 (and not already closed).
+  /// Returns true if a state transition happened. Idempotent.
+  Future<bool> closeTabIfPaid(String label) async {
+    return isar.writeTxn(() async {
+      final tab = await isar.localTableTabs
+          .filter()
+          .labelEqualTo(label)
+          .findFirst();
+      if (tab == null) return false;
+      if (tab.status == 'completed' || tab.status == 'paid') return false;
+      if (tab.pendingBalance > 0 || tab.grossTotal <= 0) return false;
+      await _closeTabInTxn(tab);
+      return true;
     });
   }
 
