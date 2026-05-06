@@ -295,6 +295,28 @@ class CartController extends ChangeNotifier {
     _persistContexts();
   }
 
+  /// Reset every cart slot whose context refers to [label] back to
+  /// mostrador. Used when a tab auto-closes — the mesa bubble in the
+  /// POS header should turn white the moment the cuenta is paid.
+  void clearContextForLabel(String label) {
+    var changed = false;
+    for (var i = 0; i < _cartCount; i++) {
+      final ctx = _contexts[i];
+      final isMesa = ctx.type == AccountType.mesa ||
+          ctx.type == AccountType.mesaInmediata;
+      if (isMesa && (ctx.tableLabel ?? '').trim() == label.trim()) {
+        _contexts[i] = const AccountContext();
+        _carts[i].clear();
+        changed = true;
+      }
+    }
+    if (changed) {
+      notifyListeners();
+      _persistContexts();
+      _persistCarts();
+    }
+  }
+
   // ── Getters ────────────────────────────────────────────────────────────────
 
   int get activeIndex => _activeIndex;
