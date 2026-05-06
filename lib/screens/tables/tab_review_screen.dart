@@ -7,6 +7,7 @@ import '../../services/auth_service.dart';
 import '../../theme/app_theme.dart';
 import '../../database/database_service.dart';
 import '../../database/collections/local_table_tab.dart';
+import '../../utils/currency_input.dart';
 import '../pos/cart_controller.dart';
 
 /// Tab Review — tendero-side read of an open table ticket. Shows
@@ -955,7 +956,7 @@ class _ManualAbonoSheetState extends State<_ManualAbonoSheet> {
   void initState() {
     super.initState();
     _amountCtrl = TextEditingController(
-      text: widget.remaining.round().toString(),
+      text: CurrencyUtils.formatInt(widget.remaining.round()),
     );
     if (widget.methods.isNotEmpty) {
       _methodName = (widget.methods.first['name'] as String?) ?? 'Efectivo';
@@ -970,7 +971,7 @@ class _ManualAbonoSheetState extends State<_ManualAbonoSheet> {
   }
 
   void _submit() {
-    final amount = double.tryParse(_amountCtrl.text.replaceAll(',', '.')) ?? 0;
+    final amount = CurrencyUtils.parseToDouble(_amountCtrl.text);
     if (amount <= 0) return;
     Navigator.of(context).pop(_AbonoResult(amount, _methodName, _methodId));
   }
@@ -1045,13 +1046,12 @@ class _ManualAbonoSheetState extends State<_ManualAbonoSheet> {
             const SizedBox(height: 6),
             TextField(
               controller: _amountCtrl,
-              keyboardType: const TextInputType.numberWithOptions(decimal: true),
-              inputFormatters: [
-                FilteringTextInputFormatter.allow(RegExp(r'[0-9.,]')),
-              ],
+              keyboardType: TextInputType.number,
+              inputFormatters: const [CurrencyInputFormatter()],
               style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w800),
               textAlign: TextAlign.center,
               decoration: InputDecoration(
+                prefixText: '\$ ',
                 filled: true,
                 fillColor: Colors.grey.shade50,
                 border: OutlineInputBorder(

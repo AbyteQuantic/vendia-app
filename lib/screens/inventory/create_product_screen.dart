@@ -11,6 +11,7 @@ import '../../services/api_service.dart';
 import '../../services/auth_service.dart';
 import '../../theme/app_theme.dart';
 import '../../utils/barcode_validator.dart';
+import '../../utils/currency_input.dart';
 import '../pos/scan_screen.dart';
 
 /// Manual product creation form — single-screen, no scroll.
@@ -516,7 +517,7 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
       await api.createProduct({
         'id': _pendingUuid,
         'name': _nameCtrl.text.trim().isEmpty ? 'Producto temporal' : _nameCtrl.text.trim(),
-        'price': double.tryParse(_sellPriceCtrl.text.trim()) ?? 1,
+        'price': CurrencyUtils.parseToDouble(_sellPriceCtrl.text),
         'stock': int.tryParse(_quantityCtrl.text.trim()) ?? 1,
         'image_url': _photoUrl,
         'presentation': _presentation,
@@ -656,7 +657,7 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
 
     try {
       final id = _pendingUuid ?? const Uuid().v4();
-      final price = double.tryParse(_sellPriceCtrl.text.trim()) ?? 0;
+      final price = CurrencyUtils.parseToDouble(_sellPriceCtrl.text);
       final stock = int.tryParse(_quantityCtrl.text.trim()) ?? 1;
 
       final api = ApiService(AuthService());
@@ -1301,9 +1302,7 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
                             keyboardType: TextInputType.number,
                             style: const TextStyle(fontSize: 18),
                             textInputAction: TextInputAction.next,
-                            inputFormatters: [
-                              FilteringTextInputFormatter.digitsOnly,
-                            ],
+                            inputFormatters: const [CurrencyInputFormatter()],
                             decoration: _inputDecoration(
                               hint: '\$0',
                               icon: Icons.attach_money_rounded,
@@ -1333,9 +1332,7 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
                               fontWeight: FontWeight.bold,
                             ),
                             textInputAction: TextInputAction.next,
-                            inputFormatters: [
-                              FilteringTextInputFormatter.digitsOnly,
-                            ],
+                            inputFormatters: const [CurrencyInputFormatter()],
                             decoration: _inputDecoration(
                               hint: '\$0',
                               icon: Icons.attach_money_rounded,

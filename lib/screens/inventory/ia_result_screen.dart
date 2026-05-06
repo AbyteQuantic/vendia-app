@@ -11,6 +11,7 @@ import '../../services/auth_service.dart';
 import '../../services/margin_service.dart';
 import '../../theme/app_theme.dart';
 import '../../utils/product_matcher.dart';
+import '../../utils/currency_input.dart';
 import '../admin/suppliers_screen.dart';
 
 /// Colombian rounding: ceil to nearest $50 COP
@@ -621,16 +622,16 @@ class _IaResultScreenState extends State<IaResultScreen> {
                     children: [
                       Expanded(child: _EditField(
                           label: 'P. Compra', controller: buyCtrl,
-                          numeric: true, prefix: '\$')),
+                          numeric: true, isCurrency: true, prefix: '\$')),
                       const SizedBox(width: 12),
                       Expanded(child: _EditField(
                           label: 'P. Venta', controller: sellCtrl,
-                          numeric: true, prefix: '\$')),
+                          numeric: true, isCurrency: true, prefix: '\$')),
                     ],
                   ),
                   const SizedBox(height: 6),
                   Text(
-                    'Sugerido: \$${suggestPrice(double.tryParse(buyCtrl.text) ?? 0, _marginPercent)} (+${_marginPercent.round()}%)',
+                    'Sugerido: \$${suggestPrice(CurrencyUtils.parseToDouble(buyCtrl.text), _marginPercent)} (+${_marginPercent.round()}%)',
                     style: const TextStyle(
                         fontSize: 14, color: AppTheme.success,
                         fontWeight: FontWeight.w600),
@@ -722,8 +723,8 @@ class _IaResultScreenState extends State<IaResultScreen> {
                           p.barcode = barcodeCtrl.text.trim();
                           p.content = contentCtrl.text.trim();
                           p.quantity = int.tryParse(qtyCtrl.text) ?? p.quantity;
-                          p.purchasePrice = double.tryParse(buyCtrl.text) ?? p.purchasePrice;
-                          p.sellPrice = double.tryParse(sellCtrl.text) ?? p.sellPrice;
+                          p.purchasePrice = CurrencyUtils.parseToDouble(buyCtrl.text);
+                          p.sellPrice = CurrencyUtils.parseToDouble(sellCtrl.text);
                           p.expiryDate = draftExpiry;
                           p.photoPath = draftPhotoPath;
                           p.photoUrl = draftPhotoUrl;
@@ -1405,6 +1406,7 @@ class _EditField extends StatelessWidget {
   final String label;
   final TextEditingController controller;
   final bool numeric;
+  final bool isCurrency;
   final String? prefix;
   final String? hint;
 
@@ -1412,6 +1414,7 @@ class _EditField extends StatelessWidget {
     required this.label,
     required this.controller,
     this.numeric = false,
+    this.isCurrency = false,
     this.prefix,
     this.hint,
   });
@@ -1429,9 +1432,9 @@ class _EditField extends StatelessWidget {
           controller: controller,
           style: const TextStyle(fontSize: 18, color: Color(0xFF1A1A1A)),
           keyboardType: numeric ? TextInputType.number : TextInputType.text,
-          inputFormatters: numeric
-              ? [FilteringTextInputFormatter.digitsOnly]
-              : null,
+          inputFormatters: isCurrency
+              ? const [CurrencyInputFormatter()]
+              : (numeric ? [FilteringTextInputFormatter.digitsOnly] : null),
           decoration: InputDecoration(
             hintText: hint,
             prefixText: prefix,
