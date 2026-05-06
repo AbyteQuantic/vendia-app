@@ -174,7 +174,16 @@ class _PosScreenBodyState extends State<_PosScreenBody> {
           final lbl = (ctx.tableLabel ?? '').trim();
           final isMesa = ctx.type == AccountType.mesa ||
               ctx.type == AccountType.mesaInmediata;
-          if (isMesa && lbl.isNotEmpty && !openLabels.contains(lbl)) {
+          // Only release contexts that were previously synced to the
+          // server — a missing label without a sessionToken/orderId is a
+          // freshly-assigned mesa awaiting its first send, NOT a closed tab.
+          final hasBeenSynced =
+              (ctx.sessionToken != null && ctx.sessionToken!.isNotEmpty) ||
+              (ctx.orderId != null && ctx.orderId!.isNotEmpty);
+          if (isMesa &&
+              lbl.isNotEmpty &&
+              !openLabels.contains(lbl) &&
+              hasBeenSynced) {
             cart.clearContextForLabel(lbl);
           }
         }
