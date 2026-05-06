@@ -1188,7 +1188,7 @@ class _PosScreenBodyState extends State<_PosScreenBody> {
         _cobrarMostrador(ctrl);
         break;
       case AccountType.mesa:
-        _sendOrder(ctrl);
+        unawaited(_sendOrder(ctrl));
         break;
       case AccountType.mesaInmediata:
         _cobrarYEnviar(ctrl);
@@ -1395,16 +1395,25 @@ class _PosScreenBodyState extends State<_PosScreenBody> {
     );
   }
 
-  void _sendOrder(CartController ctrl) {
+  Future<void> _sendOrder(CartController ctrl) async {
     final ctx = ctrl.activeContext;
-    // Persist FIRST so the live-tab QR has a session_token by the
-    // time the cashier opens the account sheet. We fire-and-forget
-    // because the debounced syncs along the way have almost
-    // certainly already landed; this flush is a safety net. The
-    // UI keeps the mesa assigned and only clears line items.
-    unawaited(ctrl.flushTableTab());
+    final token = await ctrl.flushTableTab();
+
+    if (token == null) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('No se pudo enviar el pedido. Verifica tu conexión.'),
+          backgroundColor: AppTheme.error,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
+
     ctrl.clearCartKeepContext();
 
+    if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(
@@ -1417,7 +1426,6 @@ class _PosScreenBodyState extends State<_PosScreenBody> {
       ),
     );
 
-    // Auto-navigate to next empty tab
     final next = ctrl.nextEmptyIndex;
     if (next != -1 && next != ctrl.activeIndex) {
       ctrl.switchCart(next);
