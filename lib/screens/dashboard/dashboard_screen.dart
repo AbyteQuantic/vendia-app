@@ -12,7 +12,10 @@ import '../../services/role_manager.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/online_orders_bell.dart';
 import '../auth/login_screen.dart';
+import '../admin/suppliers_screen.dart';
 import '../inventory/add_merchandise_screen.dart';
+import '../inventory/inventory_report_screen.dart';
+import '../inventory/reorder_screen.dart';
 import '../online_store/promo_management_screen.dart';
 import '../pos/pos_screen.dart';
 import '../../database/sync/sales_sync.dart';
@@ -74,6 +77,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
   // degrade silently (keep 0) so the dashboard still renders offline.
   int _activePromosCount = 0;
 
+  // Low-stock alert count for the reorder suggestion badge.
+  int _lowStockCount = 0;
+
   // Storefront open/closed flag. The catálogo público reacts to this
   // value (add-to-cart disabled when closed) so it must be obvious
   // on the dashboard header and fast to flip. Loaded from the backend
@@ -87,6 +93,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     _loadData();
     _syncFromServer();
     _loadActivePromosCount();
+    _loadLowStockCount();
     _loadStoreStatus();
 
     final isar = _db.isar;
@@ -120,6 +127,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
         _loadData();
         _syncFromServer();
         _loadActivePromosCount();
+        _loadLowStockCount();
         _loadStoreStatus();
       });
     }
@@ -204,6 +212,16 @@ class _DashboardScreenState extends State<DashboardScreen> {
       if (mounted) setState(() => _activePromosCount = active);
     } catch (_) {
       // Offline / not configured — keep badge hidden.
+    }
+  }
+
+  Future<void> _loadLowStockCount() async {
+    try {
+      final api = ApiService(AuthService());
+      final alerts = await api.fetchInventoryAlerts();
+      if (mounted) setState(() => _lowStockCount = alerts.length);
+    } catch (_) {
+      // Offline — keep at 0
     }
   }
 
@@ -678,6 +696,163 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   ),
                 ),
 
+                // ── Low Stock Alert ────────────────────────────────
+                if (_lowStockCount > 0)
+                  SliverToBoxAdapter(
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(18, 12, 18, 0),
+                      child: GestureDetector(
+                        onTap: () async {
+                          HapticFeedback.mediumImpact();
+                          await Navigator.of(context).push(MaterialPageRoute(
+                            builder: (_) => const ReorderScreen(),
+                          ));
+                          _loadLowStockCount();
+                        },
+                        child: Container(
+                          padding: const EdgeInsets.all(14),
+                          decoration: BoxDecoration(
+                            gradient: const LinearGradient(
+                              colors: [Color(0xFFFEF3C7), Color(0xFFFDE68A)],
+                            ),
+                            borderRadius: BorderRadius.circular(16),
+                            border: Border.all(color: const Color(0xFFF59E0B).withValues(alpha: 0.4)),
+                          ),
+                          child: Row(
+                            children: [
+                              Container(
+                                width: 44, height: 44,
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFFF59E0B).withValues(alpha: 0.2),
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                child: const Icon(Icons.warning_amber_rounded,
+                                    color: Color(0xFFD97706), size: 24),
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      '$_lowStockCount producto${_lowStockCount == 1 ? '' : 's'} con stock bajo',
+                                      style: const TextStyle(
+                                          fontSize: 15,
+                                          fontWeight: FontWeight.w700,
+                                          color: Color(0xFF92400E)),
+                                    ),
+                                    const Text('Toca para ver pedidos sugeridos',
+                                        style: TextStyle(fontSize: 13, color: Color(0xFFB45309))),
+                                  ],
+                                ),
+                              ),
+                              const Icon(Icons.shopping_cart_checkout_rounded,
+                                  color: Color(0xFFD97706), size: 22),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+
+                // ── Inventory Report Card ──────────────────────────
+                SliverToBoxAdapter(
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(18, 12, 18, 0),
+                    child: _GlassCard(
+                      onTap: () {
+                        HapticFeedback.lightImpact();
+                        Navigator.of(context).push(MaterialPageRoute(
+                          builder: (_) => const InventoryReportScreen(),
+                        ));
+                      },
+                      child: Row(
+                        children: [
+                          Container(
+                            width: 48, height: 48,
+                            decoration: BoxDecoration(
+                              gradient: const LinearGradient(
+                                colors: [Color(0xFF059669), Color(0xFF34D399)],
+                              ),
+                              borderRadius: BorderRadius.circular(14),
+                            ),
+                            child: const Icon(Icons.assessment_rounded,
+                                color: Colors.white, size: 24),
+                          ),
+                          const SizedBox(width: 14),
+                          const Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text('Reporte de Inventario',
+                                    style: TextStyle(fontSize: 17,
+                                        fontWeight: FontWeight.bold,
+                                        color: AppTheme.textPrimary)),
+                                Text('Kardex, entradas, salidas y stock',
+                                    style: TextStyle(fontSize: 14,
+                                        color: AppTheme.textSecondary),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis),
+                              ],
+                            ),
+                          ),
+                          const Icon(Icons.chevron_right_rounded,
+                              color: Color(0xFF059669), size: 24),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+
+                // ── Suppliers Card ─────────────────────────────────
+                SliverToBoxAdapter(
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(18, 12, 18, 0),
+                    child: _GlassCard(
+                      onTap: () {
+                        HapticFeedback.lightImpact();
+                        Navigator.of(context).push(MaterialPageRoute(
+                          builder: (_) => const SuppliersScreen(),
+                        ));
+                      },
+                      child: Row(
+                        children: [
+                          Container(
+                            width: 48, height: 48,
+                            decoration: BoxDecoration(
+                              gradient: const LinearGradient(
+                                colors: [Color(0xFF764BA2), Color(0xFF667EEA)],
+                              ),
+                              borderRadius: BorderRadius.circular(14),
+                            ),
+                            child: const Icon(Icons.local_shipping_rounded,
+                                color: Colors.white, size: 24),
+                          ),
+                          const SizedBox(width: 14),
+                          const Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text('Mis Proveedores',
+                                    style: TextStyle(fontSize: 17,
+                                        fontWeight: FontWeight.bold,
+                                        color: AppTheme.textPrimary)),
+                                Text('Pedidos por WhatsApp, llamada o SMS',
+                                    style: TextStyle(fontSize: 14,
+                                        color: AppTheme.textSecondary),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis),
+                              ],
+                            ),
+                          ),
+                          const Icon(Icons.chevron_right_rounded,
+                              color: Color(0xFF764BA2), size: 24),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+
                 // ── Recent Sales Header ─────────────────────────────
                 const SliverToBoxAdapter(
                   child: Padding(
@@ -768,6 +943,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   Widget _buildSaleTile(dynamic sale) {
     String label;
     String method;
+    String employeeName;
     DateTime createdAt;
     double total;
 
@@ -777,6 +953,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
               (sale.items.length > 1 ? ' + ${sale.items.length - 1} mas' : '')
           : 'Venta';
       method = sale.paymentMethod;
+      employeeName = '';
       createdAt = sale.createdAt;
       total = sale.total;
     } else if (sale is Map) {
@@ -789,6 +966,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
         label = 'Venta';
       }
       method = (sale['payment_method'] as String?) ?? 'cash';
+      employeeName = (sale['employee_name'] as String?) ?? '';
       createdAt = DateTime.tryParse(sale['created_at']?.toString() ?? '')
               ?.toLocal() ??
           DateTime.now();
@@ -824,9 +1002,15 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         color: AppTheme.textPrimary)),
                 const SizedBox(height: 2),
                 Text(
-                  '${_payLabel(method)} · ${_timeAgo(createdAt)}',
+                  [
+                    _payLabel(method),
+                    if (employeeName.isNotEmpty) employeeName,
+                    _timeAgo(createdAt),
+                  ].join(' · '),
                   style: const TextStyle(
                       fontSize: 15, color: AppTheme.textSecondary),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                 ),
               ],
             ),

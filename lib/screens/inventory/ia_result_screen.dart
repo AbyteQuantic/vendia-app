@@ -11,6 +11,7 @@ import '../../services/auth_service.dart';
 import '../../services/margin_service.dart';
 import '../../theme/app_theme.dart';
 import '../../utils/product_matcher.dart';
+import '../admin/suppliers_screen.dart';
 
 /// Colombian rounding: ceil to nearest $50 COP
 int roundCOP(double amount) {
@@ -56,6 +57,9 @@ class _IaResultScreenState extends State<IaResultScreen> {
       if (rawExpiry is String && rawExpiry.isNotEmpty) {
         parsedExpiry = DateTime.tryParse(rawExpiry);
       }
+      final matchId = p['match_product_id'] as String? ?? '';
+      final matchMethod = p['match_method'] as String? ?? '';
+      final status = p['status'] as String? ?? '';
       return _EditableProduct(
         name: p['name'] as String? ?? '',
         presentation: p['presentation'] as String? ?? '',
@@ -66,6 +70,11 @@ class _IaResultScreenState extends State<IaResultScreen> {
         sellPrice: suggestPrice(purchasePrice, _marginPercent).toDouble(),
         confidence: (p['confidence'] as num?)?.toDouble() ?? 0.9,
         expiryDate: parsedExpiry,
+        photoUrl: p['image_url'] as String?,
+        matchProductId: matchId.isNotEmpty ? matchId : null,
+        matchMethod: matchMethod,
+        // Auto-merge on barcode match
+        useExisting: status == 'match_encontrado' && matchMethod == 'barcode',
       );
     }).toList();
     _loadMargin();
@@ -73,16 +82,42 @@ class _IaResultScreenState extends State<IaResultScreen> {
   }
 
   Future<void> _runMatching() async {
+    // The backend ScanInvoice already populated matchProductId for
+    // products that matched (barcode/normalized/fuzzy). We just need
+    // to enrich with local Isar data for the UI toggle.
     final db = DatabaseService.instance;
     final catalog = await db.getAllProducts();
-    if (!mounted || catalog.isEmpty) return;
+    if (!mounted) return;
+
     var changed = false;
     for (final p in _products) {
-      final match = findBestMatch(p.name, catalog);
-      if (match != null) {
-        p.matchedProduct = match.product;
-        p.matchScore = match.score;
+      // If backend already found a match, try to find it locally too
+      if (p.matchProductId != null && p.matchProductId!.isNotEmpty) {
+        final local = catalog.where((lp) => lp.uuid == p.matchProductId);
+        if (local.isNotEmpty) {
+          p.matchedProduct = local.first;
+          p.matchScore = p.matchMethod == 'barcode'
+              ? 1.0
+              : p.matchMethod == 'normalized'
+                  ? 0.9
+                  : 0.7;
+        } else {
+          // Backend matched but local Isar doesn't have it — still
+          // enable merge since _saveAll uses the API directly
+          p.matchScore = p.matchMethod == 'barcode' ? 1.0 : 0.9;
+        }
         changed = true;
+        continue;
+      }
+      // Fallback: local fuzzy matching for products without backend match
+      if (catalog.isNotEmpty) {
+        final match = findBestMatch(p.name, catalog);
+        if (match != null) {
+          p.matchedProduct = match.product;
+          p.matchProductId = match.product.uuid;
+          p.matchScore = match.score;
+          changed = true;
+        }
       }
     }
     if (changed) setState(() {});
@@ -113,72 +148,193 @@ class _IaResultScreenState extends State<IaResultScreen> {
     setState(() => _saving = true);
     HapticFeedback.mediumImpact();
 
-    try {
-      final db = DatabaseService.instance;
-      int created = 0;
-      int updated = 0;
-      for (final p in _products) {
-        if (p.useExisting && p.matchedProduct != null) {
-          // Merge into existing product
-          final existing = p.matchedProduct!;
-          existing.stock += p.quantity;
-          existing.price = p.sellPrice;
+    final api = ApiService(AuthService());
+    int created = 0;
+    int updated = 0;
+    int failed = 0;
+    final errors = <String>[];
+
+    for (var i = 0; i < _products.length; i++) {
+      final p = _products[i];
+      try {
+        // Ensure price is at least $50 COP (backend requires gt=0)
+        final price = p.sellPrice > 0 ? p.sellPrice : 50.0;
+        final qty = p.quantity > 0 ? p.quantity : 1;
+
+        String? isoExpiry;
+        if (p.expiryDate != null) {
+          isoExpiry = '${p.expiryDate!.year}-'
+              '${p.expiryDate!.month.toString().padLeft(2, '0')}-'
+              '${p.expiryDate!.day.toString().padLeft(2, '0')}';
+        }
+
+        final matchId = p.matchedProduct?.uuid ?? p.matchProductId;
+        if (p.useExisting && matchId != null && matchId.isNotEmpty) {
+          // Restock existing product — atomic increment via dedicated endpoint
+          final restockData = <String, dynamic>{
+            'quantity': qty,
+            'price': price,
+            'purchase_price': p.purchasePrice,
+          };
           if (p.photoUrl != null && p.photoUrl!.isNotEmpty) {
-            existing.imageUrl = p.photoUrl;
+            restockData['image_url'] = p.photoUrl;
           }
-          if (p.expiryDate != null) {
-            existing.expiryDate = p.expiryDate;
+          if (isoExpiry != null) restockData['expiry_date'] = isoExpiry;
+          debugPrint('[SAVE] RESTOCK product $matchId: +$qty');
+          try {
+            await api.restockProduct(matchId, restockData);
+            updated++;
+          } catch (_) {
+            // Product may have been deleted — fall through to create
+            debugPrint('[SAVE] RESTOCK failed, creating new instead');
+            final data = <String, dynamic>{
+              'name': p.name,
+              'price': price,
+              'stock': qty,
+              'presentation': p.presentation,
+              'content': p.content,
+              'barcode': p.barcode,
+            };
+            if (p.photoUrl != null && p.photoUrl!.isNotEmpty) {
+              data['image_url'] = p.photoUrl;
+            }
+            if (isoExpiry != null) data['expiry_date'] = isoExpiry;
+            await api.createProduct(data);
+            created++;
           }
-          existing.clientUpdatedAt = DateTime.now();
-          await db.upsertProduct(existing);
-          updated++;
         } else {
-          final product = LocalProduct()
-            ..uuid = const Uuid().v4()
-            ..name = p.name
-            ..price = p.sellPrice
-            ..stock = p.quantity
-            ..imageUrl = p.photoUrl
-            ..isAvailable = true
-            ..requiresContainer = false
-            ..containerPrice = 0
-            ..presentation = p.presentation
-            ..barcode = p.barcode
-            ..content = p.content
-            ..expiryDate = p.expiryDate
-            ..clientUpdatedAt = DateTime.now();
-          await db.upsertProduct(product);
+          // Create new product via POST
+          final data = <String, dynamic>{
+            'name': p.name,
+            'price': price,
+            'stock': qty,
+            'presentation': p.presentation,
+            'content': p.content,
+            'barcode': p.barcode,
+          };
+          if (p.photoUrl != null && p.photoUrl!.isNotEmpty) {
+            data['image_url'] = p.photoUrl;
+          }
+          if (isoExpiry != null) data['expiry_date'] = isoExpiry;
+          debugPrint('[SAVE] CREATE new product: ${p.name} price=$price qty=$qty');
+          await api.createProduct(data);
           created++;
         }
+        debugPrint('[SAVE] ${i + 1}/${_products.length} OK: ${p.name}');
+      } catch (e) {
+        failed++;
+        errors.add('${p.name}: $e');
+        debugPrint('[SAVE] ${i + 1}/${_products.length} FAILED: ${p.name} — $e');
       }
+    }
 
+    // Log the invoice save (fire-and-forget)
+    if (created + updated > 0) {
+      api.logInvoiceSave({
+        'provider_name': widget.providerName,
+        'invoice_total': _totalInvoice,
+        'products': _products.map((p) => {
+          'name': p.name,
+          'quantity': p.quantity,
+          'is_new': !(p.useExisting && (p.matchProductId ?? '').isNotEmpty),
+        }).toList(),
+      });
+    }
+
+    if (!mounted) return;
+    HapticFeedback.heavyImpact();
+
+    // Show result snackbar FIRST — user needs to see the outcome
+    final parts = <String>[];
+    if (created > 0) parts.add('$created creados');
+    if (updated > 0) parts.add('$updated actualizados');
+    if (failed > 0) parts.add('$failed fallaron');
+
+    final saved = created + updated;
+    debugPrint('[SAVE] DONE: created=$created updated=$updated failed=$failed');
+    if (saved == 0) {
+      // Nothing saved — stay on screen, show error dialog
+      setState(() => _saving = false);
       if (!mounted) return;
-      HapticFeedback.heavyImpact();
-      Navigator.of(context).popUntil((route) => route.isFirst);
-      final parts = <String>[];
-      if (created > 0) parts.add('$created creados');
-      if (updated > 0) parts.add('$updated actualizados');
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
+      showDialog(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('Error al guardar'),
           content: Text(
-            '${_products.length} productos guardados (${parts.join(", ")})',
-            style: const TextStyle(fontSize: 16),
+            'No se pudieron guardar los productos.\n\n'
+            '${errors.take(3).join("\n")}',
           ),
-          backgroundColor: AppTheme.success,
-          behavior: SnackBarBehavior.floating,
-          shape:
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('OK'),
+            ),
+          ],
         ),
       );
-    } catch (e) {
-      if (mounted) {
-        setState(() => _saving = false);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error al guardar: $e'),
-            backgroundColor: AppTheme.error,
+      return;
+    }
+
+    // At least some products saved — navigate away
+    final provName = widget.providerName;
+    final hasProvider = provName.isNotEmpty &&
+        provName != 'Desconocido' &&
+        provName != 'Proveedor' &&
+        provName != 'Dictado por voz';
+
+    Navigator.of(context).popUntil((route) => route.isFirst);
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              '$saved productos guardados',
+              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+            ),
+            Text(
+              parts.join(", "),
+              style: const TextStyle(fontSize: 14),
+            ),
+          ],
+        ),
+        backgroundColor: failed > 0 ? AppTheme.warning : AppTheme.success,
+        behavior: SnackBarBehavior.floating,
+        duration: const Duration(seconds: 4),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      ),
+    );
+
+    // Offer supplier registration AFTER navigating home
+    if (hasProvider) {
+      // Small delay so snackbar is visible before dialog
+      await Future.delayed(const Duration(milliseconds: 500));
+      if (!mounted) return;
+      final nav = Navigator.of(context);
+      final goToSuppliers = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('Proveedor detectado'),
+          content: Text(
+            'La factura es de "$provName".\n¿Registrarlo como proveedor?',
           ),
-        );
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('No'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Registrar'),
+            ),
+          ],
+        ),
+      );
+      if (goToSuppliers == true) {
+        nav.push(MaterialPageRoute(
+          builder: (_) => SuppliersScreen(invoiceProviderName: provName),
+        ));
       }
     }
   }
@@ -244,30 +400,36 @@ class _IaResultScreenState extends State<IaResultScreen> {
     setState(() => p.enhancing = true);
     try {
       final api = ApiService(AuthService());
-      // Create a temp product so the generate endpoint has a UUID.
-      // price=50 is the minimum valid COP value.
-      final uuid = const Uuid().v4();
+      // Create a throwaway product just so the AI photo endpoints have
+      // a UUID to work with. We delete it immediately after — the real
+      // product is only created in _saveAll() when the user confirms.
+      final tempUuid = const Uuid().v4();
       await api.createProduct({
-        'id': uuid,
+        'id': tempUuid,
         'name': p.name,
         'price': p.sellPrice > 0 ? p.sellPrice : 50,
-        'stock': p.quantity > 0 ? p.quantity : 1,
+        'stock': 0, // zero stock so kardex/inventory stay clean
         'presentation': p.presentation,
         'content': p.content,
       });
 
       Map<String, dynamic> result;
-      if (p.photoPath != null) {
-        await api.uploadProductPhoto(uuid, File(p.photoPath!));
-        result = await api.enhanceProductPhoto(uuid);
-      } else {
-        result = await api.generateProductImage(
-          uuid,
-          name: p.name,
-          presentation: p.presentation,
-          content: p.content,
-          barcode: p.barcode,
-        );
+      try {
+        if (p.photoPath != null) {
+          await api.uploadProductPhoto(tempUuid, File(p.photoPath!));
+          result = await api.enhanceProductPhoto(tempUuid);
+        } else {
+          result = await api.generateProductImage(
+            tempUuid,
+            name: p.name,
+            presentation: p.presentation,
+            content: p.content,
+            barcode: p.barcode,
+          );
+        }
+      } finally {
+        // Always clean up the temp product — fire-and-forget
+        api.deleteProduct(tempUuid).catchError((_) => null);
       }
       if (!mounted) return;
       final url = result['photo_url'] as String? ?? result['image_url'] as String?;
@@ -1298,9 +1460,12 @@ class _EditableProduct {
   String? photoUrl;
   bool enhancing;
 
+  /// Backend match info from ScanInvoice response
+  String? matchProductId;
   /// Matched existing product from local catalog (null = no match found)
   LocalProduct? matchedProduct;
   double matchScore;
+  String matchMethod; // "barcode", "normalized", "fuzzy", ""
   /// User decision: true = merge into existing, false = create new
   bool useExisting;
 
@@ -1317,8 +1482,10 @@ class _EditableProduct {
     this.photoPath,
     this.photoUrl,
     this.enhancing = false,
+    this.matchProductId,
     this.matchedProduct,
     this.matchScore = 0.0,
+    this.matchMethod = '',
     this.useExisting = false,
   });
 

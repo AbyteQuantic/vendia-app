@@ -10,6 +10,7 @@ import '../../database/collections/local_product.dart';
 import '../../services/api_service.dart';
 import '../../services/auth_service.dart';
 import '../../theme/app_theme.dart';
+import '../../utils/barcode_validator.dart';
 import '../pos/scan_screen.dart';
 
 /// Manual product creation form — single-screen, no scroll.
@@ -44,6 +45,7 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
   String _presentation = ''; // botella, lata, bolsa, etc.
   DateTime? _expiryDate; // optional — only perishables carry one
   final _skuCtrl = TextEditingController();
+  String? _skuError;
 
   // Autocomplete (local Isar + backend catalog)
   List<_ProductSuggestion> _suggestions = [];
@@ -1152,12 +1154,20 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
                 ],
 
                 // ── SKU / Barcode ─────────────────────────────────────────
-                _fieldLabel('Código SKU / Barras'),
+                _fieldLabel('Codigo SKU / Barras'),
                 const SizedBox(height: 6),
                 TextFormField(
                   controller: _skuCtrl,
+                  keyboardType: TextInputType.number,
                   style: const TextStyle(fontSize: 18),
                   textInputAction: TextInputAction.next,
+                  onChanged: (v) {
+                    if (v.trim().isNotEmpty) {
+                      setState(() => _skuError = BarcodeValidator.validate(v.trim()));
+                    } else {
+                      setState(() => _skuError = null);
+                    }
+                  },
                   decoration: InputDecoration(
                     hintText: 'Ej: 7702535011119',
                     hintStyle: TextStyle(
@@ -1167,11 +1177,23 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
                     ),
                     prefixIcon: const Icon(Icons.qr_code_rounded,
                         color: AppTheme.textSecondary, size: 22),
-                    suffixIcon: IconButton(
-                      onPressed: _generateSku,
-                      icon: const Icon(Icons.auto_fix_high_rounded,
-                          color: AppTheme.primary, size: 22),
-                      tooltip: 'Generar SKU',
+                    errorText: _skuError,
+                    suffixIcon: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        IconButton(
+                          onPressed: _scanBarcode,
+                          icon: const Icon(Icons.qr_code_scanner_rounded,
+                              color: AppTheme.success, size: 22),
+                          tooltip: 'Escanear código',
+                        ),
+                        IconButton(
+                          onPressed: _generateSku,
+                          icon: const Icon(Icons.auto_fix_high_rounded,
+                              color: Color(0xFF7C3AED), size: 22),
+                          tooltip: 'Generar SKU interno',
+                        ),
+                      ],
                     ),
                     contentPadding: const EdgeInsets.symmetric(
                         vertical: 12, horizontal: 12),

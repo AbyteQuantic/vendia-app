@@ -5,7 +5,10 @@ import 'package:image_picker/image_picker.dart';
 import '../../theme/app_theme.dart';
 import '../../services/api_service.dart';
 import '../../services/auth_service.dart';
+import '../../utils/barcode_validator.dart';
 import '../../widgets/stock_badge.dart';
+import '../pos/scan_screen.dart';
+import 'kardex_screen.dart';
 
 class ManageInventoryScreen extends StatefulWidget {
   const ManageInventoryScreen({super.key});
@@ -23,6 +26,8 @@ class _ManageInventoryScreenState extends State<ManageInventoryScreen> {
   List<Map<String, dynamic>> _filtered = [];
   bool _loading = true;
   String? _error;
+  bool _filterNoSku = false;
+  bool _filterNoPrice = false;
 
   @override
   void initState() {
@@ -65,17 +70,35 @@ class _ManageInventoryScreenState extends State<ManageInventoryScreen> {
   void _applyFilter() {
     final query = _searchCtrl.text.trim().toLowerCase();
     setState(() {
-      if (query.isEmpty) {
-        _filtered = List.of(_products);
-      } else {
-        _filtered = _products.where((p) {
+      var list = _products.where((p) {
+        if (query.isNotEmpty) {
           final name = (p['name'] as String? ?? '').toLowerCase();
           final barcode = (p['barcode'] as String? ?? '').toLowerCase();
-          return name.contains(query) || barcode.contains(query);
-        }).toList();
-      }
+          if (!name.contains(query) && !barcode.contains(query)) return false;
+        }
+        if (_filterNoSku) {
+          final barcode = (p['barcode'] as String? ?? '').trim();
+          if (barcode.isNotEmpty) return false;
+        }
+        if (_filterNoPrice) {
+          final price = (p['price'] as num?)?.toDouble() ?? 0;
+          if (price > 0) return false;
+        }
+        return true;
+      });
+      _filtered = list.toList();
     });
   }
+
+  int get _noSkuCount => _products.where((p) {
+        final b = (p['barcode'] as String? ?? '').trim();
+        return b.isEmpty;
+      }).length;
+
+  int get _noPriceCount => _products.where((p) {
+        final price = (p['price'] as num?)?.toDouble() ?? 0;
+        return price <= 0;
+      }).length;
 
   Future<void> _deleteProduct(Map<String, dynamic> product) async {
     final name = product['name'] as String? ?? 'Producto';
@@ -212,9 +235,9 @@ class _ManageInventoryScreenState extends State<ManageInventoryScreen> {
               ),
             ),
 
-            // Count
+            // Count + Filter chips
             Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 24),
+              padding: const EdgeInsets.symmetric(horizontal: 20),
               child: Row(
                 children: [
                   Text(
@@ -225,6 +248,70 @@ class _ManageInventoryScreenState extends State<ManageInventoryScreen> {
                       fontWeight: FontWeight.w500,
                     ),
                   ),
+                  const Spacer(),
+                  if (_noPriceCount > 0)
+                    Padding(
+                      padding: const EdgeInsets.only(right: 6),
+                      child: FilterChip(
+                        selected: _filterNoPrice,
+                        label: Text(
+                          'Sin precio ($_noPriceCount)',
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                            color: _filterNoPrice ? Colors.white : AppTheme.error,
+                          ),
+                        ),
+                        avatar: Icon(
+                          Icons.money_off_rounded,
+                          size: 16,
+                          color: _filterNoPrice ? Colors.white : AppTheme.error,
+                        ),
+                        selectedColor: AppTheme.error,
+                        backgroundColor: AppTheme.error.withValues(alpha: 0.1),
+                        side: BorderSide(
+                          color: AppTheme.error.withValues(alpha: 0.3),
+                        ),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        onSelected: (v) {
+                          HapticFeedback.lightImpact();
+                          _filterNoPrice = v;
+                          _applyFilter();
+                        },
+                      ),
+                    ),
+                  if (_noSkuCount > 0)
+                    FilterChip(
+                      selected: _filterNoSku,
+                      label: Text(
+                        'Sin SKU ($_noSkuCount)',
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                          color: _filterNoSku ? Colors.white : AppTheme.warning,
+                        ),
+                      ),
+                      avatar: Icon(
+                        Icons.warning_amber_rounded,
+                        size: 16,
+                        color: _filterNoSku ? Colors.white : AppTheme.warning,
+                      ),
+                      selectedColor: AppTheme.warning,
+                      backgroundColor: AppTheme.warning.withValues(alpha: 0.1),
+                      side: BorderSide(
+                        color: AppTheme.warning.withValues(alpha: 0.3),
+                      ),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      onSelected: (v) {
+                        HapticFeedback.lightImpact();
+                        _filterNoSku = v;
+                        _applyFilter();
+                      },
+                    ),
                 ],
               ),
             ),
@@ -288,6 +375,15 @@ class _ManageInventoryScreenState extends State<ManageInventoryScreen> {
                                     product: p,
                                     onEdit: () => _editProduct(p),
                                     onDelete: () => _deleteProduct(p),
+                                    onHistory: () => Navigator.push(
+                                      context,
+                                      MaterialPageRoute(
+                                        builder: (_) => KardexScreen(
+                                          productId: p['id'] as String? ?? '',
+                                          productName: p['name'] as String? ?? '',
+                                        ),
+                                      ),
+                                    ),
                                   );
                                 },
                               ),
@@ -306,11 +402,13 @@ class _ProductTile extends StatelessWidget {
   final Map<String, dynamic> product;
   final VoidCallback onEdit;
   final VoidCallback onDelete;
+  final VoidCallback? onHistory;
 
   const _ProductTile({
     required this.product,
     required this.onEdit,
     required this.onDelete,
+    this.onHistory,
   });
 
   @override
@@ -442,6 +540,16 @@ class _ProductTile extends StatelessWidget {
                     },
                     tooltip: 'Editar',
                   ),
+                  if (onHistory != null)
+                    IconButton(
+                      icon: const Icon(Icons.history_rounded,
+                          size: 22, color: AppTheme.warning),
+                      onPressed: () {
+                        HapticFeedback.lightImpact();
+                        onHistory!();
+                      },
+                      tooltip: 'Kardex',
+                    ),
                   IconButton(
                     icon: const Icon(Icons.delete_outline_rounded,
                         size: 22, color: AppTheme.error),
@@ -496,6 +604,7 @@ class _EditProductSheetState extends State<_EditProductSheet> {
   bool _enhancing = false;
   String? _photoUrl;
   String? _photoPath;
+  String? _skuError;
 
   final _presentations = [
     'Botella',
@@ -537,22 +646,39 @@ class _EditProductSheetState extends State<_EditProductSheet> {
     super.dispose();
   }
 
-  Future<void> _takePhoto() async {
+  Future<void> _pickPhoto(ImageSource source) async {
     HapticFeedback.lightImpact();
     final picker = ImagePicker();
     final photo = await picker.pickImage(
-      source: ImageSource.camera,
+      source: source,
       imageQuality: 80,
     );
-    if (photo != null && mounted) {
-      setState(() {
-        _photoPath = photo.path;
-        _photoUrl = null;
-      });
+    if (photo == null || !mounted) return;
+    setState(() {
+      _photoPath = photo.path;
+      _photoUrl = null;
+    });
+    // Upload immediately so "Mejorar foto" becomes available
+    await _uploadLocalPhoto();
+  }
+
+  Future<void> _uploadLocalPhoto() async {
+    if (_photoPath == null) return;
+    final id = widget.product['id'] as String? ?? '';
+    if (id.isEmpty) return;
+    try {
+      final api = ApiService(AuthService());
+      final result = await api.uploadProductPhoto(id, File(_photoPath!));
+      final url = result['photo_url'] as String?;
+      if (url != null && mounted) {
+        setState(() => _photoUrl = url);
+      }
+    } catch (_) {
+      // Upload failed — user can still generate from scratch
     }
   }
 
-  void _onAiPhotoTap() {
+  Future<void> _onAiPhotoTap() async {
     final id = widget.product['id'] as String? ?? '';
     if (id.isEmpty) return;
 
@@ -585,10 +711,18 @@ class _EditProductSheetState extends State<_EditProductSheet> {
       return;
     }
 
-    final hasExistingPhoto = _photoUrl != null && _photoUrl!.isNotEmpty;
+    final hasExistingPhoto = (_photoUrl != null && _photoUrl!.isNotEmpty) ||
+        (_photoPath != null && _photoPath!.isNotEmpty);
 
-    if (!hasExistingPhoto) {
-      // No photo — go straight to generate
+    // If we have a local photo but no URL yet, upload first
+    if (_photoPath != null && (_photoUrl == null || _photoUrl!.isEmpty)) {
+      await _uploadLocalPhoto();
+    }
+
+    final hasUploadedPhoto = _photoUrl != null && _photoUrl!.isNotEmpty;
+
+    if (!hasExistingPhoto && !hasUploadedPhoto) {
+      // No photo at all — go straight to generate
       _executeAiPhoto(useExisting: false);
       return;
     }
@@ -823,10 +957,52 @@ class _EditProductSheetState extends State<_EditProductSheet> {
 
     setState(() {
       _skuCtrl.text = 'VND-$pres-$nameCode-$digits';
+      _skuError = null;
     });
   }
 
-  @override
+  Future<void> _scanSku() async {
+    HapticFeedback.lightImpact();
+    final result = await Navigator.of(context).push<String>(
+      MaterialPageRoute(builder: (_) => const ScanScreen()),
+    );
+    if (result != null && result.isNotEmpty && mounted) {
+      setState(() {
+        _skuCtrl.text = result;
+        _skuError = BarcodeValidator.validate(result);
+      });
+    }
+  }
+
+  void _validateSku() {
+    HapticFeedback.lightImpact();
+    final code = _skuCtrl.text.trim();
+    if (code.isEmpty) {
+      setState(() => _skuError = null);
+      return;
+    }
+    final error = BarcodeValidator.validate(code);
+    setState(() => _skuError = error);
+    if (error == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Row(
+            children: [
+              Icon(Icons.check_circle_rounded, color: Colors.white, size: 20),
+              SizedBox(width: 8),
+              Text('Codigo valido', style: TextStyle(fontSize: 16)),
+            ],
+          ),
+          backgroundColor: AppTheme.success,
+          behavior: SnackBarBehavior.floating,
+          duration: const Duration(seconds: 2),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        ),
+      );
+    }
+  }
+
+    @override
   Widget build(BuildContext context) {
     final hasPhoto = _photoPath != null || (_photoUrl != null && _photoUrl!.isNotEmpty);
 
@@ -860,7 +1036,7 @@ class _EditProductSheetState extends State<_EditProductSheet> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   GestureDetector(
-                    onTap: _takePhoto,
+                    onTap: () => _pickPhoto(ImageSource.camera),
                     child: ClipRRect(
                       borderRadius: BorderRadius.circular(16),
                       child: Container(
@@ -884,20 +1060,26 @@ class _EditProductSheetState extends State<_EditProductSheet> {
                   ),
                   const SizedBox(width: 14),
                   Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                    child: Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
                       children: [
                         _photoAction(
-                          label: 'Tomar foto',
+                          label: 'Foto',
                           icon: Icons.camera_alt_rounded,
                           color: AppTheme.primary,
-                          onTap: _takePhoto,
+                          onTap: () => _pickPhoto(ImageSource.camera),
                         ),
-                        const SizedBox(height: 8),
+                        _photoAction(
+                          label: 'Galería',
+                          icon: Icons.photo_library_rounded,
+                          color: AppTheme.success,
+                          onTap: () => _pickPhoto(ImageSource.gallery),
+                        ),
                         _photoAction(
                           label: _enhancing
                               ? 'Generando...'
-                              : 'Imagen con IA',
+                              : 'IA',
                           icon: _enhancing ? null : Icons.auto_awesome_rounded,
                           color: const Color(0xFF7C3AED),
                           loading: _enhancing,
@@ -910,16 +1092,40 @@ class _EditProductSheetState extends State<_EditProductSheet> {
               ),
               const SizedBox(height: 20),
 
-              // SKU / Barcode (editable + auto-generate)
-              const Text('SKU / Código de barras',
-                  style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w600,
-                      color: AppTheme.textSecondary)),
+              // SKU / Barcode
+              Row(
+                children: [
+                  const Text('Codigo SKU / Barras',
+                      style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                          color: AppTheme.textSecondary)),
+                  const Spacer(),
+                  if (_skuCtrl.text.trim().isEmpty)
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: AppTheme.warning.withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: const Text('Sin SKU',
+                          style: TextStyle(fontSize: 11, color: AppTheme.warning, fontWeight: FontWeight.w700)),
+                    ),
+                ],
+              ),
               const SizedBox(height: 6),
               TextField(
                 controller: _skuCtrl,
+                keyboardType: TextInputType.number,
                 style: const TextStyle(fontSize: 18),
+                onChanged: (v) {
+                  // Live validate as user types
+                  if (v.trim().isNotEmpty) {
+                    setState(() => _skuError = BarcodeValidator.validate(v.trim()));
+                  } else {
+                    setState(() => _skuError = null);
+                  }
+                },
                 decoration: InputDecoration(
                   hintText: 'Ej: 7702535011119',
                   hintStyle: TextStyle(
@@ -928,11 +1134,29 @@ class _EditProductSheetState extends State<_EditProductSheet> {
                   ),
                   prefixIcon: const Icon(Icons.qr_code_rounded,
                       color: AppTheme.textSecondary, size: 22),
-                  suffixIcon: IconButton(
-                    onPressed: _generateSku,
-                    icon: const Icon(Icons.auto_fix_high_rounded,
-                        color: AppTheme.primary, size: 22),
-                    tooltip: 'Generar SKU',
+                  errorText: _skuError,
+                  suffixIcon: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      IconButton(
+                        onPressed: _scanSku,
+                        icon: const Icon(Icons.qr_code_scanner_rounded,
+                            color: AppTheme.success, size: 22),
+                        tooltip: 'Escanear código',
+                      ),
+                      IconButton(
+                        onPressed: _validateSku,
+                        icon: const Icon(Icons.check_circle_outline_rounded,
+                            color: AppTheme.primary, size: 22),
+                        tooltip: 'Validar código',
+                      ),
+                      IconButton(
+                        onPressed: _generateSku,
+                        icon: const Icon(Icons.auto_fix_high_rounded,
+                            color: Color(0xFF7C3AED), size: 22),
+                        tooltip: 'Generar SKU interno',
+                      ),
+                    ],
                   ),
                   contentPadding: const EdgeInsets.symmetric(
                       vertical: 14, horizontal: 14),

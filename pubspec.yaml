@@ -60,6 +60,10 @@ dependencies:
   # Audio (barcode beep)
   audioplayers: ^6.1.0
 
+  # PDF generation + print/share
+  pdf: ^3.11.1
+  printing: ^5.13.3
+
   # Utilidades
   intl: ^0.19.0
   geolocator: ^14.0.2

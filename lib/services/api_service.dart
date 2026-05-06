@@ -393,6 +393,17 @@ class ApiService {
     }
   }
 
+  Future<Map<String, dynamic>> restockProduct(
+      String id, Map<String, dynamic> data) async {
+    try {
+      final response =
+          await _dio.post('/api/v1/products/$id/restock', data: data);
+      return _extractData(response);
+    } on DioException catch (e) {
+      throw AppError.fromDioException(e);
+    }
+  }
+
   Future<void> deleteProduct(String id) async {
     try {
       await _dio.delete('/api/v1/products/$id');
@@ -572,7 +583,47 @@ class ApiService {
 
   Future<List<Map<String, dynamic>>> fetchInventoryAlerts() async {
     try {
-      final response = await _dio.get('/api/v1/inventory/alerts');
+      final response = await _dio.get('/api/v1/inventory/alerts', queryParameters: {
+        if (currentBranchId != null && currentBranchId!.isNotEmpty)
+          'branch_id': currentBranchId,
+      });
+      return _extractList(response);
+    } on DioException catch (e) {
+      throw AppError.fromDioException(e);
+    }
+  }
+
+  Future<void> logInvoiceSave(Map<String, dynamic> data) async {
+    try {
+      await _dio.post('/api/v1/inventory/invoice-logs', data: data);
+    } on DioException catch (_) {
+      // Best-effort — don't block the save flow
+    }
+  }
+
+  Future<Map<String, dynamic>> fetchInvoiceLogs({
+    int page = 1,
+    int perPage = 20,
+  }) async {
+    try {
+      final response = await _dio.get('/api/v1/inventory/invoice-logs', queryParameters: {
+        'page': page,
+        'per_page': perPage,
+        if (currentBranchId != null && currentBranchId!.isNotEmpty)
+          'branch_id': currentBranchId,
+      });
+      return response.data as Map<String, dynamic>;
+    } on DioException catch (e) {
+      throw AppError.fromDioException(e);
+    }
+  }
+
+  Future<List<Map<String, dynamic>>> fetchReorderSuggestions() async {
+    try {
+      final response = await _dio.get('/api/v1/inventory/reorder-suggestions', queryParameters: {
+        if (currentBranchId != null && currentBranchId!.isNotEmpty)
+          'branch_id': currentBranchId,
+      });
       return _extractList(response);
     } on DioException catch (e) {
       throw AppError.fromDioException(e);
@@ -583,6 +634,63 @@ class ApiService {
     try {
       final response = await _dio.get('/api/v1/inventory/expiring');
       return _extractList(response);
+    } on DioException catch (e) {
+      throw AppError.fromDioException(e);
+    }
+  }
+
+  // ── Kardex & Inventory Report ──
+
+  Future<Map<String, dynamic>> fetchProductKardex(
+    String productId, {
+    int page = 1,
+    int perPage = 30,
+  }) async {
+    try {
+      final response = await _dio.get('/api/v1/inventory/kardex', queryParameters: {
+        'product_id': productId,
+        'page': page,
+        'per_page': perPage,
+        if (currentBranchId != null && currentBranchId!.isNotEmpty)
+          'branch_id': currentBranchId,
+      });
+      return _extractData(response);
+    } on DioException catch (e) {
+      throw AppError.fromDioException(e);
+    }
+  }
+
+  Future<Map<String, dynamic>> fetchInventoryReport({
+    int page = 1,
+    int perPage = 50,
+  }) async {
+    try {
+      final response = await _dio.get('/api/v1/inventory/report', queryParameters: {
+        'page': page,
+        'per_page': perPage,
+        if (currentBranchId != null && currentBranchId!.isNotEmpty)
+          'branch_id': currentBranchId,
+      });
+      return _extractData(response);
+    } on DioException catch (e) {
+      throw AppError.fromDioException(e);
+    }
+  }
+
+  Future<List<List<Map<String, dynamic>>>> matchProducts(
+    List<Map<String, dynamic>> products,
+  ) async {
+    try {
+      final response = await _dio.post('/api/v1/inventory/match-products', data: {
+        'products': products,
+      });
+      final raw = response.data['data'] as List;
+      return raw.map<List<Map<String, dynamic>>>((list) {
+        if (list == null) return [];
+        return (list as List)
+            .map<Map<String, dynamic>>((e) => Map<String, dynamic>.from(e))
+            .toList();
+      }).toList();
     } on DioException catch (e) {
       throw AppError.fromDioException(e);
     }
@@ -897,6 +1005,41 @@ class ApiService {
         if (employeeName != null && employeeName.isNotEmpty)
           'employee_name': employeeName,
       });
+      return _extractData(response);
+    } on DioException catch (e) {
+      throw AppError.fromDioException(e);
+    }
+  }
+
+  /// Adds items to an existing table tab (accumulate-only, never removes).
+  /// Creates the tab if none exists. Returns the updated tab data.
+  Future<Map<String, dynamic>> addItemsToTableTab({
+    required String label,
+    required List<Map<String, dynamic>> items,
+    String? customerName,
+    String? employeeName,
+  }) async {
+    try {
+      final response = await _dio.post('/api/v1/tables/tab/add-items', data: {
+        'label': label,
+        'items': items,
+        if (customerName != null && customerName.isNotEmpty)
+          'customer_name': customerName,
+        if (employeeName != null && employeeName.isNotEmpty)
+          'employee_name': employeeName,
+      });
+      return _extractData(response);
+    } on DioException catch (e) {
+      throw AppError.fromDioException(e);
+    }
+  }
+
+  /// Removes a single item from an open table tab. Restores stock.
+  Future<Map<String, dynamic>> removeItemFromTab(
+      String orderUuid, String itemId) async {
+    try {
+      final response =
+          await _dio.delete('/api/v1/orders/$orderUuid/items/$itemId');
       return _extractData(response);
     } on DioException catch (e) {
       throw AppError.fromDioException(e);
