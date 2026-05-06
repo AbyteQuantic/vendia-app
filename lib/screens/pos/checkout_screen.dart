@@ -4,6 +4,8 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
+import '../../database/database_service.dart';
+import '../../database/collections/local_payment_method.dart';
 import '../../models/cart_item.dart';
 import '../../services/active_fiado_service.dart';
 import '../../services/api_service.dart';
@@ -142,6 +144,24 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     return buffer.toString();
   }
 
+  IconData _iconForProvider(String? provider, String name) {
+    final p = (provider ?? '').toLowerCase();
+    final n = name.toLowerCase();
+    if (p == 'nequi' || n.contains('nequi')) return Icons.phone_android_rounded;
+    if (p == 'daviplata' || n.contains('daviplata')) return Icons.phone_android_rounded;
+    if (p == 'qr' || n.contains('qr')) return Icons.qr_code_rounded;
+    if (n.contains('bancolombia') || n.contains('banco')) return Icons.account_balance_rounded;
+    return Icons.account_balance_wallet_rounded;
+  }
+
+  Color? _colorForProvider(String? provider, String name) {
+    final p = (provider ?? '').toLowerCase();
+    final n = name.toLowerCase();
+    if (p == 'nequi' || n.contains('nequi')) return const Color(0xFF6D28D9);
+    if (p == 'daviplata' || n.contains('daviplata')) return const Color(0xFFDC2626);
+    return null;
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -238,45 +258,63 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                       style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold,
                           color: AppTheme.textPrimary)),
                   const SizedBox(height: 12),
-                  Wrap(
-                    spacing: 10,
-                    runSpacing: 10,
-                    children: [
-                      _PaymentChip(
-                        icon: Icons.payments_rounded,
-                        label: 'Efectivo',
-                        selected: _selectedMethod == 'cash',
-                        onTap: () => setState(() => _selectedMethod = 'cash'),
-                      ),
-                      _PaymentChip(
-                        icon: Icons.phone_android_rounded,
-                        label: 'Transferencia',
-                        selected: _selectedMethod == 'transfer',
-                        onTap: () => setState(() => _selectedMethod = 'transfer'),
-                      ),
-                      _PaymentChip(
-                        icon: Icons.credit_card_rounded,
-                        label: 'Tarjeta',
-                        selected: _selectedMethod == 'card',
-                        onTap: () => setState(() => _selectedMethod = 'card'),
-                      ),
-                      // "Fiar" chip is gated by the tenant's global
-                      // "Configuración de Fiados" switch. We hide the
-                      // chip outright (instead of disabling it) so the
-                      // cashier can't mistakenly select a method that
-                      // the owner has turned off — and so the checkout
-                      // UI matches the intent of the settings screen.
-                      if (_fiadoEnabled)
-                        _PaymentChip(
-                          key: const Key('checkout_payment_chip_fiar'),
-                          icon: Icons.menu_book_rounded,
-                          label: 'Fiar',
-                          selected: _selectedMethod == 'credit',
-                          onTap: () =>
-                              setState(() => _selectedMethod = 'credit'),
-                          color: const Color(0xFFF59E0B),
-                        ),
-                    ],
+                  StreamBuilder<List<LocalPaymentMethod>>(
+                    stream: DatabaseService.instance.watchActivePaymentMethods(),
+                    builder: (ctx, snap) {
+                      final tenantMethods = snap.data ?? const <LocalPaymentMethod>[];
+                      final baseNames = <String>{'efectivo', 'transferencia', 'tarjeta'};
+                      final extras = tenantMethods
+                          .where((m) =>
+                              m.isActive &&
+                              m.name.trim().isNotEmpty &&
+                              !baseNames.contains(m.name.trim().toLowerCase()))
+                          .toList();
+
+                      return Wrap(
+                        spacing: 10,
+                        runSpacing: 10,
+                        children: [
+                          _PaymentChip(
+                            icon: Icons.payments_rounded,
+                            label: 'Efectivo',
+                            selected: _selectedMethod == 'cash',
+                            onTap: () => setState(() => _selectedMethod = 'cash'),
+                          ),
+                          _PaymentChip(
+                            icon: Icons.phone_android_rounded,
+                            label: 'Transferencia',
+                            selected: _selectedMethod == 'transfer',
+                            onTap: () => setState(() => _selectedMethod = 'transfer'),
+                          ),
+                          _PaymentChip(
+                            icon: Icons.credit_card_rounded,
+                            label: 'Tarjeta',
+                            selected: _selectedMethod == 'card',
+                            onTap: () => setState(() => _selectedMethod = 'card'),
+                          ),
+                          for (final m in extras)
+                            _PaymentChip(
+                              key: ValueKey('checkout_pm_${m.uuid}'),
+                              icon: _iconForProvider(m.provider, m.name),
+                              label: m.name,
+                              selected: _selectedMethod == m.name.toLowerCase(),
+                              onTap: () => setState(
+                                  () => _selectedMethod = m.name.toLowerCase()),
+                              color: _colorForProvider(m.provider, m.name),
+                            ),
+                          if (_fiadoEnabled)
+                            _PaymentChip(
+                              key: const Key('checkout_payment_chip_fiar'),
+                              icon: Icons.menu_book_rounded,
+                              label: 'Fiar',
+                              selected: _selectedMethod == 'credit',
+                              onTap: () =>
+                                  setState(() => _selectedMethod = 'credit'),
+                              color: const Color(0xFFF59E0B),
+                            ),
+                        ],
+                      );
+                    },
                   ),
 
                   // ── Cash change panel ─────────────────────────────
