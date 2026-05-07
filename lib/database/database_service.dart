@@ -11,6 +11,7 @@ import 'collections/local_table_tab.dart';
 import 'collections/pending_operation.dart';
 import '../utils/digital_payment_method.dart';
 import '../utils/generate_id.dart';
+import '../services/tax_settings_service.dart';
 
 class DatabaseService {
   static DatabaseService? _instance;
@@ -463,14 +464,25 @@ class DatabaseService {
   /// reservedStock into actual stock deduction, marks tab completed.
   /// Idempotent — caller checks pendingBalance & status first.
   Future<void> _closeTabInTxn(LocalTableTab tab) async {
-    // 1) Build LocalSale for the ledger
+    // 1) Build LocalSale for the ledger. We freeze the active VAT
+    // settings onto each line right here so the mesa-flow path is
+    // symmetric with the counter / fiado paths in pos_screen — every
+    // sale that lands in Isar carries its own immutable IVA snapshot.
+    final taxSvc = TaxSettingsService.instance;
     final saleItems = tab.items.map((it) {
+      final snap = taxSvc.snapshotForLine(
+        unitPrice: it.unitPrice,
+        quantity: it.quantity,
+      );
       return SaleItemEmbed()
         ..productUuid = it.productUuid
         ..productName = it.productName
         ..quantity = it.quantity
         ..unitPrice = it.unitPrice
-        ..isContainerCharge = false;
+        ..isContainerCharge = false
+        ..taxRate = snap.rate
+        ..taxAmount = snap.amount
+        ..isTaxInclusive = snap.inclusive;
     }).toList();
     final sale = LocalSale()
       ..uuid = tab.orderId ?? generateId()

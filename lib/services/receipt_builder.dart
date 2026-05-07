@@ -19,15 +19,26 @@ class ReceiptTenantInfo {
 }
 
 /// One sale line as it should appear on the printed ticket.
+///
+/// The [taxRate] / [taxAmount] / [isTaxInclusive] triple mirrors the
+/// snapshot frozen onto SaleItemEmbed at sale-close time. All three
+/// are optional so legacy call sites (fiado statement preview, tests
+/// from the pre-VAT era) keep compiling without a breaking change.
 class ReceiptLine {
   const ReceiptLine({
     required this.name,
     required this.quantity,
     required this.unitPrice,
+    this.taxRate,
+    this.taxAmount,
+    this.isTaxInclusive,
   });
   final String name;
   final int quantity;
   final double unitPrice;
+  final double? taxRate;
+  final double? taxAmount;
+  final bool? isTaxInclusive;
   double get subtotal => quantity * unitPrice;
 }
 
@@ -142,6 +153,34 @@ class ReceiptBuilder {
     }
 
     bytes.addAll(gen.hr());
+
+    // VAT (IVA) footer — only emitted when at least one line carries a
+    // non-zero taxAmount. Pre-feature receipts (all lines with
+    // taxAmount=null) skip this block entirely so legacy receipts stay
+    // byte-identical. Rate is read from the first taxed line; mixed
+    // rates would print the leading rate, which is fine for Colombia
+    // retail (one rate per merchant in practice).
+    final totalTax =
+        lines.fold<double>(0, (s, l) => s + (l.taxAmount ?? 0));
+    if (totalTax > 0) {
+      final firstTaxed = lines.firstWhere(
+        (l) => l.taxRate != null,
+        orElse: () => lines.first,
+      );
+      final rate = firstTaxed.taxRate ?? 0;
+      bytes.addAll(gen.row([
+        PosColumn(
+          text: 'IVA (${(rate * 100).toStringAsFixed(0)}%)',
+          width: 6,
+          styles: const PosStyles(align: PosAlign.left),
+        ),
+        PosColumn(
+          text: _formatMoney(totalTax),
+          width: 6,
+          styles: const PosStyles(align: PosAlign.right),
+        ),
+      ]));
+    }
 
     // Total (bold, larger).
     bytes.addAll(gen.row([
