@@ -10,6 +10,20 @@
     <!-- Inventario por voz: grabación del audio que se manda a Gemini -->
     <uses-permission android:name="android.permission.RECORD_AUDIO"/>
 
+    <!-- Bluetooth térmico: impresora de recibos + cajón monedero. -->
+    <!-- Legacy permissions (Android <= 11). -->
+    <uses-permission android:name="android.permission.BLUETOOTH"/>
+    <uses-permission android:name="android.permission.BLUETOOTH_ADMIN"/>
+    <!-- Android 12+ runtime permissions. We never derive physical
+         location from the BLE scan, so we tag neverForLocation to
+         avoid the location-runtime-permission popup on S+. -->
+    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT"/>
+    <uses-permission android:name="android.permission.BLUETOOTH_SCAN"
+        android:usesPermissionFlags="neverForLocation"/>
+    <!-- ACCESS_FINE_LOCATION is already declared above for GPS dirección,
+         and that one has no maxSdkVersion (we keep using GPS in 12+).
+         Bluetooth on Android <= 11 reuses the same permission. -->
+
     <application
         android:label="VendIA"
         android:name="${applicationName}"
