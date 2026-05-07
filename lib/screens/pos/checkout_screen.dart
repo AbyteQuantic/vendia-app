@@ -59,13 +59,14 @@ class CheckoutScreen extends StatefulWidget {
 }
 
 class _CheckoutScreenState extends State<CheckoutScreen> {
-  // Sentinel keys for non-tenant chips. The cash fallback fires when
-  // the tenant has zero configured methods (brand-new account / sync
-  // in flight) so the cashier always has at least one payment option
-  // to close a sale. The fiar key is a UI-only construct because
-  // "fiar" is not a payment method per se — it's a credit booking
-  // that takes a totally different code path.
-  static const String _kFallbackCash = '__fallback_cash__';
+  // Sentinel keys for non-tenant chips. The fiar key is a UI-only
+  // construct because "fiar" is not a payment method per se — it's a
+  // credit booking that takes a totally different code path.
+  /// Sentinel for the cash chip selection. The chip is the SAME
+  /// regardless of whether we render the tenant's real cash row or a
+  /// synthetic Efectivo fallback — Cash-First policy ensures it's
+  /// always present and always uses this key.
+  static const String _kFallbackCash = '__cash_anchor__';
   static const String _kFiar = '__fiar__';
 
   /// The tenant-configured method the cashier picked, when any. Null
@@ -291,40 +292,63 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                     builder: (ctx, snap) {
                       final tenantMethods =
                           snap.data ?? const <LocalPaymentMethod>[];
-                      // The stream already filters isActive=true, but
-                      // we re-check here because the underlying ISAR
-                      // index could lag a write by a single tick — and
-                      // we additionally drop blank-name rows so a
-                      // half-written method never renders.
-                      final activeMethods = tenantMethods
-                          .where((m) =>
-                              m.isActive && m.name.trim().isNotEmpty)
-                          .toList();
 
-                      // Zero-config fallback: if the tenant has NO
-                      // payment methods configured (brand-new account,
-                      // sync still in flight, or backend backfill not
-                      // yet run), show a single Efectivo chip
-                      // synthesised on the client. The first sync that
-                      // lands a real row replaces it.
-                      final showFallback = activeMethods.isEmpty;
+                      // Cash-First INNEGOCIABLE: a checkout NEVER ships without
+                      // Efectivo. Three rules collapse into one rendered chip:
+                      //   1. If the tenant has an active cash row, render IT (so the
+                      //      owner's display label wins).
+                      //   2. If the tenant has NO cash row in the active set, render
+                      //      a synthetic Efectivo chip — same key, same dispatcher
+                      //      behaviour.
+                      //   3. Either way, the chip is the FIRST child of the Wrap and
+                      //      shares the _kFallbackCash sentinel for selection state.
+                      LocalPaymentMethod? realCash;
+                      for (final m in tenantMethods) {
+                        if (!m.isActive) continue;
+                        if (m.name.trim().isEmpty) continue;
+                        final isCash = m.provider == 'cash' ||
+                            m.name.trim().toLowerCase() == 'efectivo';
+                        if (isCash) {
+                          realCash = m;
+                          break;
+                        }
+                      }
+
+                      // Non-cash active methods render after the cash anchor. Strip
+                      // any blank-name rows and any cash row (we already handled it).
+                      final nonCashActive = tenantMethods.where((m) {
+                        if (!m.isActive) return false;
+                        if (m.name.trim().isEmpty) return false;
+                        if (m.provider == 'cash') return false;
+                        if (m.name.trim().toLowerCase() == 'efectivo') return false;
+                        return true;
+                      }).toList();
 
                       return Wrap(
                         spacing: 10,
                         runSpacing: 10,
                         children: [
-                          if (showFallback)
-                            _PaymentChip(
-                              key: const Key('checkout_pm_fallback_cash'),
-                              icon: Icons.payments_rounded,
-                              label: 'Efectivo',
-                              selected: _selectedMethodKey == _kFallbackCash,
-                              onTap: () => setState(() {
-                                _selectedMethod = null;
-                                _selectedMethodKey = _kFallbackCash;
-                              }),
-                            ),
-                          ...activeMethods.map((m) {
+                          // Cash anchor — ALWAYS first, ALWAYS selectable.
+                          // Uses _kFallbackCash as the selection key whether the row
+                          // is real or synthetic, so the dispatcher in _confirmSale
+                          // does not need to know which case it is.
+                          _PaymentChip(
+                            key: ValueKey(realCash != null
+                                ? 'checkout_pm_cash_${realCash.uuid}'
+                                : 'checkout_pm_fallback_cash'),
+                            icon: Icons.payments_rounded,
+                            label: realCash?.name ?? 'Efectivo',
+                            selected: _selectedMethodKey == _kFallbackCash,
+                            onTap: () => setState(() {
+                              // Store the real row when present so other parts of the
+                              // sale path can read accountDetails (e.g. cash drawer
+                              // notes); fall back to null for synthetic.
+                              _selectedMethod = realCash;
+                              _selectedMethodKey = _kFallbackCash;
+                            }),
+                          ),
+                          // Tenant non-cash active methods.
+                          ...nonCashActive.map((m) {
                             final key = m.uuid;
                             return _PaymentChip(
                               key: ValueKey('checkout_pm_${m.uuid}'),
@@ -338,6 +362,9 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                               color: _colorForProvider(m.provider, m.name),
                             );
                           }),
+                          // Fiar — gated by feature flag, completely separate from
+                          // tenant payment methods. Order: cash anchor → tenant
+                          // non-cash → fiar.
                           if (_fiadoEnabled)
                             _PaymentChip(
                               key: const Key('checkout_payment_chip_fiar'),

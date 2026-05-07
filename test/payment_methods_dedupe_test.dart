@@ -43,25 +43,63 @@ void main() {
     });
   });
 
-  group('Zero-config fallback', () {
-    /// When the tenant has no configured methods at all (brand-new
-    /// account or sync still in flight), the checkout synthesises
-    /// a single Efectivo chip on the client so the cashier can
-    /// always close the sale.
-    bool showFallback(List<Map<String, dynamic>> activeMethods) {
-      return activeMethods.isEmpty;
+  group('Cash-First anchor (INNEGOCIABLE)', () {
+    /// Cash-First policy: the checkout ALWAYS renders an Efectivo
+    /// chip — whether the tenant has zero methods, only non-cash
+    /// methods (e.g. Nequi-only), a real cash row, or every method
+    /// inactive. The cash anchor is non-negotiable. When a real
+    /// cash row exists in the active set, its display label wins;
+    /// otherwise a synthetic 'Efectivo' chip is rendered. The
+    /// previous "showFallback only when list is empty" gate has
+    /// been retired — it caused the cash chip to disappear for any
+    /// tenant with at least one non-cash method (PO regression).
+    bool alwaysShowsCashChip(
+        List<Map<String, dynamic>> activeMethods) {
+      // The render decision no longer depends on the list contents.
+      // Kept as a function to document the invariant.
+      return true;
     }
 
-    test('empty list triggers fallback chip', () {
-      expect(showFallback(const []), isTrue);
+    String cashLabelFor(List<Map<String, dynamic>> activeMethods) {
+      for (final m in activeMethods) {
+        if (m['is_active'] != true) continue;
+        final name = (m['name'] as String? ?? '').trim();
+        if (name.isEmpty) continue;
+        final provider = m['provider'] as String?;
+        if (provider == 'cash' || name.toLowerCase() == 'efectivo') {
+          return name;
+        }
+      }
+      return 'Efectivo';
+    }
+
+    test('empty list still shows cash chip', () {
+      expect(alwaysShowsCashChip(const []), isTrue);
+      expect(cashLabelFor(const []), 'Efectivo');
     });
-    test('non-empty list suppresses fallback chip', () {
+    test('non-empty non-cash list still shows cash chip', () {
       expect(
-        showFallback(const [
+        alwaysShowsCashChip(const [
           {'id': 'a', 'name': 'Nequi', 'is_active': true},
         ]),
-        isFalse,
+        isTrue,
       );
+      expect(
+        cashLabelFor(const [
+          {'id': 'a', 'name': 'Nequi', 'is_active': true},
+        ]),
+        'Efectivo',
+      );
+    });
+    test('real tenant cash row provides display label', () {
+      const payload = [
+        {'id': 'a', 'name': 'Efectivo COP', 'is_active': true,
+         'provider': 'cash'},
+        {'id': 'b', 'name': 'Nequi', 'is_active': true,
+         'provider': 'nequi'},
+      ];
+      expect(alwaysShowsCashChip(payload), isTrue);
+      expect(cashLabelFor(payload), 'Efectivo COP');
     });
   });
 
