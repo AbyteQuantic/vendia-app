@@ -1310,8 +1310,11 @@ class _FiadoDetailScreenState extends State<_FiadoDetailScreen> {
         final d = DateTime.now().difference(dt);
         if (d.inMinutes < 60) {
           fmt = 'Hace ${d.inMinutes} min';
-        } else if (d.inHours < 24) fmt = 'Hace ${d.inHours}h';
-        else fmt = 'Hace ${d.inDays}d';
+        } else if (d.inHours < 24) {
+          fmt = 'Hace ${d.inHours}h';
+        } else {
+          fmt = 'Hace ${d.inDays}d';
+        }
       }
     }
     return Padding(padding: const EdgeInsets.only(bottom: 10), child: Row(

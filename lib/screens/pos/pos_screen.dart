@@ -222,27 +222,29 @@ class _PosScreenBodyState extends State<_PosScreenBody> {
       }
       // Release the bubble for any cart context whose mesa label is no
       // longer in the open list (server-closed).
-      try {
-        final cart = context.read<CartController>();
-        for (var i = 0; i < 10; i++) {
-          final ctx = cart.contextAt(i);
-          final lbl = (ctx.tableLabel ?? '').trim();
-          final isMesa = ctx.type == AccountType.mesa ||
-              ctx.type == AccountType.mesaInmediata;
-          // Only release contexts that were previously synced to the
-          // server — a missing label without a sessionToken/orderId is a
-          // freshly-assigned mesa awaiting its first send, NOT a closed tab.
-          final hasBeenSynced =
-              (ctx.sessionToken != null && ctx.sessionToken!.isNotEmpty) ||
-              (ctx.orderId != null && ctx.orderId!.isNotEmpty);
-          if (isMesa &&
-              lbl.isNotEmpty &&
-              !openLabels.contains(lbl) &&
-              hasBeenSynced) {
-            cart.clearContextForLabel(lbl);
+      if (mounted) {
+        try {
+          final cart = context.read<CartController>();
+          for (var i = 0; i < 10; i++) {
+            final ctx = cart.contextAt(i);
+            final lbl = (ctx.tableLabel ?? '').trim();
+            final isMesa = ctx.type == AccountType.mesa ||
+                ctx.type == AccountType.mesaInmediata;
+            // Only release contexts that were previously synced to the
+            // server — a missing label without a sessionToken/orderId is a
+            // freshly-assigned mesa awaiting its first send, NOT a closed tab.
+            final hasBeenSynced =
+                (ctx.sessionToken != null && ctx.sessionToken!.isNotEmpty) ||
+                (ctx.orderId != null && ctx.orderId!.isNotEmpty);
+            if (isMesa &&
+                lbl.isNotEmpty &&
+                !openLabels.contains(lbl) &&
+                hasBeenSynced) {
+              cart.clearContextForLabel(lbl);
+            }
           }
-        }
-      } catch (_) {}
+        } catch (_) {}
+      }
       if (mounted) {
         setState(() {
           _openTabTotalsByLabel = map;
@@ -1435,9 +1437,11 @@ class _PosScreenBodyState extends State<_PosScreenBody> {
       await api.createSale(payload);
       debugPrint('[SALE_SYNC] ok uuid=$saleUuid credit=${creditAccountId ?? "-"}');
       // Refresh products so stock deduction is visible in POS grid
-      try {
-        context.read<CartController>().refreshProducts();
-      } catch (_) {}
+      if (mounted) {
+        try {
+          context.read<CartController>().refreshProducts();
+        } catch (_) {}
+      }
       // Mark as synced in Isar
       final db = DatabaseService.instance;
       final allSales = await db.getSalesToday();
@@ -2175,7 +2179,9 @@ class _PosScreenBodyState extends State<_PosScreenBody> {
                                     builder: (_) => const ScanScreen(),
                                   ),
                                 );
-                                if (barcode == null || !mounted) return;
+                                if (barcode == null || !context.mounted) {
+                                  return;
+                                }
                                 _onBarcodeScanned(context, barcode);
                               },
                               child: Container(

@@ -14,7 +14,6 @@ class _InvoiceHistoryScreenState extends State<InvoiceHistoryScreen> {
   final _api = ApiService(AuthService());
   List<Map<String, dynamic>> _logs = [];
   bool _loading = true;
-  int _total = 0;
 
   @override
   void initState() {
@@ -32,7 +31,6 @@ class _InvoiceHistoryScreenState extends State<InvoiceHistoryScreen> {
           [];
       setState(() {
         _logs = list;
-        _total = (resp['total'] as num?)?.toInt() ?? list.length;
         _loading = false;
       });
     } catch (e) {

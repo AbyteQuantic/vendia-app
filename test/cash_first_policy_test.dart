@@ -16,12 +16,10 @@ void main() {
         .where((m) => m.isActive && m.name.trim().isNotEmpty)
         .toList();
     var realCashLabel = 'Efectivo';
-    var foundRealCash = false;
     for (final m in activeNonBlank) {
       final isCash = m.provider == 'cash' ||
           m.name.trim().toLowerCase() == 'efectivo';
       if (isCash) {
-        foundRealCash = true;
         realCashLabel = m.name;
         break;
       }

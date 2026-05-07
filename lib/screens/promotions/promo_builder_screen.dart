@@ -28,7 +28,7 @@ class PromoBuilderScreen extends StatefulWidget {
   State<PromoBuilderScreen> createState() => _PromoBuilderScreenState();
 }
 
-enum _Validity { today, untilStockOut, customDate }
+enum _Validity { today, customDate }
 
 /// Distinct empty-states the Step 1 inventory list can be in. Having
 /// this as a type instead of two booleans kills the ambiguity of the
@@ -176,7 +176,6 @@ class _PromoBuilderScreenState extends State<PromoBuilderScreen> {
 
   final _Validity _validity = _Validity.today;
   DateTime? _customEnd;
-  int? _stockLimit;
 
   bool _isTimeLimited = false;
   bool _isStockLimited = false;

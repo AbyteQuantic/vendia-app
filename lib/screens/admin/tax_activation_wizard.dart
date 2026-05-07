@@ -219,62 +219,62 @@ class _TaxActivationWizardState extends State<TaxActivationWizard> {
   }
 
   Widget _buildStepRate() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        RadioListTile<double>(
-          key: const Key('radio_rate_0'),
-          value: 0,
-          groupValue: _customRate ? -1 : _rate,
-          onChanged: (v) => setState(() {
-            _rate = v ?? 0;
+    // Sentinel value used to represent the "custom" option in the unified
+    // RadioGroup<double>. Any negative number works because rates are >= 0.
+    const double customSentinel = -1;
+    return RadioGroup<double>(
+      groupValue: _customRate ? customSentinel : _rate,
+      onChanged: (v) {
+        if (v == null) return;
+        setState(() {
+          if (v == customSentinel) {
+            _customRate = true;
+          } else {
             _customRate = false;
-          }),
-          title: const Text('0%'),
-          subtitle: const Text('Productos exentos / no responsable'),
-        ),
-        RadioListTile<double>(
-          key: const Key('radio_rate_5'),
-          value: 0.05,
-          groupValue: _customRate ? -1 : _rate,
-          onChanged: (v) => setState(() {
-            _rate = v ?? 0.05;
-            _customRate = false;
-          }),
-          title: const Text('5%'),
-          subtitle: const Text('Tarifa reducida'),
-        ),
-        RadioListTile<double>(
-          key: const Key('radio_rate_19'),
-          value: 0.19,
-          groupValue: _customRate ? -1 : _rate,
-          onChanged: (v) => setState(() {
-            _rate = v ?? 0.19;
-            _customRate = false;
-          }),
-          title: const Text('19%'),
-          subtitle: const Text('Tarifa general (Colombia)'),
-        ),
-        RadioListTile<int>(
-          key: const Key('radio_rate_custom'),
-          value: 1,
-          groupValue: _customRate ? 1 : 0,
-          onChanged: (_) => setState(() => _customRate = true),
-          title: const Text('Personalizado'),
-          subtitle: TextField(
-            key: const Key('field_rate_custom'),
-            controller: _customRateCtrl,
-            keyboardType:
-                const TextInputType.numberWithOptions(decimal: true),
-            enabled: _customRate,
-            decoration: const InputDecoration(
-              labelText: 'Tasa (0 – 50)',
-              suffixText: '%',
-            ),
-            onChanged: (_) => setState(() {}),
+            _rate = v;
+          }
+        });
+      },
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const RadioListTile<double>(
+            key: Key('radio_rate_0'),
+            value: 0,
+            title: Text('0%'),
+            subtitle: Text('Productos exentos / no responsable'),
           ),
-        ),
-      ],
+          const RadioListTile<double>(
+            key: Key('radio_rate_5'),
+            value: 0.05,
+            title: Text('5%'),
+            subtitle: Text('Tarifa reducida'),
+          ),
+          const RadioListTile<double>(
+            key: Key('radio_rate_19'),
+            value: 0.19,
+            title: Text('19%'),
+            subtitle: Text('Tarifa general (Colombia)'),
+          ),
+          RadioListTile<double>(
+            key: const Key('radio_rate_custom'),
+            value: customSentinel,
+            title: const Text('Personalizado'),
+            subtitle: TextField(
+              key: const Key('field_rate_custom'),
+              controller: _customRateCtrl,
+              keyboardType:
+                  const TextInputType.numberWithOptions(decimal: true),
+              enabled: _customRate,
+              decoration: const InputDecoration(
+                labelText: 'Tasa (0 – 50)',
+                suffixText: '%',
+              ),
+              onChanged: (_) => setState(() {}),
+            ),
+          ),
+        ],
+      ),
     );
   }
 

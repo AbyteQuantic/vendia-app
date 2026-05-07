@@ -142,7 +142,7 @@ class _SyncScreenState extends State<SyncScreen> {
                             HapticFeedback.mediumImpact();
                             await sync.syncNow();
                             await _loadLocalCounts();
-                            if (mounted) {
+                            if (context.mounted) {
                               ScaffoldMessenger.of(context).showSnackBar(
                                 SnackBar(
                                   content: const Text('Sincronización completada',

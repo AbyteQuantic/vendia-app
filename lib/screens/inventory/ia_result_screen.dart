@@ -46,7 +46,6 @@ class _IaResultScreenState extends State<IaResultScreen> {
   late List<_EditableProduct> _products;
   double _marginPercent = 20.0;
   bool _saving = false;
-  bool _marginLoaded = false;
 
   @override
   void initState() {
@@ -129,9 +128,6 @@ class _IaResultScreenState extends State<IaResultScreen> {
     if (mounted && margin != _marginPercent) {
       _marginPercent = margin;
       _recalculateAllPrices();
-      setState(() => _marginLoaded = true);
-    } else {
-      if (mounted) setState(() => _marginLoaded = true);
     }
   }
 
@@ -1482,11 +1478,18 @@ class _EditableProduct {
     this.barcode = '',
     this.content = '',
     this.expiryDate,
+    // Stable API: fields are mutated post-construction (e.g. p.photoPath
+    // = picked.path) but exposing them as optional ctor params keeps the
+    // class extensible without forcing a breaking change.
+    // ignore: unused_element_parameter
     this.photoPath,
     this.photoUrl,
+    // ignore: unused_element_parameter
     this.enhancing = false,
     this.matchProductId,
+    // ignore: unused_element_parameter
     this.matchedProduct,
+    // ignore: unused_element_parameter
     this.matchScore = 0.0,
     this.matchMethod = '',
     this.useExisting = false,

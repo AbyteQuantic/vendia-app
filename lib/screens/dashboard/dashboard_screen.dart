@@ -410,13 +410,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   // ── Build ───────────────────────────────────────────────────────────────────
 
-  // ── Gradient constants ───────────────────────────────────────────
-  static const _heroGradient = LinearGradient(
-    begin: Alignment.topLeft,
-    end: Alignment.bottomRight,
-    colors: [Color(0xFF1E3A8A), Color(0xFF3B82F6), Color(0xFF6366F1)],
-  );
-
   @override
   Widget build(BuildContext context) {
     final topPad = MediaQuery.of(context).padding.top;
