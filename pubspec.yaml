@@ -69,6 +69,7 @@ dependencies:
   geolocator: ^14.0.2
   geocoding: ^4.0.0
   record: ^6.0.0
+  image_cropper: ^12.2.1
 
 dev_dependencies:
   flutter_test:
