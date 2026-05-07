@@ -10,6 +10,7 @@ import 'database/sync/sync_service.dart';
 import 'services/active_fiado_service.dart';
 import 'services/api_service.dart';
 import 'services/auth_service.dart';
+import 'services/hardware_service.dart';
 import 'models/branch.dart';
 import 'services/branch_provider.dart';
 import 'services/role_manager.dart';
@@ -68,6 +69,27 @@ class _VendIAAppState extends State<VendIAApp> {
     _syncCatalogInBackground();
     _syncSalesOnStart();
     _loadBranches();
+    _bootstrapHardware();
+  }
+
+  /// Hydrate the HardwareService from SharedPreferences and, if the
+  /// master switch was ON in a previous session, kick off an
+  /// auto-reconnect after the first frame so the cashier can ring up
+  /// the very first sale of the day with a working printer.
+  void _bootstrapHardware() {
+    final hw = HardwareService.instance;
+    // loadFromPrefs() is fire-and-forget: a prefs failure must not
+    // block startup. The auto-reconnect runs after the first frame to
+    // avoid contending with the splash screen / DB init.
+    () async {
+      await hw.loadFromPrefs();
+      if (hw.isEnabled) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          // tryReconnect already swallows its own errors.
+          hw.tryReconnect();
+        });
+      }
+    }();
   }
 
   /// Sync sales bidirectionally: pull from server + push unsynced local sales.

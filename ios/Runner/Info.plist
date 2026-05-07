@@ -9,6 +9,11 @@
 	<!-- Inventario por voz: grabación del audio que se manda a Gemini -->
 	<key>NSMicrophoneUsageDescription</key>
 	<string>VendIA usa el micrófono para que dictes los productos que llegaron y los registre por ti.</string>
+	<!-- Bluetooth térmico: impresora de recibos + cajón monedero. -->
+	<key>NSBluetoothAlwaysUsageDescription</key>
+	<string>VendIA conecta con su impresora térmica para imprimir recibos.</string>
+	<key>NSBluetoothPeripheralUsageDescription</key>
+	<string>VendIA conecta con su impresora térmica para imprimir recibos.</string>
 	<key>NSAppTransportSecurity</key>
 	<dict>
 		<key>NSAllowsArbitraryLoads</key>

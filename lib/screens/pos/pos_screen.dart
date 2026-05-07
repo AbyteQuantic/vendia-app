@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:http/http.dart' as http;
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:uuid/uuid.dart';
@@ -26,7 +27,9 @@ import '../../database/collections/local_table_tab.dart';
 import '../../database/collections/local_product.dart';
 import '../../services/api_service.dart';
 import '../../services/auth_service.dart';
+import '../../services/hardware_service.dart';
 import '../../services/panic_trigger_service.dart';
+import '../../services/receipt_builder.dart';
 import '../../database/collections/local_sale.dart';
 import '../inventory/add_merchandise_screen.dart';
 import '../payments/confirm_payment_scanner_screen.dart';
@@ -1309,6 +1312,81 @@ class _PosScreenBodyState extends State<_PosScreenBody> {
     }
   }
 
+  /// Best-effort receipt print + drawer kick after a successful sale.
+  ///
+  /// **Invariant**: this MUST be called via `unawaited(...)` from the
+  /// checkout path. It NEVER throws and NEVER blocks. When the master
+  /// switch is off it returns silently without touching the radio. On
+  /// failure it surfaces a non-blocking floating SnackBar so the cashier
+  /// can fix the printer (or turn the option off) without losing the
+  /// sale that already landed in the local DB.
+  Future<void> _tryPrintReceipt(LocalSale sale, String paymentMethod) async {
+    final hw = HardwareService.instance;
+    if (!hw.isEnabled) return; // master switch off — silent no-op
+
+    // Resolve tenant info. Each lookup is wrapped because AuthService
+    // reads from secure storage which can fail on locked keychains
+    // (rare, but never let it surface here).
+    final auth = AuthService();
+    String businessName = 'Mi Negocio';
+    String? logoUrl;
+    try {
+      businessName = (await auth.getBusinessName()) ?? 'Mi Negocio';
+      logoUrl = await auth.getLogoUrl();
+    } catch (_) {
+      // keep defaults — receipt with placeholder name is fine
+    }
+
+    Uint8List? logoBytes;
+    if (logoUrl != null && logoUrl.isNotEmpty) {
+      try {
+        final resp = await http
+            .get(Uri.parse(logoUrl))
+            .timeout(const Duration(seconds: 3));
+        if (resp.statusCode == 200) {
+          logoBytes = resp.bodyBytes;
+        }
+      } catch (_) {
+        // ignore — receipt without logo is fine
+      }
+    }
+
+    final tenant = ReceiptTenantInfo(
+      businessName: businessName,
+      logoBytes: logoBytes,
+      // nit/address/phone left null until we wire those tenant fields
+      // into auth_service. Receipt builder handles null gracefully.
+    );
+    final lines = sale.items
+        .map((it) => ReceiptLine(
+              name: it.productName,
+              quantity: it.quantity,
+              unitPrice: it.unitPrice,
+            ))
+        .toList(growable: false);
+
+    final ok = await hw.printSaleReceipt(
+      tenant,
+      lines,
+      sale.total,
+      paymentMethod,
+      openDrawer: true,
+    );
+    if (!ok && mounted) {
+      HapticFeedback.mediumImpact();
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(
+          hw.lastErrorMessage ??
+              'No se pudo conectar a la impresora. '
+              'Revise el Bluetooth o apague la opción en ajustes.',
+        ),
+        backgroundColor: AppTheme.warning,
+        behavior: SnackBarBehavior.floating,
+        duration: const Duration(seconds: 4),
+      ));
+    }
+  }
+
   Future<void> _syncSaleToBackend(
       List<CartItem> cartItems,
       String paymentMethod,
@@ -1428,6 +1506,10 @@ class _PosScreenBodyState extends State<_PosScreenBody> {
           ..synced = false;
 
         await db.insertSaleAndDeductStock(localSale);
+
+        // Fire-and-forget receipt + drawer kick. Never awaited — a printer
+        // hiccup must not delay or fail the sale that already landed.
+        unawaited(_tryPrintReceipt(localSale, result.paymentMethod));
 
         // Copy cart items BEFORE clearing (List is reference type)
         final cartSnapshot = List<CartItem>.from(ctrl.activeCart);
@@ -1643,6 +1725,12 @@ class _PosScreenBodyState extends State<_PosScreenBody> {
 
                     await db.insertSaleAndDeductStock(localSale);
 
+                    // Fire-and-forget receipt + drawer kick. Never awaited
+                    // so a printer hiccup cannot delay the table flow.
+                    unawaited(
+                      _tryPrintReceipt(localSale, method.$1.toLowerCase()),
+                    );
+
                     final cartSnapshot = List<CartItem>.from(ctrl.activeCart);
                     ctrl.clearActiveCart();
 
@@ -1728,6 +1816,10 @@ class _PosScreenBodyState extends State<_PosScreenBody> {
         ..createdAt = DateTime.now()
         ..synced = false;
       await db.insertSaleAndDeductStock(localSale);
+
+      // Fire-and-forget receipt + drawer kick. Fiados still print so the
+      // customer can leave with their copy. Never awaited.
+      unawaited(_tryPrintReceipt(localSale, 'credit'));
 
       // Backend sync (creates Sale with payment_method=credit, deducts stock)
       _syncSaleToBackend(
