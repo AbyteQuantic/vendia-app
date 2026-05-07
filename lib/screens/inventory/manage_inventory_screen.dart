@@ -2,14 +2,17 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
+import '../../database/database_service.dart';
 import '../../theme/app_theme.dart';
 import '../../services/api_service.dart';
 import '../../services/auth_service.dart';
 import '../../utils/barcode_validator.dart';
 import '../../utils/currency_input.dart';
+import '../../widgets/negative_stock_banner.dart';
 import '../../widgets/stock_badge.dart';
 import '../pos/scan_screen.dart';
 import 'kardex_screen.dart';
+import 'negative_stock_screen.dart';
 
 class ManageInventoryScreen extends StatefulWidget {
   const ManageInventoryScreen({super.key});
@@ -204,6 +207,22 @@ class _ManageInventoryScreenState extends State<ManageInventoryScreen> {
       body: SafeArea(
         child: Column(
           children: [
+            // Negative-stock alert (P0): renders only when at least one
+            // product has reservedStock > stock — the merchant taps the
+            // banner to jump to the regularization screen.
+            NegativeStockBanner(
+              key: const Key('manage_inventory_negative_stock_banner'),
+              count: 0,
+              countStream: DatabaseService.instance.watchNegativeStockCount(),
+              onTap: () {
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => const NegativeStockScreen(),
+                  ),
+                );
+              },
+            ),
+
             // Search bar
             Padding(
               padding: const EdgeInsets.fromLTRB(20, 8, 20, 12),

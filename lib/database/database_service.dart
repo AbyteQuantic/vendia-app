@@ -345,6 +345,40 @@ class DatabaseService {
         .map((list) => list.isEmpty ? null : list.first);
   }
 
+  /// Reactive list of products whose available stock is negative
+  /// (`stock - reservedStock < 0`).
+  ///
+  /// Isar's filter API can't compare two columns against each other in a
+  /// single query, so we stream the full product set and apply the predicate
+  /// in Dart. The product set is bounded (typically <1000 SKUs per tenant),
+  /// so the in-memory filter is cheap and runs only when Isar actually emits
+  /// a change. Sorted most-negative-first so the regularization screen
+  /// surfaces the worst offenders at the top.
+  Stream<List<LocalProduct>> watchNegativeStockProducts() {
+    return isar.localProducts
+        .where()
+        .watch(fireImmediately: true)
+        .map((products) {
+      final negatives = products
+          .where((p) => (p.stock - p.reservedStock) < 0)
+          .toList();
+      negatives.sort((a, b) {
+        final aDelta = a.stock - a.reservedStock;
+        final bDelta = b.stock - b.reservedStock;
+        return aDelta.compareTo(bDelta); // most negative first
+      });
+      return negatives;
+    });
+  }
+
+  /// Reactive count of products with negative available stock.
+  ///
+  /// Backed by [watchNegativeStockProducts] so the banner badge and the
+  /// regularization list always agree on what counts as "negative".
+  Stream<int> watchNegativeStockCount() {
+    return watchNegativeStockProducts().map((list) => list.length);
+  }
+
   Stream<LocalTableTab?> watchTableTabByLabel(String label) {
     return isar.localTableTabs
         .filter()
