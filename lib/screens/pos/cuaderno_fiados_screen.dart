@@ -5,6 +5,43 @@ import '../../services/api_service.dart';
 import '../../services/auth_service.dart';
 import '../../theme/app_theme.dart';
 
+/// Pure helper — decides which raw `status` rows belong to each
+/// Cuaderno tab. Extracted out of the widget so we can pin the rules
+/// down in unit tests (regression guard for the P0 "fiado fantasma"
+/// where a partially-paid account silently dropped out of "Activos").
+///
+/// Tabs map to the backend state machine as follows:
+///   * `active`  → status ∈ {open, partial} — every accepted, unpaid
+///                 fiado, regardless of whether the customer has
+///                 already started paying it down.
+///   * `pending` → status == 'pending' — link sent / opened but not
+///                 yet accepted by the customer.
+///   * `paid`    → status == 'paid' — saldo cero (incl. write-offs).
+///
+/// Cancelled rows never surface in the cuaderno (the Cancelar fiado
+/// flow already pops back to the list and the row is dropped here).
+List<Map<String, dynamic>> filterCreditsForTab(
+  List<Map<String, dynamic>> all,
+  String tab,
+) {
+  bool keep(String status) {
+    switch (tab) {
+      case 'active':
+        return status == 'open' || status == 'partial';
+      case 'pending':
+        return status == 'pending';
+      case 'paid':
+        return status == 'paid';
+      default:
+        return false;
+    }
+  }
+
+  return all
+      .where((c) => keep((c['status'] as String?) ?? 'open'))
+      .toList(growable: false);
+}
+
 /// "El Cuaderno" — Real accounts receivable from backend. Zero mocks.
 class CuadernoFiadosScreen extends StatefulWidget {
   const CuadernoFiadosScreen({super.key});
@@ -15,9 +52,16 @@ class CuadernoFiadosScreen extends StatefulWidget {
 
 class _CuadernoFiadosScreenState extends State<CuadernoFiadosScreen> {
   late final ApiService _api;
-  List<Map<String, dynamic>> _credits = [];
+  // Raw server response (everything except cancelled, since the API
+  // doesn't return cancelled rows by default). We filter client-side
+  // because the active tab needs status IN (open, partial) and the
+  // backend `?status=` param only supports a single value.
+  List<Map<String, dynamic>> _all = [];
   bool _loading = true;
-  String _filter = 'open';
+  String _filter = 'active';
+
+  List<Map<String, dynamic>> get _credits =>
+      filterCreditsForTab(_all, _filter);
 
   @override
   void initState() {
@@ -29,10 +73,14 @@ class _CuadernoFiadosScreenState extends State<CuadernoFiadosScreen> {
   Future<void> _load() async {
     setState(() => _loading = true);
     try {
-      final res = await _api.fetchCredits(
-          status: _filter == 'all' ? null : _filter, perPage: 100);
+      // Pull everything in one round-trip and partition client-side.
+      // Previously we sent `status=open`, which silently hid every
+      // account that had received at least one abono (status='partial').
+      // Cashiers reported these as "fiados fantasma" — the fiado was
+      // accepted server-side but missing from the cuaderno list.
+      final res = await _api.fetchCredits(perPage: 200);
       final list = (res['data'] as List?)?.cast<Map<String, dynamic>>() ?? [];
-      if (mounted) setState(() { _credits = list; _loading = false; });
+      if (mounted) setState(() { _all = list; _loading = false; });
     } catch (_) {
       if (mounted) setState(() => _loading = false);
     }
@@ -91,21 +139,26 @@ class _CuadernoFiadosScreenState extends State<CuadernoFiadosScreen> {
         ),
         const SizedBox(height: 12),
 
-        // Filters — horizontal scroll so 4 tabs fit on narrow screens.
+        // Filters. "Activos" merges open + partial — once we registered
+        // an abono the status flipped to 'partial' and the row used to
+        // disappear from the tab the cashier was looking at. Now they
+        // stay visible until the balance hits zero.
         SingleChildScrollView(
           scrollDirection: Axis.horizontal,
           padding: const EdgeInsets.symmetric(horizontal: 20),
           child: Row(children: [
             for (final f in const [
-              ('open', 'Activos'),
+              ('active', 'Activos'),
               ('pending', 'Pendientes'),
-              ('partial', 'Parcial'),
               ('paid', 'Pagados'),
             ])
               Padding(
                 padding: const EdgeInsets.only(right: 8),
                 child: GestureDetector(
-                  onTap: () { setState(() => _filter = f.$1); _load(); },
+                  // No need to re-fetch — we already loaded everything
+                  // up-front and partition client-side. Tab switches
+                  // are now instant and don't hit the network.
+                  onTap: () => setState(() => _filter = f.$1),
                   child: Container(
                     padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                     decoration: BoxDecoration(
@@ -157,16 +210,24 @@ class _CuadernoFiadosScreenState extends State<CuadernoFiadosScreen> {
     final status = credit['status'] as String? ?? 'open';
     final fiadoStatus = credit['fiado_status'] as String? ?? '';
     final isPending = status == 'pending' || fiadoStatus == 'link_sent' || fiadoStatus == 'link_opened';
+    final isPartial = status == 'partial';
+    final isPaid = status == 'paid';
 
     final avatarColor = isPending
         ? const Color(0xFF6D28D9)
         : const Color(0xFFF59E0B);
-    final statusLabel = status == 'paid'
+    final statusLabel = isPaid
         ? 'Pagado'
         : isPending
             ? 'Esperando aceptación · ${_fmt(balance)}'
-            : 'Debe ${_fmt(balance)}';
-    final statusColor = status == 'paid'
+            : isPartial
+                // Show both progress and remainder so a partially-paid
+                // account is visually distinct from one that hasn't
+                // received any abono yet — same orange palette so it
+                // still reads as "active fiado", just more informative.
+                ? 'Abonó ${_fmt(paid)} · Debe ${_fmt(balance)}'
+                : 'Debe ${_fmt(balance)}';
+    final statusColor = isPaid
         ? AppTheme.success
         : isPending
             ? const Color(0xFF6D28D9)

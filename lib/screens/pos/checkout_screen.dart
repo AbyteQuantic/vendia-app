@@ -1625,9 +1625,19 @@ class _ActiveFiadoPickerContentState
 
   Future<void> _load() async {
     try {
-      final res = await _api.fetchCredits(status: 'open', perPage: 200);
-      final list =
+      // Pull every non-cancelled, non-paid account and filter
+      // client-side. Sending status='open' alone hid customers who'd
+      // already paid an abono (status='partial'), making it impossible
+      // to append a new sale to a fiado that wasn't pristine. The
+      // backend's AppendToFiado endpoint accepts status='open' OR
+      // 'partial' equivalently, so the picker should match.
+      final res = await _api.fetchCredits(perPage: 200);
+      final raw =
           (res['data'] as List?)?.cast<Map<String, dynamic>>() ?? const [];
+      final list = raw.where((c) {
+        final status = (c['status'] as String?) ?? '';
+        return status == 'open' || status == 'partial';
+      }).toList(growable: false);
       if (mounted) setState(() { _all = list; _loading = false; });
     } catch (_) {
       if (mounted) setState(() => _loading = false);
