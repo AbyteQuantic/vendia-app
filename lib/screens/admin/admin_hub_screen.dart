@@ -1,9 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import '../../database/database_service.dart';
 import '../../services/tax_settings_service.dart';
 import '../../theme/app_theme.dart';
+import '../../widgets/growth_radar_card.dart';
 import 'analytics_screen.dart';
 import 'suppliers_screen.dart';
+import 'tax_activation_wizard.dart';
 import 'tax_settings_screen.dart';
 import '../security/sos_contacts_screen.dart';
 import '../support/support_screen.dart';
@@ -53,6 +57,8 @@ class AdminHubScreen extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            // ── Growth radar promote (only when ≥85%) ─────────────────
+            const _AdminHubRadarPromote(),
             // ── Header with gradient ──────────────────────────────────
             _buildHeader(),
             const SizedBox(height: 20),
@@ -685,5 +691,67 @@ class _QuickActionButton extends StatelessWidget {
         ),
       ),
     );
+  }
+}
+
+/// Promotes the growth radar to the top of the admin hub when the
+/// merchant's year-to-date digital revenue crosses 85% of the
+/// configured threshold. Only the admin hub renders this — and the
+/// hub is only reachable by admins/owners — so no extra role gate
+/// is needed here. Uses the shared `GrowthRadarCard` in `compact`
+/// mode so it rides above the existing header without dominating it.
+class _AdminHubRadarPromote extends StatelessWidget {
+  const _AdminHubRadarPromote();
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<int>(
+      future: _readThresholdCop(),
+      builder: (ctx, thrSnap) {
+        final threshold = thrSnap.data ?? _kDefaultThresholdCop;
+        if (threshold <= 0) return const SizedBox.shrink();
+        return StreamBuilder<double>(
+          stream: DatabaseService.instance.watchYearToDateDigitalRevenue(),
+          builder: (ctx2, snap) {
+            final revenue = snap.data ?? 0;
+            final pct = revenue / threshold;
+            // Gate: hide unless we're in the celebrating/urgent bands.
+            if (pct < 0.85) return const SizedBox.shrink();
+            return ListenableBuilder(
+              listenable: TaxSettingsService.instance,
+              builder: (ctx3, _) {
+                return Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+                  child: GrowthRadarCard(
+                    revenue: revenue,
+                    threshold: threshold,
+                    compact: true,
+                    taxAlreadyActive: TaxSettingsService.instance.enabled,
+                    onActivateTaxTap: () {
+                      Navigator.of(ctx3).push(
+                        MaterialPageRoute<void>(
+                          builder: (_) => const TaxActivationWizard(),
+                        ),
+                      );
+                    },
+                  ),
+                );
+              },
+            );
+          },
+        );
+      },
+    );
+  }
+}
+
+const int _kDefaultThresholdCop = 160000000;
+
+Future<int> _readThresholdCop() async {
+  try {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getInt('dian_threshold_cop') ?? _kDefaultThresholdCop;
+  } catch (_) {
+    return _kDefaultThresholdCop;
   }
 }
