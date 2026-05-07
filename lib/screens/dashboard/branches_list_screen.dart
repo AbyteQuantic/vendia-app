@@ -151,7 +151,7 @@ class _BranchesListScreenState extends State<BranchesListScreen> {
                       if (isEditing) {
                         // branch is non-null when isEditing==true
                         final b = branch; // ignore: unnecessary_local_variable
-                        final updated = await _api.updateBranch(b!.id, {
+                        final updated = await _api.updateBranch(b.id, {
                           'name': name,
                           'address': addressCtrl.text.trim(),
                         });

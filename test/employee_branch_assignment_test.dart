@@ -259,7 +259,7 @@ void main() {
       String? captured;
 
       await tester.pumpWidget(_wrap(EmployeeListScreen(
-        employees: [],
+        employees: const [],
         branches: [
           _branch('br-1', 'Sede Principal'),
           _branch('br-2', 'Sede Norte'),

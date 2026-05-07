@@ -346,13 +346,13 @@ class _TableFloorPlanScreenState extends State<TableFloorPlanScreen> {
     return Column(
       children: [
         // Legend
-        Padding(
-          padding: const EdgeInsets.fromLTRB(24, 8, 24, 8),
+        const Padding(
+          padding: EdgeInsets.fromLTRB(24, 8, 24, 8),
           child: Row(
             children: [
               Icon(Icons.info_outline_rounded,
                   size: 18, color: AppTheme.textSecondary),
-              const SizedBox(width: 8),
+              SizedBox(width: 8),
               Expanded(
                 child: Text(
                   'Toque un espacio vacío para agregar mesa. Toque una mesa para editar o eliminar.',
@@ -375,7 +375,7 @@ class _TableFloorPlanScreenState extends State<TableFloorPlanScreen> {
                 return GridView.builder(
                   padding: const EdgeInsets.symmetric(horizontal: 12),
                   physics: const BouncingScrollPhysics(),
-                  gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
                     crossAxisCount: _cols,
                     childAspectRatio: 1,
                     crossAxisSpacing: 6,

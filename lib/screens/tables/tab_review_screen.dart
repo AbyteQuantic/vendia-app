@@ -263,7 +263,7 @@ class _TabReviewScreenState extends State<TabReviewScreen> {
                         ),
                         Text(
                           _fmtCOP(amount),
-                          style: TextStyle(
+                          style: const TextStyle(
                             fontSize: 13,
                             fontWeight: FontWeight.w600,
                             color: AppTheme.success,
@@ -808,7 +808,7 @@ class _AbonoRow extends StatelessWidget {
       ),
       child: Row(
         children: [
-          Icon(Icons.check_circle_rounded,
+          const Icon(Icons.check_circle_rounded,
               color: AppTheme.success, size: 22),
           const SizedBox(width: 10),
           Expanded(
@@ -842,7 +842,7 @@ class _AbonoRow extends StatelessWidget {
           ],
           Text(
             fmtCOP(amount),
-            style: TextStyle(
+            style: const TextStyle(
               fontSize: 16,
               fontWeight: FontWeight.w800,
               color: AppTheme.success,

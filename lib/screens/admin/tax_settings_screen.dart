@@ -110,7 +110,7 @@ class TaxSettingsScreen extends StatelessWidget {
         child: SwitchListTile(
           key: const Key('switch_iva_inclusive'),
           value: inclusive,
-          activeColor: const Color(0xFF10B981),
+          activeThumbColor: const Color(0xFF10B981),
           title: const Text(
             'El precio de mis productos ya incluye el IVA',
             style: TextStyle(

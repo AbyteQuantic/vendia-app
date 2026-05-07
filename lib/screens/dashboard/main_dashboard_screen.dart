@@ -158,7 +158,7 @@ class _MainDashboardScreenState extends State<MainDashboardScreen> {
                           ),
                           const Spacer(),
                           // Botón de pánico silencioso
-                          PanicButton(
+                          const PanicButton(
                             onPanicTriggered: PanicTriggerService.trigger,
                           ),
                           const SizedBox(width: 8),
@@ -178,9 +178,9 @@ class _MainDashboardScreenState extends State<MainDashboardScreen> {
                       Row(
                         crossAxisAlignment: CrossAxisAlignment.center,
                         children: [
-                          Flexible(
+                          const Flexible(
                             fit: FlexFit.loose,
-                            child: const Text(
+                            child: Text(
                               'VendIA',
                               style: TextStyle(
                                 fontSize: 28,
@@ -479,7 +479,7 @@ class _StoreStatusPill extends StatelessWidget {
                         child: Switch(
                           value: isOpen,
                           onChanged: onToggle,
-                          activeColor: AppTheme.success,
+                          activeThumbColor: AppTheme.success,
                           materialTapTargetSize:
                               MaterialTapTargetSize.shrinkWrap,
                         ),

@@ -1684,7 +1684,7 @@ class _StoreStatusPill extends StatelessWidget {
                         child: Switch(
                           value: isOpen,
                           onChanged: onToggle,
-                          activeColor: AppTheme.success,
+                          activeThumbColor: AppTheme.success,
                           materialTapTargetSize:
                               MaterialTapTargetSize.shrinkWrap,
                         ),

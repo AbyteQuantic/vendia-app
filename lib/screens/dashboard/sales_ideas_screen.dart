@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import '../../database/database_service.dart';
 import '../../theme/app_theme.dart';
 
@@ -31,9 +30,9 @@ class _SalesIdeasScreenState extends State<SalesIdeasScreen> {
     // ── Payment diversity ──────────────────────────────────────────────
     final cashOnly = sales.every((s) => s.paymentMethod == 'cash');
     if (sales.isNotEmpty && cashOnly) {
-      ideas.add(_Idea(
+      ideas.add(const _Idea(
         icon: Icons.phone_android_rounded,
-        color: const Color(0xFF3B82F6),
+        color: Color(0xFF3B82F6),
         title: 'Active pagos digitales',
         body: 'Todas las ventas son en efectivo. Active Nequi o Daviplata '
             'en Mi Negocio > Metodos de Pago para captar clientes que no cargan billetes.',
@@ -42,9 +41,9 @@ class _SalesIdeasScreenState extends State<SalesIdeasScreen> {
 
     // ── Low transaction count ──────────────────────────────────────────
     if (sales.length < 5) {
-      ideas.add(_Idea(
+      ideas.add(const _Idea(
         icon: Icons.local_offer_rounded,
-        color: const Color(0xFFEA580C),
+        color: Color(0xFFEA580C),
         title: 'Promocion 2x1 o combo',
         body: 'Pocas ventas hoy. Considere armar un combo con productos de baja '
             'rotacion. Ejemplo: "Lleve 2 gaseosas por el precio de 1.5".',
@@ -95,7 +94,7 @@ class _SalesIdeasScreenState extends State<SalesIdeasScreen> {
 
     // ── Default tip ────────────────────────────────────────────────────
     if (ideas.isEmpty) {
-      ideas.add(_Idea(
+      ideas.add(const _Idea(
         icon: Icons.check_circle_rounded,
         color: AppTheme.success,
         title: 'Todo va bien',

@@ -174,7 +174,7 @@ class _PromoBuilderScreenState extends State<PromoBuilderScreen> {
   int _buyQty = 3;
   int _payQty = 2;
 
-  _Validity _validity = _Validity.today;
+  final _Validity _validity = _Validity.today;
   DateTime? _customEnd;
   int? _stockLimit;
 
@@ -1783,7 +1783,7 @@ class _PromoBuilderScreenState extends State<PromoBuilderScreen> {
               Switch(
                 value: enabled,
                 onChanged: onChanged,
-                activeColor: AppTheme.primary,
+                activeThumbColor: AppTheme.primary,
               ),
             ],
           ),

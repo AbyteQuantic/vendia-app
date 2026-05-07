@@ -132,7 +132,7 @@ class _PeriodChips extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final options = const [('7d', '7 días'), ('30d', '30 días'), ('90d', '90 días')];
+    const options = [('7d', '7 días'), ('30d', '30 días'), ('90d', '90 días')];
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
       child: Wrap(
@@ -171,7 +171,7 @@ class _TopSellersTab extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (items.isEmpty) {
-      return _EmptyHint(
+      return const _EmptyHint(
         icon: Icons.shopping_bag_outlined,
         message:
             'Aún no tenemos suficientes ventas para identificar productos estrella.\nRegistre algunas ventas y vuelva en unos días.',
@@ -265,7 +265,7 @@ class _SlowMoversTab extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (items.isEmpty) {
-      return _EmptyHint(
+      return const _EmptyHint(
         icon: Icons.thumb_up_alt_rounded,
         message:
             '¡Buenas noticias! Todos sus productos están rotando bien en este período.',
@@ -367,7 +367,7 @@ class _ExpiringTab extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (items.isEmpty) {
-      return _EmptyHint(
+      return const _EmptyHint(
         icon: Icons.check_circle_outline_rounded,
         message:
             'No hay productos por vencer en los próximos 30 días. ¡Inventario sano!',

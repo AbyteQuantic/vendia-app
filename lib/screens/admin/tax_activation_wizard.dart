@@ -285,7 +285,7 @@ class _TaxActivationWizardState extends State<TaxActivationWizard> {
     const exampleNet = 10000.0;
     final inclusiveTax = exampleNet - exampleNet / (1 + rate);
     final exclusiveTax = exampleNet * rate;
-    final inclusiveCustomerPays = exampleNet;
+    const inclusiveCustomerPays = exampleNet;
     final exclusiveCustomerPays = exampleNet + exclusiveTax;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -300,7 +300,7 @@ class _TaxActivationWizardState extends State<TaxActivationWizard> {
           child: SwitchListTile(
             key: const Key('switch_wizard_inclusive'),
             value: _inclusive,
-            activeColor: const Color(0xFF10B981),
+            activeThumbColor: const Color(0xFF10B981),
             title: const Text(
               'El precio ya incluye IVA',
               style: TextStyle(

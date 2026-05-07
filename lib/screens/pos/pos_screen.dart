@@ -1027,8 +1027,8 @@ class _PosScreenBodyState extends State<_PosScreenBody> {
                 borderRadius: BorderRadius.circular(2),
               ),
             ),
-            Text('Seleccionar Mesa',
-                style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
+            const Text('Seleccionar Mesa',
+                style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
             const SizedBox(height: 4),
             Text(subtitle,
                 style: TextStyle(fontSize: 15, color: accentColor,
@@ -2013,7 +2013,7 @@ class _PosScreenBodyState extends State<_PosScreenBody> {
                         ),
                       ),
                       const Spacer(),
-                      PanicButton(onPanicTriggered: PanicTriggerService.trigger),
+                      const PanicButton(onPanicTriggered: PanicTriggerService.trigger),
                       const SizedBox(width: 6),
                       // Reverse-QR scanner — confirm customer payment
                       GestureDetector(

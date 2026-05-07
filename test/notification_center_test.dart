@@ -110,7 +110,7 @@ void main() {
   });
 
   group('NotificationCenterSheet widget', () {
-    Future<void> _pumpSheet(
+    Future<void> pumpSheet(
       WidgetTester tester,
       List<AppNotification> items,
     ) async {
@@ -129,7 +129,7 @@ void main() {
     }
 
     testWidgets('renders empty state when list is empty', (tester) async {
-      await _pumpSheet(tester, const []);
+      await pumpSheet(tester, const []);
       expect(find.text('Sin actividad nueva'), findsOneWidget);
     });
 
@@ -155,7 +155,7 @@ void main() {
           rawType: 'fiado_accepted',
         ),
       ];
-      await _pumpSheet(tester, items);
+      await pumpSheet(tester, items);
 
       expect(find.text('Actividad reciente'), findsOneWidget);
       expect(find.text('Hoy'), findsOneWidget);
@@ -198,7 +198,7 @@ void main() {
           rawType: 'info',
         ),
       ];
-      await _pumpSheet(tester, items);
+      await pumpSheet(tester, items);
 
       expect(find.text('Hoy'), findsOneWidget);
       expect(find.text('Ayer'), findsOneWidget);

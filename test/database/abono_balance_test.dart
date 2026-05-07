@@ -5,8 +5,8 @@ void main() {
     test('100k tab with 40k abono → pending 60k', () {
       const grossTotal = 100000.0;
       const abonosTotal = 40000.0;
-      final raw = grossTotal - abonosTotal;
-      final pending = raw < 0 ? 0.0 : raw;
+      const raw = grossTotal - abonosTotal;
+      const pending = raw < 0 ? 0.0 : raw;
       expect(pending, 60000.0);
     });
 
@@ -25,8 +25,8 @@ void main() {
     test('overpayment clamps pending to 0 (never negative)', () {
       const grossTotal = 100000.0;
       const abonosTotal = 150000.0;
-      final raw = grossTotal - abonosTotal;
-      final pending = raw < 0 ? 0.0 : raw;
+      const raw = grossTotal - abonosTotal;
+      const pending = raw < 0 ? 0.0 : raw;
       expect(pending, 0.0);
     });
   });
