@@ -865,6 +865,30 @@ class ApiService {
     }
   }
 
+  /// Returns one row per CUSTOMER for the "Activos" tab of the cuaderno.
+  /// Backend aggregates every open/partial/pending credit_account belonging
+  /// to a customer into a single record so the UI never duplicates a
+  /// person's name even if data inconsistencies leak two ledger rows.
+  /// Each entry exposes:
+  ///   customer_id, customer_name, customer_phone, total_amount,
+  ///   paid_amount, balance, accounts_count, latest_activity_at, status.
+  Future<List<Map<String, dynamic>>> fetchCreditsGroupedByCustomer({
+    String? branchId,
+  }) async {
+    try {
+      final bid = branchId ?? currentBranchId;
+      final params = <String, dynamic>{'group_by': 'customer'};
+      if (bid != null && bid.isNotEmpty) params['branch_id'] = bid;
+      final response =
+          await _dio.get('/api/v1/credits', queryParameters: params);
+      final data = (response.data as Map<String, dynamic>)['data'];
+      if (data is List) return data.cast<Map<String, dynamic>>();
+      return const [];
+    } on DioException catch (e) {
+      throw AppError.fromDioException(e);
+    }
+  }
+
   Future<Map<String, dynamic>> recordCreditPayment(
       String creditId, Map<String, dynamic> data) async {
     try {
