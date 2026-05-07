@@ -247,6 +247,10 @@ class _PaymentMethodsScreenState extends State<PaymentMethodsScreen> {
   }
 
   Future<void> _uploadQR(String methodId) async {
+    developer.log(
+      '[_uploadQR] starting flow for methodId=$methodId',
+      name: 'PaymentMethods',
+    );
     final picker = ImagePicker();
     final picked = await picker.pickImage(
       source: ImageSource.gallery,
@@ -261,33 +265,64 @@ class _PaymentMethodsScreenState extends State<PaymentMethodsScreen> {
     // checkout modal without pillarbox margins. Owners commonly
     // upload full Nequi/Daviplata screenshots — without this step
     // the actual QR renders tiny and customers can't scan it.
-    final cropped = await ImageCropper().cropImage(
-      sourcePath: picked.path,
-      aspectRatio: const CropAspectRatio(ratioX: 1, ratioY: 1),
-      compressFormat: ImageCompressFormat.png,
-      compressQuality: 90,
-      uiSettings: [
-        AndroidUiSettings(
-          toolbarTitle: 'Recorta el QR',
-          toolbarColor: AppTheme.primary,
-          toolbarWidgetColor: Colors.white,
-          backgroundColor: Colors.black,
-          initAspectRatio: CropAspectRatioPreset.square,
-          lockAspectRatio: true,
-          hideBottomControls: false,
-        ),
-        IOSUiSettings(
-          title: 'Recorta el QR',
-          aspectRatioLockEnabled: true,
-          aspectRatioPickerButtonHidden: true,
-          rotateButtonsHidden: false,
-          resetButtonHidden: false,
-        ),
-      ],
+    developer.log(
+      '[_uploadQR] picker returned path=${picked.path}, '
+      'invoking cropper with 1:1 lock',
+      name: 'PaymentMethods',
     );
 
-    // Cropper dismissed without confirming: silently abort. The
-    // owner stays on the payment-methods list and can retry.
+    CroppedFile? cropped;
+    try {
+      cropped = await ImageCropper().cropImage(
+        sourcePath: picked.path,
+        aspectRatio: const CropAspectRatio(ratioX: 1, ratioY: 1),
+        compressFormat: ImageCompressFormat.png,
+        compressQuality: 90,
+        uiSettings: [
+          AndroidUiSettings(
+            toolbarTitle: 'Recorta el QR',
+            toolbarColor: AppTheme.primary,
+            toolbarWidgetColor: Colors.white,
+            backgroundColor: Colors.black,
+            initAspectRatio: CropAspectRatioPreset.square,
+            lockAspectRatio: true,
+            hideBottomControls: false,
+          ),
+          IOSUiSettings(
+            title: 'Recorta el QR',
+            aspectRatioLockEnabled: true,
+            aspectRatioPickerButtonHidden: true,
+            rotateButtonsHidden: false,
+            resetButtonHidden: false,
+          ),
+        ],
+      );
+      developer.log(
+        '[_uploadQR] cropper returned ' +
+            (cropped == null
+                ? 'null (user cancelled)'
+                : 'path=${cropped.path}'),
+        name: 'PaymentMethods',
+      );
+    } catch (e, st) {
+      // Common causes: UCropActivity missing from AndroidManifest,
+      // theme not resolving on the device, or a version conflict
+      // between image_cropper and image_picker. We surface this to
+      // the user so the button doesn't feel dead.
+      developer.log(
+        '[_uploadQR] cropper THREW: $e',
+        name: 'PaymentMethods',
+        error: e,
+        stackTrace: st,
+      );
+      if (!mounted) return;
+      _showError(
+        'No se pudo abrir el editor de recorte. '
+        'Si el problema persiste, reinstale la app.',
+      );
+      return;
+    }
+
     if (cropped == null) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
