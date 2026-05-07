@@ -70,6 +70,8 @@ dependencies:
   geocoding: ^4.0.0
   record: ^6.0.0
   image_cropper: ^12.2.1
+  esc_pos_utils_plus: ^2.0.4
+  image: ^4.8.0
 
 dev_dependencies:
   flutter_test:
