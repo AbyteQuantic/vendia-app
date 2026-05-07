@@ -2313,28 +2313,43 @@ const SaleItemEmbedSchema = Schema(
       name: r'isContainerCharge',
       type: IsarType.bool,
     ),
-    r'productName': PropertySchema(
+    r'isTaxInclusive': PropertySchema(
       id: 1,
+      name: r'isTaxInclusive',
+      type: IsarType.bool,
+    ),
+    r'productName': PropertySchema(
+      id: 2,
       name: r'productName',
       type: IsarType.string,
     ),
     r'productUuid': PropertySchema(
-      id: 2,
+      id: 3,
       name: r'productUuid',
       type: IsarType.string,
     ),
     r'quantity': PropertySchema(
-      id: 3,
+      id: 4,
       name: r'quantity',
       type: IsarType.long,
     ),
     r'subtotal': PropertySchema(
-      id: 4,
+      id: 5,
       name: r'subtotal',
       type: IsarType.double,
     ),
+    r'taxAmount': PropertySchema(
+      id: 6,
+      name: r'taxAmount',
+      type: IsarType.double,
+    ),
+    r'taxRate': PropertySchema(
+      id: 7,
+      name: r'taxRate',
+      type: IsarType.double,
+    ),
     r'unitPrice': PropertySchema(
-      id: 5,
+      id: 8,
       name: r'unitPrice',
       type: IsarType.double,
     )
@@ -2363,11 +2378,14 @@ void _saleItemEmbedSerialize(
   Map<Type, List<int>> allOffsets,
 ) {
   writer.writeBool(offsets[0], object.isContainerCharge);
-  writer.writeString(offsets[1], object.productName);
-  writer.writeString(offsets[2], object.productUuid);
-  writer.writeLong(offsets[3], object.quantity);
-  writer.writeDouble(offsets[4], object.subtotal);
-  writer.writeDouble(offsets[5], object.unitPrice);
+  writer.writeBool(offsets[1], object.isTaxInclusive);
+  writer.writeString(offsets[2], object.productName);
+  writer.writeString(offsets[3], object.productUuid);
+  writer.writeLong(offsets[4], object.quantity);
+  writer.writeDouble(offsets[5], object.subtotal);
+  writer.writeDouble(offsets[6], object.taxAmount);
+  writer.writeDouble(offsets[7], object.taxRate);
+  writer.writeDouble(offsets[8], object.unitPrice);
 }
 
 SaleItemEmbed _saleItemEmbedDeserialize(
@@ -2378,10 +2396,13 @@ SaleItemEmbed _saleItemEmbedDeserialize(
 ) {
   final object = SaleItemEmbed();
   object.isContainerCharge = reader.readBool(offsets[0]);
-  object.productName = reader.readString(offsets[1]);
-  object.productUuid = reader.readString(offsets[2]);
-  object.quantity = reader.readLong(offsets[3]);
-  object.unitPrice = reader.readDouble(offsets[5]);
+  object.isTaxInclusive = reader.readBoolOrNull(offsets[1]);
+  object.productName = reader.readString(offsets[2]);
+  object.productUuid = reader.readString(offsets[3]);
+  object.quantity = reader.readLong(offsets[4]);
+  object.taxAmount = reader.readDoubleOrNull(offsets[6]);
+  object.taxRate = reader.readDoubleOrNull(offsets[7]);
+  object.unitPrice = reader.readDouble(offsets[8]);
   return object;
 }
 
@@ -2395,14 +2416,20 @@ P _saleItemEmbedDeserializeProp<P>(
     case 0:
       return (reader.readBool(offset)) as P;
     case 1:
-      return (reader.readString(offset)) as P;
+      return (reader.readBoolOrNull(offset)) as P;
     case 2:
       return (reader.readString(offset)) as P;
     case 3:
-      return (reader.readLong(offset)) as P;
+      return (reader.readString(offset)) as P;
     case 4:
-      return (reader.readDouble(offset)) as P;
+      return (reader.readLong(offset)) as P;
     case 5:
+      return (reader.readDouble(offset)) as P;
+    case 6:
+      return (reader.readDoubleOrNull(offset)) as P;
+    case 7:
+      return (reader.readDoubleOrNull(offset)) as P;
+    case 8:
       return (reader.readDouble(offset)) as P;
     default:
       throw IsarError('Unknown property with id $propertyId');
@@ -2416,6 +2443,34 @@ extension SaleItemEmbedQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(FilterCondition.equalTo(
         property: r'isContainerCharge',
+        value: value,
+      ));
+    });
+  }
+
+  QueryBuilder<SaleItemEmbed, SaleItemEmbed, QAfterFilterCondition>
+      isTaxInclusiveIsNull() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(const FilterCondition.isNull(
+        property: r'isTaxInclusive',
+      ));
+    });
+  }
+
+  QueryBuilder<SaleItemEmbed, SaleItemEmbed, QAfterFilterCondition>
+      isTaxInclusiveIsNotNull() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(const FilterCondition.isNotNull(
+        property: r'isTaxInclusive',
+      ));
+    });
+  }
+
+  QueryBuilder<SaleItemEmbed, SaleItemEmbed, QAfterFilterCondition>
+      isTaxInclusiveEqualTo(bool? value) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.equalTo(
+        property: r'isTaxInclusive',
         value: value,
       ));
     });
@@ -2806,6 +2861,174 @@ extension SaleItemEmbedQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(FilterCondition.between(
         property: r'subtotal',
+        lower: lower,
+        includeLower: includeLower,
+        upper: upper,
+        includeUpper: includeUpper,
+        epsilon: epsilon,
+      ));
+    });
+  }
+
+  QueryBuilder<SaleItemEmbed, SaleItemEmbed, QAfterFilterCondition>
+      taxAmountIsNull() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(const FilterCondition.isNull(
+        property: r'taxAmount',
+      ));
+    });
+  }
+
+  QueryBuilder<SaleItemEmbed, SaleItemEmbed, QAfterFilterCondition>
+      taxAmountIsNotNull() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(const FilterCondition.isNotNull(
+        property: r'taxAmount',
+      ));
+    });
+  }
+
+  QueryBuilder<SaleItemEmbed, SaleItemEmbed, QAfterFilterCondition>
+      taxAmountEqualTo(
+    double? value, {
+    double epsilon = Query.epsilon,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.equalTo(
+        property: r'taxAmount',
+        value: value,
+        epsilon: epsilon,
+      ));
+    });
+  }
+
+  QueryBuilder<SaleItemEmbed, SaleItemEmbed, QAfterFilterCondition>
+      taxAmountGreaterThan(
+    double? value, {
+    bool include = false,
+    double epsilon = Query.epsilon,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.greaterThan(
+        include: include,
+        property: r'taxAmount',
+        value: value,
+        epsilon: epsilon,
+      ));
+    });
+  }
+
+  QueryBuilder<SaleItemEmbed, SaleItemEmbed, QAfterFilterCondition>
+      taxAmountLessThan(
+    double? value, {
+    bool include = false,
+    double epsilon = Query.epsilon,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.lessThan(
+        include: include,
+        property: r'taxAmount',
+        value: value,
+        epsilon: epsilon,
+      ));
+    });
+  }
+
+  QueryBuilder<SaleItemEmbed, SaleItemEmbed, QAfterFilterCondition>
+      taxAmountBetween(
+    double? lower,
+    double? upper, {
+    bool includeLower = true,
+    bool includeUpper = true,
+    double epsilon = Query.epsilon,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.between(
+        property: r'taxAmount',
+        lower: lower,
+        includeLower: includeLower,
+        upper: upper,
+        includeUpper: includeUpper,
+        epsilon: epsilon,
+      ));
+    });
+  }
+
+  QueryBuilder<SaleItemEmbed, SaleItemEmbed, QAfterFilterCondition>
+      taxRateIsNull() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(const FilterCondition.isNull(
+        property: r'taxRate',
+      ));
+    });
+  }
+
+  QueryBuilder<SaleItemEmbed, SaleItemEmbed, QAfterFilterCondition>
+      taxRateIsNotNull() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(const FilterCondition.isNotNull(
+        property: r'taxRate',
+      ));
+    });
+  }
+
+  QueryBuilder<SaleItemEmbed, SaleItemEmbed, QAfterFilterCondition>
+      taxRateEqualTo(
+    double? value, {
+    double epsilon = Query.epsilon,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.equalTo(
+        property: r'taxRate',
+        value: value,
+        epsilon: epsilon,
+      ));
+    });
+  }
+
+  QueryBuilder<SaleItemEmbed, SaleItemEmbed, QAfterFilterCondition>
+      taxRateGreaterThan(
+    double? value, {
+    bool include = false,
+    double epsilon = Query.epsilon,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.greaterThan(
+        include: include,
+        property: r'taxRate',
+        value: value,
+        epsilon: epsilon,
+      ));
+    });
+  }
+
+  QueryBuilder<SaleItemEmbed, SaleItemEmbed, QAfterFilterCondition>
+      taxRateLessThan(
+    double? value, {
+    bool include = false,
+    double epsilon = Query.epsilon,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.lessThan(
+        include: include,
+        property: r'taxRate',
+        value: value,
+        epsilon: epsilon,
+      ));
+    });
+  }
+
+  QueryBuilder<SaleItemEmbed, SaleItemEmbed, QAfterFilterCondition>
+      taxRateBetween(
+    double? lower,
+    double? upper, {
+    bool includeLower = true,
+    bool includeUpper = true,
+    double epsilon = Query.epsilon,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.between(
+        property: r'taxRate',
         lower: lower,
         includeLower: includeLower,
         upper: upper,

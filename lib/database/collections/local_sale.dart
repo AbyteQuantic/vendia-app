@@ -80,6 +80,25 @@ class SaleItemEmbed {
   late double unitPrice;
   late bool isContainerCharge;
 
+  /// IVA rate applied to this line at the moment the sale closed.
+  /// Null when the merchant had VAT disabled. Once written, NEVER
+  /// mutated — preserves the historical math even if the merchant
+  /// toggles VAT later.
+  double? taxRate;
+
+  /// Frozen monetary value of the IVA charged on this line. Computed
+  /// at sale-close time using taxRate + isTaxInclusive + unitPrice
+  /// + quantity. Null when taxRate is null.
+  double? taxAmount;
+
+  /// Snapshot of the tenant's pricing convention at sale time.
+  /// true: unitPrice already includes the IVA (the customer paid
+  /// exactly unitPrice * quantity); the taxAmount is extracted from
+  /// inside that figure.
+  /// false: IVA was added on top; the customer paid
+  /// unitPrice * quantity + taxAmount.
+  bool? isTaxInclusive;
+
   double get subtotal => unitPrice * quantity;
 
   Map<String, dynamic> toJson() => {
@@ -88,6 +107,9 @@ class SaleItemEmbed {
         'quantity': quantity,
         'unit_price': unitPrice,
         'is_container_charge': isContainerCharge,
+        'tax_rate': taxRate,
+        'tax_amount': taxAmount,
+        'is_tax_inclusive': isTaxInclusive,
       };
 
   static SaleItemEmbed fromJson(Map<String, dynamic> json) {
@@ -98,6 +120,9 @@ class SaleItemEmbed {
       ..quantity = json['quantity'] as int? ?? 1
       ..unitPrice =
           (json['unit_price'] as num? ?? json['price'] as num? ?? 0).toDouble()
-      ..isContainerCharge = json['is_container_charge'] as bool? ?? false;
+      ..isContainerCharge = json['is_container_charge'] as bool? ?? false
+      ..taxRate = (json['tax_rate'] as num?)?.toDouble()
+      ..taxAmount = (json['tax_amount'] as num?)?.toDouble()
+      ..isTaxInclusive = json['is_tax_inclusive'] as bool?;
   }
 }

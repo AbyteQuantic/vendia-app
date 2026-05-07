@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import '../../services/tax_settings_service.dart';
 import '../../theme/app_theme.dart';
 import 'analytics_screen.dart';
 import 'suppliers_screen.dart';
+import 'tax_settings_screen.dart';
 import '../security/sos_contacts_screen.dart';
 import '../support/support_screen.dart';
 
@@ -273,6 +275,15 @@ class AdminHubScreen extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(height: 10),
+                  // Tax/IVA — owner-facing settings tile. Subtitle is
+                  // computed live from the TaxSettingsService so the
+                  // owner sees current state without entering the
+                  // screen.
+                  const SizedBox(
+                    width: double.infinity,
+                    child: _TaxSettingsTile(),
+                  ),
+                  const SizedBox(height: 10),
                   // Support — Phase 3 SaaS hub entry
                   SizedBox(
                     width: double.infinity,
@@ -524,6 +535,98 @@ class _InventoryStatCard extends StatelessWidget {
 }
 
 // ── Quick Action Button ──────────────────────────────────────────────────────
+
+/// Settings tile for IVA / impuestos. Listens to the global
+/// [TaxSettingsService] so the subtitle ("Inactivo" vs
+/// "Activo (19% / Inclusive)") reflects the live state without
+/// the owner needing to enter the screen first.
+class _TaxSettingsTile extends StatelessWidget {
+  const _TaxSettingsTile();
+
+  String _subtitle(TaxSettingsService svc) {
+    if (!svc.enabled) return 'Inactivo';
+    final pct = (svc.rate * 100).toStringAsFixed(svc.rate == svc.rate.roundToDouble() ? 0 : 1);
+    final mode = svc.inclusive ? 'Inclusive' : 'Exclusive';
+    return 'Activo ($pct% / $mode)';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final svc = TaxSettingsService.instance;
+    return ListenableBuilder(
+      listenable: svc,
+      builder: (context, _) {
+        return Semantics(
+          button: true,
+          label: 'Impuestos / IVA',
+          child: GestureDetector(
+            key: const Key('tile_impuestos_iva'),
+            onTap: () {
+              HapticFeedback.lightImpact();
+              Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (_) => const TaxSettingsScreen(),
+                ),
+              );
+            },
+            child: Container(
+              padding: const EdgeInsets.symmetric(
+                  horizontal: 18, vertical: 14),
+              decoration: BoxDecoration(
+                gradient: const LinearGradient(
+                  colors: [Color(0xFF6366F1), Color(0xFF4F46E5)],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+                borderRadius: BorderRadius.circular(20),
+                boxShadow: [
+                  BoxShadow(
+                    color:
+                        const Color(0xFF6366F1).withValues(alpha: 0.3),
+                    blurRadius: 10,
+                    offset: const Offset(0, 4),
+                  ),
+                ],
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.receipt_long_rounded,
+                      color: Colors.white, size: 28),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'Impuestos / IVA',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.white,
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          _subtitle(svc),
+                          style: TextStyle(
+                            fontSize: 13,
+                            color: Colors.white.withValues(alpha: 0.85),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const Icon(Icons.chevron_right_rounded,
+                      color: Colors.white, size: 24),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
 
 class _QuickActionButton extends StatelessWidget {
   final IconData icon;

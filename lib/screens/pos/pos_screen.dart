@@ -30,6 +30,7 @@ import '../../services/auth_service.dart';
 import '../../services/hardware_service.dart';
 import '../../services/panic_trigger_service.dart';
 import '../../services/receipt_builder.dart';
+import '../../services/tax_settings_service.dart';
 import '../../database/collections/local_sale.dart';
 import '../inventory/add_merchandise_screen.dart';
 import '../payments/confirm_payment_scanner_screen.dart';
@@ -1362,6 +1363,12 @@ class _PosScreenBodyState extends State<_PosScreenBody> {
               name: it.productName,
               quantity: it.quantity,
               unitPrice: it.unitPrice,
+              // Forward the frozen IVA snapshot so the printed ticket
+              // shows the VAT footer exactly as the sale was closed.
+              // Legacy rows with null fields just skip the block.
+              taxRate: it.taxRate,
+              taxAmount: it.taxAmount,
+              isTaxInclusive: it.isTaxInclusive,
             ))
         .toList(growable: false);
 
@@ -1504,6 +1511,23 @@ class _PosScreenBodyState extends State<_PosScreenBody> {
           ..items = saleItems
           ..createdAt = DateTime.now()
           ..synced = false;
+
+        // Snapshot the VAT bytes onto each line BEFORE persistence so
+        // the historical math freezes here, not in any later report.
+        // When VAT is disabled the snapshot is all-null and the row
+        // stays indistinguishable from pre-feature legacy data.
+        {
+          final taxSvc = TaxSettingsService.instance;
+          for (final item in localSale.items) {
+            final snap = taxSvc.snapshotForLine(
+              unitPrice: item.unitPrice,
+              quantity: item.quantity,
+            );
+            item.taxRate = snap.rate;
+            item.taxAmount = snap.amount;
+            item.isTaxInclusive = snap.inclusive;
+          }
+        }
 
         await db.insertSaleAndDeductStock(localSale);
 
@@ -1723,6 +1747,22 @@ class _PosScreenBodyState extends State<_PosScreenBody> {
                       ..createdAt = DateTime.now()
                       ..synced = false;
 
+                    // Freeze the VAT bytes onto each line so this
+                    // mesa-paid sale stays correct even if the owner
+                    // toggles VAT off tomorrow.
+                    {
+                      final taxSvc = TaxSettingsService.instance;
+                      for (final item in localSale.items) {
+                        final snap = taxSvc.snapshotForLine(
+                          unitPrice: item.unitPrice,
+                          quantity: item.quantity,
+                        );
+                        item.taxRate = snap.rate;
+                        item.taxAmount = snap.amount;
+                        item.isTaxInclusive = snap.inclusive;
+                      }
+                    }
+
                     await db.insertSaleAndDeductStock(localSale);
 
                     // Fire-and-forget receipt + drawer kick. Never awaited
@@ -1815,6 +1855,24 @@ class _PosScreenBodyState extends State<_PosScreenBody> {
         ..items = saleItems
         ..createdAt = DateTime.now()
         ..synced = false;
+
+      // Snapshot the VAT bytes onto each fiado line. The fiado
+      // statement and the eventual receipt both read these fields, so
+      // freezing them here keeps the figure consistent even if the
+      // owner deactivates VAT later.
+      {
+        final taxSvc = TaxSettingsService.instance;
+        for (final item in localSale.items) {
+          final snap = taxSvc.snapshotForLine(
+            unitPrice: item.unitPrice,
+            quantity: item.quantity,
+          );
+          item.taxRate = snap.rate;
+          item.taxAmount = snap.amount;
+          item.isTaxInclusive = snap.inclusive;
+        }
+      }
+
       await db.insertSaleAndDeductStock(localSale);
 
       // Fire-and-forget receipt + drawer kick. Fiados still print so the

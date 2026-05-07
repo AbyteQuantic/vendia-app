@@ -11,6 +11,7 @@ import 'services/active_fiado_service.dart';
 import 'services/api_service.dart';
 import 'services/auth_service.dart';
 import 'services/hardware_service.dart';
+import 'services/tax_settings_service.dart';
 import 'models/branch.dart';
 import 'services/branch_provider.dart';
 import 'services/role_manager.dart';
@@ -70,6 +71,19 @@ class _VendIAAppState extends State<VendIAApp> {
     _syncSalesOnStart();
     _loadBranches();
     _bootstrapHardware();
+    _bootstrapTaxSettings();
+  }
+
+  /// Hydrate the TaxSettingsService from SharedPreferences. We defer
+  /// this to addPostFrameCallback so a slow disk read never blocks the
+  /// first POS frame — the snapshotForLine() call sites tolerate the
+  /// pre-load state (returns the safe "VAT off" snapshot) until the
+  /// real prefs land.
+  void _bootstrapTaxSettings() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      // loadFromPrefs() already swallows its own errors.
+      TaxSettingsService.instance.loadFromPrefs();
+    });
   }
 
   /// Hydrate the HardwareService from SharedPreferences and, if the
