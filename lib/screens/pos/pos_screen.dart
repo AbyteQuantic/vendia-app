@@ -81,12 +81,63 @@ class _PosScreenBodyState extends State<_PosScreenBody> {
     _loadPendingFiados();
     _loadNotifications();
     _loadFeatureFlags();
+    // First reconcile runs after the next frame so the CartController
+    // is already wired up via Provider — addPostFrameCallback avoids the
+    // "context.read in initState" foot-gun.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _reconcilePendingCredits();
+    });
     _notificationsTimer =
         Timer.periodic(const Duration(seconds: 20), (_) {
       _loadNotifications();
       _loadPendingFiados();
       _loadOpenTabs();
+      // Same 20s tick reconciles the slot-lock against the server. We
+      // don't run a dedicated timer because the request set we need is
+      // a strict subset of `_loadPendingFiados` — see [_reconcilePendingCredits].
+      _reconcilePendingCredits();
     });
+  }
+
+  /// Sweep every locked slot's `pendingCreditAccountId` against the
+  /// `/api/v1/credits?status=pending` list. Any slot whose id is no
+  /// longer in that list (= the customer accepted, the cashier
+  /// cancelled, or the back-office rejected) is released. Fire-and-
+  /// forget; failures are silent because the slot lock stays in place
+  /// until reconciliation eventually succeeds.
+  Future<void> _reconcilePendingCredits() async {
+    try {
+      final ctrl = context.read<CartController>();
+      final locked = ctrl.pendingCreditAccountIds;
+      if (locked.isEmpty) return;
+      final api = ApiService(AuthService());
+      final res = await api.fetchCredits(status: 'pending', perPage: 200);
+      final list = (res['data'] as List?) ?? const [];
+      final stillPending = <String>{};
+      for (final row in list) {
+        if (row is! Map) continue;
+        final id = row['id'] as String?;
+        if (id != null && id.isNotEmpty) stillPending.add(id);
+      }
+      // Anything we tracked that's no longer on the pending list is
+      // either accepted or cancelled — release the slot.
+      final toRelease = locked.where((id) => !stillPending.contains(id));
+      if (toRelease.isEmpty) return;
+      final released = ctrl.releasePendingCredits(toRelease);
+      if (released.isNotEmpty && mounted) {
+        // Best-effort UX confirmation. The cashier may already be
+        // mid-typing on a different slot, so we keep the message brief.
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            duration: Duration(seconds: 3),
+            behavior: SnackBarBehavior.floating,
+            content: Text('Fiado aceptado por el cliente. Slot liberado.'),
+          ),
+        );
+      }
+    } catch (_) {
+      // Silent: the lock stays in place. Next tick retries.
+    }
   }
 
   Future<void> _loadFeatureFlags() async {
@@ -1381,7 +1432,26 @@ class _PosScreenBodyState extends State<_PosScreenBody> {
         // Copy cart items BEFORE clearing (List is reference type)
         final cartSnapshot = List<CartItem>.from(ctrl.activeCart);
 
-        ctrl.clearActiveCart();
+        // Slot-lock decision tree:
+        //   1. fiadoPending=true  → credit is awaiting customer acceptance.
+        //      DON'T clear the cart. Mark the slot with the
+        //      pendingCreditAccountId so an accidental switchCart +
+        //      Limpiar can't erase items the cashier already promised
+        //      the customer. The slot is released by the polling
+        //      sweep when the server marks the credit accepted/rejected,
+        //      OR by the cashier explicitly cancelling fiado.
+        //   2. anything else      → existing semantics: drop cart + context.
+        if (result.paymentMethod == 'credit' &&
+            result.fiadoPending &&
+            (result.creditAccountId ?? '').isNotEmpty) {
+          ctrl.setPendingCreditOnActive(
+            creditAccountId: result.creditAccountId!,
+            customerName: result.customerName,
+            customerPhone: result.customerPhone,
+          );
+        } else {
+          ctrl.clearActiveCart();
+        }
 
         // Sync sale to backend (fire and forget — don't block UX). When
         // the cashier appended to an existing fiado the checkout result
@@ -1395,8 +1465,13 @@ class _PosScreenBodyState extends State<_PosScreenBody> {
           dynamicQrPayload: result.dynamicQrPayload,
         );
         // Credit sales can leave a fiado in pending state; refresh the
-        // badge so the cashier sees it in the Cuaderno indicator.
-        if (result.paymentMethod == 'credit') _loadPendingFiados();
+        // badge so the cashier sees it in the Cuaderno indicator. The
+        // same poll also feeds [_reconcilePendingCredits] which releases
+        // any locked slot whose credit moved off status=pending.
+        if (result.paymentMethod == 'credit') {
+          _loadPendingFiados();
+          _reconcilePendingCredits();
+        }
 
         if (!mounted) return;
         await Navigator.of(context).push(
@@ -2895,36 +2970,59 @@ class _CartTabs extends StatelessWidget {
           final hasItems = count > 0 && !isActive;
           final ctx = contexts[i];
           final hasContext = ctx.type != AccountType.mostrador;
+          final hasPendingCredit = ctx.hasPendingCredit;
           // Occupied = has context but empty cart (sent to kitchen, waiting)
           final isOccupied = hasContext && count == 0 && !isActive;
 
-          // Tab label: context name or default "C{n}"
-          final label = hasContext ? ctx.tabLabel : 'C${i + 1}';
+          // Tab label: pending fiado wins over context label so the
+          // cashier sees "Fiado: <name>" instead of the bare "Cn".
+          final String label;
+          if (hasPendingCredit) {
+            final name = (ctx.customerName ?? '').trim();
+            label = name.isEmpty ? 'Fiado' : 'Fiado: $name';
+          } else if (hasContext) {
+            label = ctx.tabLabel;
+          } else {
+            label = 'C${i + 1}';
+          }
           // Truncate long labels
           final displayLabel =
-              label.length > 7 ? '${label.substring(0, 6)}…' : label;
+              label.length > 12 ? '${label.substring(0, 11)}…' : label;
 
-          // Color coding by context
+          // Color coding by context. Pending fiado overrides any context
+          // colour with the orange "warning" gradient — visually screams
+          // "esperando" so the cashier won't tap into it by mistake.
           List<Color>? gradient;
           if (isActive) {
-            switch (ctx.type) {
-              case AccountType.mostrador:
-                gradient = const [Color(0xFF1A2FA0), Color(0xFF2541B2)];
-                break;
-              case AccountType.mesa:
-                gradient = const [Color(0xFF1A56DB), Color(0xFF3B82F6)];
-                break;
-              case AccountType.mesaInmediata:
-                gradient = const [Color(0xFFEA580C), Color(0xFFF97316)];
-                break;
-              case AccountType.fiado:
-                gradient = const [Color(0xFF6D28D9), Color(0xFF8B5CF6)];
-                break;
+            if (hasPendingCredit) {
+              gradient = const [Color(0xFFEA580C), Color(0xFFF59E0B)];
+            } else {
+              switch (ctx.type) {
+                case AccountType.mostrador:
+                  gradient = const [Color(0xFF1A2FA0), Color(0xFF2541B2)];
+                  break;
+                case AccountType.mesa:
+                  gradient = const [Color(0xFF1A56DB), Color(0xFF3B82F6)];
+                  break;
+                case AccountType.mesaInmediata:
+                  gradient = const [Color(0xFFEA580C), Color(0xFFF97316)];
+                  break;
+                case AccountType.fiado:
+                  gradient = const [Color(0xFF6D28D9), Color(0xFF8B5CF6)];
+                  break;
+              }
             }
           }
 
-          // Dynamic width: wider for context labels, widest for occupied
-          final tabWidth = isOccupied ? 80.0 : hasContext ? 72.0 : 48.0;
+          // Dynamic width: wider for pending fiado (longer label),
+          // wider for context labels, widest for occupied.
+          final tabWidth = hasPendingCredit
+              ? 96.0
+              : isOccupied
+                  ? 80.0
+                  : hasContext
+                      ? 72.0
+                      : 48.0;
 
           return Padding(
             padding: const EdgeInsets.symmetric(horizontal: 3),
@@ -2945,13 +3043,18 @@ class _CartTabs extends StatelessWidget {
                   gradient: isActive ? LinearGradient(colors: gradient!) : null,
                   color: isActive
                       ? null
-                      : isOccupied
-                          ? const Color(0xFFDDECFF)
-                          : hasItems
-                              ? const Color(0xFFFFF8E1)
-                              : Colors.white,
+                      : hasPendingCredit
+                          ? const Color(0xFFFFF1E0) // soft orange
+                          : isOccupied
+                              ? const Color(0xFFDDECFF)
+                              : hasItems
+                                  ? const Color(0xFFFFF8E1)
+                                  : Colors.white,
                   borderRadius: BorderRadius.circular(14),
-                  border: hasItems
+                  border: hasPendingCredit && !isActive
+                      ? Border.all(
+                          color: const Color(0xFFEA580C), width: 2)
+                      : hasItems
                           ? Border.all(
                               color: const Color(0xFFF59E0B), width: 2)
                           : isOccupied
@@ -2962,7 +3065,24 @@ class _CartTabs extends StatelessWidget {
                 child: Stack(
                   clipBehavior: Clip.none,
                   children: [
-                    if (isOccupied)
+                    // Orange hourglass pip on locked-fiado slots — the
+                    // visual cue mirrors what the cashier sees on the
+                    // Cuaderno badge so the two surfaces speak the
+                    // same language.
+                    if (hasPendingCredit)
+                      Positioned(
+                        top: -4, right: -4,
+                        child: Container(
+                          padding: const EdgeInsets.all(3),
+                          decoration: const BoxDecoration(
+                            color: Color(0xFFEA580C),
+                            shape: BoxShape.circle,
+                          ),
+                          child: const Icon(Icons.hourglass_top_rounded,
+                              size: 10, color: Colors.white),
+                        ),
+                      ),
+                    if (!hasPendingCredit && isOccupied)
                       Positioned(
                         top: -4, right: -4,
                         child: Container(
@@ -3007,13 +3127,16 @@ class _CartTabs extends StatelessWidget {
                             displayLabel,
                             overflow: TextOverflow.ellipsis,
                             style: TextStyle(
-                              fontSize: hasContext ? 11 : 13,
+                              fontSize:
+                                  (hasContext || hasPendingCredit) ? 11 : 13,
                               fontWeight: FontWeight.w800,
                               color: isActive
                                   ? Colors.white
-                                  : (hasItems || isOccupied)
-                                      ? AppTheme.textPrimary
-                                      : const Color(0xFFBBBBBB),
+                                  : hasPendingCredit
+                                      ? const Color(0xFF9A3412)
+                                      : (hasItems || isOccupied)
+                                          ? AppTheme.textPrimary
+                                          : const Color(0xFFBBBBBB),
                             ),
                           ),
                         ),
@@ -3023,7 +3146,18 @@ class _CartTabs extends StatelessWidget {
                               color: Colors.white.withValues(alpha: 0.85)),
                       ],
                     ),
-                    if (isActive && !hasContext)
+                    if (hasPendingCredit)
+                      Text(
+                        'Esperando…',
+                        style: TextStyle(
+                          fontSize: 8,
+                          fontWeight: FontWeight.w700,
+                          color: isActive
+                              ? Colors.white.withValues(alpha: 0.9)
+                              : const Color(0xFFEA580C),
+                        ),
+                      )
+                    else if (isActive && !hasContext)
                       Text(
                         'Activa',
                         style: TextStyle(
