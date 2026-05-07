@@ -58,11 +58,26 @@ class CheckoutScreen extends StatefulWidget {
   final String formattedTotal;
   final double total;
 
+  /// When true the screen auto-launches the Fiado handshake sheet on
+  /// first frame. Used by the POS "slot fiado" entry point so the
+  /// cashier never lands on a half-open credit account that bypasses
+  /// the backend handshake.
+  final bool forceFiadoFlow;
+
+  /// Optional prefill of the customer name + phone for the Fiado
+  /// handshake. Lets the slot-fiado entry point keep the data the
+  /// cashier already typed instead of asking again.
+  final String? prefillCustomerName;
+  final String? prefillCustomerPhone;
+
   const CheckoutScreen({
     super.key,
     required this.items,
     required this.formattedTotal,
     required this.total,
+    this.forceFiadoFlow = false,
+    this.prefillCustomerName,
+    this.prefillCustomerPhone,
   });
 
   @override
@@ -134,6 +149,13 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     super.initState();
     _amountTendered = widget.total; // default to exact
     _loadFiadoFlag();
+    if (widget.forceFiadoFlow) {
+      // Defer until the first frame so the Scaffold + AppBar are mounted
+      // and the handshake bottom sheet can attach to a real BuildContext.
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _showFiadoChoiceSheet();
+      });
+    }
   }
 
   /// Pulls the live tenant flag that gates the "Fiar" payment chip.
@@ -811,8 +833,10 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   }
 
   void _showFiadoHandshake() {
-    final nameCtrl = TextEditingController();
-    final phoneCtrl = TextEditingController();
+    final nameCtrl =
+        TextEditingController(text: widget.prefillCustomerName ?? '');
+    final phoneCtrl =
+        TextEditingController(text: widget.prefillCustomerPhone ?? '');
     final emailCtrl = TextEditingController();
 
     showModalBottomSheet(

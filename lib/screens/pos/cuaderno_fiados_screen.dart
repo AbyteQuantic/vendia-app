@@ -5,44 +5,23 @@ import '../../services/api_service.dart';
 import '../../services/auth_service.dart';
 import '../../theme/app_theme.dart';
 
-/// Pure helper — decides which raw `status` rows belong to each
-/// Cuaderno tab. Extracted out of the widget so we can pin the rules
-/// down in unit tests (regression guard for the P0 "fiado fantasma"
-/// where a partially-paid account silently dropped out of "Activos").
-///
-/// Tabs map to the backend state machine as follows:
-///   * `active`  → status ∈ {open, partial} — every accepted, unpaid
-///                 fiado, regardless of whether the customer has
-///                 already started paying it down.
-///   * `pending` → status == 'pending' — link sent / opened but not
-///                 yet accepted by the customer.
-///   * `paid`    → status == 'paid' — saldo cero (incl. write-offs).
-///
-/// Cancelled rows never surface in the cuaderno (the Cancelar fiado
-/// flow already pops back to the list and the row is dropped here).
-List<Map<String, dynamic>> filterCreditsForTab(
-  List<Map<String, dynamic>> all,
-  String tab,
-) {
-  bool keep(String status) {
-    switch (tab) {
-      case 'active':
-        return status == 'open' || status == 'partial';
-      case 'pending':
-        return status == 'pending';
-      case 'paid':
-        return status == 'paid';
-      default:
-        return false;
-    }
-  }
-
-  return all
-      .where((c) => keep((c['status'] as String?) ?? 'open'))
-      .toList(growable: false);
-}
-
 /// "El Cuaderno" — Real accounts receivable from backend. Zero mocks.
+///
+/// Post Ledger Reconstruction the screen consumes THREE distinct
+/// endpoints, one per tab, instead of pulling everything once and
+/// partitioning client-side:
+///
+///   * `Activos`   → `GET /credits?group_by=customer` — one row per
+///                   customer, summing every open/partial/pending
+///                   ledger row. Eliminates the "Viviana repetida 3
+///                   veces" bug because the backend is the one
+///                   collapsing duplicates.
+///   * `Pendientes`→ `GET /credits?status=pending` — handshake links
+///                   sent / opened but not yet accepted.
+///   * `Pagados`   → `GET /credits?status=paid` — backend orders by
+///                   `closed_at DESC NULLS LAST` so the list is a
+///                   real audit log of cierres, not the apertura
+///                   timeline.
 class CuadernoFiadosScreen extends StatefulWidget {
   const CuadernoFiadosScreen({super.key});
 
@@ -52,16 +31,28 @@ class CuadernoFiadosScreen extends StatefulWidget {
 
 class _CuadernoFiadosScreenState extends State<CuadernoFiadosScreen> {
   late final ApiService _api;
-  // Raw server response (everything except cancelled, since the API
-  // doesn't return cancelled rows by default). We filter client-side
-  // because the active tab needs status IN (open, partial) and the
-  // backend `?status=` param only supports a single value.
-  List<Map<String, dynamic>> _all = [];
+
+  // One bucket per tab — populated independently from three GETs in
+  // [_load]. The backend already filters / aggregates so we never
+  // have to re-partition here.
+  List<Map<String, dynamic>> _activos = const [];
+  List<Map<String, dynamic>> _pendientes = const [];
+  List<Map<String, dynamic>> _pagados = const [];
+
   bool _loading = true;
   String _filter = 'active';
 
-  List<Map<String, dynamic>> get _credits =>
-      filterCreditsForTab(_all, _filter);
+  List<Map<String, dynamic>> get _credits {
+    switch (_filter) {
+      case 'pending':
+        return _pendientes;
+      case 'paid':
+        return _pagados;
+      case 'active':
+      default:
+        return _activos;
+    }
+  }
 
   @override
   void initState() {
@@ -73,14 +64,25 @@ class _CuadernoFiadosScreenState extends State<CuadernoFiadosScreen> {
   Future<void> _load() async {
     setState(() => _loading = true);
     try {
-      // Pull everything in one round-trip and partition client-side.
-      // Previously we sent `status=open`, which silently hid every
-      // account that had received at least one abono (status='partial').
-      // Cashiers reported these as "fiados fantasma" — the fiado was
-      // accepted server-side but missing from the cuaderno list.
-      final res = await _api.fetchCredits(perPage: 200);
-      final list = (res['data'] as List?)?.cast<Map<String, dynamic>>() ?? [];
-      if (mounted) setState(() { _all = list; _loading = false; });
+      final results = await Future.wait<dynamic>([
+        // Activos comes pre-aggregated per customer to kill duplicates.
+        _api.fetchCreditsGroupedByCustomer(),
+        // Pendientes / Pagados stay row-per-account; the cuaderno only
+        // needs the raw list because each row maps 1:1 to a handshake.
+        _api.fetchCredits(status: 'pending', perPage: 200),
+        _api.fetchCredits(status: 'paid', perPage: 200),
+      ]);
+      if (!mounted) return;
+      setState(() {
+        _activos = (results[0] as List<Map<String, dynamic>>);
+        _pendientes = ((results[1] as Map<String, dynamic>)['data'] as List?)
+                ?.cast<Map<String, dynamic>>() ??
+            const [];
+        _pagados = ((results[2] as Map<String, dynamic>)['data'] as List?)
+                ?.cast<Map<String, dynamic>>() ??
+            const [];
+        _loading = false;
+      });
     } catch (_) {
       if (mounted) setState(() => _loading = false);
     }
@@ -100,8 +102,23 @@ class _CuadernoFiadosScreenState extends State<CuadernoFiadosScreen> {
     return buf.toString();
   }
 
-  double get _totalPending => _credits.fold<double>(0,
-      (s, c) => s + ((c['total_amount'] as num?) ?? 0) - ((c['paid_amount'] as num?) ?? 0));
+  /// Header total. For Activos we sum the pre-computed `balance` field
+  /// from the grouped endpoint (one entry per customer, balance already
+  /// = total_amount − paid_amount). For Pendientes/Pagados we still
+  /// derive the balance from total/paid because the rows are raw
+  /// CreditAccount records.
+  double get _totalPending {
+    if (_filter == 'active') {
+      return _credits.fold<double>(
+          0, (s, c) => s + ((c['balance'] as num?) ?? 0));
+    }
+    return _credits.fold<double>(
+        0,
+        (s, c) =>
+            s +
+            ((c['total_amount'] as num?) ?? 0) -
+            ((c['paid_amount'] as num?) ?? 0));
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -192,7 +209,9 @@ class _CuadernoFiadosScreenState extends State<CuadernoFiadosScreen> {
                         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 4),
                         itemCount: _credits.length,
                         separatorBuilder: (_, __) => const SizedBox(height: 10),
-                        itemBuilder: (_, i) => _buildTile(_credits[i]),
+                        itemBuilder: (_, i) => _filter == 'active'
+                            ? _buildGroupedTile(_credits[i])
+                            : _buildAccountTile(_credits[i]),
                       ),
                     ),
         ),
@@ -200,95 +219,242 @@ class _CuadernoFiadosScreenState extends State<CuadernoFiadosScreen> {
     );
   }
 
-  Widget _buildTile(Map<String, dynamic> credit) {
-    final customer = credit['customer'] as Map<String, dynamic>? ?? {};
-    final name = customer['name'] as String? ?? 'Sin nombre';
-    final phone = customer['phone'] as String? ?? '';
-    final total = (credit['total_amount'] as num?)?.toInt() ?? 0;
-    final paid = (credit['paid_amount'] as num?)?.toInt() ?? 0;
-    final balance = total - paid;
-    final status = credit['status'] as String? ?? 'open';
-    final fiadoStatus = credit['fiado_status'] as String? ?? '';
-    final isPending = status == 'pending' || fiadoStatus == 'link_sent' || fiadoStatus == 'link_opened';
-    final isPartial = status == 'partial';
-    final isPaid = status == 'paid';
+  /// Tile for the "Activos" tab — one row per customer, total balance
+  /// rolled up across every open/partial/pending ledger row server-side.
+  /// `accounts_count > 1` is a soft warning (azul, no rojo) so the
+  /// merchant notices duplicates that pre-date the unique constraint
+  /// without seeing it as an error.
+  Widget _buildGroupedTile(Map<String, dynamic> row) =>
+      buildGroupedTileForTest(row);
 
-    final avatarColor = isPending
-        ? const Color(0xFF6D28D9)
-        : const Color(0xFFF59E0B);
-    final statusLabel = isPaid
-        ? 'Pagado'
-        : isPending
-            ? 'Esperando aceptación · ${_fmt(balance)}'
-            : isPartial
-                // Show both progress and remainder so a partially-paid
-                // account is visually distinct from one that hasn't
-                // received any abono yet — same orange palette so it
-                // still reads as "active fiado", just more informative.
-                ? 'Abonó ${_fmt(paid)} · Debe ${_fmt(balance)}'
-                : 'Debe ${_fmt(balance)}';
-    final statusColor = isPaid
-        ? AppTheme.success
-        : isPending
-            ? const Color(0xFF6D28D9)
-            : const Color(0xFFEA580C);
-
+  /// Tile for "Pendientes" and "Pagados" — one row per CreditAccount.
+  /// On the "Pagados" tab, the trailing column shows `closed_at` (the
+  /// audit timestamp written when the balance reaches zero). When the
+  /// row pre-dates the new column the date falls back to a short dash
+  /// so legacy rows don't break the layout.
+  Widget _buildAccountTile(Map<String, dynamic> credit) {
     return GestureDetector(
       onTap: () async {
+        final id = credit['id'] as String?;
+        if (id == null || id.isEmpty) return;
         await Navigator.of(context).push(MaterialPageRoute(
-          builder: (_) => _FiadoDetailScreen(creditId: credit['id'] as String),
+          builder: (_) => _FiadoDetailScreen(creditId: id),
         ));
         _load();
       },
-      child: Container(
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: Colors.white, borderRadius: BorderRadius.circular(18),
-          border: isPending
-              ? Border.all(
-                  color: const Color(0xFF6D28D9).withValues(alpha: 0.35),
-                  width: 1.2)
-              : null,
-          boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.03),
-              blurRadius: 6, offset: const Offset(0, 2))],
+      child: buildAccountTileForTest(credit),
+    );
+  }
+}
+
+/// Pure rendering for an "Activos" row from `?group_by=customer`.
+/// Top-level so it can be exercised from widget tests without
+/// instantiating the full screen + ApiService. Visually the same as
+/// the in-State tile — the State tile just delegates here.
+Widget buildGroupedTileForTest(Map<String, dynamic> row) {
+  final name = (row['customer_name'] as String?) ?? 'Sin nombre';
+  final phone = (row['customer_phone'] as String?) ?? '';
+  final balance = (row['balance'] as num?)?.toInt() ?? 0;
+  final accountsCount = (row['accounts_count'] as num?)?.toInt() ?? 1;
+
+  return Container(
+    padding: const EdgeInsets.all(16),
+    decoration: BoxDecoration(
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(18),
+      boxShadow: [
+        BoxShadow(
+            color: Colors.black.withValues(alpha: 0.03),
+            blurRadius: 6,
+            offset: const Offset(0, 2)),
+      ],
+    ),
+    child: Row(children: [
+      CircleAvatar(
+        radius: 24,
+        backgroundColor: const Color(0xFFF59E0B).withValues(alpha: 0.12),
+        child: const Icon(Icons.person_rounded,
+            color: Color(0xFFF59E0B), size: 22),
+      ),
+      const SizedBox(width: 14),
+      Expanded(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(name,
+                style: const TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.black87)),
+            Text('Debe ${_fmtMoney(balance)}',
+                style: const TextStyle(
+                    fontSize: 14, color: Color(0xFFEA580C))),
+            if (accountsCount > 1)
+              Padding(
+                padding: const EdgeInsets.only(top: 4),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 8, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFDBEAFE),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Text('$accountsCount cuentas',
+                      style: const TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: Color(0xFF1D4ED8))),
+                ),
+              ),
+          ],
         ),
-        child: Row(children: [
-          CircleAvatar(
-            radius: 24,
-            backgroundColor: avatarColor.withValues(alpha: 0.12),
-            child: Icon(
-              isPending
-                  ? Icons.hourglass_bottom_rounded
-                  : Icons.person_rounded,
-              color: avatarColor,
-              size: 22,
+      ),
+      Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
+        Text(_fmtMoney(balance),
+            style: const TextStyle(
+                fontSize: 17,
+                fontWeight: FontWeight.bold,
+                color: AppTheme.textPrimary)),
+        if (phone.isNotEmpty)
+          GestureDetector(
+            onTap: () {
+              HapticFeedback.lightImpact();
+              launchUrl(Uri.parse('https://wa.me/57$phone'),
+                  mode: LaunchMode.externalApplication);
+            },
+            child: const Padding(
+              padding: EdgeInsets.only(top: 4),
+              child: Icon(Icons.chat_rounded,
+                  color: Color(0xFF25D366), size: 22),
             ),
           ),
-          const SizedBox(width: 14),
-          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(name, style: const TextStyle(fontSize: 18,
-                fontWeight: FontWeight.w600, color: Colors.black87)),
+      ]),
+    ]),
+  );
+}
+
+/// Pure rendering for a "Pendientes"/"Pagados" account row. Same
+/// reasoning as [buildGroupedTileForTest] — the State just wraps this
+/// in a GestureDetector so taps push the detail screen.
+Widget buildAccountTileForTest(Map<String, dynamic> credit) {
+  final customer = credit['customer'] as Map<String, dynamic>? ?? {};
+  final name = customer['name'] as String? ?? 'Sin nombre';
+  final phone = customer['phone'] as String? ?? '';
+  final total = (credit['total_amount'] as num?)?.toInt() ?? 0;
+  final paid = (credit['paid_amount'] as num?)?.toInt() ?? 0;
+  final balance = total - paid;
+  final status = credit['status'] as String? ?? 'open';
+  final fiadoStatus = credit['fiado_status'] as String? ?? '';
+  final isPending = status == 'pending' ||
+      fiadoStatus == 'link_sent' ||
+      fiadoStatus == 'link_opened';
+  final isPaid = status == 'paid';
+  final closedAtRaw = credit['closed_at'] as String?;
+  final closedAtLabel = (closedAtRaw == null || closedAtRaw.isEmpty)
+      ? '—'
+      : _shortDate(closedAtRaw);
+
+  final avatarColor =
+      isPending ? const Color(0xFF6D28D9) : const Color(0xFFF59E0B);
+  final statusLabel = isPaid
+      ? 'Cierre: $closedAtLabel'
+      : isPending
+          ? 'Esperando aceptación · ${_fmtMoney(balance)}'
+          : 'Debe ${_fmtMoney(balance)}';
+  final statusColor = isPaid
+      ? AppTheme.success
+      : isPending
+          ? const Color(0xFF6D28D9)
+          : const Color(0xFFEA580C);
+
+  return Container(
+    padding: const EdgeInsets.all(16),
+    decoration: BoxDecoration(
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(18),
+      border: isPending
+          ? Border.all(
+              color: const Color(0xFF6D28D9).withValues(alpha: 0.35),
+              width: 1.2)
+          : null,
+      boxShadow: [
+        BoxShadow(
+            color: Colors.black.withValues(alpha: 0.03),
+            blurRadius: 6,
+            offset: const Offset(0, 2)),
+      ],
+    ),
+    child: Row(children: [
+      CircleAvatar(
+        radius: 24,
+        backgroundColor: avatarColor.withValues(alpha: 0.12),
+        child: Icon(
+          isPending ? Icons.hourglass_bottom_rounded : Icons.person_rounded,
+          color: avatarColor,
+          size: 22,
+        ),
+      ),
+      const SizedBox(width: 14),
+      Expanded(
+          child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+            Text(name,
+                style: const TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.black87)),
             Text(statusLabel,
                 style: TextStyle(fontSize: 14, color: statusColor)),
           ])),
-          Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
-            Text(_fmt(total), style: const TextStyle(fontSize: 17,
-                fontWeight: FontWeight.bold, color: AppTheme.textPrimary)),
-            if (phone.isNotEmpty)
-              GestureDetector(
-                onTap: () {
-                  HapticFeedback.lightImpact();
-                  launchUrl(Uri.parse('https://wa.me/57$phone'),
-                      mode: LaunchMode.externalApplication);
-                },
-                child: const Padding(padding: EdgeInsets.only(top: 4),
-                  child: Icon(Icons.chat_rounded, color: Color(0xFF25D366), size: 22)),
-              ),
-          ]),
-        ]),
-      ),
-    );
+      Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
+        Text(_fmtMoney(total),
+            style: const TextStyle(
+                fontSize: 17,
+                fontWeight: FontWeight.bold,
+                color: AppTheme.textPrimary)),
+        if (phone.isNotEmpty)
+          GestureDetector(
+            onTap: () {
+              HapticFeedback.lightImpact();
+              launchUrl(Uri.parse('https://wa.me/57$phone'),
+                  mode: LaunchMode.externalApplication);
+            },
+            child: const Padding(
+                padding: EdgeInsets.only(top: 4),
+                child: Icon(Icons.chat_rounded,
+                    color: Color(0xFF25D366), size: 22)),
+          ),
+      ]),
+    ]),
+  );
+}
+
+/// Trims an ISO-8601 timestamp from the backend down to YYYY-MM-DD.
+String _shortDate(String iso) {
+  try {
+    final dt = DateTime.parse(iso).toLocal();
+    final m = dt.month.toString().padLeft(2, '0');
+    final d = dt.day.toString().padLeft(2, '0');
+    return '${dt.year}-$m-$d';
+  } catch (_) {
+    return iso;
   }
+}
+
+/// Top-level money formatter — used by both pure tile builders.
+String _fmtMoney(num amount) {
+  final v = amount.round();
+  if (v == 0) return '\$0';
+  final s = v.abs().toString();
+  final buf = StringBuffer(v < 0 ? '-\$' : '\$');
+  final start = s.length % 3;
+  if (start > 0) buf.write(s.substring(0, start));
+  for (int i = start; i < s.length; i += 3) {
+    if (i > 0) buf.write('.');
+    buf.write(s.substring(i, i + 3));
+  }
+  return buf.toString();
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════

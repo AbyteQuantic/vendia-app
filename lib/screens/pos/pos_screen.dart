@@ -3,7 +3,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 import 'package:provider/provider.dart';
-import 'package:url_launcher/url_launcher.dart';
 import 'package:uuid/uuid.dart';
 import '../../models/app_notification.dart';
 import '../../models/cart_item.dart';
@@ -1195,6 +1194,12 @@ class _PosScreenBodyState extends State<_PosScreenBody> {
     );
   }
 
+  /// Slot-level entry to "Fiar". Captures name + phone and immediately
+  /// sets the slot context. The actual ledger handshake (with phone
+  /// normalization + one-open-account enforcement) happens server-side
+  /// when the cashier hits "FIAR" → [_cobrarMostrador] forwards to
+  /// [CheckoutScreen] with `forceFiadoFlow: true`. There is no longer
+  /// a parallel "register fiado without handshake" path.
   void _showFiadoSelector(CartController ctrl) {
     final nameCtrl = TextEditingController();
     final phoneCtrl = TextEditingController();
@@ -1310,7 +1315,20 @@ class _PosScreenBodyState extends State<_PosScreenBody> {
         _cobrarYEnviar(ctrl);
         break;
       case AccountType.fiado:
-        _registerFiado(ctrl);
+        // Single ledger entry point: jump straight into the checkout
+        // with the Fiado handshake forced. The CheckoutScreen owns the
+        // backend round-trip (`POST /api/v1/fiado/init` or `append`)
+        // and returns a CheckoutResult carrying the canonical
+        // credit_account_id. The legacy `_registerFiado` shortcut
+        // (which posted a credit sale with credit_account_id=null and
+        // the backend now rejects with 400) was deleted in this refactor.
+        final ctx = ctrl.activeContext;
+        _cobrarMostrador(
+          ctrl,
+          forceFiadoFlow: true,
+          prefillCustomerName: ctx.customerName,
+          prefillCustomerPhone: ctx.customerPhone,
+        );
         break;
     }
   }
@@ -1473,13 +1491,21 @@ class _PosScreenBodyState extends State<_PosScreenBody> {
     }
   }
 
-  void _cobrarMostrador(CartController ctrl) {
+  void _cobrarMostrador(
+    CartController ctrl, {
+    bool forceFiadoFlow = false,
+    String? prefillCustomerName,
+    String? prefillCustomerPhone,
+  }) {
     Navigator.of(context).push(
       MaterialPageRoute(
         builder: (_) => CheckoutScreen(
           items: ctrl.activeCart,
           formattedTotal: ctrl.formattedTotal,
           total: ctrl.activeTotal,
+          forceFiadoFlow: forceFiadoFlow,
+          prefillCustomerName: prefillCustomerName,
+          prefillCustomerPhone: prefillCustomerPhone,
         ),
       ),
     ).then((result) async {
@@ -1829,138 +1855,12 @@ class _PosScreenBodyState extends State<_PosScreenBody> {
     );
   }
 
-  void _registerFiado(CartController ctrl) {
-    final ctx = ctrl.activeContext;
-    final total = ctrl.formattedTotal;
-    final cartSnapshot = List<CartItem>.from(ctrl.activeCart);
-    final saleTotal = ctrl.activeTotal;
-    final items = ctrl.activeCart
-        .map((i) => '• ${i.product.name} x${i.quantity} = ${i.formattedSubtotal}')
-        .join('\n');
-
-    // Save as credit sale via backend (deducts stock + creates sale)
-    final saleUuid = const Uuid().v4();
-    final db = DatabaseService.instance;
-    () async {
-      // Local Isar sale
-      final saleItems = cartSnapshot.map((item) {
-        return SaleItemEmbed()
-          ..productUuid = item.product.uuid
-          ..productName = item.product.name
-          ..quantity = item.quantity
-          ..unitPrice = item.product.price
-          ..isContainerCharge = false;
-      }).toList();
-      final localSale = LocalSale()
-        ..uuid = saleUuid
-        ..paymentMethod = 'credit'
-        ..total = saleTotal
-        ..saleOrigin = 'fiado'
-        ..items = saleItems
-        ..createdAt = DateTime.now()
-        ..synced = false;
-
-      // Snapshot the VAT bytes onto each fiado line. The fiado
-      // statement and the eventual receipt both read these fields, so
-      // freezing them here keeps the figure consistent even if the
-      // owner deactivates VAT later.
-      {
-        final taxSvc = TaxSettingsService.instance;
-        for (final item in localSale.items) {
-          final snap = taxSvc.snapshotForLine(
-            unitPrice: item.unitPrice,
-            quantity: item.quantity,
-          );
-          item.taxRate = snap.rate;
-          item.taxAmount = snap.amount;
-          item.isTaxInclusive = snap.inclusive;
-        }
-      }
-
-      await db.insertSaleAndDeductStock(localSale);
-
-      // Fire-and-forget receipt + drawer kick. Fiados still print so the
-      // customer can leave with their copy. Never awaited.
-      unawaited(_tryPrintReceipt(localSale, 'credit'));
-
-      // Backend sync (creates Sale with payment_method=credit, deducts stock)
-      _syncSaleToBackend(
-        cartSnapshot,
-        'credit',
-        saleUuid,
-        creditAccountId: null,
-      );
-    }();
-    ctrl.clearActiveCart();
-
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (dlgCtx) => AlertDialog(
-        backgroundColor: Colors.white,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-        title: Column(
-          children: [
-            const Icon(Icons.check_circle_rounded,
-                color: Color(0xFF10B981), size: 56),
-            const SizedBox(height: 10),
-            Text(
-              '¡Fiado anotado a\n${ctx.customerName}!',
-              textAlign: TextAlign.center,
-              style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
-            ),
-          ],
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text('Total: $total',
-                style: const TextStyle(
-                    fontSize: 24, fontWeight: FontWeight.bold,
-                    color: Color(0xFF6D28D9))),
-            const SizedBox(height: 20),
-            if (ctx.customerPhone != null && ctx.customerPhone!.isNotEmpty)
-              SizedBox(
-                width: double.infinity,
-                height: 64,
-                child: ElevatedButton.icon(
-                  onPressed: () {
-                    final phone = ctx.customerPhone!.replaceAll(RegExp(r'[^0-9]'), '');
-                    final fullPhone = phone.startsWith('57') ? phone : '57$phone';
-                    final msg = Uri.encodeComponent(
-                      'Hola ${ctx.customerName}, este es el detalle de su fiado:\n\n'
-                      '$items\n\n'
-                      'Total: $total\n\n'
-                      'Puede ver su saldo pendiente en:\n'
-                      'https://tienda.vendia.app/deuda/${ctrl.activeIndex}',
-                    );
-                    launchUrl(
-                      Uri.parse('https://wa.me/$fullPhone?text=$msg'),
-                      mode: LaunchMode.externalApplication,
-                    );
-                  },
-                  icon: const Icon(Icons.message_rounded, size: 24),
-                  label: const Text('Enviar por WhatsApp',
-                      style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF25D366),
-                    foregroundColor: Colors.white,
-                    shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(16)),
-                  ),
-                ),
-              ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(dlgCtx).pop(),
-            child: const Text('Cerrar', style: TextStyle(fontSize: 18)),
-          ),
-        ],
-      ),
-    );
-  }
+  // _registerFiado was removed during the Ledger Reconstruction epic.
+  // It used to post a credit sale to the backend with creditAccountId:
+  // null, which the new contract rejects with HTTP 400. The slot-fiado
+  // entry now routes through `_handleSmartAction`'s AccountType.fiado
+  // branch → `_cobrarMostrador(forceFiadoFlow: true, ...)` →
+  // `CheckoutScreen` handshake. There is exactly one ledger entry path.
 
   @override
   Widget build(BuildContext context) {
