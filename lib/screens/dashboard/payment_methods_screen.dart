@@ -2,12 +2,31 @@ import 'dart:developer' as developer;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:image_cropper/image_cropper.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../../services/api_service.dart';
 import '../../services/app_error.dart';
 import '../../services/auth_service.dart';
 import '../../theme/app_theme.dart';
+
+/// Pure decision: given the outcome of the picker and the cropper,
+/// what should _uploadQR do next? Tested in isolation so a future
+/// refactor of the upload flow can't accidentally drop the cropper
+/// step nor send the un-cropped picked file.
+@visibleForTesting
+enum QrUploadStep { abort, uploadCropped }
+
+@visibleForTesting
+QrUploadStep decideQrUploadStep({
+  required String? pickedPath,
+  required String? croppedPath,
+}) {
+  if (pickedPath == null) return QrUploadStep.abort;
+  if (croppedPath == null) return QrUploadStep.abort;
+  if (croppedPath.trim().isEmpty) return QrUploadStep.abort;
+  return QrUploadStep.uploadCropped;
+}
 
 /// Full CRUD for the tenant's digital-payment methods (Nequi,
 /// Daviplata, Bancolombia, Breve, Efectivo…). The "express" Nequi
@@ -231,21 +250,65 @@ class _PaymentMethodsScreenState extends State<PaymentMethodsScreen> {
     final picker = ImagePicker();
     final picked = await picker.pickImage(
       source: ImageSource.gallery,
-      imageQuality: 85, // keep original-ish quality but compress
-      maxWidth: 1600,
-      maxHeight: 1600,
+      imageQuality: 95, // pre-crop quality; final encode is handled
+                       // by image_cropper at compressFormat below.
+      maxWidth: 4000,
+      maxHeight: 4000,
     );
     if (picked == null) return;
+
+    // Force a square crop so the QR fills the 260×260 slot in the
+    // checkout modal without pillarbox margins. Owners commonly
+    // upload full Nequi/Daviplata screenshots — without this step
+    // the actual QR renders tiny and customers can't scan it.
+    final cropped = await ImageCropper().cropImage(
+      sourcePath: picked.path,
+      aspectRatio: const CropAspectRatio(ratioX: 1, ratioY: 1),
+      compressFormat: ImageCompressFormat.png,
+      compressQuality: 90,
+      uiSettings: [
+        AndroidUiSettings(
+          toolbarTitle: 'Recorta el QR',
+          toolbarColor: AppTheme.primary,
+          toolbarWidgetColor: Colors.white,
+          backgroundColor: Colors.black,
+          initAspectRatio: CropAspectRatioPreset.square,
+          lockAspectRatio: true,
+          hideBottomControls: false,
+        ),
+        IOSUiSettings(
+          title: 'Recorta el QR',
+          aspectRatioLockEnabled: true,
+          aspectRatioPickerButtonHidden: true,
+          rotateButtonsHidden: false,
+          resetButtonHidden: false,
+        ),
+      ],
+    );
+
+    // Cropper dismissed without confirming: silently abort. The
+    // owner stays on the payment-methods list and can retry.
+    if (cropped == null) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('Recorte cancelado',
+            style: TextStyle(fontSize: 16)),
+        behavior: SnackBarBehavior.floating,
+        duration: Duration(seconds: 2),
+      ));
+      return;
+    }
 
     setState(() => _uploadingId = methodId);
     HapticFeedback.selectionClick();
     try {
-      final mime = _guessMime(picked.path);
+      final mime = _guessMime(cropped.path);
+      final filename = _filenameFromPath(cropped.path, fallback: picked.name);
       final updated = await _api.uploadPaymentMethodQR(
         id: methodId,
-        filePath: picked.path,
+        filePath: cropped.path,
         mimeType: mime,
-        filename: picked.name,
+        filename: filename,
       );
       if (!mounted) return;
       // Replace the method in the local list without a full refetch.
@@ -278,6 +341,16 @@ class _PaymentMethodsScreenState extends State<PaymentMethodsScreen> {
     if (lower.endsWith('.jpg') || lower.endsWith('.jpeg')) return 'image/jpeg';
     if (lower.endsWith('.webp')) return 'image/webp';
     return 'image/png';
+  }
+
+  /// The cropped file lives in a temp path with an auto-generated
+  /// name. We prefer that name for upload consistency, but fall
+  /// back to picked.name if the cropped path lacks a tail segment
+  /// for any reason.
+  String _filenameFromPath(String path, {required String fallback}) {
+    final slash = path.lastIndexOf('/');
+    final tail = slash >= 0 ? path.substring(slash + 1) : path;
+    return tail.isNotEmpty ? tail : fallback;
   }
 
   void _showError(String msg) {
