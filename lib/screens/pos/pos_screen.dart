@@ -2039,7 +2039,9 @@ class _PosScreenBodyState extends State<_PosScreenBody> {
         maxCrossAxisExtent: 220,
         crossAxisSpacing: 12,
         mainAxisSpacing: 12,
-        mainAxisExtent: 290,
+        // Bumped 290→300 to absorb the +16px from the 32→48 bottom-row bump
+        // (40×40 ergonomic touch targets, Material 3 dense-surface spec).
+        mainAxisExtent: 300,
       ),
       itemCount: products.length,
       itemBuilder: (_, i) {
@@ -2235,14 +2237,22 @@ class _ProductCard extends StatelessWidget {
                           ),
                         ),
                         const SizedBox(height: 2),
-                        // Price + qty controls row. FittedBox guarantees the
-                        // whole row scales down on narrow devices so the
-                        // trash / minus / qty / plus never overflow the card.
+                        // Price + qty controls row. Ergonomic 40×40 buttons
+                        // (Material 3 dense-surface spec); price absorbs slack
+                        // and ellipsises rather than letting controls shrink.
                         SizedBox(
-                          height: 32,
+                          // Height bumped 32→48 to host 40×40 buttons with
+                          // vertical breathing room. The card's overall height
+                          // is set by mainAxisExtent on the GridView —
+                          // confirmed enough headroom.
+                          height: 48,
                           child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.center,
                             children: [
-                              Flexible(
+                              // Price absorbs available width and truncates
+                              // with ellipsis when long; it never pushes the
+                              // qty controls off-card.
+                              Expanded(
                                 child: Text(
                                   product.price <= 0 ? 'Sin precio' : product.formattedPrice,
                                   maxLines: 1,
@@ -2254,69 +2264,67 @@ class _ProductCard extends StatelessWidget {
                                   ),
                                 ),
                               ),
-                              const SizedBox(width: 6),
-                              Flexible(
-                                child: FittedBox(
-                                  fit: BoxFit.scaleDown,
-                                  alignment: Alignment.centerRight,
-                                  child: Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      // Decrement / trash — always laid out, only painted when inCart.
-                                      // maintainSize/Animation/State keep the slot width identical
-                                      // between qty=0 and qty>=1 so the "+" never shifts horizontally.
-                                      Visibility(
-                                        visible: inCart,
-                                        maintainSize: true,
-                                        maintainAnimation: true,
-                                        maintainState: true,
-                                        child: _miniButton(
-                                          icon: quantity == 1
-                                              ? Icons.delete_outline_rounded
-                                              : Icons.remove_rounded,
-                                          color: quantity == 1
-                                              ? AppTheme.error
-                                              : AppTheme.textPrimary,
-                                          bg: AppTheme.surfaceGrey,
-                                          // Defensive: a stray tap on the hidden hit-test area
-                                          // (shouldn't reach here because Visibility removes pointer
-                                          // events on its hidden subtree, but belt and braces) must
-                                          // not call onDecrement when the cart is empty.
-                                          onTap: inCart ? onDecrement : () {},
-                                        ),
-                                      ),
-                                      // Quantity readout — same maintainSize treatment so the slot
-                                      // is reserved while empty.
-                                      Visibility(
-                                        visible: inCart,
-                                        maintainSize: true,
-                                        maintainAnimation: true,
-                                        maintainState: true,
-                                        child: Padding(
-                                          padding: const EdgeInsets.symmetric(
-                                              horizontal: 6),
-                                          child: Text(
-                                            '$quantity',
-                                            style: const TextStyle(
-                                              fontSize: 16,
-                                              fontWeight: FontWeight.bold,
-                                            ),
-                                          ),
-                                        ),
-                                      ),
-                                      // The "+" button is the static anchor on the right edge.
-                                      // Routing preserves the original two-callback contract:
-                                      //   inCart=false → onTap (handles container-charge prompt)
-                                      //   inCart=true  → onIncrement (lightImpact + addProduct)
-                                      _miniButton(
-                                        icon: Icons.add_rounded,
-                                        color: Colors.white,
-                                        bg: AppTheme.primary,
-                                        onTap: inCart ? onIncrement : onTap,
-                                      ),
-                                    ],
+                              const SizedBox(width: 8),
+                              // Qty controls anchor: nominal-size Row (no
+                              // FittedBox) so 40×40 buttons keep their
+                              // ergonomic footprint on every device.
+                              // Visibility maintainSize/Animation/State keeps
+                              // the "+" anchored across qty 0/1/N
+                              // (PR #12 invariant).
+                              Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Visibility(
+                                    visible: inCart,
+                                    maintainSize: true,
+                                    maintainAnimation: true,
+                                    maintainState: true,
+                                    child: _miniButton(
+                                      icon: quantity == 1
+                                          ? Icons.delete_outline_rounded
+                                          : Icons.remove_rounded,
+                                      color: quantity == 1
+                                          ? AppTheme.error
+                                          : AppTheme.textPrimary,
+                                      bg: AppTheme.surfaceGrey,
+                                      // Defensive: hidden subtree shouldn't
+                                      // get pointer events, but a stray tap
+                                      // must NOT call onDecrement when the
+                                      // cart is empty.
+                                      onTap: inCart ? onDecrement : () {},
+                                    ),
                                   ),
-                                ),
+                                  Visibility(
+                                    visible: inCart,
+                                    maintainSize: true,
+                                    maintainAnimation: true,
+                                    maintainState: true,
+                                    child: Padding(
+                                      padding: const EdgeInsets.symmetric(
+                                          horizontal: 8),
+                                      child: Text(
+                                        '$quantity',
+                                        style: const TextStyle(
+                                          fontSize: 17,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                  // "+" is the static anchor on the right
+                                  // edge. Routing preserves the two-callback
+                                  // contract:
+                                  //   inCart=false → onTap (container-charge
+                                  //                  prompt path)
+                                  //   inCart=true  → onIncrement (lightImpact
+                                  //                  + addProduct)
+                                  _miniButton(
+                                    icon: Icons.add_rounded,
+                                    color: Colors.white,
+                                    bg: AppTheme.primary,
+                                    onTap: inCart ? onIncrement : onTap,
+                                  ),
+                                ],
                               ),
                             ],
                           ),
@@ -2365,19 +2373,23 @@ class _ProductCard extends StatelessWidget {
     required Color bg,
     required VoidCallback onTap,
   }) {
+    // Ergonomic POS touch target: 40×40 minimum (Material 3 spec
+    // for primary actions on dense surfaces). Icon scaled
+    // proportionally so the symbol stays visually centred.
     return GestureDetector(
+      behavior: HitTestBehavior.opaque,
       onTap: () {
         HapticFeedback.lightImpact();
         onTap();
       },
       child: Container(
-        width: 30,
-        height: 30,
+        width: 40,
+        height: 40,
         decoration: BoxDecoration(
           color: bg,
-          borderRadius: BorderRadius.circular(8),
+          borderRadius: BorderRadius.circular(10),
         ),
-        child: Icon(icon, size: 18, color: color),
+        child: Icon(icon, size: 22, color: color),
       ),
     );
   }
