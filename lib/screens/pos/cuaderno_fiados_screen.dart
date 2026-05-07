@@ -378,9 +378,11 @@ class _FiadoDetailScreenState extends State<_FiadoDetailScreen> {
                     HapticFeedback.mediumImpact();
                     _load();
                   } catch (e) {
-                    if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                    if (mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
                       content: Text('Error: $e'), backgroundColor: AppTheme.error,
                     ));
+                    }
                   }
                 },
                 icon: const Icon(Icons.check_rounded, size: 24),
@@ -1306,9 +1308,13 @@ class _FiadoDetailScreenState extends State<_FiadoDetailScreen> {
       final dt = DateTime.tryParse(date);
       if (dt != null) {
         final d = DateTime.now().difference(dt);
-        if (d.inMinutes < 60) fmt = 'Hace ${d.inMinutes} min';
-        else if (d.inHours < 24) fmt = 'Hace ${d.inHours}h';
-        else fmt = 'Hace ${d.inDays}d';
+        if (d.inMinutes < 60) {
+          fmt = 'Hace ${d.inMinutes} min';
+        } else if (d.inHours < 24) {
+          fmt = 'Hace ${d.inHours}h';
+        } else {
+          fmt = 'Hace ${d.inDays}d';
+        }
       }
     }
     return Padding(padding: const EdgeInsets.only(bottom: 10), child: Row(

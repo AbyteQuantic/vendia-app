@@ -16,11 +16,11 @@ void main() {
             child: Container(
               padding: const EdgeInsets.all(18),
               color: Colors.blue,
-              child: Wrap(
+              child: const Wrap(
                 crossAxisAlignment: WrapCrossAlignment.center,
                 spacing: 6,
                 runSpacing: 4,
-                children: const [
+                children: [
                   Text('250 transacciones',
                       style: TextStyle(color: Colors.white)),
                   Text('·', style: TextStyle(color: Colors.white)),

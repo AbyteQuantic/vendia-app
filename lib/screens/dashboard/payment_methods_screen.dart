@@ -298,10 +298,9 @@ class _PaymentMethodsScreenState extends State<PaymentMethodsScreen> {
         ],
       );
       developer.log(
-        '[_uploadQR] cropper returned ' +
-            (cropped == null
+        '[_uploadQR] cropper returned ${cropped == null
                 ? 'null (user cancelled)'
-                : 'path=${cropped.path}'),
+                : 'path=${cropped.path}'}',
         name: 'PaymentMethods',
       );
     } catch (e, st) {

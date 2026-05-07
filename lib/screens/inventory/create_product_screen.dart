@@ -813,7 +813,7 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
           tooltip: 'Volver',
           onPressed: () async {
             final shouldPop = await _confirmDiscard();
-            if (shouldPop && mounted) Navigator.of(context).pop();
+            if (shouldPop && context.mounted) Navigator.of(context).pop();
           },
         ),
         title: const Text(
@@ -839,7 +839,7 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
                   child: OutlinedButton(
                     onPressed: () async {
                       final shouldPop = await _confirmDiscard();
-                      if (shouldPop && mounted) Navigator.of(context).pop();
+                      if (shouldPop && context.mounted) Navigator.of(context).pop();
                     },
                     style: OutlinedButton.styleFrom(
                       foregroundColor: AppTheme.textSecondary,

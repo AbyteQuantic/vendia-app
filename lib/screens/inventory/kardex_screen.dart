@@ -270,15 +270,15 @@ class _KardexScreenState extends State<KardexScreen> {
 
   _MovementInfo _movementInfo(String type) {
     return switch (type) {
-      'sale' => _MovementInfo('Venta', Icons.shopping_cart, AppTheme.error),
-      'invoice_scan' => _MovementInfo('Factura IA', Icons.document_scanner, AppTheme.success),
-      'voice_ingest' => _MovementInfo('Voz IA', Icons.mic, AppTheme.success),
-      'order_cancel' => _MovementInfo('Pedido cancelado', Icons.cancel_outlined, AppTheme.warning),
-      'sale_cancel' => _MovementInfo('Venta cancelada', Icons.undo, AppTheme.warning),
-      'table_tab' => _MovementInfo('Cuenta mesa', Icons.table_restaurant, AppTheme.error),
-      'tab_close' => _MovementInfo('Cierre cuenta', Icons.receipt_long, AppTheme.error),
-      'manual_adjust' => _MovementInfo('Ajuste manual', Icons.edit, AppTheme.primary),
-      'initial_stock' => _MovementInfo('Stock inicial', Icons.inventory_2, AppTheme.success),
+      'sale' => const _MovementInfo('Venta', Icons.shopping_cart, AppTheme.error),
+      'invoice_scan' => const _MovementInfo('Factura IA', Icons.document_scanner, AppTheme.success),
+      'voice_ingest' => const _MovementInfo('Voz IA', Icons.mic, AppTheme.success),
+      'order_cancel' => const _MovementInfo('Pedido cancelado', Icons.cancel_outlined, AppTheme.warning),
+      'sale_cancel' => const _MovementInfo('Venta cancelada', Icons.undo, AppTheme.warning),
+      'table_tab' => const _MovementInfo('Cuenta mesa', Icons.table_restaurant, AppTheme.error),
+      'tab_close' => const _MovementInfo('Cierre cuenta', Icons.receipt_long, AppTheme.error),
+      'manual_adjust' => const _MovementInfo('Ajuste manual', Icons.edit, AppTheme.primary),
+      'initial_stock' => const _MovementInfo('Stock inicial', Icons.inventory_2, AppTheme.success),
       _ => _MovementInfo(type, Icons.help_outline, AppTheme.textSecondary),
     };
   }

@@ -49,7 +49,7 @@ class BarcodeValidator {
   /// E.g., pass 12 digits to get the 13th digit for EAN-13.
   static String computeCheckDigit(String partial) {
     int sum = 0;
-    final full = partial + '0'; // temporary check digit
+    final full = '${partial}0'; // temporary check digit
     for (int i = 0; i < full.length; i++) {
       final digit = int.parse(full[i]);
       final weight = (full.length - 1 - i).isOdd ? 1 : 3;

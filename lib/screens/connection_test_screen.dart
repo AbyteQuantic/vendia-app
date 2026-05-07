@@ -65,7 +65,7 @@ class _ConnectionTestScreenState extends State<ConnectionTestScreen> {
       if (hasSession) {
         // Tiene token → directo al Dashboard
         Navigator.of(context).pushReplacement(
-          MaterialPageRoute(builder: (_) => DashboardScreen(ownerName: '', businessName: '')),
+          MaterialPageRoute(builder: (_) => const DashboardScreen(ownerName: '', businessName: '')),
         );
       } else {
         // Sin sesión → Login
@@ -95,7 +95,7 @@ class _ConnectionTestScreenState extends State<ConnectionTestScreen> {
   void _goToDashboardDemo() {
     HapticFeedback.mediumImpact();
     Navigator.of(context).pushReplacement(
-      MaterialPageRoute(builder: (_) => DashboardScreen(ownerName: '', businessName: '')),
+      MaterialPageRoute(builder: (_) => const DashboardScreen(ownerName: '', businessName: '')),
     );
   }
 

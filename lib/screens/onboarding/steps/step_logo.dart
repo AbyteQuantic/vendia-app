@@ -284,7 +284,7 @@ class _StepLogoState extends State<StepLogo> {
           ),
           const SizedBox(height: 6),
           _detailsValid
-              ? Row(children: const [
+              ? const Row(children: [
                   Icon(Icons.check_circle_rounded,
                       color: AppTheme.success, size: 18),
                   SizedBox(width: 6),
@@ -374,7 +374,7 @@ class _StepLogoState extends State<StepLogo> {
               ),
             )
           else
-            Center(
+            const Center(
               child: Text(
                 'Su logo se aplicará automáticamente al crear la cuenta.',
                 textAlign: TextAlign.center,

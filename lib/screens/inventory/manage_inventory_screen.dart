@@ -747,6 +747,7 @@ class _EditProductSheetState extends State<_EditProductSheet> {
       return;
     }
 
+    if (!mounted) return;
     // Has photo — ask user what they want
     showModalBottomSheet(
       context: context,
@@ -1024,8 +1025,6 @@ class _EditProductSheetState extends State<_EditProductSheet> {
 
     @override
   Widget build(BuildContext context) {
-    final hasPhoto = _photoPath != null || (_photoUrl != null && _photoUrl!.isNotEmpty);
-
     return Scaffold(
       backgroundColor: AppTheme.background,
       appBar: AppBar(

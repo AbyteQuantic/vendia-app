@@ -193,7 +193,7 @@ class _ReceiptDetailScreenState extends State<ReceiptDetailScreen> {
           _SectionTitle('Productos vendidos (${items.length})'),
           const SizedBox(height: 8),
           if (items.isEmpty)
-            _EmptyHint('Sin items registrados.')
+            const _EmptyHint('Sin items registrados.')
           else
             ...items.map((it) => _ItemRow(
                   name: (it['name'] as String?) ?? '—',
@@ -504,7 +504,7 @@ class _TotalsCard extends StatelessWidget {
               ),
               Text(
                 fmtCOP(total),
-                style: TextStyle(
+                style: const TextStyle(
                   fontSize: 28,
                   fontWeight: FontWeight.w900,
                   color: AppTheme.primary,

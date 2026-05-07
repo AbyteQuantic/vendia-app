@@ -140,7 +140,7 @@ class _EmployeesScreenState extends State<EmployeesScreen> {
 
                   // Role dropdown
                   DropdownButtonFormField<String>(
-                    value: selectedRole,
+                    initialValue: selectedRole,
                     isExpanded: true,
                     style: const TextStyle(fontSize: 18, color: Colors.black87),
                     decoration: const InputDecoration(
@@ -164,7 +164,7 @@ class _EmployeesScreenState extends State<EmployeesScreen> {
                   // ── Branch selector (REQUIRED) ──────────────────────
                   DropdownButtonFormField<String>(
                     key: const Key('emp_branch_selector'),
-                    value: selectedBranchId,
+                    initialValue: selectedBranchId,
                     isExpanded: true,
                     style: const TextStyle(fontSize: 18, color: Colors.black87),
                     decoration: InputDecoration(
@@ -316,7 +316,7 @@ class _EmployeesScreenState extends State<EmployeesScreen> {
       ..._branches
           .where((b) => grouped.containsKey(b.id))
           .map((b) => b.id)
-          .toList(),
+          ,
       if (grouped.containsKey(null)) null,
     ];
 
@@ -980,7 +980,7 @@ class _EmployeeAdminSheetState extends State<_EmployeeAdminSheet> {
                       Switch(
                         key: const Key('employee_admin_active_switch'),
                         value: _isActive,
-                        activeColor: AppTheme.success,
+                        activeThumbColor: AppTheme.success,
                         onChanged: _saving
                             ? null
                             : (v) => setState(() => _isActive = v),
@@ -1004,7 +1004,7 @@ class _EmployeeAdminSheetState extends State<_EmployeeAdminSheet> {
                 const SizedBox(height: 16),
 
                 // ── Datos básicos ─────────────────────────
-                _SectionLabel('Datos básicos'),
+                const _SectionLabel('Datos básicos'),
                 const SizedBox(height: 8),
                 TextFormField(
                   key: const Key('employee_admin_name'),
@@ -1044,10 +1044,10 @@ class _EmployeeAdminSheetState extends State<_EmployeeAdminSheet> {
                 const SizedBox(height: 16),
 
                 // ── Sede asignada ─────────────────────────
-                _SectionLabel('Sede asignada'),
+                const _SectionLabel('Sede asignada'),
                 const SizedBox(height: 8),
                 if (activeBranches.isEmpty)
-                  _InfoChip(
+                  const _InfoChip(
                     color: AppTheme.warning,
                     text:
                         'Aún no tienes sucursales. El empleado quedará en el negocio principal.',
@@ -1081,7 +1081,7 @@ class _EmployeeAdminSheetState extends State<_EmployeeAdminSheet> {
 
                 // ── Rol y permisos ────────────────────────
                 if (!_isOwner) ...[
-                  _SectionLabel('Rol y permisos'),
+                  const _SectionLabel('Rol y permisos'),
                   const SizedBox(height: 8),
                   Row(
                     children: [
