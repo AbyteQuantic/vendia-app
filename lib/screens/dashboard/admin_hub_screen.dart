@@ -16,6 +16,7 @@ import '../../services/margin_service.dart';
 import 'catalog_virtual_screen.dart';
 import 'panic_config_screen.dart';
 import 'owner_pin_setup_screen.dart';
+import '../admin/hardware_settings_screen.dart';
 
 /// Admin Hub — Business configuration screen with Gerontodiseño.
 class AdminHubScreen extends StatefulWidget {
@@ -325,6 +326,16 @@ class _AdminHubScreenState extends State<AdminHubScreen> {
               subtitle: 'Conectar Bluetooth, mensaje de factura',
               onTap: () => Navigator.of(context).push(
                 MaterialPageRoute(builder: (_) => const PrinterConfigScreen()),
+              ),
+            ),
+            _SettingsTile(
+              icon: Icons.print_rounded,
+              iconColor: const Color(0xFF7C3AED),
+              title: 'Hardware y Facturación',
+              subtitle: 'Impresora y cajón',
+              onTap: () => Navigator.of(context).push(
+                MaterialPageRoute(
+                    builder: (_) => const HardwareSettingsScreen()),
               ),
             ),
             _SettingsTile(
