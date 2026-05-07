@@ -2262,8 +2262,15 @@ class _ProductCard extends StatelessWidget {
                                   child: Row(
                                     mainAxisSize: MainAxisSize.min,
                                     children: [
-                                      if (inCart) ...[
-                                        _miniButton(
+                                      // Decrement / trash — always laid out, only painted when inCart.
+                                      // maintainSize/Animation/State keep the slot width identical
+                                      // between qty=0 and qty>=1 so the "+" never shifts horizontally.
+                                      Visibility(
+                                        visible: inCart,
+                                        maintainSize: true,
+                                        maintainAnimation: true,
+                                        maintainState: true,
+                                        child: _miniButton(
                                           icon: quantity == 1
                                               ? Icons.delete_outline_rounded
                                               : Icons.remove_rounded,
@@ -2271,9 +2278,21 @@ class _ProductCard extends StatelessWidget {
                                               ? AppTheme.error
                                               : AppTheme.textPrimary,
                                           bg: AppTheme.surfaceGrey,
-                                          onTap: onDecrement,
+                                          // Defensive: a stray tap on the hidden hit-test area
+                                          // (shouldn't reach here because Visibility removes pointer
+                                          // events on its hidden subtree, but belt and braces) must
+                                          // not call onDecrement when the cart is empty.
+                                          onTap: inCart ? onDecrement : () {},
                                         ),
-                                        Padding(
+                                      ),
+                                      // Quantity readout — same maintainSize treatment so the slot
+                                      // is reserved while empty.
+                                      Visibility(
+                                        visible: inCart,
+                                        maintainSize: true,
+                                        maintainAnimation: true,
+                                        maintainState: true,
+                                        child: Padding(
                                           padding: const EdgeInsets.symmetric(
                                               horizontal: 6),
                                           child: Text(
@@ -2284,19 +2303,17 @@ class _ProductCard extends StatelessWidget {
                                             ),
                                           ),
                                         ),
-                                        _miniButton(
-                                          icon: Icons.add_rounded,
-                                          color: Colors.white,
-                                          bg: AppTheme.primary,
-                                          onTap: onIncrement,
-                                        ),
-                                      ] else
-                                        _miniButton(
-                                          icon: Icons.add_rounded,
-                                          color: Colors.white,
-                                          bg: AppTheme.primary,
-                                          onTap: onTap,
-                                        ),
+                                      ),
+                                      // The "+" button is the static anchor on the right edge.
+                                      // Routing preserves the original two-callback contract:
+                                      //   inCart=false → onTap (handles container-charge prompt)
+                                      //   inCart=true  → onIncrement (lightImpact + addProduct)
+                                      _miniButton(
+                                        icon: Icons.add_rounded,
+                                        color: Colors.white,
+                                        bg: AppTheme.primary,
+                                        onTap: inCart ? onIncrement : onTap,
+                                      ),
                                     ],
                                   ),
                                 ),
