@@ -2,7 +2,6 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
-import 'package:qr_flutter/qr_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../database/database_service.dart';
 import '../../database/collections/local_payment_method.dart';
@@ -60,7 +59,27 @@ class CheckoutScreen extends StatefulWidget {
 }
 
 class _CheckoutScreenState extends State<CheckoutScreen> {
-  String _selectedMethod = 'cash';
+  // Sentinel keys for non-tenant chips. The cash fallback fires when
+  // the tenant has zero configured methods (brand-new account / sync
+  // in flight) so the cashier always has at least one payment option
+  // to close a sale. The fiar key is a UI-only construct because
+  // "fiar" is not a payment method per se — it's a credit booking
+  // that takes a totally different code path.
+  static const String _kFallbackCash = '__fallback_cash__';
+  static const String _kFiar = '__fiar__';
+
+  /// The tenant-configured method the cashier picked, when any. Null
+  /// while the fallback cash chip or the Fiar chip is selected.
+  LocalPaymentMethod? _selectedMethod;
+
+  /// Stable key for the chip currently selected. For tenant methods
+  /// it's the method's uuid; for the fallback / fiar chips it's the
+  /// matching sentinel. Driving the selection state from a key (and
+  /// not the LocalPaymentMethod reference) keeps the chosen chip
+  /// stable across stream rebuilds even if the underlying ISAR
+  /// instance is replaced.
+  String _selectedMethodKey = _kFallbackCash;
+
   double _amountTendered = 0;
   final _manualCtrl = TextEditingController();
 
@@ -75,7 +94,15 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
 
   double get _change => _amountTendered - widget.total;
   bool get _isExact => (_amountTendered - widget.total).abs() < 1;
-  bool get _isCash => _selectedMethod == 'cash';
+
+  /// True when the selected chip should behave as plain cash —
+  /// either the synthetic fallback chip or a tenant-configured
+  /// method whose provider is `cash`. The cash-change panel only
+  /// renders when this is true.
+  bool get _isCash =>
+      _selectedMethodKey == _kFallbackCash ||
+      (_selectedMethod?.provider == 'cash');
+
   bool get _canConfirm =>
       !_isCash || _amountTendered >= widget.total;
 
@@ -112,10 +139,11 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         _fiadoEnabled = config['enable_fiados'] as bool? ?? true;
         // If the tendero turned fiados off WHILE the cashier was on
         // the checkout screen with "Fiar" selected, flip the selection
-        // back to cash so we don't end up posting a fiado the tenant
-        // no longer allows.
-        if (!_fiadoEnabled && _selectedMethod == 'credit') {
-          _selectedMethod = 'cash';
+        // back to the cash fallback so we don't end up posting a fiado
+        // the tenant no longer allows.
+        if (!_fiadoEnabled && _selectedMethodKey == _kFiar) {
+          _selectedMethod = null;
+          _selectedMethodKey = _kFallbackCash;
         }
       });
     } catch (_) {
@@ -261,55 +289,65 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                   StreamBuilder<List<LocalPaymentMethod>>(
                     stream: DatabaseService.instance.watchActivePaymentMethods(),
                     builder: (ctx, snap) {
-                      final tenantMethods = snap.data ?? const <LocalPaymentMethod>[];
-                      final baseNames = <String>{'efectivo', 'transferencia', 'tarjeta'};
-                      final extras = tenantMethods
+                      final tenantMethods =
+                          snap.data ?? const <LocalPaymentMethod>[];
+                      // The stream already filters isActive=true, but
+                      // we re-check here because the underlying ISAR
+                      // index could lag a write by a single tick — and
+                      // we additionally drop blank-name rows so a
+                      // half-written method never renders.
+                      final activeMethods = tenantMethods
                           .where((m) =>
-                              m.isActive &&
-                              m.name.trim().isNotEmpty &&
-                              !baseNames.contains(m.name.trim().toLowerCase()))
+                              m.isActive && m.name.trim().isNotEmpty)
                           .toList();
+
+                      // Zero-config fallback: if the tenant has NO
+                      // payment methods configured (brand-new account,
+                      // sync still in flight, or backend backfill not
+                      // yet run), show a single Efectivo chip
+                      // synthesised on the client. The first sync that
+                      // lands a real row replaces it.
+                      final showFallback = activeMethods.isEmpty;
 
                       return Wrap(
                         spacing: 10,
                         runSpacing: 10,
                         children: [
-                          _PaymentChip(
-                            icon: Icons.payments_rounded,
-                            label: 'Efectivo',
-                            selected: _selectedMethod == 'cash',
-                            onTap: () => setState(() => _selectedMethod = 'cash'),
-                          ),
-                          _PaymentChip(
-                            icon: Icons.phone_android_rounded,
-                            label: 'Transferencia',
-                            selected: _selectedMethod == 'transfer',
-                            onTap: () => setState(() => _selectedMethod = 'transfer'),
-                          ),
-                          _PaymentChip(
-                            icon: Icons.credit_card_rounded,
-                            label: 'Tarjeta',
-                            selected: _selectedMethod == 'card',
-                            onTap: () => setState(() => _selectedMethod = 'card'),
-                          ),
-                          for (final m in extras)
+                          if (showFallback)
                             _PaymentChip(
+                              key: const Key('checkout_pm_fallback_cash'),
+                              icon: Icons.payments_rounded,
+                              label: 'Efectivo',
+                              selected: _selectedMethodKey == _kFallbackCash,
+                              onTap: () => setState(() {
+                                _selectedMethod = null;
+                                _selectedMethodKey = _kFallbackCash;
+                              }),
+                            ),
+                          ...activeMethods.map((m) {
+                            final key = m.uuid;
+                            return _PaymentChip(
                               key: ValueKey('checkout_pm_${m.uuid}'),
                               icon: _iconForProvider(m.provider, m.name),
                               label: m.name,
-                              selected: _selectedMethod == m.name.toLowerCase(),
-                              onTap: () => setState(
-                                  () => _selectedMethod = m.name.toLowerCase()),
+                              selected: _selectedMethodKey == key,
+                              onTap: () => setState(() {
+                                _selectedMethod = m;
+                                _selectedMethodKey = key;
+                              }),
                               color: _colorForProvider(m.provider, m.name),
-                            ),
+                            );
+                          }),
                           if (_fiadoEnabled)
                             _PaymentChip(
                               key: const Key('checkout_payment_chip_fiar'),
                               icon: Icons.menu_book_rounded,
                               label: 'Fiar',
-                              selected: _selectedMethod == 'credit',
-                              onTap: () =>
-                                  setState(() => _selectedMethod = 'credit'),
+                              selected: _selectedMethodKey == _kFiar,
+                              onTap: () => setState(() {
+                                _selectedMethod = null;
+                                _selectedMethodKey = _kFiar;
+                              }),
                               color: const Color(0xFFF59E0B),
                             ),
                         ],
@@ -484,104 +522,94 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   Future<void> _confirmSale() async {
     HapticFeedback.mediumImpact();
 
-    if (_selectedMethod == 'credit') {
-      // Legacy fast-path: if some upstream screen staged an active fiado
-      // before arriving here, honor it silently. In the new UX no screen
-      // sets this — the picker below handles both "new" and "existing".
+    // Fiar branch — special UX path. The picker selects an existing
+    // fiado or opens a brand-new credit account before the sale is
+    // committed; this branch never falls through to the generic
+    // close-sale path.
+    if (_selectedMethodKey == _kFiar) {
       final active = context.read<ActiveFiadoService>();
       if (active.hasActive) {
         final accountId = active.accountId!;
         active.clear();
-        await _appendToFiadoById(accountId, customerName: active.customerName);
+        await _appendToFiadoById(accountId,
+            customerName: active.customerName);
         return;
       }
-
       if (!mounted) return;
       await _showFiadoChoiceSheet();
       return;
     }
 
-    // "Transferencia" (zero-fee QR). Ask the backend for the QR payload,
-    // open the QR modal, and only resolve the sale once the cashier
-    // visually confirms receipt of the Nequi/Daviplata/Bancolombia SMS.
-    if (_selectedMethod == 'transfer') {
-      await _startDynamicQRPayment();
+    // Fallback cash chip (tenant has no methods configured yet) or
+    // a stale state with no method selected. Either way we treat
+    // the sale as plain cash and close immediately.
+    if (_selectedMethodKey == _kFallbackCash || _selectedMethod == null) {
+      Navigator.of(context).pop(
+        const CheckoutResult(confirmed: true, paymentMethod: 'cash'),
+      );
       return;
     }
 
+    final method = _selectedMethod!;
+
+    // Cash provider configured by the merchant — close immediately.
+    if (method.provider == 'cash') {
+      Navigator.of(context).pop(
+        CheckoutResult(
+          confirmed: true,
+          paymentMethod: method.name.toLowerCase(),
+        ),
+      );
+      return;
+    }
+
+    // Any non-cash method that has a QR image attached must surface
+    // the QR to the customer before the cashier confirms reception.
+    // This single rule replaces the old hardcoded 'transfer' branch
+    // — Nequi, Daviplata, Bancolombia QR, custom merchant QRs all
+    // route through the same modal.
+    final qrUrl = method.qrImageUrl?.trim() ?? '';
+    if (qrUrl.isNotEmpty) {
+      final confirmed = await _showMethodQrDialog(method);
+      if (confirmed != true) return;
+      if (!mounted) return;
+      Navigator.of(context).pop(
+        CheckoutResult(
+          confirmed: true,
+          paymentMethod: method.name.toLowerCase(),
+        ),
+      );
+      return;
+    }
+
+    // Non-cash method with no QR configured — close as a plain
+    // electronic payment. The cashier confirms manually with the
+    // customer (e.g. card terminal print-out).
     Navigator.of(context).pop(
-      CheckoutResult(confirmed: true, paymentMethod: _selectedMethod),
+      CheckoutResult(
+        confirmed: true,
+        paymentMethod: method.name.toLowerCase(),
+      ),
     );
   }
 
-  Future<void> _startDynamicQRPayment() async {
-    // Loader while we ask the backend for the QR payload.
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (_) => const Center(
-        child: CircularProgressIndicator(color: AppTheme.primary),
-      ),
-    );
-    Map<String, dynamic>? data;
-    String? errorMsg;
-    try {
-      data = await ApiService(AuthService())
-          .generateDynamicQR(amount: widget.total.round());
-    } on AppError catch (e) {
-      errorMsg = e.message;
-    } catch (e) {
-      errorMsg = e.toString();
-    }
-    if (!mounted) return;
-    Navigator.of(context).pop(); // dismiss loader
-
-    if (data == null) {
-      HapticFeedback.heavyImpact();
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text(
-          errorMsg ?? 'No se pudo generar el QR',
-          style: const TextStyle(fontSize: 15),
-        ),
-        backgroundColor: AppTheme.error,
-        behavior: SnackBarBehavior.floating,
-      ));
-      return;
-    }
-
-    final qrString = data['qr_string'] as String? ?? '';
-    final accountNumber = data['account_number'] as String? ?? '';
-    final holder = data['account_holder'] as String? ?? '';
-    final walletName = data['wallet_name'] as String? ?? 'Transferencia';
-    final walletType = data['wallet_type'] as String? ?? 'transfer';
-    final instructions = data['instructions'] as String? ?? '';
-
-    final confirmed = await showModalBottomSheet<bool>(
+  /// Shows the merchant-configured QR for [method] in a modal. The
+  /// cashier taps "Recibí el pago" once the customer's transfer is
+  /// visible in the wallet app. Returns true on confirm, null/false
+  /// on dismiss.
+  Future<bool?> _showMethodQrDialog(LocalPaymentMethod method) {
+    return showModalBottomSheet<bool>(
       context: context,
       isScrollControlled: true,
-      enableDrag: false,
-      isDismissible: false,
       backgroundColor: Colors.transparent,
-      builder: (ctx) => _DynamicQRSheet(
-        qrString: qrString,
-        accountNumber: accountNumber,
-        holderName: holder,
-        walletName: walletName,
-        walletType: walletType,
-        instructions: instructions,
-        formattedTotal: widget.formattedTotal,
-      ),
+      builder: (sheetCtx) {
+        return _MethodQrSheet(
+          method: method,
+          amount: widget.total,
+          formattedTotal: widget.formattedTotal,
+        );
+      },
     );
-
-    if (!mounted) return;
-    if (confirmed == true) {
-      HapticFeedback.mediumImpact();
-      Navigator.of(context).pop(CheckoutResult(
-        confirmed: true,
-        paymentMethod: 'transfer',
-        dynamicQrPayload: qrString,
-      ));
-    }
   }
 
   /// Single entry point for the two fiado flows: open a brand-new account
@@ -1784,79 +1812,83 @@ class _ActiveFiadoPickerContentState
   }
 }
 
-/// Full-screen sheet that shows the dynamic QR to the customer + asks
-/// the cashier to manually confirm receipt of the Nequi/Daviplata SMS.
-/// Pops `true` on "Confirmar que recibí la plata", `false`/null on
-/// "Cancelar y volver". Because there's no real webhook yet, this is a
-/// visual-confirmation contract: only the cashier can close the sale.
-class _DynamicQRSheet extends StatefulWidget {
-  const _DynamicQRSheet({
-    required this.qrString,
-    required this.accountNumber,
-    required this.holderName,
-    required this.walletName,
-    required this.walletType,
-    required this.instructions,
+/// Generic QR sheet for any tenant-configured payment method that
+/// has a [LocalPaymentMethod.qrImageUrl] attached. Shows the merchant
+/// QR image, optional account details (e.g. Nequi number, account
+/// holder), and a "Recibí el pago" CTA that pops `true`. Pops `false`
+/// on cancel and `null` if dismissed via the OS gesture/back button.
+///
+/// Note: this widget is method-agnostic by design — there is no
+/// hardcoded branching for Nequi/Daviplata/Bancolombia. The only
+/// thing that changes per method is the icon + accent colour, which
+/// are derived from [LocalPaymentMethod.provider]/[LocalPaymentMethod.name]
+/// via the same helpers the chip strip uses.
+class _MethodQrSheet extends StatefulWidget {
+  const _MethodQrSheet({
+    required this.method,
+    required this.amount,
     required this.formattedTotal,
   });
 
-  final String qrString;
-  final String accountNumber;
-  final String holderName;
-  final String walletName;
-  final String walletType;
-  final String instructions;
+  final LocalPaymentMethod method;
+  final double amount;
   final String formattedTotal;
 
   @override
-  State<_DynamicQRSheet> createState() => _DynamicQRSheetState();
+  State<_MethodQrSheet> createState() => _MethodQrSheetState();
 }
 
-class _DynamicQRSheetState extends State<_DynamicQRSheet> {
+class _MethodQrSheetState extends State<_MethodQrSheet> {
   bool _confirming = false;
 
-  Color get _walletColor {
-    switch (widget.walletType) {
-      case 'nequi':
-        return const Color(0xFFE5007E);
-      case 'daviplata':
-        return const Color(0xFFE2001A);
-      case 'bancolombia':
-        return const Color(0xFFFDDA24);
-      case 'davivienda':
-        return const Color(0xFFED1C24);
-      case 'bbva':
-        return const Color(0xFF004481);
-      default:
-        return AppTheme.primary;
+  Color get _accent {
+    final p = (widget.method.provider ?? '').toLowerCase();
+    final n = widget.method.name.toLowerCase();
+    if (p == 'nequi' || n.contains('nequi')) return const Color(0xFFE5007E);
+    if (p == 'daviplata' || n.contains('daviplata')) {
+      return const Color(0xFFE2001A);
     }
+    if (n.contains('bancolombia')) return const Color(0xFFFDDA24);
+    if (n.contains('davivienda')) return const Color(0xFFED1C24);
+    if (n.contains('bbva')) return const Color(0xFF004481);
+    return AppTheme.primary;
   }
 
-  IconData get _walletIcon {
-    switch (widget.walletType) {
-      case 'nequi':
-      case 'daviplata':
-        return Icons.smartphone_rounded;
-      default:
-        return Icons.account_balance_rounded;
+  IconData get _icon {
+    final p = (widget.method.provider ?? '').toLowerCase();
+    final n = widget.method.name.toLowerCase();
+    if (p == 'nequi' || n.contains('nequi')) {
+      return Icons.smartphone_rounded;
     }
+    if (p == 'daviplata' || n.contains('daviplata')) {
+      return Icons.smartphone_rounded;
+    }
+    if (p == 'qr' || n.contains('qr')) return Icons.qr_code_rounded;
+    if (n.contains('bancolombia') || n.contains('banco')) {
+      return Icons.account_balance_rounded;
+    }
+    return Icons.account_balance_wallet_rounded;
   }
 
-  Future<void> _copyAccount() async {
-    await Clipboard.setData(ClipboardData(text: widget.accountNumber));
+  Future<void> _copyAccountDetails() async {
+    final details = widget.method.accountDetails?.trim() ?? '';
+    if (details.isEmpty) return;
+    await Clipboard.setData(ClipboardData(text: details));
     HapticFeedback.lightImpact();
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-      content: Text('Cuenta ${widget.accountNumber} copiada',
-          style: const TextStyle(fontSize: 15)),
+    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+      content: Text('Datos de cuenta copiados',
+          style: TextStyle(fontSize: 15)),
       backgroundColor: AppTheme.success,
       behavior: SnackBarBehavior.floating,
-      duration: const Duration(seconds: 2),
+      duration: Duration(seconds: 2),
     ));
   }
 
   @override
   Widget build(BuildContext context) {
+    final qrUrl = widget.method.qrImageUrl?.trim() ?? '';
+    final details = widget.method.accountDetails?.trim() ?? '';
     return DraggableScrollableSheet(
       initialChildSize: 0.95,
       minChildSize: 0.7,
@@ -1882,34 +1914,32 @@ class _DynamicQRSheetState extends State<_DynamicQRSheet> {
             Expanded(
               child: SingleChildScrollView(
                 controller: scrollCtrl,
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 20, vertical: 4),
+                padding: const EdgeInsets.symmetric(
+                    horizontal: 20, vertical: 4),
                 child: Column(
                   children: [
-                    // Wallet chip ───────────────────────────────────────
+                    // Method chip — name + icon, accent-coloured.
                     Container(
                       padding: const EdgeInsets.symmetric(
                           horizontal: 14, vertical: 8),
                       decoration: BoxDecoration(
-                        color: _walletColor.withValues(alpha: 0.12),
+                        color: _accent.withValues(alpha: 0.12),
                         borderRadius: BorderRadius.circular(999),
                       ),
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          Icon(_walletIcon,
-                              color: _walletColor, size: 20),
+                          Icon(_icon, color: _accent, size: 20),
                           const SizedBox(width: 8),
-                          Text(widget.walletName,
+                          Text(widget.method.name,
                               style: TextStyle(
                                   fontSize: 15,
                                   fontWeight: FontWeight.w700,
-                                  color: _walletColor)),
+                                  color: _accent)),
                         ],
                       ),
                     ),
                     const SizedBox(height: 16),
-                    // Title ─────────────────────────────────────────────
                     const Text(
                       'Escanee para pagar',
                       textAlign: TextAlign.center,
@@ -1920,7 +1950,6 @@ class _DynamicQRSheetState extends State<_DynamicQRSheet> {
                       ),
                     ),
                     const SizedBox(height: 6),
-                    // Locked-amount banner — the whole point of this UX.
                     Container(
                       padding: const EdgeInsets.symmetric(
                           horizontal: 14, vertical: 10),
@@ -1939,10 +1968,10 @@ class _DynamicQRSheetState extends State<_DynamicQRSheet> {
                           const SizedBox(width: 8),
                           Flexible(
                             child: Text(
-                              'El valor de ${widget.formattedTotal} está bloqueado. El cliente no puede cambiarlo.',
+                              'Total: ${widget.formattedTotal}',
                               style: const TextStyle(
                                 fontSize: 14,
-                                fontWeight: FontWeight.w600,
+                                fontWeight: FontWeight.w700,
                                 color: AppTheme.success,
                                 height: 1.3,
                               ),
@@ -1952,7 +1981,7 @@ class _DynamicQRSheetState extends State<_DynamicQRSheet> {
                       ),
                     ),
                     const SizedBox(height: 20),
-                    // QR code ───────────────────────────────────────────
+                    // QR image — loads the merchant-uploaded asset.
                     Container(
                       padding: const EdgeInsets.all(16),
                       decoration: BoxDecoration(
@@ -1966,89 +1995,91 @@ class _DynamicQRSheetState extends State<_DynamicQRSheet> {
                           ),
                         ],
                       ),
-                      child: QrImageView(
-                        data: widget.qrString,
-                        version: QrVersions.auto,
-                        size: 260,
-                        backgroundColor: Colors.white,
-                        errorCorrectionLevel: QrErrorCorrectLevel.M,
-                        eyeStyle: const QrEyeStyle(
-                          eyeShape: QrEyeShape.square,
-                          color: Colors.black,
+                      child: SizedBox(
+                        width: 260,
+                        height: 260,
+                        child: Image.network(
+                          qrUrl,
+                          fit: BoxFit.contain,
+                          loadingBuilder: (ctx, child, progress) {
+                            if (progress == null) return child;
+                            return const Center(
+                              child: CircularProgressIndicator(
+                                  color: AppTheme.primary),
+                            );
+                          },
+                          errorBuilder: (ctx, err, stack) => const Center(
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(Icons.broken_image_rounded,
+                                    size: 64,
+                                    color: AppTheme.textSecondary),
+                                SizedBox(height: 8),
+                                Text(
+                                  'No se pudo cargar el QR',
+                                  textAlign: TextAlign.center,
+                                  style: TextStyle(
+                                      fontSize: 14,
+                                      color: AppTheme.textSecondary),
+                                ),
+                              ],
+                            ),
+                          ),
                         ),
                       ),
                     ),
                     const SizedBox(height: 16),
-                    // Account details (fallback for customers who can't scan)
-                    Container(
-                      padding: const EdgeInsets.all(14),
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(16),
-                        border: Border.all(
-                            color: const Color(0xFFEDE8E0), width: 1),
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text('Si no puede escanear:',
-                              style: TextStyle(
-                                  fontSize: 13,
-                                  color: AppTheme.textSecondary
-                                      .withValues(alpha: 0.9))),
-                          const SizedBox(height: 6),
-                          Row(
-                            children: [
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment:
-                                      CrossAxisAlignment.start,
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    Text(widget.accountNumber,
-                                        style: const TextStyle(
-                                            fontSize: 22,
-                                            fontWeight: FontWeight.w800,
-                                            letterSpacing: 1.1,
-                                            color: AppTheme.textPrimary)),
-                                    if (widget.holderName.isNotEmpty)
-                                      Text(
-                                        'A nombre de ${widget.holderName}',
-                                        style: const TextStyle(
-                                            fontSize: 13,
-                                            color: AppTheme.textSecondary),
-                                      ),
-                                  ],
+                    // Account details — only render if the merchant
+                    // typed something into the admin form. Selectable
+                    // monospace so the customer can read it aloud.
+                    if (details.isNotEmpty)
+                      Container(
+                        padding: const EdgeInsets.all(14),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(16),
+                          border: Border.all(
+                              color: const Color(0xFFEDE8E0), width: 1),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text('Si no puede escanear:',
+                                style: TextStyle(
+                                    fontSize: 13,
+                                    color: AppTheme.textSecondary
+                                        .withValues(alpha: 0.9))),
+                            const SizedBox(height: 6),
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: SelectableText(
+                                    details,
+                                    style: const TextStyle(
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.w600,
+                                      fontFamily: 'monospace',
+                                      color: AppTheme.textPrimary,
+                                      height: 1.35,
+                                    ),
+                                  ),
                                 ),
-                              ),
-                              TextButton.icon(
-                                onPressed: _copyAccount,
-                                icon: const Icon(Icons.copy_rounded,
-                                    size: 18),
-                                label: const Text('Copiar',
-                                    style: TextStyle(
-                                        fontSize: 14,
-                                        fontWeight: FontWeight.w700)),
-                                style: TextButton.styleFrom(
-                                  foregroundColor: _walletColor,
+                                TextButton.icon(
+                                  onPressed: _copyAccountDetails,
+                                  icon: const Icon(Icons.copy_rounded,
+                                      size: 18),
+                                  label: const Text('Copiar',
+                                      style: TextStyle(
+                                          fontSize: 14,
+                                          fontWeight: FontWeight.w700)),
+                                  style: TextButton.styleFrom(
+                                    foregroundColor: _accent,
+                                  ),
                                 ),
-                              ),
-                            ],
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(height: 10),
-                    if (widget.instructions.isNotEmpty)
-                      Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 8),
-                        child: Text(
-                          widget.instructions,
-                          textAlign: TextAlign.center,
-                          style: const TextStyle(
-                              fontSize: 13,
-                              color: AppTheme.textSecondary,
-                              height: 1.35),
+                              ],
+                            ),
+                          ],
                         ),
                       ),
                     const SizedBox(height: 80),
@@ -2056,7 +2087,6 @@ class _DynamicQRSheetState extends State<_DynamicQRSheet> {
                 ),
               ),
             ),
-            // Fixed footer — primary confirm CTA + secondary cancel.
             SafeArea(
               top: false,
               child: Padding(
@@ -2078,7 +2108,7 @@ class _DynamicQRSheetState extends State<_DynamicQRSheet> {
                         icon: const Icon(Icons.check_circle_rounded,
                             size: 26),
                         label: const Text(
-                            '✅  Confirmar que recibí la plata',
+                            'Recibí el pago',
                             style: TextStyle(
                                 fontSize: 18,
                                 fontWeight: FontWeight.w800)),
@@ -2098,7 +2128,7 @@ class _DynamicQRSheetState extends State<_DynamicQRSheet> {
                       onPressed: _confirming
                           ? null
                           : () => Navigator.of(context).pop(false),
-                      child: const Text('Cancelar y volver',
+                      child: const Text('Cancelar',
                           style: TextStyle(
                               fontSize: 15,
                               fontWeight: FontWeight.w600,
@@ -2114,3 +2144,4 @@ class _DynamicQRSheetState extends State<_DynamicQRSheet> {
     );
   }
 }
+
