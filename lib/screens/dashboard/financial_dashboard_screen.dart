@@ -1,10 +1,17 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:provider/provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
+import '../../database/database_service.dart';
 import '../../database/sync/sales_sync.dart';
 import '../../services/api_service.dart';
 import '../../services/auth_service.dart';
+import '../../services/role_manager.dart';
+import '../../services/tax_settings_service.dart';
 import '../../theme/app_theme.dart';
+import '../../widgets/growth_radar_card.dart';
+import '../admin/tax_activation_wizard.dart';
 import '../history/receipt_detail_screen.dart';
 import '../history/sales_history_screen.dart';
 
@@ -219,6 +226,8 @@ class _FinancialDashboardScreenState extends State<FinancialDashboardScreen> {
         const SizedBox(height: 12),
         _CashFlowCards(
             cash: cash, digital: digital, fiado: fiado, profit: profit),
+        const SizedBox(height: 18),
+        const _RadarSection(),
         const SizedBox(height: 12),
         _ReceivablePill(amount: receivable),
         const SizedBox(height: 18),
@@ -1605,5 +1614,80 @@ class _ChipChoice extends StatelessWidget {
               color:
                   selected ? AppTheme.primary : AppTheme.borderColor)),
     );
+  }
+}
+
+/// "Crecimiento del año" — owner-facing growth radar inserted between
+/// the cash-flow cards and the receivables pill. Owner/admin only:
+/// cashiers and other roles never see this banner. The threshold is
+/// SharedPreferences-backed (`dian_threshold_cop`, default 160_000_000)
+/// so the merchant can override it locally until the per-tenant
+/// backend setting lands.
+class _RadarSection extends StatelessWidget {
+  const _RadarSection();
+
+  @override
+  Widget build(BuildContext context) {
+    // Role gate — `canSeeFinances` returns true for owner/admin (and
+    // legacy single-tenant accounts). Cashiers / waiters / inventory
+    // managers see nothing here. We watch instead of read so the gate
+    // re-evaluates if the workspace is switched mid-session.
+    final canSeeFinances = context.watch<RoleManager>().canSeeFinances;
+    if (!canSeeFinances) return const SizedBox.shrink();
+
+    return StreamBuilder<double>(
+      stream: DatabaseService.instance.watchYearToDateDigitalRevenue(),
+      builder: (ctx, revSnap) {
+        final revenue = revSnap.data ?? 0;
+        return FutureBuilder<int>(
+          future: _readThresholdCop(),
+          builder: (ctx2, thrSnap) {
+            final threshold = thrSnap.data ?? _defaultThresholdCop;
+            return ListenableBuilder(
+              listenable: TaxSettingsService.instance,
+              builder: (ctx3, _) {
+                final taxActive = TaxSettingsService.instance.enabled;
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Crecimiento del año',
+                      style: TextStyle(
+                        fontSize: 17,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    GrowthRadarCard(
+                      revenue: revenue,
+                      threshold: threshold,
+                      taxAlreadyActive: taxActive,
+                      onActivateTaxTap: () {
+                        Navigator.of(ctx3).push(
+                          MaterialPageRoute<void>(
+                            builder: (_) => const TaxActivationWizard(),
+                          ),
+                        );
+                      },
+                    ),
+                  ],
+                );
+              },
+            );
+          },
+        );
+      },
+    );
+  }
+}
+
+const int _defaultThresholdCop = 160000000;
+
+Future<int> _readThresholdCop() async {
+  try {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getInt('dian_threshold_cop') ?? _defaultThresholdCop;
+  } catch (_) {
+    return _defaultThresholdCop;
   }
 }
