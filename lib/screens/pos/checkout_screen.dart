@@ -28,6 +28,15 @@ class CheckoutResult {
   /// instead of the full-green "¡Venta registrada!" so nothing looks
   /// like it was silently auto-accepted.
   final bool fiadoPending;
+  /// Customer name captured on the handshake form, propagated so the
+  /// POS slot bubble can render "Fiado: <name>" while the credit stays
+  /// pending. Null on non-credit flows.
+  final String? customerName;
+  /// Customer phone captured on the handshake form. Mirrors
+  /// [customerName] — the POS slot keeps it so the cashier can
+  /// re-resend the WhatsApp link from the cart bubble's overflow menu
+  /// without re-typing.
+  final String? customerPhone;
   /// For "Transferencia" (Plan B zero-fee QR) flows: the raw QR payload
   /// that was shown to the customer. Persisted on the Sale row so the
   /// tenant keeps an audit trail and a future webhook reconciler can
@@ -38,6 +47,8 @@ class CheckoutResult {
     required this.paymentMethod,
     this.creditAccountId,
     this.fiadoPending = false,
+    this.customerName,
+    this.customerPhone,
     this.dynamicQrPayload,
   });
 }
@@ -932,6 +943,11 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
               paymentMethod: 'credit',
               creditAccountId: creditId,
               fiadoPending: !acceptedByCustomer,
+              // Propagate the form values so POS can render
+              // "Fiado: <name>" on the locked slot bubble without a
+              // round-trip to /credits/<id>.
+              customerName: name,
+              customerPhone: phone,
             ),
           );
         },

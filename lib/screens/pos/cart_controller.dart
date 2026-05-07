@@ -33,6 +33,25 @@ class AccountContext {
   /// tab page uses the token. Nullable until first sync.
   final String? orderId;
 
+  /// Server-side credit_id of a fiado handshake that's still
+  /// awaiting customer acceptance ("Seguir vendiendo" path). While
+  /// this is non-null the slot is "locked": the cashier cannot
+  /// silently discard the cart via [CartController.clearActiveCart]
+  /// or [CartController.clearCartKeepContext], and the header chip
+  /// renders an orange "Esperando…" badge so the cashier won't
+  /// accidentally `switchCart` and forget the order is in-flight.
+  ///
+  /// Released by either:
+  ///   1. The polling sweep — the credit moved off `status=pending`
+  ///      server-side (accepted or rejected by the customer), or
+  ///   2. The cashier explicitly invoking
+  ///      [CartController.clearActiveCart]/[CartController.cancelPendingCredit]
+  ///      with `force: true` — i.e. they pressed "Cancelar fiado".
+  ///
+  /// The field is persisted via [_persistContexts] so a process
+  /// restart cannot "amnesia" the lock.
+  final String? pendingCreditAccountId;
+
   const AccountContext({
     this.type = AccountType.mostrador,
     this.tableLabel,
@@ -40,6 +59,7 @@ class AccountContext {
     this.customerPhone,
     this.sessionToken,
     this.orderId,
+    this.pendingCreditAccountId,
   });
 
   AccountContext copyWith({
@@ -49,6 +69,7 @@ class AccountContext {
     String? customerPhone,
     String? sessionToken,
     String? orderId,
+    String? pendingCreditAccountId,
   }) {
     return AccountContext(
       type: type ?? this.type,
@@ -57,8 +78,34 @@ class AccountContext {
       customerPhone: customerPhone ?? this.customerPhone,
       sessionToken: sessionToken ?? this.sessionToken,
       orderId: orderId ?? this.orderId,
+      pendingCreditAccountId:
+          pendingCreditAccountId ?? this.pendingCreditAccountId,
     );
   }
+
+  /// Returns a new context with [pendingCreditAccountId] reset to
+  /// null. `copyWith` cannot express "explicitly null" because every
+  /// optional parameter falls back to `this.field` — use this when
+  /// the slot is being released after server acceptance/cancel.
+  AccountContext clearPendingCredit() {
+    return AccountContext(
+      type: type,
+      tableLabel: tableLabel,
+      customerName: customerName,
+      customerPhone: customerPhone,
+      sessionToken: sessionToken,
+      orderId: orderId,
+      // pendingCreditAccountId intentionally omitted → null
+    );
+  }
+
+  /// True when the cart on this slot is locked behind a fiado
+  /// handshake awaiting customer acceptance. Surfaces cleanly to the
+  /// UI without leaking the `pendingCreditAccountId` field — read
+  /// sites should prefer this getter so adding richer states later
+  /// (e.g. "rejected") stays internal to the controller.
+  bool get hasPendingCredit =>
+      pendingCreditAccountId != null && pendingCreditAccountId!.isNotEmpty;
 
   String get tabLabel {
     switch (type) {
@@ -69,7 +116,7 @@ class AccountContext {
       case AccountType.fiado:
         return customerName ?? 'Fiado';
       case AccountType.mostrador:
-        return '';
+        return hasPendingCredit ? (customerName ?? 'Fiado') : '';
     }
   }
 
@@ -80,6 +127,7 @@ class AccountContext {
         'customerPhone': customerPhone,
         'sessionToken': sessionToken,
         'orderId': orderId,
+        'pendingCreditAccountId': pendingCreditAccountId,
       };
 
   factory AccountContext.fromJson(Map<String, dynamic> json) {
@@ -94,6 +142,9 @@ class AccountContext {
       customerPhone: json['customerPhone'] as String?,
       sessionToken: json['sessionToken'] as String?,
       orderId: json['orderId'] as String?,
+      // Defensive default null: older serialised payloads from
+      // pre-fiado-lock builds won't carry the field.
+      pendingCreditAccountId: json['pendingCreditAccountId'] as String?,
     );
   }
 }
@@ -818,19 +869,154 @@ class CartController extends ChangeNotifier {
     return item?.quantity ?? 0;
   }
 
-  void clearActiveCart() {
+  /// Clear the active slot — empties the cart AND drops the context
+  /// back to mostrador.
+  ///
+  /// When the slot is locked behind a pending fiado handshake
+  /// (`pendingCreditAccountId != null`) this is a **no-op unless
+  /// `force: true`**. The cashier loses real money when an in-flight
+  /// fiado evaporates because they tapped C2 by accident — so the
+  /// destruction has to be deliberate. Returns `true` if the slot was
+  /// cleared, `false` if it was preserved.
+  bool clearActiveCart({bool force = false}) {
+    final ctx = _contexts[_activeIndex];
+    if (ctx.hasPendingCredit && !force) {
+      developer.log(
+        '[CART] clearActiveCart suppressed: slot $_activeIndex has pending '
+        'credit ${ctx.pendingCreditAccountId}',
+        name: 'CartController',
+      );
+      return false;
+    }
     activeCart.clear();
     _contexts[_activeIndex] = const AccountContext();
     notifyListeners();
     _persistCarts();
     _persistContexts();
+    return true;
   }
 
   /// Clear cart items but KEEP the account context (mesa stays assigned).
-  void clearCartKeepContext() {
+  ///
+  /// Same `pendingCreditAccountId` guard as [clearActiveCart] — an
+  /// implicit cart wipe (e.g. after `_sendOrder`) MUST NOT erase the
+  /// fiado items the cashier already promised the customer. Pass
+  /// `force: true` only from the explicit cancel-fiado flow.
+  bool clearCartKeepContext({bool force = false}) {
+    final ctx = _contexts[_activeIndex];
+    if (ctx.hasPendingCredit && !force) {
+      developer.log(
+        '[CART] clearCartKeepContext suppressed: slot $_activeIndex has '
+        'pending credit ${ctx.pendingCreditAccountId}',
+        name: 'CartController',
+      );
+      return false;
+    }
     activeCart.clear();
     notifyListeners();
     _persistCarts();
+    return true;
+  }
+
+  // ── Pending credit (fiado handshake) lock ────────────────────────────────
+  //
+  // The cashier presses "Seguir vendiendo" on the FiadoWaitingRoom and
+  // returns to POS while the customer hasn't accepted yet. We mark the
+  // slot as locked so an accidental switchCart + clearActiveCart can't
+  // erase the in-flight order.
+
+  /// Snapshot of every `pendingCreditAccountId` currently parked across
+  /// the 10 slots. Used by the POS polling loop to reconcile against
+  /// `/api/v1/credits?status=pending` — anything missing from that list
+  /// has been accepted (or cancelled) server-side and gets released.
+  Set<String> get pendingCreditAccountIds {
+    final ids = <String>{};
+    for (final ctx in _contexts) {
+      if (ctx.hasPendingCredit) ids.add(ctx.pendingCreditAccountId!);
+    }
+    return ids;
+  }
+
+  /// Returns the slot index parking [creditAccountId], or -1 when
+  /// no slot tracks it.
+  int slotForPendingCredit(String creditAccountId) {
+    if (creditAccountId.isEmpty) return -1;
+    for (var i = 0; i < _cartCount; i++) {
+      if (_contexts[i].pendingCreditAccountId == creditAccountId) return i;
+    }
+    return -1;
+  }
+
+  /// Mark the active slot as locked behind a pending fiado handshake.
+  /// Call this when [_FiadoWaitingRoom] returns with
+  /// `acceptedByCustomer == false` — the credit_account stays in
+  /// `status=pending` server-side and the slot must persist its cart
+  /// + customer info until the customer signs.
+  void setPendingCreditOnActive({
+    required String creditAccountId,
+    String? customerName,
+    String? customerPhone,
+  }) {
+    if (creditAccountId.isEmpty) return;
+    final before = _contexts[_activeIndex];
+    _contexts[_activeIndex] = before.copyWith(
+      // Don't widen the AccountType to fiado here — pendingCreditAccountId
+      // is the load-bearing flag, and switching type would reshape the
+      // header chip color in ways the cashier didn't ask for. The
+      // hasPendingCredit getter on every type-branch is what gates the UI.
+      customerName: customerName ?? before.customerName,
+      customerPhone: customerPhone ?? before.customerPhone,
+      pendingCreditAccountId: creditAccountId,
+    );
+    notifyListeners();
+    _persistContexts();
+  }
+
+  /// Explicit cashier-initiated cancel of a pending fiado on the
+  /// active slot. Wipes the cart, the context, and persists. Returns
+  /// the credit_id that was released so the caller can fire the
+  /// matching server-side cancel call. Returns null when the slot
+  /// has no pending credit (defensive — UI should not have offered
+  /// the action in that case).
+  String? cancelPendingCreditOnActive() {
+    final ctx = _contexts[_activeIndex];
+    final id = ctx.pendingCreditAccountId;
+    if (id == null || id.isEmpty) return null;
+    activeCart.clear();
+    _contexts[_activeIndex] = const AccountContext();
+    notifyListeners();
+    _persistCarts();
+    _persistContexts();
+    return id;
+  }
+
+  /// Release every slot whose pendingCreditAccountId is in
+  /// [acceptedOrRejectedIds]. Called by the POS polling tick when the
+  /// server confirms the customer accepted (or rejected) the
+  /// handshake — the cashier no longer needs the slot held open.
+  ///
+  /// We clear the slot wholesale (cart + context) because the items
+  /// were already persisted on the server-side `Sale` row at handshake
+  /// time. Returns the list of slot indexes that were released so the
+  /// caller can fire any UX side-effects (toast, switchCart, …).
+  List<int> releasePendingCredits(Iterable<String> acceptedOrRejectedIds) {
+    final released = <int>[];
+    final idSet = acceptedOrRejectedIds.toSet();
+    for (var i = 0; i < _cartCount; i++) {
+      final ctx = _contexts[i];
+      final id = ctx.pendingCreditAccountId;
+      if (id == null || id.isEmpty) continue;
+      if (!idSet.contains(id)) continue;
+      _carts[i].clear();
+      _contexts[i] = const AccountContext();
+      released.add(i);
+    }
+    if (released.isNotEmpty) {
+      notifyListeners();
+      _persistCarts();
+      _persistContexts();
+    }
+    return released;
   }
 
   /// Find the next empty tab (no items AND no context assigned).
