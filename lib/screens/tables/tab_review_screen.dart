@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 import '../../services/api_service.dart';
 import '../../services/auth_service.dart';
 import '../../theme/app_theme.dart';
+import '../../widgets/receipt_image_picker.dart';
 import '../../database/database_service.dart';
 import '../../database/collections/local_table_tab.dart';
 import '../../utils/currency_input.dart';
@@ -123,6 +124,7 @@ class _TabReviewScreenState extends State<TabReviewScreen> {
         amount: result.amount,
         paymentMethod: result.methodName,
         paymentMethodId: result.methodId,
+        receiptImageUrl: result.receiptImageUrl,
       );
       if (!mounted) return;
 
@@ -932,7 +934,11 @@ class _AbonoResult {
   final double amount;
   final String methodName;
   final String methodId;
-  _AbonoResult(this.amount, this.methodName, this.methodId);
+  /// Supabase URL of the cashier's photo of the digital receipt
+  /// (Mandatory Image Receipts epic). Null on cash abonos.
+  final String? receiptImageUrl;
+  _AbonoResult(this.amount, this.methodName, this.methodId,
+      {this.receiptImageUrl});
 }
 
 class _ManualAbonoSheet extends StatefulWidget {
@@ -952,6 +958,14 @@ class _ManualAbonoSheetState extends State<_ManualAbonoSheet> {
   late final TextEditingController _amountCtrl;
   String _methodName = 'Efectivo';
   String _methodId = '';
+  String? _receiptUrl;
+
+  /// Cash bypasses the photo gate; everything else requires a
+  /// receipt image. Mandatory Image Receipts epic — PO mandate.
+  bool get _isDigital => _methodName.toLowerCase() != 'efectivo';
+  bool get _canSubmit =>
+      CurrencyUtils.parseToDouble(_amountCtrl.text) > 0 &&
+      (!_isDigital || _receiptUrl != null);
 
   @override
   void initState() {
@@ -974,7 +988,9 @@ class _ManualAbonoSheetState extends State<_ManualAbonoSheet> {
   void _submit() {
     final amount = CurrencyUtils.parseToDouble(_amountCtrl.text);
     if (amount <= 0) return;
-    Navigator.of(context).pop(_AbonoResult(amount, _methodName, _methodId));
+    if (_isDigital && _receiptUrl == null) return;
+    Navigator.of(context).pop(_AbonoResult(amount, _methodName, _methodId,
+        receiptImageUrl: _receiptUrl));
   }
 
   @override
@@ -1049,6 +1065,7 @@ class _ManualAbonoSheetState extends State<_ManualAbonoSheet> {
               controller: _amountCtrl,
               keyboardType: TextInputType.number,
               inputFormatters: const [CurrencyInputFormatter()],
+              onChanged: (_) => setState(() {}),
               style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w800),
               textAlign: TextAlign.center,
               decoration: InputDecoration(
@@ -1084,12 +1101,20 @@ class _ManualAbonoSheetState extends State<_ManualAbonoSheet> {
               runSpacing: 8,
               children: chips,
             ),
+            if (_isDigital) ...[
+              const SizedBox(height: 18),
+              ReceiptImagePicker(
+                onImageReady: (url) => setState(() => _receiptUrl = url),
+              ),
+            ],
             const SizedBox(height: 24),
             FilledButton(
-              onPressed: _submit,
+              onPressed: _canSubmit ? _submit : null,
               style: FilledButton.styleFrom(
                 padding: const EdgeInsets.symmetric(vertical: 16),
                 backgroundColor: AppTheme.primary,
+                disabledBackgroundColor:
+                    AppTheme.primary.withValues(alpha: 0.4),
               ),
               child: const Text(
                 'Guardar abono',

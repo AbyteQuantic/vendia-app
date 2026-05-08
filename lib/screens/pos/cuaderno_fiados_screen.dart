@@ -4,6 +4,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../services/api_service.dart';
 import '../../services/auth_service.dart';
 import '../../theme/app_theme.dart';
+import '../../widgets/receipt_image_picker.dart';
 
 /// "El Cuaderno" — Real accounts receivable from backend. Zero mocks.
 ///
@@ -474,6 +475,11 @@ class _FiadoDetailScreenState extends State<_FiadoDetailScreen> {
   Map<String, dynamic>? _credit;
   bool _loading = true;
 
+  // Abono modal state — lifted to the State so the receipt URL and
+  // method survive any rebuild that the StatefulBuilder triggers.
+  String _abonoMethod = 'cash';
+  String? _abonoReceiptUrl;
+
   @override
   void initState() {
     super.initState();
@@ -508,58 +514,135 @@ class _FiadoDetailScreenState extends State<_FiadoDetailScreen> {
     final ctrl = TextEditingController();
     showModalBottomSheet(
       context: context, isScrollControlled: true, backgroundColor: Colors.transparent,
-      builder: (ctx) => Padding(
-        padding: EdgeInsets.only(bottom: MediaQuery.of(ctx).viewInsets.bottom),
-        child: Container(
-          decoration: const BoxDecoration(color: Colors.white,
-              borderRadius: BorderRadius.vertical(top: Radius.circular(28))),
-          padding: const EdgeInsets.fromLTRB(24, 16, 24, 24),
-          child: Column(mainAxisSize: MainAxisSize.min, children: [
-            Container(width: 40, height: 4, margin: const EdgeInsets.only(bottom: 20),
-                decoration: BoxDecoration(color: const Color(0xFFD6D0C8),
-                    borderRadius: BorderRadius.circular(2))),
-            const Text('Registrar Abono', style: TextStyle(fontSize: 22,
-                fontWeight: FontWeight.bold, color: Colors.black87)),
-            const SizedBox(height: 20),
-            TextField(
-              controller: ctrl, autofocus: true,
-              keyboardType: TextInputType.number, textAlign: TextAlign.center,
-              style: const TextStyle(fontSize: 36, fontWeight: FontWeight.bold, color: Colors.black87),
-              inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-              decoration: InputDecoration(
-                prefixText: '\$ ', prefixStyle: TextStyle(fontSize: 36,
-                    fontWeight: FontWeight.bold, color: Colors.grey.shade400),
-                hintText: '0', hintStyle: TextStyle(fontSize: 36, color: Colors.grey.shade300),
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setSheetState) {
+          // Mandatory Image Receipts gating: when the cashier picks a
+          // digital method we require the photo before enabling the
+          // submit button.
+          final isDigital = _abonoMethod != 'cash';
+          final canSubmit = !isDigital || (_abonoReceiptUrl != null);
+          return Padding(
+            padding:
+                EdgeInsets.only(bottom: MediaQuery.of(ctx).viewInsets.bottom),
+            child: Container(
+              decoration: const BoxDecoration(
+                  color: Colors.white,
+                  borderRadius:
+                      BorderRadius.vertical(top: Radius.circular(28))),
+              padding: const EdgeInsets.fromLTRB(24, 16, 24, 24),
+              child: SingleChildScrollView(
+                child: Column(mainAxisSize: MainAxisSize.min, children: [
+                  Container(
+                      width: 40,
+                      height: 4,
+                      margin: const EdgeInsets.only(bottom: 20),
+                      decoration: BoxDecoration(
+                          color: const Color(0xFFD6D0C8),
+                          borderRadius: BorderRadius.circular(2))),
+                  const Text('Registrar Abono',
+                      style: TextStyle(
+                          fontSize: 22,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.black87)),
+                  const SizedBox(height: 20),
+                  TextField(
+                    controller: ctrl,
+                    autofocus: true,
+                    keyboardType: TextInputType.number,
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                        fontSize: 36,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.black87),
+                    inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                    decoration: InputDecoration(
+                      prefixText: '\$ ',
+                      prefixStyle: TextStyle(
+                          fontSize: 36,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.grey.shade400),
+                      hintText: '0',
+                      hintStyle: TextStyle(
+                          fontSize: 36, color: Colors.grey.shade300),
+                    ),
+                    onChanged: (_) => setSheetState(() {}),
+                  ),
+                  const SizedBox(height: 16),
+                  // Payment method chips. Cash skips the photo gate;
+                  // anything else requires a comprobante.
+                  Wrap(spacing: 8, children: [
+                    for (final m in const [
+                      ('cash', 'Efectivo'),
+                      ('transfer', 'Transferencia'),
+                      ('nequi', 'Nequi'),
+                      ('daviplata', 'Daviplata'),
+                    ])
+                      ChoiceChip(
+                        label: Text(m.$2),
+                        selected: _abonoMethod == m.$1,
+                        onSelected: (_) => setSheetState(() {
+                          _abonoMethod = m.$1;
+                          if (m.$1 == 'cash') _abonoReceiptUrl = null;
+                        }),
+                      ),
+                  ]),
+                  const SizedBox(height: 16),
+                  if (isDigital)
+                    ReceiptImagePicker(
+                      onImageReady: (url) =>
+                          setSheetState(() => _abonoReceiptUrl = url),
+                    ),
+                  const SizedBox(height: 20),
+                  SizedBox(
+                    width: double.infinity,
+                    height: 60,
+                    child: ElevatedButton.icon(
+                      onPressed: !canSubmit
+                          ? null
+                          : () async {
+                              final amount = int.tryParse(ctrl.text) ?? 0;
+                              if (amount <= 0) return;
+                              Navigator.of(ctx).pop();
+                              try {
+                                await _api.registerAbono(
+                                  widget.creditId,
+                                  amount: amount,
+                                  method: _abonoMethod,
+                                  receiptImageUrl: _abonoReceiptUrl,
+                                );
+                                HapticFeedback.mediumImpact();
+                                _abonoMethod = 'cash';
+                                _abonoReceiptUrl = null;
+                                _load();
+                              } catch (e) {
+                                if (mounted) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(
+                                      content: Text('Error: $e'),
+                                      backgroundColor: AppTheme.error,
+                                    ),
+                                  );
+                                }
+                              }
+                            },
+                      icon: const Icon(Icons.check_rounded, size: 24),
+                      label: const Text('Registrar',
+                          style: TextStyle(
+                              fontSize: 20, fontWeight: FontWeight.bold)),
+                      style: ElevatedButton.styleFrom(
+                          backgroundColor: AppTheme.success,
+                          disabledBackgroundColor:
+                              AppTheme.success.withValues(alpha: 0.4),
+                          foregroundColor: Colors.white,
+                          shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(18))),
+                    ),
+                  ),
+                ]),
               ),
             ),
-            const SizedBox(height: 20),
-            SizedBox(width: double.infinity, height: 60,
-              child: ElevatedButton.icon(
-                onPressed: () async {
-                  final amount = int.tryParse(ctrl.text) ?? 0;
-                  if (amount <= 0) return;
-                  Navigator.of(ctx).pop();
-                  try {
-                    await _api.registerAbono(widget.creditId, amount: amount);
-                    HapticFeedback.mediumImpact();
-                    _load();
-                  } catch (e) {
-                    if (mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-                      content: Text('Error: $e'), backgroundColor: AppTheme.error,
-                    ));
-                    }
-                  }
-                },
-                icon: const Icon(Icons.check_rounded, size: 24),
-                label: const Text('Registrar', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
-                style: ElevatedButton.styleFrom(backgroundColor: AppTheme.success,
-                    foregroundColor: Colors.white,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18))),
-              ),
-            ),
-          ]),
-        ),
+          );
+        },
       ),
     );
   }
