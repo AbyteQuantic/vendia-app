@@ -230,21 +230,38 @@ class _CuadernoFiadosScreenState extends State<CuadernoFiadosScreen> {
       buildGroupedTileForTest(row);
 
   /// Tile for "Pendientes" and "Pagados" — one row per CreditAccount.
-  /// On the "Pagados" tab, the trailing column shows `closed_at` (the
-  /// audit timestamp written when the balance reaches zero). When the
-  /// row pre-dates the new column the date falls back to a short dash
-  /// so legacy rows don't break the layout.
-  ///
-  /// On "Pendientes" the tile carries an extra "reenviar link" CTA
-  /// (Mandatory Image Receipts epic — UX hotfix for sales recovery).
-  /// The send button surfaces a share sheet with the canonical
-  /// `https://tienda.vendia.app/f/<token>` URL so the cashier can
-  /// resend via WhatsApp / SMS without leaving the cuaderno.
+  /// On "Pagados" the trailing column carries the `closed_at` cierre
+  /// stamp; on "Pendientes" it carries an extra resend-link CTA next
+  /// to the WhatsApp chat shortcut, with 16 px between them so the
+  /// touch targets don't collide (PO hotfix — image_23: icon overlap).
   Widget _buildAccountTile(Map<String, dynamic> credit) {
     final isPendingTab = _filter == 'pending';
     final fiadoToken = (credit['fiado_token'] as String?) ?? '';
+    final customer =
+        credit['customer'] as Map<String, dynamic>? ?? const {};
+    final customerName = (customer['name'] as String?) ?? '';
 
-    final tile = GestureDetector(
+    final resendAction =
+        (isPendingTab && fiadoToken.isNotEmpty)
+            ? GestureDetector(
+                key: ValueKey('resend_${credit['id']}'),
+                onTap: () => _resendFiadoLink(
+                  fiadoToken: fiadoToken,
+                  customerName: customerName,
+                ),
+                child: const SizedBox(
+                  width: 36,
+                  height: 36,
+                  child: Tooltip(
+                    message: 'Reenviar link',
+                    child: Icon(Icons.send_rounded,
+                        color: Color(0xFF6D28D9), size: 22),
+                  ),
+                ),
+              )
+            : null;
+
+    return GestureDetector(
       onTap: () async {
         final id = credit['id'] as String?;
         if (id == null || id.isEmpty) return;
@@ -253,40 +270,10 @@ class _CuadernoFiadosScreenState extends State<CuadernoFiadosScreen> {
         ));
         _load();
       },
-      child: buildAccountTileForTest(credit),
-    );
-
-    // Compose the resend pill on top of the tile rather than
-    // mutating buildAccountTileForTest — keeps the pure renderer
-    // testable without dragging share_plus + Navigator into it.
-    if (!isPendingTab || fiadoToken.isEmpty) return tile;
-
-    final customer =
-        credit['customer'] as Map<String, dynamic>? ?? const {};
-    final customerName = (customer['name'] as String?) ?? '';
-    return Stack(
-      children: [
-        tile,
-        Positioned(
-          right: 8,
-          top: 8,
-          child: Material(
-            color: Colors.white,
-            shape: const CircleBorder(),
-            elevation: 1,
-            child: IconButton(
-              key: ValueKey('resend_${credit['id']}'),
-              tooltip: 'Reenviar link',
-              icon: const Icon(Icons.send_rounded,
-                  color: Color(0xFF6D28D9), size: 22),
-              onPressed: () => _resendFiadoLink(
-                fiadoToken: fiadoToken,
-                customerName: customerName,
-              ),
-            ),
-          ),
-        ),
-      ],
+      child: buildAccountTileForTest(
+        credit,
+        extraTrailingAction: resendAction,
+      ),
     );
   }
 
@@ -394,9 +381,18 @@ Widget buildGroupedTileForTest(Map<String, dynamic> row) {
 }
 
 /// Pure rendering for a "Pendientes"/"Pagados" account row. Same
-/// reasoning as [buildGroupedTileForTest] — the State just wraps this
-/// in a GestureDetector so taps push the detail screen.
-Widget buildAccountTileForTest(Map<String, dynamic> credit) {
+/// reasoning as [buildGroupedTileForTest] — the State just wraps
+/// this in a GestureDetector so taps push the detail screen.
+///
+/// `extraTrailingAction` is rendered to the LEFT of the WhatsApp
+/// chat icon, with a 16-px gap between them, so the cuaderno can
+/// surface a Resend Link CTA on Pendientes without overlapping the
+/// chat shortcut. Pass `null` to keep the legacy single-icon
+/// layout (Pagados / accepted-Activos rows).
+Widget buildAccountTileForTest(
+  Map<String, dynamic> credit, {
+  Widget? extraTrailingAction,
+}) {
   final customer = credit['customer'] as Map<String, dynamic>? ?? {};
   final name = customer['name'] as String? ?? 'Sin nombre';
   final phone = customer['phone'] as String? ?? '';
@@ -467,27 +463,78 @@ Widget buildAccountTileForTest(Map<String, dynamic> credit) {
             Text(statusLabel,
                 style: TextStyle(fontSize: 14, color: statusColor)),
           ])),
-      Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
-        Text(_fmtMoney(total),
-            style: const TextStyle(
-                fontSize: 17,
-                fontWeight: FontWeight.bold,
-                color: AppTheme.textPrimary)),
-        if (phone.isNotEmpty)
-          GestureDetector(
+      _AccountTileTrailing(
+        amountLabel: _fmtMoney(total),
+        phone: phone,
+        extraAction: extraTrailingAction,
+      ),
+    ]),
+  );
+}
+
+/// Trailing column for [buildAccountTileForTest]: the running total
+/// on top, then a [Row] of action icons spaced 16 px apart so the
+/// touch targets never collide. Order is "extra action → chat" so
+/// the new resend CTA sits on the left and the legacy WhatsApp
+/// shortcut keeps its right-edge anchor for muscle memory.
+class _AccountTileTrailing extends StatelessWidget {
+  const _AccountTileTrailing({
+    required this.amountLabel,
+    required this.phone,
+    this.extraAction,
+  });
+
+  final String amountLabel;
+  final String phone;
+  final Widget? extraAction;
+
+  @override
+  Widget build(BuildContext context) {
+    final hasPhone = phone.isNotEmpty;
+    final chat = hasPhone
+        ? GestureDetector(
             onTap: () {
               HapticFeedback.lightImpact();
               launchUrl(Uri.parse('https://wa.me/57$phone'),
                   mode: LaunchMode.externalApplication);
             },
-            child: const Padding(
-                padding: EdgeInsets.only(top: 4),
-                child: Icon(Icons.chat_rounded,
-                    color: Color(0xFF25D366), size: 22)),
+            child: const SizedBox(
+              width: 36,
+              height: 36,
+              child: Icon(Icons.chat_rounded,
+                  color: Color(0xFF25D366), size: 22),
+            ),
+          )
+        : null;
+
+    final actions = <Widget>[];
+    if (extraAction != null) {
+      actions.add(extraAction!);
+      if (chat != null) actions.add(const SizedBox(width: 16));
+    }
+    if (chat != null) actions.add(chat);
+
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.end,
+      children: [
+        Text(amountLabel,
+            style: const TextStyle(
+                fontSize: 17,
+                fontWeight: FontWeight.bold,
+                color: AppTheme.textPrimary)),
+        if (actions.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.only(top: 4),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: actions,
+            ),
           ),
-      ]),
-    ]),
-  );
+      ],
+    );
+  }
 }
 
 /// Trims an ISO-8601 timestamp from the backend down to YYYY-MM-DD.

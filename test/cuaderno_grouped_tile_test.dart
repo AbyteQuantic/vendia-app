@@ -74,6 +74,67 @@ void main() {
   });
 
   testWidgets(
+      'Pendientes tile renders resend + chat icons in a Row with a 16px '
+      'gap and never overlaps them', (tester) async {
+    final pending = <String, dynamic>{
+      'id': '99999999-9999-9999-9999-999999999999',
+      'customer': {'name': 'Viviana Gutierrez', 'phone': '3001234567'},
+      'total_amount': 8000,
+      'paid_amount': 0,
+      'status': 'pending',
+      'fiado_status': 'link_sent',
+      'fiado_token': 'tok-abc-123',
+    };
+
+    Widget host(Widget tile) => MaterialApp(home: Scaffold(body: tile));
+
+    // Build the tile via the public renderer + an explicit
+    // extraTrailingAction to mimic the Pendientes-tab caller.
+    const resend = SizedBox(
+      key: Key('resend_action'),
+      width: 36,
+      height: 36,
+      child: Icon(Icons.send_rounded,
+          color: Color(0xFF6D28D9), size: 22),
+    );
+    await tester.pumpWidget(host(buildAccountTileForTest(
+      pending,
+      extraTrailingAction: resend,
+    )));
+
+    // Both icons are present.
+    expect(find.byIcon(Icons.send_rounded), findsOneWidget);
+    expect(find.byIcon(Icons.chat_rounded), findsOneWidget);
+
+    // No overlap: the right edge of the resend hit-box must be
+    // strictly LESS than the left edge of the chat hit-box. We use
+    // the SizedBox parents (width 36) so the assertion stays
+    // independent of icon glyph size.
+    final sendBox = tester.getRect(
+      find.ancestor(
+        of: find.byIcon(Icons.send_rounded),
+        matching: find.byType(SizedBox),
+      ).first,
+    );
+    final chatBox = tester.getRect(
+      find.ancestor(
+        of: find.byIcon(Icons.chat_rounded),
+        matching: find.byType(SizedBox),
+      ).first,
+    );
+    expect(sendBox.right, lessThan(chatBox.left),
+        reason: 'CRITICAL: send and chat boxes overlap horizontally');
+
+    final gap = chatBox.left - sendBox.right;
+    expect(gap, greaterThanOrEqualTo(16.0),
+        reason: 'spacing between icons must be at least 16 px');
+
+    // Both icons sit at the same vertical center → consistent
+    // alignment (no jagged offsets).
+    expect((sendBox.center.dy - chatBox.center.dy).abs(), lessThan(0.5));
+  });
+
+  testWidgets(
       'Pagados tile shows the closed_at audit timestamp instead of the '
       'remaining balance', (tester) async {
     // For the "Pagados" tab the screen still renders one CreditAccount
