@@ -283,19 +283,11 @@ class _CuadernoFiadosScreenState extends State<CuadernoFiadosScreen> {
 
   /// Re-sends the fiado link to the customer.
   ///
-  /// Channel routing (PO mandate — closes the "mailto without
-  /// recipient" bug from image_124):
-  ///
-  ///   * email + phone  → bottom sheet so the cashier picks Email,
-  ///                      WhatsApp, or "Otro" (system share).
-  ///   * email only     → straight to `mailto:` Uri with `path` =
-  ///                      customer email so Gmail / native mail
-  ///                      apps land with the To: field already
-  ///                      populated.
-  ///   * phone only     → straight to `wa.me/57<phone>` with the
-  ///                      pre-filled message.
-  ///   * neither        → `Share.share` as last resort so the
-  ///                      cashier can copy/paste anywhere.
+  /// Always opens the "Compartir Fiado" sheet so the cashier picks
+  /// the channel deliberately. Channels with insufficient data
+  /// (e.g. WhatsApp without phone) appear disabled — the cashier
+  /// understands at-a-glance why an option is unavailable instead
+  /// of getting a silent failure.
   Future<void> _resendFiadoLink({
     required String fiadoToken,
     required String customerName,
@@ -303,47 +295,39 @@ class _CuadernoFiadosScreenState extends State<CuadernoFiadosScreen> {
     required String customerPhone,
   }) async {
     HapticFeedback.lightImpact();
+    if (!mounted) return;
+
     final url = 'https://tienda.vendia.app/f/$fiadoToken';
-    final greeting = customerName.isEmpty ? '' : '$customerName, ';
-    final message =
-        '${greeting}aquí está el link para aceptar tu fiado en VendIA:\n$url';
-    const subject = 'Tu fiado en VendIA';
+    final greeting = customerName.trim().isEmpty ? 'Hola' : 'Hola $customerName';
+    // Multi-line professional copy. Used for SMS, WhatsApp body and
+    // mailto body — the email subject is set separately because the
+    // mailto encoding fix below treats them independently.
+    final body =
+        '$greeting,\n\n'
+        'Hemos registrado un fiado a tu nombre en VendIA. Para confirmarlo, '
+        'abre el siguiente enlace:\n\n'
+        '$url\n\n'
+        'Si tienes alguna duda, puedes responder a este mensaje.\n\n'
+        'Gracias por tu confianza.';
+    const subject = 'Detalles de tu cuenta en VendIA';
 
-    final hasEmail = customerEmail.trim().isNotEmpty;
-    final hasPhone = customerPhone.trim().isNotEmpty;
-
-    if (hasEmail && hasPhone) {
-      await _showResendChannelSheet(
-        email: customerEmail.trim(),
-        phone: customerPhone.trim(),
-        message: message,
-        subject: subject,
-      );
-      return;
-    }
-    if (hasEmail) {
-      await _launchMailto(
-        email: customerEmail.trim(),
-        subject: subject,
-        body: message,
-      );
-      return;
-    }
-    if (hasPhone) {
-      await _launchWhatsApp(phone: customerPhone.trim(), message: message);
-      return;
-    }
-    // Neither → keep the legacy share sheet so the link still
-    // reaches the customer through whatever app the cashier
-    // prefers (copy, Bluetooth, etc.).
-    await Share.share(message, subject: subject);
+    await _showResendChannelSheet(
+      email: customerEmail.trim(),
+      phone: customerPhone.trim(),
+      subject: subject,
+      body: body,
+    );
   }
 
+  /// "Compartir Fiado" — 4-channel share sheet (PO mandate
+  /// image_125). Channels with no data are still rendered so the
+  /// cashier sees the full menu, but their `onTap` is null and the
+  /// row reads `Sin <dato> registrado`.
   Future<void> _showResendChannelSheet({
     required String email,
     required String phone,
-    required String message,
     required String subject,
+    required String body,
   }) async {
     if (!mounted) return;
     await showModalBottomSheet<void>(
@@ -367,50 +351,59 @@ class _CuadernoFiadosScreenState extends State<CuadernoFiadosScreen> {
                 borderRadius: BorderRadius.circular(2),
               ),
             ),
-            const Text('Reenviar link por…',
+            const Text('Compartir Fiado',
                 style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
             const SizedBox(height: 12),
-            ListTile(
-              key: const Key('resend_channel_email'),
-              leading: const Icon(Icons.email_rounded,
-                  color: Color(0xFF1D4ED8), size: 28),
-              title: const Text('Correo',
-                  style: TextStyle(fontSize: 17, fontWeight: FontWeight.w600)),
-              subtitle: Text(email,
-                  style: const TextStyle(fontSize: 13)),
+            _ChannelTile(
+              keyValue: 'resend_channel_whatsapp',
+              icon: Icons.chat_rounded,
+              iconColor: const Color(0xFF25D366),
+              title: 'WhatsApp',
+              subtitle: phone.isEmpty ? 'Sin teléfono registrado' : phone,
+              enabled: phone.isNotEmpty,
+              onTap: () async {
+                Navigator.of(sheetCtx).pop();
+                await _launchWhatsApp(phone: phone, message: body);
+              },
+            ),
+            _ChannelTile(
+              keyValue: 'resend_channel_sms',
+              icon: Icons.sms_rounded,
+              iconColor: const Color(0xFF1D4ED8),
+              title: 'Mensaje de texto',
+              subtitle: phone.isEmpty ? 'Sin teléfono registrado' : phone,
+              enabled: phone.isNotEmpty,
+              onTap: () async {
+                Navigator.of(sheetCtx).pop();
+                await _launchSms(phone: phone, message: body);
+              },
+            ),
+            _ChannelTile(
+              keyValue: 'resend_channel_email',
+              icon: Icons.email_rounded,
+              iconColor: const Color(0xFFEA580C),
+              title: 'Correo electrónico',
+              subtitle: email.isEmpty ? 'Sin correo registrado' : email,
+              enabled: email.isNotEmpty,
               onTap: () async {
                 Navigator.of(sheetCtx).pop();
                 await _launchMailto(
                   email: email,
                   subject: subject,
-                  body: message,
+                  body: body,
                 );
               },
             ),
-            ListTile(
-              key: const Key('resend_channel_whatsapp'),
-              leading: const Icon(Icons.chat_rounded,
-                  color: Color(0xFF25D366), size: 28),
-              title: const Text('WhatsApp',
-                  style: TextStyle(fontSize: 17, fontWeight: FontWeight.w600)),
-              subtitle: Text(phone,
-                  style: const TextStyle(fontSize: 13)),
+            _ChannelTile(
+              keyValue: 'resend_channel_other',
+              icon: Icons.share_rounded,
+              iconColor: const Color(0xFF6D28D9),
+              title: 'Más opciones…',
+              subtitle: 'Copiar, Bluetooth, otra app',
+              enabled: true,
               onTap: () async {
                 Navigator.of(sheetCtx).pop();
-                await _launchWhatsApp(phone: phone, message: message);
-              },
-            ),
-            ListTile(
-              key: const Key('resend_channel_other'),
-              leading: const Icon(Icons.share_rounded,
-                  color: Color(0xFF6D28D9), size: 28),
-              title: const Text('Otro',
-                  style: TextStyle(fontSize: 17, fontWeight: FontWeight.w600)),
-              subtitle: const Text('SMS, copiar, etc.',
-                  style: TextStyle(fontSize: 13)),
-              onTap: () async {
-                Navigator.of(sheetCtx).pop();
-                await Share.share(message, subject: subject);
+                await Share.share(body, subject: subject);
               },
             ),
           ],
@@ -419,19 +412,24 @@ class _CuadernoFiadosScreenState extends State<CuadernoFiadosScreen> {
     );
   }
 
+  /// Builds the canonical mailto URI so Gmail / Apple Mail / Samsung
+  /// Mail land with To:, Subject: and Body: pre-filled.
+  ///
+  /// We deliberately do NOT use `Uri(queryParameters: ...)` here.
+  /// Dart encodes that map with `application/x-www-form-urlencoded`,
+  /// which substitutes spaces with `+` — Gmail then renders
+  /// "Tu+fiado+en+VendIA" instead of "Tu fiado en VendIA"
+  /// (PO bug image_125). Building the string by hand and replacing
+  /// the lone `+` from `Uri.encodeComponent` with `%20` keeps both
+  /// the subject and the body readable.
   Future<void> _launchMailto({
     required String email,
     required String subject,
     required String body,
   }) async {
-    // Strict mailto Uri: `path` carries the recipient so Gmail /
-    // Apple Mail / native clients land with the To: field already
-    // filled in. Empty path was the root cause of image_124.
-    final uri = Uri(
-      scheme: 'mailto',
-      path: email,
-      queryParameters: {'subject': subject, 'body': body},
-    );
+    final s = Uri.encodeComponent(subject).replaceAll('+', '%20');
+    final b = Uri.encodeComponent(body).replaceAll('+', '%20');
+    final uri = Uri.parse('mailto:$email?subject=$s&body=$b');
     await launchUrl(uri, mode: LaunchMode.externalApplication);
   }
 
@@ -444,6 +442,61 @@ class _CuadernoFiadosScreenState extends State<CuadernoFiadosScreen> {
     final uri = Uri.parse(
         'https://wa.me/$fullPhone?text=${Uri.encodeComponent(message)}');
     await launchUrl(uri, mode: LaunchMode.externalApplication);
+  }
+
+  Future<void> _launchSms({
+    required String phone,
+    required String message,
+  }) async {
+    // sms: encodes spaces as %20 by default (it's not a form), so
+    // the standard query-parameter constructor is safe here.
+    final uri = Uri(
+      scheme: 'sms',
+      path: phone,
+      queryParameters: {'body': message},
+    );
+    await launchUrl(uri, mode: LaunchMode.externalApplication);
+  }
+}
+
+/// Channel row used by the "Compartir Fiado" sheet. Disabled rows
+/// stay visible so the cashier sees what's missing instead of
+/// getting a different sheet layout depending on data — the menu
+/// is stable and predictable.
+class _ChannelTile extends StatelessWidget {
+  const _ChannelTile({
+    required this.keyValue,
+    required this.icon,
+    required this.iconColor,
+    required this.title,
+    required this.subtitle,
+    required this.enabled,
+    required this.onTap,
+  });
+
+  final String keyValue;
+  final IconData icon;
+  final Color iconColor;
+  final String title;
+  final String subtitle;
+  final bool enabled;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final dimmed = enabled ? 1.0 : 0.4;
+    return Opacity(
+      opacity: dimmed,
+      child: ListTile(
+        key: Key(keyValue),
+        enabled: enabled,
+        leading: Icon(icon, color: iconColor, size: 28),
+        title: Text(title,
+            style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w600)),
+        subtitle: Text(subtitle, style: const TextStyle(fontSize: 13)),
+        onTap: enabled ? onTap : null,
+      ),
+    );
   }
 }
 
