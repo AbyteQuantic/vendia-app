@@ -241,6 +241,8 @@ class _CuadernoFiadosScreenState extends State<CuadernoFiadosScreen> {
         credit['customer'] as Map<String, dynamic>? ?? const {};
     final customerName = (customer['name'] as String?) ?? '';
 
+    final customerEmail = (customer['email'] as String?) ?? '';
+    final customerPhone = (customer['phone'] as String?) ?? '';
     final resendAction =
         (isPendingTab && fiadoToken.isNotEmpty)
             ? GestureDetector(
@@ -248,6 +250,8 @@ class _CuadernoFiadosScreenState extends State<CuadernoFiadosScreen> {
                 onTap: () => _resendFiadoLink(
                   fiadoToken: fiadoToken,
                   customerName: customerName,
+                  customerEmail: customerEmail,
+                  customerPhone: customerPhone,
                 ),
                 child: const SizedBox(
                   width: 36,
@@ -277,20 +281,169 @@ class _CuadernoFiadosScreenState extends State<CuadernoFiadosScreen> {
     );
   }
 
-  /// Surfaces the system share sheet with the canonical fiado URL.
-  /// The cashier picks the channel (WhatsApp, SMS, Bluetooth, etc.).
-  /// We never bypass the share sheet — the tendero may have several
-  /// WhatsApp accounts and we don't want to guess which one.
+  /// Re-sends the fiado link to the customer.
+  ///
+  /// Channel routing (PO mandate — closes the "mailto without
+  /// recipient" bug from image_124):
+  ///
+  ///   * email + phone  → bottom sheet so the cashier picks Email,
+  ///                      WhatsApp, or "Otro" (system share).
+  ///   * email only     → straight to `mailto:` Uri with `path` =
+  ///                      customer email so Gmail / native mail
+  ///                      apps land with the To: field already
+  ///                      populated.
+  ///   * phone only     → straight to `wa.me/57<phone>` with the
+  ///                      pre-filled message.
+  ///   * neither        → `Share.share` as last resort so the
+  ///                      cashier can copy/paste anywhere.
   Future<void> _resendFiadoLink({
     required String fiadoToken,
     required String customerName,
+    required String customerEmail,
+    required String customerPhone,
   }) async {
+    HapticFeedback.lightImpact();
     final url = 'https://tienda.vendia.app/f/$fiadoToken';
     final greeting = customerName.isEmpty ? '' : '$customerName, ';
     final message =
         '${greeting}aquí está el link para aceptar tu fiado en VendIA:\n$url';
-    HapticFeedback.lightImpact();
-    await Share.share(message, subject: 'Tu fiado en VendIA');
+    const subject = 'Tu fiado en VendIA';
+
+    final hasEmail = customerEmail.trim().isNotEmpty;
+    final hasPhone = customerPhone.trim().isNotEmpty;
+
+    if (hasEmail && hasPhone) {
+      await _showResendChannelSheet(
+        email: customerEmail.trim(),
+        phone: customerPhone.trim(),
+        message: message,
+        subject: subject,
+      );
+      return;
+    }
+    if (hasEmail) {
+      await _launchMailto(
+        email: customerEmail.trim(),
+        subject: subject,
+        body: message,
+      );
+      return;
+    }
+    if (hasPhone) {
+      await _launchWhatsApp(phone: customerPhone.trim(), message: message);
+      return;
+    }
+    // Neither → keep the legacy share sheet so the link still
+    // reaches the customer through whatever app the cashier
+    // prefers (copy, Bluetooth, etc.).
+    await Share.share(message, subject: subject);
+  }
+
+  Future<void> _showResendChannelSheet({
+    required String email,
+    required String phone,
+    required String message,
+    required String subject,
+  }) async {
+    if (!mounted) return;
+    await showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (sheetCtx) => Container(
+        decoration: const BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+        ),
+        padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 40,
+              height: 4,
+              margin: const EdgeInsets.only(bottom: 16),
+              decoration: BoxDecoration(
+                color: const Color(0xFFD6D0C8),
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            const Text('Reenviar link por…',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
+            const SizedBox(height: 12),
+            ListTile(
+              key: const Key('resend_channel_email'),
+              leading: const Icon(Icons.email_rounded,
+                  color: Color(0xFF1D4ED8), size: 28),
+              title: const Text('Correo',
+                  style: TextStyle(fontSize: 17, fontWeight: FontWeight.w600)),
+              subtitle: Text(email,
+                  style: const TextStyle(fontSize: 13)),
+              onTap: () async {
+                Navigator.of(sheetCtx).pop();
+                await _launchMailto(
+                  email: email,
+                  subject: subject,
+                  body: message,
+                );
+              },
+            ),
+            ListTile(
+              key: const Key('resend_channel_whatsapp'),
+              leading: const Icon(Icons.chat_rounded,
+                  color: Color(0xFF25D366), size: 28),
+              title: const Text('WhatsApp',
+                  style: TextStyle(fontSize: 17, fontWeight: FontWeight.w600)),
+              subtitle: Text(phone,
+                  style: const TextStyle(fontSize: 13)),
+              onTap: () async {
+                Navigator.of(sheetCtx).pop();
+                await _launchWhatsApp(phone: phone, message: message);
+              },
+            ),
+            ListTile(
+              key: const Key('resend_channel_other'),
+              leading: const Icon(Icons.share_rounded,
+                  color: Color(0xFF6D28D9), size: 28),
+              title: const Text('Otro',
+                  style: TextStyle(fontSize: 17, fontWeight: FontWeight.w600)),
+              subtitle: const Text('SMS, copiar, etc.',
+                  style: TextStyle(fontSize: 13)),
+              onTap: () async {
+                Navigator.of(sheetCtx).pop();
+                await Share.share(message, subject: subject);
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _launchMailto({
+    required String email,
+    required String subject,
+    required String body,
+  }) async {
+    // Strict mailto Uri: `path` carries the recipient so Gmail /
+    // Apple Mail / native clients land with the To: field already
+    // filled in. Empty path was the root cause of image_124.
+    final uri = Uri(
+      scheme: 'mailto',
+      path: email,
+      queryParameters: {'subject': subject, 'body': body},
+    );
+    await launchUrl(uri, mode: LaunchMode.externalApplication);
+  }
+
+  Future<void> _launchWhatsApp({
+    required String phone,
+    required String message,
+  }) async {
+    final digits = phone.replaceAll(RegExp(r'[^0-9]'), '');
+    final fullPhone = digits.startsWith('57') ? digits : '57$digits';
+    final uri = Uri.parse(
+        'https://wa.me/$fullPhone?text=${Uri.encodeComponent(message)}');
+    await launchUrl(uri, mode: LaunchMode.externalApplication);
   }
 }
 
