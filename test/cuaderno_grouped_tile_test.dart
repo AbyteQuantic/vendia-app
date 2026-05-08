@@ -2,6 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:vendia_pos/screens/pos/cuaderno_fiados_screen.dart';
 
+/// Smoke tests for the cuaderno tiles — Activos (grouped) +
+/// Pendientes/Pagados (per-account) + the new Resend Link CTA on
+/// Pendientes.
+
 /// Regression suite for the Ledger Reconstruction epic.
 ///
 /// Pre-fix: a `LIST credits` query without aggregation produced one

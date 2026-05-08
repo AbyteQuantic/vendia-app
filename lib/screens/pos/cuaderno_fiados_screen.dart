@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../services/api_service.dart';
 import '../../services/auth_service.dart';
@@ -233,8 +234,17 @@ class _CuadernoFiadosScreenState extends State<CuadernoFiadosScreen> {
   /// audit timestamp written when the balance reaches zero). When the
   /// row pre-dates the new column the date falls back to a short dash
   /// so legacy rows don't break the layout.
+  ///
+  /// On "Pendientes" the tile carries an extra "reenviar link" CTA
+  /// (Mandatory Image Receipts epic — UX hotfix for sales recovery).
+  /// The send button surfaces a share sheet with the canonical
+  /// `https://tienda.vendia.app/f/<token>` URL so the cashier can
+  /// resend via WhatsApp / SMS without leaving the cuaderno.
   Widget _buildAccountTile(Map<String, dynamic> credit) {
-    return GestureDetector(
+    final isPendingTab = _filter == 'pending';
+    final fiadoToken = (credit['fiado_token'] as String?) ?? '';
+
+    final tile = GestureDetector(
       onTap: () async {
         final id = credit['id'] as String?;
         if (id == null || id.isEmpty) return;
@@ -245,6 +255,55 @@ class _CuadernoFiadosScreenState extends State<CuadernoFiadosScreen> {
       },
       child: buildAccountTileForTest(credit),
     );
+
+    // Compose the resend pill on top of the tile rather than
+    // mutating buildAccountTileForTest — keeps the pure renderer
+    // testable without dragging share_plus + Navigator into it.
+    if (!isPendingTab || fiadoToken.isEmpty) return tile;
+
+    final customer =
+        credit['customer'] as Map<String, dynamic>? ?? const {};
+    final customerName = (customer['name'] as String?) ?? '';
+    return Stack(
+      children: [
+        tile,
+        Positioned(
+          right: 8,
+          top: 8,
+          child: Material(
+            color: Colors.white,
+            shape: const CircleBorder(),
+            elevation: 1,
+            child: IconButton(
+              key: ValueKey('resend_${credit['id']}'),
+              tooltip: 'Reenviar link',
+              icon: const Icon(Icons.send_rounded,
+                  color: Color(0xFF6D28D9), size: 22),
+              onPressed: () => _resendFiadoLink(
+                fiadoToken: fiadoToken,
+                customerName: customerName,
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// Surfaces the system share sheet with the canonical fiado URL.
+  /// The cashier picks the channel (WhatsApp, SMS, Bluetooth, etc.).
+  /// We never bypass the share sheet — the tendero may have several
+  /// WhatsApp accounts and we don't want to guess which one.
+  Future<void> _resendFiadoLink({
+    required String fiadoToken,
+    required String customerName,
+  }) async {
+    final url = 'https://tienda.vendia.app/f/$fiadoToken';
+    final greeting = customerName.isEmpty ? '' : '$customerName, ';
+    final message =
+        '${greeting}aquí está el link para aceptar tu fiado en VendIA:\n$url';
+    HapticFeedback.lightImpact();
+    await Share.share(message, subject: 'Tu fiado en VendIA');
   }
 }
 
