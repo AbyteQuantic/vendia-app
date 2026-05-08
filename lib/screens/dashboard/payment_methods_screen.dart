@@ -9,6 +9,7 @@ import '../../services/api_service.dart';
 import '../../services/app_error.dart';
 import '../../services/auth_service.dart';
 import '../../theme/app_theme.dart';
+import '../../widgets/bank_auto_detect_tile.dart';
 
 /// Pure decision: given the outcome of the picker and the cropper,
 /// what should _uploadQR do next? Tested in isolation so a future
@@ -672,6 +673,10 @@ class _PaymentMethodsScreenState extends State<PaymentMethodsScreen> {
             const _LoadingBanner()
           else if (showErrorBanner)
             _ErrorBanner(message: _loadError!, onRetry: _fetch),
+          // Bank auto-detect opt-in. Lives above the methods list so
+          // the cashier discovers it in the same place they configure
+          // Nequi/Daviplata/etc. — no separate settings screen needed.
+          const BankAutoDetectTile(),
           Expanded(child: content),
         ],
       ),
@@ -987,8 +992,13 @@ class _EmptyState extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Center(
+    // Wrapped in SingleChildScrollView so the empty state copes with
+    // the [BankAutoDetectTile] eating ~80 vertical px above. Without
+    // it, the page overflows by ~26 px on the typical phone viewport
+    // and tests render layout exceptions before any tap can land.
+    return SingleChildScrollView(
       key: const Key('pm_empty_state'),
+      physics: const AlwaysScrollableScrollPhysics(),
       child: Padding(
         padding: const EdgeInsets.all(32),
         child: Column(
