@@ -297,19 +297,31 @@ class _CuadernoFiadosScreenState extends State<CuadernoFiadosScreen> {
     HapticFeedback.lightImpact();
     if (!mounted) return;
 
+    // Pull tenant + owner identity from the cached auth state so the
+    // outgoing message reads as if it came from the merchant — not
+    // from a generic "VendIA" robot. Both lookups are cached by
+    // FlutterSecureStorage; the fallbacks keep the copy readable
+    // when the cashier is using a fresh install or the storage
+    // layer is unavailable.
+    final auth = AuthService();
+    final results = await Future.wait([
+      auth.getBusinessName(),
+      auth.getOwnerName(),
+    ]);
+    if (!mounted) return;
+    final tenantName =
+        (results[0] ?? '').trim().isEmpty ? 'nuestra tienda' : results[0]!.trim();
+    final senderName =
+        (results[1] ?? '').trim().isEmpty ? 'el equipo' : results[1]!.trim();
+
     final url = 'https://tienda.vendia.app/f/$fiadoToken';
-    final greeting = customerName.trim().isEmpty ? 'Hola' : 'Hola $customerName';
-    // Multi-line professional copy. Used for SMS, WhatsApp body and
-    // mailto body — the email subject is set separately because the
-    // mailto encoding fix below treats them independently.
-    final body =
-        '$greeting,\n\n'
-        'Hemos registrado un fiado a tu nombre en VendIA. Para confirmarlo, '
-        'abre el siguiente enlace:\n\n'
-        '$url\n\n'
-        'Si tienes alguna duda, puedes responder a este mensaje.\n\n'
-        'Gracias por tu confianza.';
-    const subject = 'Detalles de tu cuenta en VendIA';
+    final body = buildFiadoShareBody(
+      customerName: customerName,
+      tenantName: tenantName,
+      senderName: senderName,
+      fiadoUrl: url,
+    );
+    final subject = 'Detalles de tu cuenta en $tenantName';
 
     await _showResendChannelSheet(
       email: customerEmail.trim(),
@@ -741,6 +753,39 @@ class _AccountTileTrailing extends StatelessWidget {
       ],
     );
   }
+}
+
+/// Builds the multi-line message the cashier shares with a customer
+/// to resend the fiado link. Pure function so widget tests can pin
+/// the wording without instantiating the screen + auth state.
+///
+/// PO mandate (Dynamic Branding):
+///   * the greeting carries the customer name when available,
+///   * the opening line names the merchant ("Somos de <tenant>"),
+///   * the signature pairs the cashier ("$senderName") with the
+///     merchant ("$tenantName") so the customer recognises both
+///     the person and the business.
+///
+/// Empty customer name falls back to plain "Hola"; empty
+/// tenant/sender are the caller's problem (they should swap in
+/// "nuestra tienda" / "el equipo" before invoking this helper).
+String buildFiadoShareBody({
+  required String customerName,
+  required String tenantName,
+  required String senderName,
+  required String fiadoUrl,
+}) {
+  final trimmedName = customerName.trim();
+  final greeting = trimmedName.isEmpty ? 'Hola' : 'Hola $trimmedName';
+  return '$greeting,\n\n'
+      'Somos de $tenantName. Hemos registrado un fiado a tu nombre. '
+      'Para confirmarlo y ver los detalles, por favor abre el siguiente enlace:\n\n'
+      '$fiadoUrl\n\n'
+      'Si tienes alguna duda, puedes responder a este mensaje o contactarnos directamente.\n\n'
+      'Gracias por tu confianza.\n\n'
+      'Atentamente,\n'
+      '$senderName\n'
+      '$tenantName';
 }
 
 /// Trims an ISO-8601 timestamp from the backend down to YYYY-MM-DD.
