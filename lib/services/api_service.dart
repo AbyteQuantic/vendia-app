@@ -2,7 +2,9 @@ import 'dart:async';
 import 'dart:io';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
+import 'package:uuid/uuid.dart';
 import '../config/api_config.dart';
+import '../config/supabase_config.dart';
 import '../theme/app_theme.dart';
 import '../widgets/premium_upsell_sheet.dart';
 import 'app_error.dart';
@@ -472,6 +474,58 @@ class ApiService {
       final response = await _dio
           .patch('/api/v1/products/$uuid/price', data: {'price': price});
       return _extractData(response);
+    } on DioException catch (e) {
+      throw AppError.fromDioException(e);
+    }
+  }
+
+  /// Uploads a payment-receipt photo to the Supabase Storage bucket
+  /// `payment_receipts`. Bypasses the VendIA backend on purpose — the
+  /// bucket has an 8-day TTL via pg_cron + a 5MB file size cap +
+  /// MIME-type allowlist, so the cashier-facing path stays fast and
+  /// the backend never touches multipart bytes.
+  ///
+  /// Returns the public URL of the stored object. The Sale or
+  /// CreditPayment row keeps that URL as audit trail even after the
+  /// blob itself is purged at day 8.
+  Future<String> uploadReceipt(File image) async {
+    final ext = image.path.toLowerCase().endsWith('.png') ? 'png' : 'jpg';
+    final mime = ext == 'png' ? 'image/png' : 'image/jpeg';
+    final fileName =
+        '${DateTime.now().millisecondsSinceEpoch}_${const Uuid().v4()}.$ext';
+    // Random subdir keeps Supabase listing tidy without leaking any
+    // tenant identifier into the URL — the URL becomes evidence even
+    // if the blob is gone.
+    final path = 'public/$fileName';
+    final url =
+        '$supabaseUrl/storage/v1/object/$supabaseReceiptsBucket/$path';
+
+    final dio = Dio();
+    try {
+      final res = await dio.post<dynamic>(
+        url,
+        data: image.openRead(),
+        options: Options(
+          headers: {
+            'apikey': supabaseAnonKey,
+            'Authorization': 'Bearer $supabaseAnonKey',
+            'Content-Type': mime,
+            'x-upsert': 'false',
+            Headers.contentLengthHeader: await image.length(),
+          },
+          // Supabase responds 200/201 on success; treat anything else
+          // as failure so the picker shows an error and the cashier
+          // re-tries instead of submitting a sale with a stale URL.
+          validateStatus: (s) => s != null && s >= 200 && s < 300,
+        ),
+      );
+      if (res.statusCode == null) {
+        throw const AppError(
+          type: AppErrorType.network,
+          message: 'Sin respuesta de Supabase',
+        );
+      }
+      return '$supabaseUrl/storage/v1/object/public/$supabaseReceiptsBucket/$path';
     } on DioException catch (e) {
       throw AppError.fromDioException(e);
     }
@@ -2151,10 +2205,19 @@ class ApiService {
     required int amount,
     String method = 'cash',
     String note = '',
+    String? receiptImageUrl,
   }) async {
     try {
-      final response = await _dio.post('/api/v1/credits/$creditId/payments',
-          data: {'amount': amount, 'payment_method': method, 'note': note});
+      final body = <String, dynamic>{
+        'amount': amount,
+        'payment_method': method,
+        'note': note,
+      };
+      if (receiptImageUrl != null && receiptImageUrl.isNotEmpty) {
+        body['receipt_image_url'] = receiptImageUrl;
+      }
+      final response =
+          await _dio.post('/api/v1/credits/$creditId/payments', data: body);
       return _extractData(response);
     } on DioException catch (e) {
       throw AppError.fromDioException(e);
@@ -2339,17 +2402,22 @@ class ApiService {
     required String paymentMethod,
     String paymentMethodId = '',
     String notes = '',
+    String? receiptImageUrl,
   }) async {
     try {
+      final body = <String, dynamic>{
+        'order_id': orderId,
+        'amount': amount,
+        'payment_method': paymentMethod,
+        'payment_method_id': paymentMethodId,
+        'notes': notes,
+      };
+      if (receiptImageUrl != null && receiptImageUrl.isNotEmpty) {
+        body['receipt_image_url'] = receiptImageUrl;
+      }
       final response = await _dio.post(
         '/api/v1/orders/partial-payments',
-        data: {
-          'order_id': orderId,
-          'amount': amount,
-          'payment_method': paymentMethod,
-          'payment_method_id': paymentMethodId,
-          'notes': notes,
-        },
+        data: body,
       );
       return _extractData(response);
     } on DioException catch (e) {

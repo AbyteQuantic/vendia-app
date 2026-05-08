@@ -10,9 +10,11 @@ import '../../services/active_fiado_service.dart';
 import '../../services/api_service.dart';
 import '../../services/app_error.dart';
 import '../../services/auth_service.dart';
+import '../../services/bank_notification_service.dart';
 import '../../services/role_manager.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/owner_pin_dialog.dart';
+import '../../widgets/receipt_image_picker.dart';
 
 class CheckoutResult {
   final bool confirmed;
@@ -42,6 +44,11 @@ class CheckoutResult {
   /// tenant keeps an audit trail and a future webhook reconciler can
   /// match Nequi/Daviplata SMS notifications to the sale.
   final String? dynamicQrPayload;
+  /// Public URL of the receipt photo the cashier attached to the
+  /// digital payment (Mandatory Image Receipts epic). Null for cash
+  /// sales and for fiado handshakes — the latter handle their own
+  /// audit via the public statement.
+  final String? receiptImageUrl;
   const CheckoutResult({
     required this.confirmed,
     required this.paymentMethod,
@@ -50,6 +57,7 @@ class CheckoutResult {
     this.customerName,
     this.customerPhone,
     this.dynamicQrPayload,
+    this.receiptImageUrl,
   });
 }
 
@@ -130,8 +138,26 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       _selectedMethodKey == _kFallbackCash ||
       (_selectedMethod?.provider == 'cash');
 
-  bool get _canConfirm =>
-      !_isCash || _amountTendered >= widget.total;
+  /// Supabase URL of the receipt photo the cashier attached. Empty
+  /// for cash sales (the picker only renders for digital methods).
+  /// Drives the "Confirmar Pago" gate alongside the cash-tendered
+  /// check. Mandatory Image Receipts epic — PO mandate.
+  String? _receiptUrl;
+
+  /// Mandatory image gating. The button is enabled only when:
+  ///   * cash with enough tendered, OR
+  ///   * non-cash with `_receiptUrl != null` (image successfully
+  ///     uploaded to Supabase).
+  /// CRITICAL: a bank notification flashing in the background does
+  /// NOT flip this — see [BankNotificationService] for the rationale.
+  bool get _canConfirm {
+    if (_selectedMethodKey == _kFiar) {
+      // Fiado uses its own handshake flow — no receipt photo here.
+      return true;
+    }
+    if (_isCash) return _amountTendered >= widget.total;
+    return _receiptUrl != null && _receiptUrl!.isNotEmpty;
+  }
 
   /// Always show all common denominations so the user can combine
   List<int> get _smartBills => _denominations;
@@ -156,6 +182,33 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         if (mounted) _showFiadoChoiceSheet();
       });
     }
+    // Bank notification listener — purely informative. SnackBar fires
+    // when the bank app's notification is captured by the native
+    // listener; nothing else here ever depends on it.
+    BankNotificationService.instance.addListener(_onBankNotif);
+  }
+
+  @override
+  void dispose() {
+    BankNotificationService.instance.removeListener(_onBankNotif);
+    _manualCtrl.dispose();
+    super.dispose();
+  }
+
+  void _onBankNotif() {
+    if (!mounted) return;
+    final svc = BankNotificationService.instance;
+    final bank = svc.lastDetectedBank;
+    if (bank == null) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        backgroundColor: const Color(0xFF10B981),
+        content: Text('✅ Notificación bancaria detectada · $bank',
+            style: const TextStyle(color: Colors.white)),
+        behavior: SnackBarBehavior.floating,
+        duration: const Duration(seconds: 3),
+      ),
+    );
   }
 
   /// Pulls the live tenant flag that gates the "Fiar" payment chip.
@@ -184,12 +237,6 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       // Keep the default (true). The admin hub flag is the source of
       // truth; an offline cashier shouldn't lose the "Fiar" option.
     }
-  }
-
-  @override
-  void dispose() {
-    _manualCtrl.dispose();
-    super.dispose();
   }
 
   String _formatCOP(int amount) {
@@ -523,6 +570,24 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                     ),
                   ],
                   const SizedBox(height: 24),
+
+                  // ── Comprobante (epic Mandatory Image Receipts) ─
+                  // Only renders for digital payments — cash sales
+                  // bypass the gate entirely. Fiar uses its own
+                  // handshake flow so no receipt is asked here.
+                  if (!_isCash && _selectedMethodKey != _kFiar) ...[
+                    const Text('Comprobante de pago',
+                        style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                            color: AppTheme.textPrimary)),
+                    const SizedBox(height: 12),
+                    ReceiptImagePicker(
+                      onImageReady: (url) =>
+                          setState(() => _receiptUrl = url),
+                    ),
+                    const SizedBox(height: 24),
+                  ],
                 ],
               ),
             ),
@@ -637,6 +702,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         CheckoutResult(
           confirmed: true,
           paymentMethod: method.name.toLowerCase(),
+          receiptImageUrl: _receiptUrl,
         ),
       );
       return;
@@ -649,6 +715,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       CheckoutResult(
         confirmed: true,
         paymentMethod: method.name.toLowerCase(),
+        receiptImageUrl: _receiptUrl,
       ),
     );
   }
