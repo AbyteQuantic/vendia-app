@@ -24,6 +24,14 @@
          and that one has no maxSdkVersion (we keep using GPS in 12+).
          Bluetooth on Android <= 11 reuses the same permission. -->
 
+    <!-- Bank notification listener: reads only the title/text of
+         notifications posted by the bank/wallet apps in the listener
+         allowlist. Required so the cashier can opt in via "Acceso a
+         notificaciones" in system settings — there is no runtime
+         permission API for this; the manifest declaration alone is
+         enough for the system to surface the toggle. -->
+    <uses-permission android:name="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE"/>
+
     <application
         android:label="VendIA"
         android:name="${applicationName}"
@@ -61,6 +69,26 @@
             android:name="com.yalantis.ucrop.UCropActivity"
             android:screenOrientation="portrait"
             android:theme="@style/Theme.AppCompat.Light.NoActionBar"/>
+
+        <!-- Bank-notification listener (Mandatory Image Receipts epic).
+             Purely informative — fires a green SnackBar on the active
+             checkout flow when a bank app posts a notification. Never
+             gates UI; the cashier still must attach the receipt photo
+             to enable "Confirmar pago". The android:permission below
+             tells the system to bind us via a privileged channel, and
+             the intent-filter is the canonical action that exposes
+             this service to the "Notification access" toggle in
+             Settings → Privacidad → Acceso a notificaciones. -->
+        <service
+            android:name=".BankNotificationListener"
+            android:exported="true"
+            android:label="VendIA · Notificaciones bancarias"
+            android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE">
+            <intent-filter>
+                <action android:name="android.service.notification.NotificationListenerService"/>
+            </intent-filter>
+        </service>
+
         <!-- Don't delete the meta-data below.
              This is used by the Flutter tool to generate GeneratedPluginRegistrant.java -->
         <meta-data
