@@ -13,15 +13,25 @@ import 'package:flutter_test/flutter_test.dart';
 /// well-formed: scheme = mailto, path = recipient, subject + body
 /// in `queryParameters`. If those are right, the OS does the rest.
 void main() {
+  /// Mirrors the production helper. The `+` → `%20` swap is the fix
+  /// for PO image_125 — Dart's queryParameters encoder uses
+  /// application/x-www-form-urlencoded, which Gmail renders as
+  /// literal '+' signs in the subject and body.
   Uri buildMailto({
     required String email,
     required String subject,
     required String body,
   }) {
+    final s = Uri.encodeComponent(subject).replaceAll('+', '%20');
+    final b = Uri.encodeComponent(body).replaceAll('+', '%20');
+    return Uri.parse('mailto:$email?subject=$s&body=$b');
+  }
+
+  Uri buildSms({required String phone, required String message}) {
     return Uri(
-      scheme: 'mailto',
-      path: email,
-      queryParameters: {'subject': subject, 'body': body},
+      scheme: 'sms',
+      path: phone,
+      queryParameters: {'body': message},
     );
   }
 
@@ -48,19 +58,42 @@ void main() {
         contains('https://tienda.vendia.app/f/abc'));
   });
 
-  test('mailto URI URL-encodes special chars in body', () {
+  test(
+      'mailto URI encodes spaces as %20 — never as + (PO image_125 fix)',
+      () {
+    final uri = buildMailto(
+      email: 'cliente@ejemplo.com',
+      subject: 'Detalles de tu cuenta en VendIA',
+      body: 'Hola Viviana, abre el link:\nhttps://tienda.vendia.app/f/abc',
+    );
+    final str = uri.toString();
+
+    // The '+' substitution is the bug Gmail renders verbatim. After
+    // the fix the subject and body must use %20 only.
+    expect(str.contains('+'), isFalse,
+        reason:
+            'CRITICAL: any literal "+" in the URI tells Gmail to render '
+            "spaces as '+' signs. Bug from PO image_125.");
+
+    expect(str, contains('subject=Detalles%20de%20tu%20cuenta'));
+    expect(str, contains('body=Hola%20Viviana'));
+    // Newline must come through encoded, not stripped.
+    expect(str, contains('%0A'));
+  });
+
+  test('mailto URI preserves ampersands and accents in the body', () {
     final uri = buildMailto(
       email: 'a@b.co',
       subject: 'Asunto con espacios',
       body: 'Línea 1\nÑ & ?',
     );
-    // toString is the value handed to launchUrl; make sure the
-    // newline and the ñ survive encoding.
     final str = uri.toString();
     expect(str, startsWith('mailto:a@b.co?'));
-    expect(str.contains('subject=Asunto'), isTrue);
-    // Either '%26' or '&' encoded properly via Uri's own encoder.
-    expect(uri.queryParameters['body'], 'Línea 1\nÑ & ?');
+    expect(str, contains('subject=Asunto%20con%20espacios'));
+    // '&' must be %26 so it doesn't terminate the body param early.
+    expect(str, contains('%26'));
+    // 'Ñ' encoded as %C3%91 (UTF-8).
+    expect(str, contains('%C3%91'));
   });
 
   test('WhatsApp URI prefixes Colombia country code only when missing', () {
@@ -83,5 +116,16 @@ void main() {
     // The raw URL string must have the colon URL-encoded so wa.me
     // doesn't truncate at https:.
     expect(uri.toString(), contains('text=Hola%2C%20link%20https'));
+  });
+
+  test('SMS URI carries the recipient in the path and body in query', () {
+    final uri = buildSms(
+      phone: '3001234567',
+      message: 'Tu fiado está listo: https://tienda.vendia.app/f/x',
+    );
+    expect(uri.scheme, 'sms');
+    expect(uri.path, '3001234567');
+    expect(uri.queryParameters['body'],
+        'Tu fiado está listo: https://tienda.vendia.app/f/x');
   });
 }
