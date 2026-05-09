@@ -16,9 +16,26 @@ class ApiConfig {
     final dotenvUrl = dotenv.maybeGet('API_BASE_URL');
     if (dotenvUrl != null && dotenvUrl.isNotEmpty) return dotenvUrl;
 
-    // Fallback: producción en Render
-    return 'https://vendia-api.onrender.com';
+    // Fallback: producción detrás del custom domain (Render via
+    // CNAME api.vendia.store). Si DNS aún no propaga, se puede
+    // sobreescribir vía .env o --dart-define con la URL legacy
+    // https://vendia-api.onrender.com.
+    return 'https://api.vendia.store';
   }
+
+  /// Customer-facing public site that serves the fiado handshake +
+  /// the public catalog. Behind the CNAME `tienda.vendia.store`
+  /// (Vercel). The cuaderno's "Reenviar link" share sheet builds
+  /// `$publicSiteUrl/f/<token>` from this value, and the same host
+  /// powers `/t/<session_token>` and `/<slug>/menu`.
+  static const String publicSiteUrl = 'https://tienda.vendia.store';
+
+  /// Builds the canonical fiado URL the cashier shares with the
+  /// customer. Centralised so a future host migration only touches
+  /// [publicSiteUrl] and never has to grep the codebase for hard
+  /// coded `tienda.vendia.*` strings.
+  static String fiadoUrlFor(String token) =>
+      '$publicSiteUrl/f/$token';
 
   /// WhatsApp number for the "Chat por WhatsApp" secondary CTA in
   /// SupportScreen. International format without "+". Falls back to

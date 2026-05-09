@@ -46,7 +46,7 @@ void main() {
     final uri = buildMailto(
       email: 'cliente@ejemplo.com',
       subject: 'Tu fiado en VendIA',
-      body: 'Hola, aquí está el link...\nhttps://tienda.vendia.app/f/abc',
+      body: 'Hola, aquí está el link...\nhttps://tienda.vendia.store/f/abc',
     );
     expect(uri.scheme, 'mailto');
     expect(uri.path, 'cliente@ejemplo.com',
@@ -55,7 +55,7 @@ void main() {
             'This was the bug.');
     expect(uri.queryParameters['subject'], 'Tu fiado en VendIA');
     expect(uri.queryParameters['body'],
-        contains('https://tienda.vendia.app/f/abc'));
+        contains('https://tienda.vendia.store/f/abc'));
   });
 
   test(
@@ -64,7 +64,7 @@ void main() {
     final uri = buildMailto(
       email: 'cliente@ejemplo.com',
       subject: 'Detalles de tu cuenta en VendIA',
-      body: 'Hola Viviana, abre el link:\nhttps://tienda.vendia.app/f/abc',
+      body: 'Hola Viviana, abre el link:\nhttps://tienda.vendia.store/f/abc',
     );
     final str = uri.toString();
 
@@ -109,10 +109,10 @@ void main() {
   test('WhatsApp URI URL-encodes the message in the text query param', () {
     final uri = buildWhatsApp(
       phone: '3001234567',
-      message: 'Hola, link https://tienda.vendia.app/f/x',
+      message: 'Hola, link https://tienda.vendia.store/f/x',
     );
     expect(uri.queryParameters['text'],
-        'Hola, link https://tienda.vendia.app/f/x');
+        'Hola, link https://tienda.vendia.store/f/x');
     // The raw URL string must have the colon URL-encoded so wa.me
     // doesn't truncate at https:.
     expect(uri.toString(), contains('text=Hola%2C%20link%20https'));
@@ -121,11 +121,11 @@ void main() {
   test('SMS URI carries the recipient in the path and body in query', () {
     final uri = buildSms(
       phone: '3001234567',
-      message: 'Tu fiado está listo: https://tienda.vendia.app/f/x',
+      message: 'Tu fiado está listo: https://tienda.vendia.store/f/x',
     );
     expect(uri.scheme, 'sms');
     expect(uri.path, '3001234567');
     expect(uri.queryParameters['body'],
-        'Tu fiado está listo: https://tienda.vendia.app/f/x');
+        'Tu fiado está listo: https://tienda.vendia.store/f/x');
   });
 }

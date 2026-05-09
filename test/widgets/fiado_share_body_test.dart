@@ -13,11 +13,11 @@ void main() {
       customerName: 'Viviana',
       tenantName: 'Tienda La Esquina',
       senderName: 'Bryan',
-      fiadoUrl: 'https://tienda.vendia.app/f/abc',
+      fiadoUrl: 'https://tienda.vendia.store/f/abc',
     );
     expect(body, startsWith('Hola Viviana,\n\n'));
     expect(body, contains('Somos de Tienda La Esquina.'));
-    expect(body, contains('https://tienda.vendia.app/f/abc'));
+    expect(body, contains('https://tienda.vendia.store/f/abc'));
     // Signature must pair sender + tenant on consecutive lines
     // ("Atentamente,\n<sender>\n<tenant>") — the customer reads
     // both who wrote and which business it came from.
@@ -29,7 +29,7 @@ void main() {
       customerName: '',
       tenantName: 'Mini Mercado',
       senderName: 'Ana',
-      fiadoUrl: 'https://tienda.vendia.app/f/x',
+      fiadoUrl: 'https://tienda.vendia.store/f/x',
     );
     expect(body, startsWith('Hola,\n\n'),
         reason:
@@ -43,7 +43,7 @@ void main() {
       customerName: 'Pedro',
       tenantName: 'Tienda X',
       senderName: 'Sofía',
-      fiadoUrl: 'https://tienda.vendia.app/f/y',
+      fiadoUrl: 'https://tienda.vendia.store/f/y',
     );
     // Three blank-line breaks: greeting → body, body → URL, URL →
     // outro / signature. We don't pin the count exactly because
@@ -60,7 +60,7 @@ void main() {
       customerName: '   Carolina   ',
       tenantName: 'X',
       senderName: 'Y',
-      fiadoUrl: 'https://tienda.vendia.app/f/z',
+      fiadoUrl: 'https://tienda.vendia.store/f/z',
     );
     expect(body, startsWith('Hola Carolina,'),
         reason: 'whitespace must be trimmed before interpolation');
