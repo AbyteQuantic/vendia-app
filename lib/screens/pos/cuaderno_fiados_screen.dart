@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
+import '../../config/api_config.dart';
 import '../../services/api_service.dart';
 import '../../services/auth_service.dart';
 import '../../theme/app_theme.dart';
@@ -314,7 +315,7 @@ class _CuadernoFiadosScreenState extends State<CuadernoFiadosScreen> {
     final senderName =
         (results[1] ?? '').trim().isEmpty ? 'el equipo' : results[1]!.trim();
 
-    final url = 'https://tienda.vendia.app/f/$fiadoToken';
+    final url = ApiConfig.fiadoUrlFor(fiadoToken);
     final body = buildFiadoShareBody(
       customerName: customerName,
       tenantName: tenantName,
