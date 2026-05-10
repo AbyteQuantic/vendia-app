@@ -26,16 +26,20 @@ class ApiConfig {
   /// Customer-facing public site that serves the fiado handshake +
   /// the public catalog. Behind the CNAME `tienda.vendia.store`
   /// (Vercel). The cuaderno's "Reenviar link" share sheet builds
-  /// `$publicSiteUrl/f/<token>` from this value, and the same host
-  /// powers `/t/<session_token>` and `/<slug>/menu`.
+  /// `$publicSiteUrl/fiado/<token>` from this value, and the same
+  /// host powers `/t/<session_token>` and `/<slug>/menu`.
   static const String publicSiteUrl = 'https://tienda.vendia.store';
 
   /// Builds the canonical fiado URL the cashier shares with the
-  /// customer. Centralised so a future host migration only touches
-  /// [publicSiteUrl] and never has to grep the codebase for hard
-  /// coded `tienda.vendia.*` strings.
+  /// customer. The path matches the Next.js route at
+  /// `src/app/fiado/[token]/page.tsx` in the admin-web repo.
+  ///
+  /// The legacy `/f/<token>` path (shipped briefly in earlier builds)
+  /// is still served via a Vercel rewrite, so links already out in
+  /// the wild keep working — but new shares should use the canonical
+  /// path so the client's address bar matches the route they hit.
   static String fiadoUrlFor(String token) =>
-      '$publicSiteUrl/f/$token';
+      '$publicSiteUrl/fiado/$token';
 
   /// WhatsApp number for the "Chat por WhatsApp" secondary CTA in
   /// SupportScreen. International format without "+". Falls back to
