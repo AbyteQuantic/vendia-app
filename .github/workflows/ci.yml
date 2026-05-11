@@ -1,0 +1,66 @@
+# CI for the Flutter POS app (vendia-app).
+#
+# Triggers on every push to main + every PR. Renders + Vercel still
+# auto-deploy on push-to-main without waiting for this — that is
+# intentional during the active development phase — but a failed
+# workflow becomes a visible signal on the PR so reviewers can
+# react before clicking merge.
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  flutter:
+    name: analyze + test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          # Pinned to the stable channel; the project's pubspec sets
+          # `sdk: '>=3.3.0 <4.0.0'`. Bump deliberately when the team
+          # upgrades the engine — leaving this on the floating
+          # `stable` tag would break reproducibility.
+          channel: stable
+          flutter-version: '3.41.6'
+          cache: true
+
+      - name: Verify SDK
+        run: flutter --version
+
+      - name: Restore pub cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.pub-cache
+            .dart_tool
+          key: pub-${{ runner.os }}-${{ hashFiles('pubspec.lock') }}
+          restore-keys: |
+            pub-${{ runner.os }}-
+
+      - name: Resolve dependencies
+        run: flutter pub get
+
+      - name: Analyze
+        # `--fatal-warnings` keeps the gate strict but stops short of
+        # also failing on `info` lints (cosmetic). The repo currently
+        # ships with zero analyze issues — any new warning is a real
+        # regression and should block the merge.
+        run: flutter analyze --fatal-warnings
+
+      - name: Test
+        # No coverage flag yet — the repo doesn't ship a baseline
+        # `coverage/lcov.info` and adding it here without a target
+        # threshold would be noise. Add `--coverage` + Codecov upload
+        # once the team agrees on a minimum %.
+        run: flutter test
