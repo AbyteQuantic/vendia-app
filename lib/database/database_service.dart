@@ -56,6 +56,12 @@ class DatabaseService {
   /// Wipe tenant-scoped local collections when switching to a different tenant.
   /// Compares [newTenantId] against the previously stored tenant; skips the
   /// wipe when re-logging into the same account so today's sales survive.
+  ///
+  /// H10 fix — `pendingOperations` is **NOT** wiped wholesale anymore.
+  /// Each op carries its own `tenantId`; the queue keeps cross-tenant
+  /// ops alive so the cashier doesn't lose unsynced sales / abonos
+  /// when they bounce between workspaces. The sync engine filters
+  /// the queue to "current tenant only" before pushing.
   Future<void> clearIfTenantChanged(String? newTenantId) async {
     if (newTenantId == null || newTenantId.isEmpty) return;
 
@@ -68,13 +74,15 @@ class DatabaseService {
     // Same tenant → nothing to clear
     if (prev == newTenantId) return;
 
-    // Different tenant (or first-ever login) → wipe stale data
+    // Different tenant (or first-ever login) → wipe stale tenant-
+    // scoped reference data, but preserve pendingOperations
+    // (filtered server-side at sync time by their own tenantId).
     await isar.writeTxn(() async {
       await isar.localProducts.clear();
       await isar.localSales.clear();
       await isar.localCustomers.clear();
       await isar.localCredits.clear();
-      await isar.pendingOperations.clear();
+      // pendingOperations intentionally NOT cleared — see comment above.
     });
   }
 
