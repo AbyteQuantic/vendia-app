@@ -341,10 +341,17 @@ class _PromoManagementScreenState extends State<PromoManagementScreen> {
                 onRefresh: _loadAll,
                 child: SingleChildScrollView(
                   physics: const AlwaysScrollableScrollPhysics(),
-                  // Padding inferior generoso: el FAB extendido se
-                  // superpone al scroll; queremos que la última card
-                  // siga siendo visible por encima del botón.
-                  padding: const EdgeInsets.fromLTRB(24, 24, 24, 120),
+                  // Padding inferior generoso: el FAB extendido (alto
+                  // 64) más el offset de `centerFloat` (~16) más el
+                  // safe area inferior nos pisaban la última card.
+                  // Subimos a 160 con safe-area añadida para que el
+                  // tile inferior quede holgadamente por encima del
+                  // botón en cualquier resolución (PO image_125).
+                  padding: EdgeInsets.fromLTRB(
+                      24,
+                      24,
+                      24,
+                      160 + MediaQuery.of(context).padding.bottom),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -748,34 +755,41 @@ class _PromoManagementScreenState extends State<PromoManagementScreen> {
               children: [
                 Text(
                   p.title,
-                  maxLines: 1,
+                  // Permitimos 2 líneas: PO reportó "Coca Cola Y
+                  // empanad..." truncado donde había espacio sobrado.
+                  maxLines: 2,
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
-                    fontSize: 20,
+                    fontSize: 19,
                     fontWeight: FontWeight.w600,
                     color: AppTheme.textPrimary,
+                    height: 1.2,
                   ),
                 ),
                 if (p.subtitle.isNotEmpty) ...[
                   const SizedBox(height: 2),
                   Text(
                     p.subtitle,
-                    maxLines: 1,
+                    // 2 líneas también para la composición de
+                    // productos de la promo — "Producto + Producto +
+                    // 2× Produ…" leía como error visual.
+                    maxLines: 2,
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(
-                      fontSize: 14,
+                      fontSize: 13,
+                      height: 1.3,
                       color: AppTheme.textSecondary,
                     ),
                   ),
                 ],
-                const SizedBox(height: 4),
+                const SizedBox(height: 6),
                 Row(
                   children: [
                     if (p.totalRegular > p.totalPromo) ...[
                       Text(
                         '\$${_formatNumber(p.totalRegular)}',
                         style: TextStyle(
-                          fontSize: 16,
+                          fontSize: 15,
                           color: Colors.grey.shade500,
                           decoration: TextDecoration.lineThrough,
                           decorationColor: Colors.grey.shade500,
@@ -785,10 +799,13 @@ class _PromoManagementScreenState extends State<PromoManagementScreen> {
                     ],
                     Text(
                       '\$${_formatNumber(p.totalPromo)}',
+                      // Precio destacado en naranja-brand. AppTheme.error
+                      // (rojo) se leía como alerta — el precio de una
+                      // promo activa debe ser positivo, no estresante.
                       style: const TextStyle(
                         fontSize: 20,
                         fontWeight: FontWeight.bold,
-                        color: AppTheme.error,
+                        color: Color(0xFFEA580C),
                       ),
                     ),
                   ],
