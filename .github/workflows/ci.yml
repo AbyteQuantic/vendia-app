@@ -51,6 +51,12 @@ jobs:
       - name: Resolve dependencies
         run: flutter pub get
 
+      - name: Generate code (Isar schemas, JSON)
+        # `*.g.dart` files are gitignored. Without this step the
+        # next steps would fail on missing `part 'X.g.dart'` symbols.
+        # `--delete-conflicting-outputs` makes the step rerunnable.
+        run: dart run build_runner build --delete-conflicting-outputs
+
       - name: Analyze
         # `--fatal-warnings` keeps the gate strict but stops short of
         # also failing on `info` lints (cosmetic). The repo currently

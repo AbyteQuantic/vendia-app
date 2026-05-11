@@ -128,6 +128,17 @@ class SyncService extends ChangeNotifier {
   }
 
   Future<void> enqueue(PendingOperation op) async {
+    // H10 fix: stamp the active tenant on every queued op so a
+    // workspace switch can't orphan / leak the work. Callers don't
+    // have to remember to set it — the sync service is the choke
+    // point. If the cashier has no tenant yet (rare bootstrap
+    // race), the empty string is preserved so the op is still
+    // accepted; the sync engine treats `''` as legacy and skips
+    // filtering — server-side validation rejects mismatched
+    // tenants anyway.
+    if (op.tenantId.isEmpty) {
+      op.tenantId = (await _auth.getTenantId()) ?? '';
+    }
     await _db.addPendingOp(op);
     await _refreshPendingCount();
     _updateStatusFromState();
