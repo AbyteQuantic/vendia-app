@@ -147,14 +147,20 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   /// Mandatory image gating. The button is enabled only when:
   ///   * cash with enough tendered, OR
   ///   * non-cash with `_receiptUrl != null` (image successfully
-  ///     uploaded to Supabase).
+  ///     uploaded to Supabase), OR
+  ///   * fiar WITH a completed handshake — i.e.
+  ///     `ActiveFiadoService.hasActive` is true (H11 fix).
+  ///
   /// CRITICAL: a bank notification flashing in the background does
   /// NOT flip this — see [BankNotificationService] for the rationale.
-  bool get _canConfirm {
-    if (_selectedMethodKey == _kFiar) {
-      // Fiado uses its own handshake flow — no receipt photo here.
-      return true;
-    }
+  /// Prior to the H11 fix the fiar branch returned `true`
+  /// unconditionally; tapping "Confirmar" then opened the
+  /// handshake sheet on the fly — but the button label and look
+  /// implied the sale was confirmable. Now the button stays
+  /// disabled until the handshake produces an accepted account
+  /// (see [_handleFiarChipSelected] for the sheet dispatch).
+  bool _canConfirmWith({required bool hasActiveFiado}) {
+    if (_selectedMethodKey == _kFiar) return hasActiveFiado;
     if (_isCash) return _amountTendered >= widget.total;
     return _receiptUrl != null && _receiptUrl!.isNotEmpty;
   }
@@ -273,6 +279,11 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // Subscribed: when the cuaderno polling marks the fiado
+    // accepted, this rebuild flips `_canConfirmWith` and enables
+    // the Confirmar button.
+    final hasActiveFiado = context.watch<ActiveFiadoService>().hasActive;
+    final canConfirm = _canConfirmWith(hasActiveFiado: hasActiveFiado);
     return Scaffold(
       backgroundColor: AppTheme.background,
       appBar: AppBar(
@@ -451,10 +462,30 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                               icon: Icons.menu_book_rounded,
                               label: 'Fiar',
                               selected: _selectedMethodKey == _kFiar,
-                              onTap: () => setState(() {
-                                _selectedMethod = null;
-                                _selectedMethodKey = _kFiar;
-                              }),
+                              onTap: () {
+                                setState(() {
+                                  _selectedMethod = null;
+                                  _selectedMethodKey = _kFiar;
+                                });
+                                // H11: tapping the Fiar chip without an
+                                // already-active fiado dispatches the
+                                // handshake sheet on the spot. Before this
+                                // fix the Confirmar button stayed enabled
+                                // and pretended the sale was confirmable;
+                                // now the cashier is funnelled straight
+                                // into the handshake and the primary
+                                // button only enables when the customer
+                                // accepts.
+                                final active =
+                                    context.read<ActiveFiadoService>();
+                                if (!active.hasActive) {
+                                  WidgetsBinding.instance
+                                      .addPostFrameCallback((_) {
+                                    if (!mounted) return;
+                                    _showFiadoChoiceSheet();
+                                  });
+                                }
+                              },
                               color: const Color(0xFFF59E0B),
                             ),
                         ],
@@ -610,7 +641,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                 width: double.infinity,
                 height: 64,
                 child: ElevatedButton.icon(
-                  onPressed: _canConfirm ? _confirmSale : null,
+                  onPressed: canConfirm ? _confirmSale : null,
                   style: ElevatedButton.styleFrom(
                     backgroundColor: AppTheme.success,
                     disabledBackgroundColor:
@@ -619,12 +650,12 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                         borderRadius: BorderRadius.circular(20)),
                   ),
                   icon: Icon(
-                    _canConfirm
+                    canConfirm
                         ? Icons.check_circle_rounded
                         : Icons.block_rounded,
                     size: 28,
                     color: Colors.white.withValues(
-                        alpha: _canConfirm ? 1 : 0.6),
+                        alpha: canConfirm ? 1 : 0.6),
                   ),
                   label: Text(
                     'Registrar venta por ${widget.formattedTotal}',
@@ -632,7 +663,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                       fontSize: 19,
                       fontWeight: FontWeight.bold,
                       color: Colors.white.withValues(
-                          alpha: _canConfirm ? 1 : 0.6),
+                          alpha: canConfirm ? 1 : 0.6),
                     ),
                   ),
                 ),
