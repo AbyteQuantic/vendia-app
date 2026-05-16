@@ -1,4 +1,6 @@
 // Spec: specs/001-insumos-recetas/spec.md
+import 'dart:developer' as developer;
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -51,8 +53,16 @@ class _IngredientsScreenState extends State<IngredientsScreen> {
         _ingredients = raw.map(Ingredient.fromJson).toList();
         _loading = false;
       });
-    } catch (_) {
-      // No filtramos el detalle técnico al usuario (UI_RULES §8).
+    } catch (e, stack) {
+      // El detalle técnico NO se le muestra al usuario (UI_RULES §8),
+      // pero JAMÁS se silencia: se registra para diagnóstico
+      // (Constitución — nunca tragar errores).
+      developer.log(
+        'Error al cargar los insumos',
+        name: 'IngredientsScreen',
+        error: e,
+        stackTrace: stack,
+      );
       if (!mounted) return;
       setState(() {
         _error = 'No pudimos cargar sus insumos.';
@@ -129,7 +139,13 @@ class _IngredientsScreenState extends State<IngredientsScreen> {
     try {
       await _api.deleteIngredient(ing.uuid);
       await _load();
-    } catch (_) {
+    } catch (e, stack) {
+      developer.log(
+        'Error al eliminar el insumo ${ing.uuid}',
+        name: 'IngredientsScreen',
+        error: e,
+        stackTrace: stack,
+      );
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(

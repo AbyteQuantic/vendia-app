@@ -1,4 +1,6 @@
 // Spec: specs/001-insumos-recetas/spec.md
+import 'dart:developer' as developer;
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../../services/api_service.dart';
@@ -93,8 +95,15 @@ class _RecipeStep3ScreenState extends State<RecipeStep3Screen> {
       if (recipeUuid != null && recipeUuid.isNotEmpty) {
         try {
           await _api.fetchRecipeCost(recipeUuid);
-        } catch (_) {
-          // El costo se mostrará con el cálculo local; no es crítico.
+        } catch (e, stack) {
+          // El costo se mostrará con el cálculo local; no es crítico
+          // para el usuario, pero el error igual se registra.
+          developer.log(
+            'No se pudo confirmar el costo autoritativo de la receta',
+            name: 'RecipeStep3Screen',
+            error: e,
+            stackTrace: stack,
+          );
         }
       }
       if (!mounted) return;
@@ -121,7 +130,15 @@ class _RecipeStep3ScreenState extends State<RecipeStep3Screen> {
           duration: const Duration(seconds: 3),
         ),
       );
-    } catch (_) {
+    } catch (e, stack) {
+      // El detalle técnico no se le muestra al usuario, pero el error
+      // se registra; nunca se silencia (Constitución).
+      developer.log(
+        'Error al guardar la receta',
+        name: 'RecipeStep3Screen',
+        error: e,
+        stackTrace: stack,
+      );
       if (!mounted) return;
       setState(() => _saving = false);
       ScaffoldMessenger.of(context).showSnackBar(

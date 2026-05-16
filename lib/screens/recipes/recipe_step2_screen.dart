@@ -1,4 +1,6 @@
 // Spec: specs/001-insumos-recetas/spec.md
+import 'dart:developer' as developer;
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../../models/ingredient.dart';
@@ -73,7 +75,14 @@ class _RecipeStep2ScreenState extends State<RecipeStep2Screen> {
         _available = raw.map(Ingredient.fromJson).toList();
         _loading = false;
       });
-    } catch (_) {
+    } catch (e, stack) {
+      // El error real se registra; nunca se silencia (Constitución).
+      developer.log(
+        'Error al cargar los insumos para la receta',
+        name: 'RecipeStep2Screen',
+        error: e,
+        stackTrace: stack,
+      );
       if (!mounted) return;
       setState(() {
         _error = 'No pudimos cargar sus insumos.';

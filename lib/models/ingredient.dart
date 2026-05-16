@@ -53,8 +53,18 @@ class Ingredient {
   bool get isLowStock => minStock > 0 && stock <= minStock;
 
   factory Ingredient.fromJson(Map<String, dynamic> json) {
+    // El backend embebe `BaseModel`, cuya llave primaria UUID se
+    // serializa como `id` (no `uuid`). Leemos `id` como fuente
+    // autoritativa y mantenemos `uuid` como respaldo para datos
+    // locales/offline guardados con la llave antigua.
+    final id = (json['id'] ?? json['uuid']) as String?;
+    if (id == null) {
+      throw const FormatException(
+        'El insumo del servidor no trae identificador (id/uuid).',
+      );
+    }
     return Ingredient(
-      uuid: json['uuid'] as String,
+      uuid: id,
       name: json['name'] as String,
       unit: json['unit'] as String? ?? 'unidad',
       stock: (json['stock'] as num?)?.toDouble() ?? 0,
@@ -67,7 +77,6 @@ class Ingredient {
       createdAt: json['created_at'] != null
           ? DateTime.tryParse(json['created_at'] as String) ?? DateTime.now()
           : DateTime.now(),
-      serverId: json['id'] as int?,
     );
   }
 

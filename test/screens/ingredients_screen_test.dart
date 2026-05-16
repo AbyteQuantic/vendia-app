@@ -34,12 +34,11 @@ class _FakeApi extends ApiService {
   Future<Map<String, dynamic>> createIngredient(
       Map<String, dynamic> data) async {
     created.add(data);
-    // El backend asigna `id` y `uuid` y devuelve la entidad completa;
-    // el cuerpo del POST ya no incluye `uuid` (contrato Feature 001).
+    // El backend asigna `id` (UUID) y devuelve la entidad completa; el
+    // cuerpo del POST no incluye el identificador (contrato Feature 001).
     final res = {
       ...data,
-      'id': created.length,
-      'uuid': 'ing-created-${created.length}',
+      'id': 'ing-created-${created.length}',
     };
     ingredients = [...ingredients, res];
     return res;
@@ -48,18 +47,21 @@ class _FakeApi extends ApiService {
   @override
   Future<Map<String, dynamic>> updateIngredient(
       String uuid, Map<String, dynamic> data) async {
-    return {...data, 'uuid': uuid};
+    return {...data, 'id': uuid};
   }
 
   @override
   Future<void> deleteIngredient(String uuid) async {
     deleted.add(uuid);
-    ingredients = ingredients.where((i) => i['uuid'] != uuid).toList();
+    ingredients = ingredients.where((i) => i['id'] != uuid).toList();
   }
 }
 
+/// Construye un insumo con la forma REAL del backend: el identificador
+/// viaja en la llave `id` (no `uuid`), porque el modelo Go embebe
+/// `BaseModel`.
 Map<String, dynamic> _ing({
-  required String uuid,
+  required String id,
   required String name,
   String unit = 'kg',
   double stock = 5,
@@ -67,7 +69,8 @@ Map<String, dynamic> _ing({
   double unitCost = 1000,
 }) =>
     {
-      'uuid': uuid,
+      'id': id,
+      'tenant_id': 'tenant-1',
       'name': name,
       'unit': unit,
       'stock': stock,
@@ -118,8 +121,8 @@ void main() {
       (tester) async {
     final api = _FakeApi()
       ..ingredients = [
-        _ing(uuid: 'i1', name: 'Arroz', unit: 'kg', stock: 10),
-        _ing(uuid: 'i2', name: 'Pollo', unit: 'kg', stock: 3),
+        _ing(id: 'i1', name: 'Arroz', unit: 'kg', stock: 10),
+        _ing(id: 'i2', name: 'Pollo', unit: 'kg', stock: 3),
       ];
     await tester.pumpWidget(MaterialApp(home: IngredientsScreen(api: api)));
     await tester.pumpAndSettle();
@@ -130,10 +133,39 @@ void main() {
     expect(find.textContaining('10'), findsWidgets);
   });
 
+  testWidgets(
+      'lista insumos con la forma REAL del backend — id, no uuid (BUG-5)',
+      (tester) async {
+    // Regresión BUG-5: el backend serializa el identificador del insumo
+    // como `id` (su modelo Go embebe BaseModel). Antes la pantalla leía
+    // `uuid`, el cast `null as String` lanzaba TypeError y `catch (_)`
+    // lo tragaba → la pantalla mostraba el estado de error con un 200.
+    final api = _FakeApi()
+      ..ingredients = [
+        {
+          'id': '2f8c0a1e-9b3d-4f6a-8c11-aa22bb33cc44',
+          'tenant_id': 'tenant-1',
+          'name': 'Harina',
+          'unit': 'kg',
+          'stock': 8.0,
+          'min_stock': 1.0,
+          'unit_cost': 2500.0,
+          'created_at': '2026-05-16T10:00:00Z',
+          'updated_at': '2026-05-16T10:00:00Z',
+        },
+      ];
+    await tester.pumpWidget(MaterialApp(home: IngredientsScreen(api: api)));
+    await tester.pumpAndSettle();
+
+    // Lista los datos de verdad — no cae al estado de error.
+    expect(find.text('Harina'), findsOneWidget);
+    expect(find.text('Reintentar'), findsNothing);
+  });
+
   testWidgets('marca el insumo bajo el mínimo (AC-05)', (tester) async {
     final api = _FakeApi()
       ..ingredients = [
-        _ing(uuid: 'i1', name: 'Sal', unit: 'g', stock: 1, minStock: 2),
+        _ing(id: 'i1', name: 'Sal', unit: 'g', stock: 1, minStock: 2),
       ];
     await tester.pumpWidget(MaterialApp(home: IngredientsScreen(api: api)));
     await tester.pumpAndSettle();

@@ -1,4 +1,6 @@
 // Spec: specs/001-insumos-recetas/spec.md
+import 'dart:developer' as developer;
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:uuid/uuid.dart';
@@ -105,7 +107,14 @@ class _IngredientFormScreenState extends State<IngredientFormScreen> {
       if (!mounted) return;
       HapticFeedback.mediumImpact();
       Navigator.of(context).pop(true);
-    } catch (e) {
+    } catch (e, stack) {
+      // El error real se registra; nunca se silencia (Constitución).
+      developer.log(
+        'Error al guardar el insumo',
+        name: 'IngredientFormScreen',
+        error: e,
+        stackTrace: stack,
+      );
       if (!mounted) return;
       setState(() => _saving = false);
       ScaffoldMessenger.of(context).showSnackBar(
