@@ -1,22 +1,37 @@
+// Spec: specs/001-insumos-recetas/spec.md
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import '../../services/api_service.dart';
 import '../../theme/app_theme.dart';
 import 'recipe_step2_screen.dart';
 
 /// Recipe creation step 1: Photo, name, category, and price.
+///
+/// Feature 001: el wizard de recetas dejó de ser prototipo. Este paso
+/// recoge el nombre, la categoría y el precio de venta que escribe el
+/// tendero — ya no usa valores mock fijos — y los pasa al paso 2, donde
+/// se eligen insumos reales (plan §5, T-24).
 class RecipeStep1Screen extends StatefulWidget {
-  const RecipeStep1Screen({super.key});
+  /// ApiService inyectable para pruebas; en producción usa el default.
+  final ApiService? api;
+
+  const RecipeStep1Screen({super.key, this.api});
 
   @override
   State<RecipeStep1Screen> createState() => _RecipeStep1ScreenState();
 }
 
 class _RecipeStep1ScreenState extends State<RecipeStep1Screen> {
-  final _nameCtrl = TextEditingController(text: 'Perro Caliente Sencillo');
-  final _priceCtrl = TextEditingController(text: '5.000');
-  String _selectedCategory = 'Perros Calientes';
+  final _nameCtrl = TextEditingController();
+  final _priceCtrl = TextEditingController();
+  String _selectedCategory = 'Comidas';
+  String? _nameError;
 
+  // Categorías por defecto del menú. No son parte del contrato de
+  // Feature 001 (la receta guarda un texto libre); se ofrecen como
+  // atajo para reducir fricción (Art. I).
   final List<Map<String, String>> _categories = [
+    {'emoji': '\u{1F37D}️', 'name': 'Comidas'},
     {'emoji': '\u{1F32D}', 'name': 'Perros Calientes'},
     {'emoji': '\u{1F354}', 'name': 'Hamburguesas'},
     {'emoji': '\u{1F355}', 'name': 'Pizzas'},
@@ -28,6 +43,18 @@ class _RecipeStep1ScreenState extends State<RecipeStep1Screen> {
     _nameCtrl.dispose();
     _priceCtrl.dispose();
     super.dispose();
+  }
+
+  /// Emoji asociado a la categoría seleccionada (decorativo).
+  String get _categoryEmoji => _categories.firstWhere(
+        (c) => c['name'] == _selectedCategory,
+        orElse: () => _categories.first,
+      )['emoji']!;
+
+  /// Convierte el texto del precio ("5.000") a un entero en COP.
+  int _parsePrice() {
+    final raw = _priceCtrl.text.replaceAll(RegExp(r'[^0-9]'), '');
+    return int.tryParse(raw) ?? 0;
   }
 
   void _takePhoto() {
@@ -54,13 +81,21 @@ class _RecipeStep1ScreenState extends State<RecipeStep1Screen> {
   }
 
   void _goToStep2() {
+    final name = _nameCtrl.text.trim();
+    if (name.isEmpty) {
+      setState(() => _nameError = 'Escriba el nombre del producto');
+      return;
+    }
+    setState(() => _nameError = null);
     HapticFeedback.mediumImpact();
     Navigator.of(context).push(
       MaterialPageRoute(
         builder: (_) => RecipeStep2Screen(
-          productName: _nameCtrl.text.trim(),
-          salePrice: 5000,
-          emoji: '\u{1F32D}',
+          productName: name,
+          salePrice: _parsePrice().toDouble(),
+          emoji: _categoryEmoji,
+          category: _selectedCategory,
+          api: widget.api,
         ),
       ),
     );
@@ -162,11 +197,13 @@ class _RecipeStep1ScreenState extends State<RecipeStep1Screen> {
                     ),
                     const SizedBox(height: 10),
                     TextField(
+                      key: const Key('field_recipe_name'),
                       controller: _nameCtrl,
                       style: const TextStyle(
                           fontSize: 20, color: AppTheme.textPrimary),
-                      decoration: const InputDecoration(
+                      decoration: InputDecoration(
                         hintText: 'Ej: Perro Caliente Sencillo',
+                        errorText: _nameError,
                       ),
                     ),
 
@@ -258,6 +295,7 @@ class _RecipeStep1ScreenState extends State<RecipeStep1Screen> {
                     ),
                     const SizedBox(height: 10),
                     TextField(
+                      key: const Key('field_recipe_price'),
                       controller: _priceCtrl,
                       keyboardType: TextInputType.number,
                       style: const TextStyle(
@@ -312,6 +350,7 @@ class _RecipeStep1ScreenState extends State<RecipeStep1Screen> {
                     ],
                   ),
                   child: ElevatedButton(
+                    key: const Key('btn_recipe_to_step2'),
                     onPressed: _goToStep2,
                     style: ElevatedButton.styleFrom(
                       backgroundColor: Colors.transparent,
