@@ -35,8 +35,15 @@ class Recipe {
       salePrice > 0 ? (profitPerUnit / salePrice) * 100 : 0;
 
   factory Recipe.fromJson(Map<String, dynamic> json) {
+    // El backend serializa el ID del BaseModel como `id` (UUID string).
+    // `uuid` queda como respaldo para datos offline viejos. (BUG-6)
+    final id = (json['id'] ?? json['uuid']) as String?;
+    if (id == null || id.isEmpty) {
+      throw const FormatException(
+          'Recipe.fromJson: falta el identificador (id/uuid)');
+    }
     return Recipe(
-      uuid: json['uuid'] as String,
+      uuid: id,
       productName: json['product_name'] as String,
       salePrice: (json['sale_price'] as num).toDouble(),
       category: json['category'] as String? ?? '',
@@ -50,7 +57,6 @@ class Recipe {
       createdAt: json['created_at'] != null
           ? DateTime.parse(json['created_at'] as String)
           : DateTime.now(),
-      serverId: json['id'] as int?,
     );
   }
 
