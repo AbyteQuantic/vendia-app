@@ -57,6 +57,14 @@ jobs:
         # `--delete-conflicting-outputs` makes the step rerunnable.
         run: dart run build_runner build --delete-conflicting-outputs
 
+      - name: Prepare .env
+        # `.env` is declared as a Flutter asset in pubspec.yaml but is
+        # gitignored (it carries secrets). Without a placeholder file,
+        # `flutter analyze` fails with `asset_does_not_exist`. The
+        # committed `.env.example` carries no secrets and is enough for
+        # analyze and the (mock-based) test suite.
+        run: cp .env.example .env
+
       - name: Analyze
         # `--fatal-warnings` keeps the gate strict but stops short of
         # also failing on `info` lints (cosmetic). The repo currently
