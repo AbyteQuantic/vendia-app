@@ -71,12 +71,16 @@ class Ingredient {
     );
   }
 
-  /// Serializa los campos que el backend espera en POST/PATCH (plan §4).
+  /// Serializa los campos que el backend espera en POST/PATCH.
+  ///
+  /// Contrato autoritativo de `POST /api/v1/ingredients`:
+  /// `{ id?, name, unit, stock, min_stock, unit_cost, expiry_date?,
+  /// supplier_id? }`. El insumo se identifica por `uuid` en la URL
+  /// del PATCH, así que NO viaja en el cuerpo.
   /// Los campos nullable se omiten cuando son nulos para no enviar
   /// strings vacíos que rompan el insert en Postgres (Art. X).
   Map<String, dynamic> toJson() {
     final json = <String, dynamic>{
-      'uuid': uuid,
       'name': name,
       'unit': unit,
       'stock': stock,

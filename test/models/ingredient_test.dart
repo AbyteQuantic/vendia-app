@@ -72,7 +72,9 @@ void main() {
 
       final json = ing.toJson();
 
-      expect(json['uuid'], 'ing-1');
+      // El contrato de POST /api/v1/ingredients no lleva `uuid` en el
+      // cuerpo: el insumo se identifica por la URL en el PATCH.
+      expect(json.containsKey('uuid'), isFalse);
       expect(json['name'], 'Pollo');
       expect(json['unit'], 'kg');
       expect(json['stock'], 3);

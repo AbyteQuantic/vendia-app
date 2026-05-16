@@ -66,15 +66,21 @@ class Recipe {
 }
 
 /// Single ingredient in a recipe with quantity and cost.
+///
+/// El contrato del backend (Feature 001) identifica cada insumo de la
+/// receta con `ingredient_uuid`. `fromJson` mantiene un fallback a
+/// `product_uuid` por compatibilidad con datos viejos antes del cambio
+/// de contrato.
 class RecipeIngredient {
-  final String productUuid;
+  /// UUID del insumo. El contrato lo expone como `ingredient_uuid`.
+  final String ingredientUuid;
   final String productName;
   final double quantity;
   final double unitCost;
   final String? emoji;
 
   RecipeIngredient({
-    required this.productUuid,
+    required this.ingredientUuid,
     required this.productName,
     required this.quantity,
     required this.unitCost,
@@ -85,19 +91,19 @@ class RecipeIngredient {
 
   factory RecipeIngredient.fromJson(Map<String, dynamic> json) {
     return RecipeIngredient(
-      productUuid: json['product_uuid'] as String,
-      productName: json['product_name'] as String,
+      // Contrato nuevo: `ingredient_uuid`. Fallback a `product_uuid`
+      // para no romper recetas guardadas antes del cambio de contrato.
+      ingredientUuid: (json['ingredient_uuid'] ?? json['product_uuid'])
+          as String,
+      productName: json['product_name'] as String? ?? '',
       quantity: (json['quantity'] as num).toDouble(),
-      unitCost: (json['unit_cost'] as num).toDouble(),
+      unitCost: (json['unit_cost'] as num?)?.toDouble() ?? 0,
       emoji: json['emoji'] as String?,
     );
   }
 
   Map<String, dynamic> toJson() => {
-        'product_uuid': productUuid,
-        'product_name': productName,
+        'ingredient_uuid': ingredientUuid,
         'quantity': quantity,
-        'unit_cost': unitCost,
-        'emoji': emoji,
       };
 }

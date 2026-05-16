@@ -1,7 +1,6 @@
 // Spec: specs/001-insumos-recetas/spec.md
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:uuid/uuid.dart';
 import '../../services/api_service.dart';
 import '../../services/auth_service.dart';
 import '../../theme/app_theme.dart';
@@ -60,10 +59,15 @@ class _RecipeStep3ScreenState extends State<RecipeStep3Screen> {
         RegExp(r'(\d)(?=(\d{3})+(?!\d))'), (m) => '${m[1]}.');
   }
 
-  /// Construye el payload de receta para el backend (plan §4/§5).
-  Map<String, dynamic> _buildPayload(String uuid) {
+  /// Construye el payload de receta para el backend.
+  ///
+  /// Contrato autoritativo de `POST /api/v1/recipes`:
+  /// `{ id?, product_name, category, sale_price, emoji, photo_url,
+  /// ingredients: [{ ingredient_uuid, quantity }] }`.
+  /// Es una receta nueva, así que `id` se omite (es opcional). Cada
+  /// insumo viaja SOLO con `ingredient_uuid` y `quantity`.
+  Map<String, dynamic> _buildPayload() {
     return {
-      'uuid': uuid,
       'product_name': widget.productName,
       'sale_price': widget.salePrice.round(),
       'category': widget.category,
@@ -71,9 +75,7 @@ class _RecipeStep3ScreenState extends State<RecipeStep3Screen> {
       'ingredients': widget.ingredients
           .map((ing) => {
                 'ingredient_uuid': ing['uuid'],
-                'name': ing['name'],
                 'quantity': (ing['quantity'] as num).toDouble(),
-                'unit': ing['unit'],
               })
           .toList(),
     };
@@ -81,17 +83,19 @@ class _RecipeStep3ScreenState extends State<RecipeStep3Screen> {
 
   Future<void> _save() async {
     setState(() => _saving = true);
-    final uuid = const Uuid().v4();
     try {
-      final created = await _api.createRecipe(_buildPayload(uuid));
+      final created = await _api.createRecipe(_buildPayload());
       // Confirmación del costo autoritativo del backend (FR-04). Es
-      // best-effort: si el endpoint aún no existe, la receta ya quedó
-      // guardada y no bloqueamos al usuario.
-      final recipeUuid = created['uuid'] as String? ?? uuid;
-      try {
-        await _api.fetchRecipeCost(recipeUuid);
-      } catch (_) {
-        // El costo se mostrará con el cálculo local; no es crítico.
+      // best-effort: si el backend no devuelve UUID o el endpoint aún
+      // no existe, la receta ya quedó guardada y no bloqueamos al
+      // usuario.
+      final recipeUuid = created['uuid'] as String?;
+      if (recipeUuid != null && recipeUuid.isNotEmpty) {
+        try {
+          await _api.fetchRecipeCost(recipeUuid);
+        } catch (_) {
+          // El costo se mostrará con el cálculo local; no es crítico.
+        }
       }
       if (!mounted) return;
       HapticFeedback.heavyImpact();

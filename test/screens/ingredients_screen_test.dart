@@ -34,7 +34,13 @@ class _FakeApi extends ApiService {
   Future<Map<String, dynamic>> createIngredient(
       Map<String, dynamic> data) async {
     created.add(data);
-    final res = {...data, 'id': created.length};
+    // El backend asigna `id` y `uuid` y devuelve la entidad completa;
+    // el cuerpo del POST ya no incluye `uuid` (contrato Feature 001).
+    final res = {
+      ...data,
+      'id': created.length,
+      'uuid': 'ing-created-${created.length}',
+    };
     ingredients = [...ingredients, res];
     return res;
   }
