@@ -1239,6 +1239,73 @@ class ApiService {
     }
   }
 
+  // ── Insumos (Feature 001) — contrato en plan.md §4 ────────────────────────
+
+  /// Lista los insumos del tenant. GET /api/v1/ingredients.
+  Future<List<Map<String, dynamic>>> fetchIngredients() async {
+    try {
+      final response = await _dio.get('/api/v1/ingredients');
+      return _extractList(response);
+    } on DioException catch (e) {
+      throw AppError.fromDioException(e);
+    }
+  }
+
+  /// Crea un insumo. POST /api/v1/ingredients.
+  Future<Map<String, dynamic>> createIngredient(
+      Map<String, dynamic> data) async {
+    try {
+      final response = await _dio.post('/api/v1/ingredients', data: data);
+      return _extractData(response);
+    } on DioException catch (e) {
+      throw AppError.fromDioException(e);
+    }
+  }
+
+  /// Actualiza campos parciales de un insumo. PATCH /api/v1/ingredients/:uuid.
+  /// El stock NO se ajusta por aquí — eso pasa por kardex (plan.md §4).
+  Future<Map<String, dynamic>> updateIngredient(
+      String uuid, Map<String, dynamic> data) async {
+    try {
+      final response =
+          await _dio.patch('/api/v1/ingredients/$uuid', data: data);
+      return _extractData(response);
+    } on DioException catch (e) {
+      throw AppError.fromDioException(e);
+    }
+  }
+
+  /// Elimina (soft delete) un insumo. DELETE /api/v1/ingredients/:uuid.
+  Future<void> deleteIngredient(String uuid) async {
+    try {
+      await _dio.delete('/api/v1/ingredients/$uuid');
+    } on DioException catch (e) {
+      throw AppError.fromDioException(e);
+    }
+  }
+
+  /// Insumos bajo su stock mínimo. GET /api/v1/ingredients/low-stock (AC-05).
+  Future<List<Map<String, dynamic>>> fetchLowStockIngredients() async {
+    try {
+      final response = await _dio.get('/api/v1/ingredients/low-stock');
+      return _extractList(response);
+    } on DioException catch (e) {
+      throw AppError.fromDioException(e);
+    }
+  }
+
+  /// Disponibilidad de un producto-receta derivada del stock de insumos.
+  /// GET /api/v1/recipes/:uuid/availability (AC-03).
+  Future<Map<String, dynamic>> fetchRecipeAvailability(String uuid) async {
+    try {
+      final response =
+          await _dio.get('/api/v1/recipes/$uuid/availability');
+      return _extractData(response);
+    } on DioException catch (e) {
+      throw AppError.fromDioException(e);
+    }
+  }
+
   // ═══════════════════════════════════════════════════════════════════════════
   // 11. PROMOTIONS
   // ═══════════════════════════════════════════════════════════════════════════

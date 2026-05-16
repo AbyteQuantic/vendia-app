@@ -35,8 +35,15 @@ class Recipe {
       salePrice > 0 ? (profitPerUnit / salePrice) * 100 : 0;
 
   factory Recipe.fromJson(Map<String, dynamic> json) {
+    // El backend serializa el ID del BaseModel como `id` (UUID string).
+    // `uuid` queda como respaldo para datos offline viejos. (BUG-6)
+    final id = (json['id'] ?? json['uuid']) as String?;
+    if (id == null || id.isEmpty) {
+      throw const FormatException(
+          'Recipe.fromJson: falta el identificador (id/uuid)');
+    }
     return Recipe(
-      uuid: json['uuid'] as String,
+      uuid: id,
       productName: json['product_name'] as String,
       salePrice: (json['sale_price'] as num).toDouble(),
       category: json['category'] as String? ?? '',
@@ -50,7 +57,6 @@ class Recipe {
       createdAt: json['created_at'] != null
           ? DateTime.parse(json['created_at'] as String)
           : DateTime.now(),
-      serverId: json['id'] as int?,
     );
   }
 
@@ -66,15 +72,21 @@ class Recipe {
 }
 
 /// Single ingredient in a recipe with quantity and cost.
+///
+/// El contrato del backend (Feature 001) identifica cada insumo de la
+/// receta con `ingredient_uuid`. `fromJson` mantiene un fallback a
+/// `product_uuid` por compatibilidad con datos viejos antes del cambio
+/// de contrato.
 class RecipeIngredient {
-  final String productUuid;
+  /// UUID del insumo. El contrato lo expone como `ingredient_uuid`.
+  final String ingredientUuid;
   final String productName;
   final double quantity;
   final double unitCost;
   final String? emoji;
 
   RecipeIngredient({
-    required this.productUuid,
+    required this.ingredientUuid,
     required this.productName,
     required this.quantity,
     required this.unitCost,
@@ -85,19 +97,19 @@ class RecipeIngredient {
 
   factory RecipeIngredient.fromJson(Map<String, dynamic> json) {
     return RecipeIngredient(
-      productUuid: json['product_uuid'] as String,
-      productName: json['product_name'] as String,
+      // Contrato nuevo: `ingredient_uuid`. Fallback a `product_uuid`
+      // para no romper recetas guardadas antes del cambio de contrato.
+      ingredientUuid: (json['ingredient_uuid'] ?? json['product_uuid'])
+          as String,
+      productName: json['product_name'] as String? ?? '',
       quantity: (json['quantity'] as num).toDouble(),
-      unitCost: (json['unit_cost'] as num).toDouble(),
+      unitCost: (json['unit_cost'] as num?)?.toDouble() ?? 0,
       emoji: json['emoji'] as String?,
     );
   }
 
   Map<String, dynamic> toJson() => {
-        'product_uuid': productUuid,
-        'product_name': productName,
+        'ingredient_uuid': ingredientUuid,
         'quantity': quantity,
-        'unit_cost': unitCost,
-        'emoji': emoji,
       };
 }

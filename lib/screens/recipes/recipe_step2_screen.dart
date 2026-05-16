@@ -1,76 +1,181 @@
+// Spec: specs/001-insumos-recetas/spec.md
+import 'dart:developer' as developer;
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import '../../models/ingredient.dart';
+import '../../services/api_service.dart';
+import '../../services/auth_service.dart';
 import '../../theme/app_theme.dart';
 import 'recipe_step3_screen.dart';
 
-/// Recipe creation step 2: Add ingredients with quantities.
+/// Recipe creation step 2: pick real ingredients (insumos) with quantities.
+///
+/// Feature 001 — des-mockeado: ya NO usa `_MockIngredient`. Carga los
+/// insumos reales del tenant con `fetchIngredients` y deja al tendero
+/// elegir cuáles consume el plato y en qué cantidad (FR-02, plan §5).
 class RecipeStep2Screen extends StatefulWidget {
   final String productName;
   final double salePrice;
   final String emoji;
+  final String category;
+
+  /// ApiService inyectable para pruebas; en producción usa el default.
+  final ApiService? api;
 
   const RecipeStep2Screen({
     super.key,
     required this.productName,
     required this.salePrice,
     required this.emoji,
+    this.category = '',
+    this.api,
   });
 
   @override
   State<RecipeStep2Screen> createState() => _RecipeStep2ScreenState();
 }
 
-class _MockIngredient {
-  final String name;
-  final String emoji;
-  final double unitCost;
-  final List<Color> gradientColors;
-  int quantity = 1;
+/// Una línea de receta: un insumo real + la cantidad que consume el plato.
+class _RecipeLine {
+  final Ingredient ingredient;
 
-  _MockIngredient({
-    required this.name,
-    required this.emoji,
-    required this.unitCost,
-    required this.gradientColors,
-  });
+  /// Cantidad del insumo en su propia unidad. Arranca en 1 y la ajusta
+  /// el tendero con los botones +/-.
+  double quantity = 1;
 
-  double get totalCost => unitCost * quantity;
+  _RecipeLine({required this.ingredient});
+
+  double get totalCost => ingredient.unitCost * quantity;
 }
 
 class _RecipeStep2ScreenState extends State<RecipeStep2Screen> {
-  late final List<_MockIngredient> _ingredients;
+  late final ApiService _api = widget.api ?? ApiService(AuthService());
+
+  final List<_RecipeLine> _lines = [];
+  List<Ingredient> _available = [];
+  bool _loading = true;
+  String? _error;
 
   @override
   void initState() {
     super.initState();
-    _ingredients = [
-      _MockIngredient(
-        name: 'Pan de Perro',
-        emoji: '\u{1F35E}',
-        unitCost: 500,
-        gradientColors: [const Color(0xFFF59E0B), const Color(0xFFFBBF24)],
-      ),
-      _MockIngredient(
-        name: 'Salchicha Suiza',
-        emoji: '\u{1F32D}',
-        unitCost: 1500,
-        gradientColors: [const Color(0xFFFF6B6B), const Color(0xFFEE5A24)],
-      ),
-    ];
+    _loadIngredients();
+  }
+
+  Future<void> _loadIngredients() async {
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+    try {
+      final raw = await _api.fetchIngredients();
+      if (!mounted) return;
+      setState(() {
+        _available = raw.map(Ingredient.fromJson).toList();
+        _loading = false;
+      });
+    } catch (e, stack) {
+      // El error real se registra; nunca se silencia (Constitución).
+      developer.log(
+        'Error al cargar los insumos para la receta',
+        name: 'RecipeStep2Screen',
+        error: e,
+        stackTrace: stack,
+      );
+      if (!mounted) return;
+      setState(() {
+        _error = 'No pudimos cargar sus insumos.';
+        _loading = false;
+      });
+    }
   }
 
   double get _totalCost =>
-      _ingredients.fold(0.0, (sum, ing) => sum + ing.totalCost);
+      _lines.fold(0.0, (sum, l) => sum + l.totalCost);
 
-  void _addIngredient() {
+  String _formatNumber(double value) {
+    final intVal = value.round();
+    return intVal.toString().replaceAllMapped(
+        RegExp(r'(\d)(?=(\d{3})+(?!\d))'), (m) => '${m[1]}.');
+  }
+
+  /// Abre el selector con los insumos aún no agregados a la receta.
+  Future<void> _pickIngredient() async {
     HapticFeedback.lightImpact();
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Buscar ingrediente...', style: TextStyle(fontSize: 18)),
-        backgroundColor: AppTheme.primary,
-        duration: Duration(seconds: 1),
+    final used = _lines.map((l) => l.ingredient.uuid).toSet();
+    final choices =
+        _available.where((i) => !used.contains(i.uuid)).toList();
+
+    if (choices.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Ya agregó todos sus insumos.',
+            style: TextStyle(fontSize: 18),
+          ),
+          backgroundColor: AppTheme.primary,
+        ),
+      );
+      return;
+    }
+
+    final picked = await showModalBottomSheet<Ingredient>(
+      context: context,
+      backgroundColor: AppTheme.background,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+      ),
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Padding(
+              padding: EdgeInsets.all(20),
+              child: Text(
+                'Escoja un insumo',
+                style: TextStyle(
+                  fontSize: 22,
+                  fontWeight: FontWeight.bold,
+                  color: AppTheme.textPrimary,
+                ),
+              ),
+            ),
+            Flexible(
+              child: ListView.builder(
+                shrinkWrap: true,
+                itemCount: choices.length,
+                itemBuilder: (_, i) => ListTile(
+                  contentPadding:
+                      const EdgeInsets.symmetric(horizontal: 20),
+                  title: Text(
+                    choices[i].name,
+                    style: const TextStyle(
+                      fontSize: 20,
+                      color: AppTheme.textPrimary,
+                    ),
+                  ),
+                  subtitle: Text(
+                    '\$${_formatNumber(choices[i].unitCost)} '
+                    'por ${choices[i].unitLabel.toLowerCase()}',
+                    style: const TextStyle(
+                      fontSize: 18,
+                      color: AppTheme.textSecondary,
+                    ),
+                  ),
+                  onTap: () => Navigator.of(ctx).pop(choices[i]),
+                ),
+              ),
+            ),
+            const SizedBox(height: 12),
+          ],
+        ),
       ),
     );
+
+    if (picked != null) {
+      setState(() => _lines.add(_RecipeLine(ingredient: picked)));
+    }
   }
 
   void _goToStep3() {
@@ -81,12 +186,15 @@ class _RecipeStep2ScreenState extends State<RecipeStep2Screen> {
           productName: widget.productName,
           salePrice: widget.salePrice,
           emoji: widget.emoji,
-          ingredients: _ingredients
-              .map((i) => {
-                    'name': i.name,
-                    'emoji': i.emoji,
-                    'quantity': i.quantity,
-                    'unitCost': i.unitCost,
+          category: widget.category,
+          api: widget.api,
+          ingredients: _lines
+              .map((l) => {
+                    'uuid': l.ingredient.uuid,
+                    'name': l.ingredient.name,
+                    'quantity': l.quantity,
+                    'unitCost': l.ingredient.unitCost,
+                    'unit': l.ingredient.unit,
                   })
               .toList(),
         ),
@@ -119,255 +227,245 @@ class _RecipeStep2ScreenState extends State<RecipeStep2Screen> {
           ),
         ),
       ),
-      body: SafeArea(
-        child: Column(
-          children: [
-            Expanded(
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.all(24),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // --- Product banner ---
-                    Container(
-                      width: double.infinity,
-                      padding: const EdgeInsets.all(16),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFFF6B6B).withValues(alpha: 0.1),
-                        borderRadius: BorderRadius.circular(20),
-                        border: Border.all(
-                          color:
-                              const Color(0xFFFF6B6B).withValues(alpha: 0.2),
-                        ),
-                      ),
-                      child: Row(
-                        children: [
-                          Text(widget.emoji,
-                              style: const TextStyle(fontSize: 32)),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: Text(
-                              widget.productName,
-                              style: const TextStyle(
-                                fontSize: 22,
-                                fontWeight: FontWeight.bold,
-                                color: AppTheme.textPrimary,
-                              ),
-                            ),
-                          ),
-                          Text(
-                            '\$${widget.salePrice.toStringAsFixed(0).replaceAllMapped(RegExp(r'(\d)(?=(\d{3})+(?!\d))'), (m) => '${m[1]}.')}',
-                            style: const TextStyle(
-                              fontSize: 22,
-                              fontWeight: FontWeight.bold,
-                              color: AppTheme.success,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
+      body: SafeArea(child: _buildBody()),
+    );
+  }
 
-                    const SizedBox(height: 24),
-
-                    const Text(
-                      '\u00bfQue gasta para hacer este producto?',
-                      style: TextStyle(
-                        fontSize: 20,
-                        fontWeight: FontWeight.bold,
-                        color: AppTheme.textPrimary,
-                      ),
-                    ),
-
-                    const SizedBox(height: 16),
-
-                    // --- Ingredient cards ---
-                    ..._ingredients.asMap().entries.map((entry) {
-                      final ing = entry.value;
-                      return _buildIngredientCard(ing);
-                    }),
-
-                    const SizedBox(height: 16),
-
-                    // --- Add ingredient button ---
-                    GestureDetector(
-                      onTap: _addIngredient,
-                      child: Container(
-                        width: double.infinity,
-                        height: 64,
-                        decoration: BoxDecoration(
-                          borderRadius: BorderRadius.circular(20),
-                          border: Border.all(
-                            color: AppTheme.borderColor,
-                            width: 2,
-                            strokeAlign: BorderSide.strokeAlignInside,
-                          ),
-                        ),
-                        child: CustomPaint(
-                          painter: _DashedOutlinePainter(
-                            color: AppTheme.borderColor,
-                            radius: 20,
-                          ),
-                          child: const Center(
-                            child: Row(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                Icon(Icons.add_rounded,
-                                    size: 28,
-                                    color: AppTheme.textSecondary),
-                                SizedBox(width: 8),
-                                Text(
-                                  'Agregar Ingrediente',
-                                  style: TextStyle(
-                                    fontSize: 20,
-                                    fontWeight: FontWeight.w600,
-                                    color: AppTheme.textSecondary,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-
-                    const SizedBox(height: 24),
-
-                    // --- Cost bar ---
-                    Container(
-                      width: double.infinity,
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 20, vertical: 16),
-                      decoration: BoxDecoration(
-                        color: AppTheme.error.withValues(alpha: 0.08),
-                        borderRadius: BorderRadius.circular(16),
-                        border: Border.all(
-                          color: AppTheme.error.withValues(alpha: 0.2),
-                        ),
-                      ),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          const Text(
-                            'Costo total de este producto:',
-                            style: TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.w500,
-                              color: AppTheme.textPrimary,
-                            ),
-                          ),
-                          Text(
-                            '\$${_formatNumber(_totalCost)}',
-                            style: const TextStyle(
-                              fontSize: 22,
-                              fontWeight: FontWeight.bold,
-                              color: AppTheme.error,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
+  Widget _buildBody() {
+    if (_loading) {
+      return const Center(child: CircularProgressIndicator());
+    }
+    if (_error != null) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.cloud_off_rounded,
+                  size: 72, color: AppTheme.borderColor),
+              const SizedBox(height: 16),
+              Text(
+                _error!,
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                    fontSize: 20, color: AppTheme.textPrimary),
               ),
-            ),
-
-            // --- Bottom button ---
-            Padding(
-              padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
-              child: SizedBox(
-                width: double.infinity,
+              const SizedBox(height: 20),
+              SizedBox(
                 height: 64,
-                child: DecoratedBox(
-                  decoration: BoxDecoration(
-                    gradient: const LinearGradient(
-                      colors: [Color(0xFF667EEA), Color(0xFF764BA2)],
+                child: ElevatedButton(
+                  onPressed: _loadIngredients,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppTheme.primary,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(20),
                     ),
-                    borderRadius: BorderRadius.circular(20),
-                    boxShadow: [
-                      BoxShadow(
-                        color: const Color(0xFF667EEA).withValues(alpha: 0.3),
-                        blurRadius: 12,
-                        offset: const Offset(0, 4),
-                      ),
-                    ],
+                    padding: const EdgeInsets.symmetric(horizontal: 32),
                   ),
-                  child: ElevatedButton(
-                    onPressed: _goToStep3,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.transparent,
-                      shadowColor: Colors.transparent,
-                      minimumSize: const Size(double.infinity, 64),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(20),
-                      ),
-                    ),
-                    child: const Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Text(
-                          'Ver resumen',
-                          style: TextStyle(
-                            fontSize: 22,
-                            fontWeight: FontWeight.w600,
-                            color: Colors.white,
-                          ),
-                        ),
-                        SizedBox(width: 8),
-                        Icon(Icons.arrow_forward_rounded,
-                            color: Colors.white, size: 24),
-                      ],
+                  child: const Text(
+                    'Reintentar',
+                    style: TextStyle(
+                      fontSize: 22,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.white,
                     ),
                   ),
                 ),
               ),
+            ],
+          ),
+        ),
+      );
+    }
+    return Column(
+      children: [
+        Expanded(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _productBanner(),
+                const SizedBox(height: 24),
+                const Text(
+                  '¿Qué gasta para hacer este producto?',
+                  style: TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.bold,
+                    color: AppTheme.textPrimary,
+                  ),
+                ),
+                const SizedBox(height: 16),
+                if (_available.isEmpty)
+                  _noIngredientsHint()
+                else ...[
+                  ..._lines.map(_buildLineCard),
+                  const SizedBox(height: 16),
+                  _addIngredientButton(),
+                ],
+                const SizedBox(height: 24),
+                _costBar(),
+              ],
             ),
-          ],
+          ),
+        ),
+        SafeArea(
+          minimum: const EdgeInsets.fromLTRB(20, 0, 20, 24),
+          child: SizedBox(
+            width: double.infinity,
+            height: 64,
+            child: ElevatedButton(
+              key: const Key('btn_recipe_to_step3'),
+              onPressed: _lines.isEmpty ? null : _goToStep3,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppTheme.primary,
+                disabledBackgroundColor:
+                    AppTheme.primary.withValues(alpha: 0.4),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(20),
+                ),
+              ),
+              child: const Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Text(
+                    'Ver resumen',
+                    style: TextStyle(
+                      fontSize: 22,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.white,
+                    ),
+                  ),
+                  SizedBox(width: 8),
+                  Icon(Icons.arrow_forward_rounded,
+                      color: Colors.white, size: 24),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _productBanner() {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: AppTheme.surfaceGrey,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: AppTheme.borderColor),
+      ),
+      child: Row(
+        children: [
+          Text(widget.emoji, style: const TextStyle(fontSize: 32)),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              widget.productName,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                fontSize: 22,
+                fontWeight: FontWeight.bold,
+                color: AppTheme.textPrimary,
+              ),
+            ),
+          ),
+          Text(
+            '\$${_formatNumber(widget.salePrice)}',
+            style: const TextStyle(
+              fontSize: 22,
+              fontWeight: FontWeight.bold,
+              color: AppTheme.success,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _noIngredientsHint() {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: AppTheme.warning.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: AppTheme.warning.withValues(alpha: 0.3)),
+      ),
+      child: const Column(
+        children: [
+          Icon(Icons.kitchen_rounded, size: 48, color: AppTheme.warning),
+          SizedBox(height: 12),
+          Text(
+            'No tiene insumos registrados',
+            style: TextStyle(
+              fontSize: 20,
+              fontWeight: FontWeight.bold,
+              color: AppTheme.textPrimary,
+            ),
+          ),
+          SizedBox(height: 6),
+          Text(
+            'Primero registre sus insumos en la pantalla de Insumos '
+            'para poder armar la receta.',
+            textAlign: TextAlign.center,
+            style: TextStyle(fontSize: 18, color: AppTheme.textSecondary),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _addIngredientButton() {
+    return SizedBox(
+      width: double.infinity,
+      height: 64,
+      child: OutlinedButton.icon(
+        key: const Key('btn_pick_ingredient'),
+        onPressed: _pickIngredient,
+        icon: const Icon(Icons.add_rounded,
+            size: 28, color: AppTheme.primary),
+        style: OutlinedButton.styleFrom(
+          side: const BorderSide(color: AppTheme.borderColor, width: 2),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+          ),
+        ),
+        label: const Text(
+          'Agregar Ingrediente',
+          style: TextStyle(
+            fontSize: 20,
+            fontWeight: FontWeight.w600,
+            color: AppTheme.primary,
+          ),
         ),
       ),
     );
   }
 
-  Widget _buildIngredientCard(_MockIngredient ing) {
+  Widget _buildLineCard(_RecipeLine line) {
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: AppTheme.surfaceGrey,
         borderRadius: BorderRadius.circular(20),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.06),
-            blurRadius: 10,
-            offset: const Offset(0, 2),
-          ),
-        ],
+        border: Border.all(color: AppTheme.borderColor),
       ),
       child: Row(
         children: [
-          // Emoji avatar
-          Container(
-            width: 52,
-            height: 52,
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                colors: ing.gradientColors,
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-              ),
-              borderRadius: BorderRadius.circular(16),
-            ),
-            child: Center(
-              child: Text(ing.emoji, style: const TextStyle(fontSize: 28)),
-            ),
-          ),
-          const SizedBox(width: 14),
-          // Name & unit cost
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  ing.name,
+                  line.ingredient.name,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
                     fontSize: 20,
                     fontWeight: FontWeight.w600,
@@ -376,7 +474,9 @@ class _RecipeStep2ScreenState extends State<RecipeStep2Screen> {
                 ),
                 const SizedBox(height: 2),
                 Text(
-                  '\$${_formatNumber(ing.unitCost)} c/u',
+                  '\$${_formatNumber(line.totalCost)} '
+                  '(${_formatNumber(line.ingredient.unitCost)} '
+                  'por ${line.ingredient.unitLabel.toLowerCase()})',
                   style: const TextStyle(
                     fontSize: 18,
                     color: AppTheme.textSecondary,
@@ -385,101 +485,95 @@ class _RecipeStep2ScreenState extends State<RecipeStep2Screen> {
               ],
             ),
           ),
-          // Quantity controls
-          Row(
-            children: [
-              _buildQtyButton(
-                Icons.remove_rounded,
-                () {
-                  HapticFeedback.lightImpact();
-                  if (ing.quantity > 1) {
-                    setState(() => ing.quantity--);
-                  }
-                },
+          _qtyButton(Icons.remove_rounded, () {
+            HapticFeedback.lightImpact();
+            if (line.quantity > 1) {
+              setState(() => line.quantity -= 1);
+            }
+          }),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 8),
+            child: Text(
+              '×${_trimQty(line.quantity)}',
+              style: const TextStyle(
+                fontSize: 22,
+                fontWeight: FontWeight.bold,
+                color: AppTheme.textPrimary,
               ),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 12),
-                child: Text(
-                  '\u00d7 ${ing.quantity}',
-                  style: const TextStyle(
-                    fontSize: 22,
-                    fontWeight: FontWeight.bold,
-                    color: AppTheme.textPrimary,
-                  ),
-                ),
-              ),
-              _buildQtyButton(
-                Icons.add_rounded,
-                () {
-                  HapticFeedback.lightImpact();
-                  setState(() => ing.quantity++);
-                },
-              ),
-            ],
+            ),
+          ),
+          _qtyButton(Icons.add_rounded, () {
+            HapticFeedback.lightImpact();
+            setState(() => line.quantity += 1);
+          }),
+          IconButton(
+            icon: const Icon(Icons.delete_outline_rounded,
+                color: AppTheme.error, size: 24),
+            tooltip: 'Quitar',
+            onPressed: () {
+              HapticFeedback.lightImpact();
+              setState(() => _lines.remove(line));
+            },
           ),
         ],
       ),
     );
   }
 
-  Widget _buildQtyButton(IconData icon, VoidCallback onTap) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        width: 36,
-        height: 36,
-        decoration: BoxDecoration(
-          color: AppTheme.surfaceGrey,
-          borderRadius: BorderRadius.circular(10),
-          border: Border.all(color: AppTheme.borderColor),
+  String _trimQty(double v) =>
+      v == v.roundToDouble() ? v.toInt().toString() : v.toString();
+
+  Widget _qtyButton(IconData icon, VoidCallback onTap) {
+    return SizedBox(
+      width: 44,
+      height: 44,
+      child: IconButton(
+        padding: EdgeInsets.zero,
+        icon: Icon(icon, size: 24, color: AppTheme.textPrimary),
+        style: IconButton.styleFrom(
+          backgroundColor: AppTheme.background,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+            side: const BorderSide(color: AppTheme.borderColor),
+          ),
         ),
-        child: Icon(icon, size: 22, color: AppTheme.textPrimary),
+        onPressed: onTap,
       ),
     );
   }
 
-  String _formatNumber(double value) {
-    final intVal = value.toInt();
-    return intVal.toString().replaceAllMapped(
-        RegExp(r'(\d)(?=(\d{3})+(?!\d))'), (m) => '${m[1]}.');
+  Widget _costBar() {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+      decoration: BoxDecoration(
+        color: AppTheme.error.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppTheme.error.withValues(alpha: 0.2)),
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          const Flexible(
+            child: Text(
+              'Costo total de este producto:',
+              style: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.w500,
+                color: AppTheme.textPrimary,
+              ),
+            ),
+          ),
+          Text(
+            '\$${_formatNumber(_totalCost)}',
+            style: const TextStyle(
+              fontSize: 22,
+              fontWeight: FontWeight.bold,
+              color: AppTheme.error,
+            ),
+          ),
+        ],
+      ),
+    );
   }
-}
-
-class _DashedOutlinePainter extends CustomPainter {
-  final Color color;
-  final double radius;
-
-  _DashedOutlinePainter({required this.color, required this.radius});
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final paint = Paint()
-      ..color = color
-      ..strokeWidth = 2
-      ..style = PaintingStyle.stroke;
-
-    final path = Path()
-      ..addRRect(RRect.fromRectAndRadius(
-        Rect.fromLTWH(0, 0, size.width, size.height),
-        Radius.circular(radius),
-      ));
-
-    const dashWidth = 8.0;
-    const dashSpace = 5.0;
-    final pathMetrics = path.computeMetrics();
-    for (final metric in pathMetrics) {
-      double distance = 0;
-      while (distance < metric.length) {
-        final end = distance + dashWidth;
-        canvas.drawPath(
-          metric.extractPath(distance, end.clamp(0, metric.length)),
-          paint,
-        );
-        distance = end + dashSpace;
-      }
-    }
-  }
-
-  @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }

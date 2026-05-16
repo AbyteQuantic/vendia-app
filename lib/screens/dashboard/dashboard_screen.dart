@@ -15,8 +15,10 @@ import '../auth/login_screen.dart';
 import '../admin/suppliers_screen.dart';
 import '../inventory/add_merchandise_screen.dart';
 import '../inventory/inventory_report_screen.dart';
+import '../inventory/ingredients_screen.dart';
 import '../inventory/reorder_screen.dart';
 import '../online_store/promo_management_screen.dart';
+import '../recipes/recipe_step1_screen.dart';
 import '../pos/pos_screen.dart';
 import '../../database/sync/sales_sync.dart';
 import '../../widgets/sync_status_banner.dart';
@@ -840,6 +842,114 @@ class _DashboardScreenState extends State<DashboardScreen> {
                           ),
                           const Icon(Icons.chevron_right_rounded,
                               color: Color(0xFF764BA2), size: 24),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+
+                // ── Insumos Card (Feature 001) ─────────────────────
+                // Materia prima del negocio: arroz, pollo, aceite. Su
+                // stock alimenta el costeo de las recetas.
+                SliverToBoxAdapter(
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(18, 12, 18, 0),
+                    child: _GlassCard(
+                      onTap: () {
+                        HapticFeedback.lightImpact();
+                        Navigator.of(context).push(MaterialPageRoute(
+                          builder: (_) => const IngredientsScreen(),
+                        ));
+                      },
+                      child: Row(
+                        children: [
+                          Container(
+                            width: 48,
+                            height: 48,
+                            decoration: BoxDecoration(
+                              gradient: const LinearGradient(
+                                colors: [Color(0xFFD97706), Color(0xFFF59E0B)],
+                              ),
+                              borderRadius: BorderRadius.circular(14),
+                            ),
+                            child: const Icon(Icons.kitchen_rounded,
+                                color: Colors.white, size: 24),
+                          ),
+                          const SizedBox(width: 14),
+                          const Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text('Mis Insumos',
+                                    style: TextStyle(
+                                        fontSize: 17,
+                                        fontWeight: FontWeight.bold,
+                                        color: AppTheme.textPrimary)),
+                                Text('Materia prima: stock, mínimos y costo',
+                                    style: TextStyle(
+                                        fontSize: 14,
+                                        color: AppTheme.textSecondary),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis),
+                              ],
+                            ),
+                          ),
+                          const Icon(Icons.chevron_right_rounded,
+                              color: Color(0xFFD97706), size: 24),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+
+                // ── Recetas Card (Feature 001) ─────────────────────
+                // Wizard para armar un plato vendible con sus insumos
+                // y ver costo, utilidad y margen.
+                SliverToBoxAdapter(
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(18, 12, 18, 0),
+                    child: _GlassCard(
+                      onTap: () {
+                        HapticFeedback.lightImpact();
+                        Navigator.of(context).push(MaterialPageRoute(
+                          builder: (_) => const RecipeStep1Screen(),
+                        ));
+                      },
+                      child: Row(
+                        children: [
+                          Container(
+                            width: 48,
+                            height: 48,
+                            decoration: BoxDecoration(
+                              gradient: const LinearGradient(
+                                colors: [Color(0xFFEE5A24), Color(0xFFFF6B6B)],
+                              ),
+                              borderRadius: BorderRadius.circular(14),
+                            ),
+                            child: const Icon(Icons.restaurant_menu_rounded,
+                                color: Colors.white, size: 24),
+                          ),
+                          const SizedBox(width: 14),
+                          const Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text('Recetas y Platos',
+                                    style: TextStyle(
+                                        fontSize: 17,
+                                        fontWeight: FontWeight.bold,
+                                        color: AppTheme.textPrimary)),
+                                Text('Arme un plato y vea su costo y ganancia',
+                                    style: TextStyle(
+                                        fontSize: 14,
+                                        color: AppTheme.textSecondary),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis),
+                              ],
+                            ),
+                          ),
+                          const Icon(Icons.chevron_right_rounded,
+                              color: Color(0xFFEE5A24), size: 24),
                         ],
                       ),
                     ),
