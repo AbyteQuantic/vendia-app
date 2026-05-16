@@ -18,6 +18,7 @@ import '../inventory/inventory_report_screen.dart';
 import '../inventory/ingredients_screen.dart';
 import '../inventory/reorder_screen.dart';
 import '../online_store/promo_management_screen.dart';
+import '../purchases/purchase_orders_screen.dart';
 import '../recipes/recipe_step1_screen.dart';
 import '../pos/pos_screen.dart';
 import '../../database/sync/sales_sync.dart';
@@ -950,6 +951,60 @@ class _DashboardScreenState extends State<DashboardScreen> {
                           ),
                           const Icon(Icons.chevron_right_rounded,
                               color: Color(0xFFEE5A24), size: 24),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+
+                // ── Órdenes de Compra Card (Feature 002) ───────────
+                // Arme un pedido a un proveedor y al recibirlo el stock
+                // entra solo, vía kardex (spec 002).
+                SliverToBoxAdapter(
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(18, 12, 18, 0),
+                    child: _GlassCard(
+                      onTap: () {
+                        HapticFeedback.lightImpact();
+                        Navigator.of(context).push(MaterialPageRoute(
+                          builder: (_) => const PurchaseOrdersScreen(),
+                        ));
+                      },
+                      child: Row(
+                        children: [
+                          Container(
+                            width: 48,
+                            height: 48,
+                            decoration: BoxDecoration(
+                              gradient: const LinearGradient(
+                                colors: [Color(0xFF0D9668), Color(0xFF34D399)],
+                              ),
+                              borderRadius: BorderRadius.circular(14),
+                            ),
+                            child: const Icon(Icons.shopping_cart_rounded,
+                                color: Colors.white, size: 24),
+                          ),
+                          const SizedBox(width: 14),
+                          const Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text('Órdenes de Compra',
+                                    style: TextStyle(
+                                        fontSize: 17,
+                                        fontWeight: FontWeight.bold,
+                                        color: AppTheme.textPrimary)),
+                                Text('Pida a proveedores y reciba el stock',
+                                    style: TextStyle(
+                                        fontSize: 14,
+                                        color: AppTheme.textSecondary),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis),
+                              ],
+                            ),
+                          ),
+                          const Icon(Icons.chevron_right_rounded,
+                              color: Color(0xFF0D9668), size: 24),
                         ],
                       ),
                     ),

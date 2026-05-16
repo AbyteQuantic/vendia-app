@@ -1307,6 +1307,115 @@ class ApiService {
   }
 
   // ═══════════════════════════════════════════════════════════════════════════
+  // 12. PURCHASE ORDERS — Órdenes de compra (Feature 002)
+  // Contrato: specs/002-ordenes-compra/plan.md §4.
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  /// Lista las órdenes de compra del tenant.
+  /// GET /api/v1/purchase-orders — filtro opcional por `status`.
+  Future<List<Map<String, dynamic>>> fetchPurchaseOrders({
+    String? status,
+  }) async {
+    try {
+      final response = await _dio.get(
+        '/api/v1/purchase-orders',
+        queryParameters: {
+          if (status != null && status.isNotEmpty) 'status': status,
+        },
+      );
+      return _extractList(response);
+    } on DioException catch (e) {
+      throw AppError.fromDioException(e);
+    }
+  }
+
+  /// Obtiene una orden de compra con sus ítems.
+  /// GET /api/v1/purchase-orders/:uuid (AC-01).
+  Future<Map<String, dynamic>> fetchPurchaseOrder(String uuid) async {
+    try {
+      final response = await _dio.get('/api/v1/purchase-orders/$uuid');
+      return _extractData(response);
+    } on DioException catch (e) {
+      throw AppError.fromDioException(e);
+    }
+  }
+
+  /// Crea una orden de compra. POST /api/v1/purchase-orders.
+  /// El cuerpo lleva el `id` que genera el cliente (idempotencia — Art. II).
+  Future<Map<String, dynamic>> createPurchaseOrder(
+      Map<String, dynamic> data) async {
+    try {
+      final response =
+          await _dio.post('/api/v1/purchase-orders', data: data);
+      return _extractData(response);
+    } on DioException catch (e) {
+      throw AppError.fromDioException(e);
+    }
+  }
+
+  /// Actualiza una orden de compra en `borrador`.
+  /// PATCH /api/v1/purchase-orders/:uuid (plan §4 — editar solo en borrador).
+  Future<Map<String, dynamic>> updatePurchaseOrder(
+      String uuid, Map<String, dynamic> data) async {
+    try {
+      final response =
+          await _dio.patch('/api/v1/purchase-orders/$uuid', data: data);
+      return _extractData(response);
+    } on DioException catch (e) {
+      throw AppError.fromDioException(e);
+    }
+  }
+
+  /// Elimina (soft delete) una orden de compra.
+  /// DELETE /api/v1/purchase-orders/:uuid.
+  Future<void> deletePurchaseOrder(String uuid) async {
+    try {
+      await _dio.delete('/api/v1/purchase-orders/$uuid');
+    } on DioException catch (e) {
+      throw AppError.fromDioException(e);
+    }
+  }
+
+  /// Envía la PO al proveedor: pasa a `enviada` y devuelve la URL `wa.me`
+  /// con la lista completa de ítems (FR-04, AC-02).
+  /// POST /api/v1/purchase-orders/:uuid/send → `{status, whatsapp_url}`.
+  Future<Map<String, dynamic>> sendPurchaseOrder(String uuid) async {
+    try {
+      final response =
+          await _dio.post('/api/v1/purchase-orders/$uuid/send');
+      return _extractData(response);
+    } on DioException catch (e) {
+      throw AppError.fromDioException(e);
+    }
+  }
+
+  /// Recibe la PO: entra stock de cada ítem vía kardex `purchase_receipt`
+  /// y la PO pasa a `recibida`. Idempotente por UUID de PO (FR-05, AC-03/04).
+  /// POST /api/v1/purchase-orders/:uuid/receive → `{data:PurchaseOrder}`.
+  Future<Map<String, dynamic>> receivePurchaseOrder(String uuid) async {
+    try {
+      final response =
+          await _dio.post('/api/v1/purchase-orders/$uuid/receive');
+      return _extractData(response);
+    } on DioException catch (e) {
+      throw AppError.fromDioException(e);
+    }
+  }
+
+  /// Genera PO(s) `borrador` pre-llenadas desde las sugerencias de reorden,
+  /// agrupadas por proveedor (FR-07, AC-07).
+  /// POST /api/v1/purchase-orders/from-reorder → `{data:[PurchaseOrder]}`.
+  Future<List<Map<String, dynamic>>> createPurchaseOrdersFromReorder() async {
+    try {
+      final response =
+          await _dio.post('/api/v1/purchase-orders/from-reorder');
+      return _extractList(response);
+    } on DioException catch (e) {
+      throw AppError.fromDioException(e);
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
   // 11. PROMOTIONS
   // ═══════════════════════════════════════════════════════════════════════════
 
