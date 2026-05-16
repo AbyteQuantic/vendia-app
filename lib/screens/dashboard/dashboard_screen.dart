@@ -20,6 +20,7 @@ import '../inventory/reorder_screen.dart';
 import '../online_store/promo_management_screen.dart';
 import '../purchases/purchase_orders_screen.dart';
 import '../recipes/recipe_step1_screen.dart';
+import '../work_orders/work_orders_screen.dart';
 import '../pos/pos_screen.dart';
 import '../../database/sync/sales_sync.dart';
 import '../../widgets/sync_status_banner.dart';
@@ -1005,6 +1006,64 @@ class _DashboardScreenState extends State<DashboardScreen> {
                           ),
                           const Icon(Icons.chevron_right_rounded,
                               color: Color(0xFF0D9668), size: 24),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+
+                // ── Trabajos de Muebles Card (Feature 003) ─────────
+                // Cotice un mueble con materiales y mano de obra, siga
+                // el trabajo hasta entregarlo y descuente materiales al
+                // terminarlo (spec 003).
+                SliverToBoxAdapter(
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(18, 12, 18, 0),
+                    child: _GlassCard(
+                      onTap: () {
+                        HapticFeedback.lightImpact();
+                        Navigator.of(context).push(MaterialPageRoute(
+                          builder: (_) => const WorkOrdersScreen(),
+                        ));
+                      },
+                      child: Row(
+                        children: [
+                          Container(
+                            width: 48,
+                            height: 48,
+                            decoration: BoxDecoration(
+                              gradient: const LinearGradient(
+                                colors: [
+                                  AppTheme.primary,
+                                  AppTheme.primaryLight,
+                                ],
+                              ),
+                              borderRadius: BorderRadius.circular(14),
+                            ),
+                            child: const Icon(Icons.handyman_rounded,
+                                color: Colors.white, size: 24),
+                          ),
+                          const SizedBox(width: 14),
+                          const Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text('Trabajos de Muebles',
+                                    style: TextStyle(
+                                        fontSize: 17,
+                                        fontWeight: FontWeight.bold,
+                                        color: AppTheme.textPrimary)),
+                                Text('Cotice, fabrique y repare por encargo',
+                                    style: TextStyle(
+                                        fontSize: 14,
+                                        color: AppTheme.textSecondary),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis),
+                              ],
+                            ),
+                          ),
+                          const Icon(Icons.chevron_right_rounded,
+                              color: AppTheme.primary, size: 24),
                         ],
                       ),
                     ),

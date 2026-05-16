@@ -1416,6 +1416,102 @@ class ApiService {
   }
 
   // ═══════════════════════════════════════════════════════════════════════════
+  // 10b. WORK ORDERS — trabajos de fabricación/reparación (Feature 003)
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  /// Lista los trabajos del tenant, opcionalmente filtrados por estado o
+  /// tipo. GET /api/v1/work-orders (plan §4).
+  Future<List<Map<String, dynamic>>> fetchWorkOrders({
+    String? status,
+    String? type,
+  }) async {
+    try {
+      final response = await _dio.get(
+        '/api/v1/work-orders',
+        queryParameters: {
+          if (status != null && status.isNotEmpty) 'status': status,
+          if (type != null && type.isNotEmpty) 'type': type,
+        },
+      );
+      return _extractList(response);
+    } on DioException catch (e) {
+      throw AppError.fromDioException(e);
+    }
+  }
+
+  /// Obtiene un trabajo con sus ítems y pagos.
+  /// GET /api/v1/work-orders/:uuid (AC-01).
+  Future<Map<String, dynamic>> fetchWorkOrder(String uuid) async {
+    try {
+      final response = await _dio.get('/api/v1/work-orders/$uuid');
+      return _extractData(response);
+    } on DioException catch (e) {
+      throw AppError.fromDioException(e);
+    }
+  }
+
+  /// Crea un trabajo. POST /api/v1/work-orders.
+  /// El cuerpo lleva el `id` que genera el cliente (idempotencia — Art. II).
+  Future<Map<String, dynamic>> createWorkOrder(
+      Map<String, dynamic> data) async {
+    try {
+      final response = await _dio.post('/api/v1/work-orders', data: data);
+      return _extractData(response);
+    } on DioException catch (e) {
+      throw AppError.fromDioException(e);
+    }
+  }
+
+  /// Actualiza un trabajo. PATCH /api/v1/work-orders/:uuid.
+  /// Los ítems solo se editan en `cotizacion`/`aprobada`; pasar `status`
+  /// transiciona el ciclo de vida — `terminada` dispara el consumo de
+  /// material en el backend (plan §4).
+  Future<Map<String, dynamic>> updateWorkOrder(
+      String uuid, Map<String, dynamic> data) async {
+    try {
+      final response =
+          await _dio.patch('/api/v1/work-orders/$uuid', data: data);
+      return _extractData(response);
+    } on DioException catch (e) {
+      throw AppError.fromDioException(e);
+    }
+  }
+
+  /// Elimina (soft delete) un trabajo. DELETE /api/v1/work-orders/:uuid.
+  Future<void> deleteWorkOrder(String uuid) async {
+    try {
+      await _dio.delete('/api/v1/work-orders/$uuid');
+    } on DioException catch (e) {
+      throw AppError.fromDioException(e);
+    }
+  }
+
+  /// Registra un anticipo del cliente contra el trabajo (FR-04, AC-02).
+  /// El backend valida que el anticipo no exceda el saldo pendiente.
+  /// POST /api/v1/work-orders/:uuid/payments → `{data:WorkOrder}`.
+  Future<Map<String, dynamic>> addWorkOrderPayment(
+      String uuid, Map<String, dynamic> data) async {
+    try {
+      final response =
+          await _dio.post('/api/v1/work-orders/$uuid/payments', data: data);
+      return _extractData(response);
+    } on DioException catch (e) {
+      throw AppError.fromDioException(e);
+    }
+  }
+
+  /// Comparte la cotización con el cliente por WhatsApp (FR-06, AC-06).
+  /// POST /api/v1/work-orders/:uuid/share → `{whatsapp_url, message}`.
+  Future<Map<String, dynamic>> shareWorkOrder(String uuid) async {
+    try {
+      final response = await _dio.post('/api/v1/work-orders/$uuid/share');
+      return _extractData(response);
+    } on DioException catch (e) {
+      throw AppError.fromDioException(e);
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
   // 11. PROMOTIONS
   // ═══════════════════════════════════════════════════════════════════════════
 
