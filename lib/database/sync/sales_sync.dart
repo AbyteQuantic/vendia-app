@@ -54,11 +54,7 @@ class SalesSyncService {
       }
 
       if (newSales.isNotEmpty) {
-        await db.isar.writeTxn(() async {
-          for (final sale in newSales) {
-            await db.isar.localSales.put(sale);
-          }
-        });
+        await db.insertSales(newSales);
         debugPrint('[SALES_SYNC] Pulled ${newSales.length} sales from server');
       }
     } catch (e) {
@@ -84,10 +80,7 @@ class SalesSyncService {
           if (!sale.uuid.contains('-') || sale.uuid.length < 32) {
             debugPrint('[SALES_SYNC] Skipping non-UUID sale: ${sale.uuid}');
             // Mark as synced to avoid retrying forever
-            await db.isar.writeTxn(() async {
-              sale.synced = true;
-              await db.isar.localSales.put(sale);
-            });
+            await db.markSaleSynced(sale);
             continue;
           }
 
@@ -98,10 +91,7 @@ class SalesSyncService {
 
           if (items.isEmpty) {
             debugPrint('[SALES_SYNC] Skipping sale with no valid items: ${sale.uuid}');
-            await db.isar.writeTxn(() async {
-              sale.synced = true;
-              await db.isar.localSales.put(sale);
-            });
+            await db.markSaleSynced(sale);
             continue;
           }
 
@@ -117,10 +107,7 @@ class SalesSyncService {
           await api.createSale(payload);
 
           // Mark as synced
-          await db.isar.writeTxn(() async {
-            sale.synced = true;
-            await db.isar.localSales.put(sale);
-          });
+          await db.markSaleSynced(sale);
           synced++;
         } catch (e) {
           debugPrint('[SALES_SYNC] Push failed for ${sale.uuid}: $e');

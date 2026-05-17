@@ -1,47 +1,11 @@
-import 'package:isar/isar.dart';
-
-part 'local_customer.g.dart';
-
-@collection
-class LocalCustomer {
-  Id isarId = Isar.autoIncrement;
-
-  @Index(unique: true)
-  late String uuid;
-
-  late String name;
-  late String phone;
-  late double totalCredit;
-  late double totalPaid;
-  late DateTime createdAt;
-  late DateTime clientUpdatedAt;
-  int? serverId;
-
-  double get balance => totalCredit - totalPaid;
-
-  Map<String, dynamic> toJson() => {
-        'uuid': uuid,
-        'name': name,
-        'phone': phone,
-        'total_credit': totalCredit,
-        'total_paid': totalPaid,
-        'created_at': createdAt.toIso8601String(),
-        'client_updated_at': clientUpdatedAt.toIso8601String(),
-      };
-
-  static LocalCustomer fromJson(Map<String, dynamic> json) {
-    return LocalCustomer()
-      ..uuid = json['uuid'] as String? ?? ''
-      ..name = json['name'] as String
-      ..phone = json['phone'] as String? ?? ''
-      ..totalCredit = (json['total_credit'] as num? ?? 0).toDouble()
-      ..totalPaid = (json['total_paid'] as num? ?? 0).toDouble()
-      ..createdAt = json['created_at'] != null
-          ? DateTime.parse(json['created_at'] as String)
-          : DateTime.now()
-      ..clientUpdatedAt = json['client_updated_at'] != null
-          ? DateTime.parse(json['client_updated_at'] as String)
-          : DateTime.now()
-      ..serverId = json['id'] as int?;
-  }
-}
+// Facade: selecciona la implementación de la colección según la plataforma.
+//
+// En móvil/escritorio (`dart.library.io`) usa la implementación Isar real
+// (`local_customer_io.dart`), con esquema offline-first persistente.
+//
+// En web (`dart.library.html`) usa un modelo plano sin Isar
+// (`local_customer_web.dart`): la persistencia offline queda DEGRADADA en web
+// porque el backend Isar depende de `dart:ffi` y de literales enteros de
+// 64 bits que dart2js no puede compilar. Ver web/README_WEB.md.
+export 'local_customer_io.dart'
+    if (dart.library.html) 'local_customer_web.dart';
