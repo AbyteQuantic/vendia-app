@@ -394,12 +394,18 @@ class _LoginScreenState extends State<LoginScreen> {
                                 child: TextFormField(
                                   controller: _pinCtrl,
                                   focusNode: _pinFocus,
-                                  keyboardType: TextInputType.number,
+                                  // Spec 004 / BUG-7: la clave del login de
+                                  // tenant es alfanumérica (igual que lo que
+                                  // `POST /tenant/register` ya acepta). Teclado
+                                  // de texto y sin filtro digitsOnly para no
+                                  // bloquear a tenants con clave alfanumérica.
+                                  // El PIN de empleado (4 dígitos) NO cambia —
+                                  // vive en cashier_selector_screen.dart.
+                                  keyboardType: TextInputType.text,
                                   obscureText: !_pinVisible,
                                   style: const TextStyle(
                                       fontSize: 22, letterSpacing: 6),
                                   inputFormatters: [
-                                    FilteringTextInputFormatter.digitsOnly,
                                     LengthLimitingTextInputFormatter(8),
                                   ],
                                   textInputAction: TextInputAction.done,
