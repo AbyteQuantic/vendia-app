@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:uuid/uuid.dart';
 import '../config/api_config.dart';
 import '../config/supabase_config.dart';
@@ -1872,10 +1873,14 @@ class ApiService {
 
   /// PUBLIC counterpart of previewLogoIA — uploads a gallery image
   /// before the tenant exists. Used by the onboarding logo step.
-  Future<Map<String, dynamic>> previewLogoUpload(File logo) async {
+  ///
+  /// Cross-platform: reads the picked image as BYTES so it works on
+  /// Flutter web (where there is no filesystem and `XFile.path` is a
+  /// blob URL) and on mobile alike. See [logoMultipart].
+  Future<Map<String, dynamic>> previewLogoUpload(XFile logo) async {
     try {
       final formData = FormData.fromMap({
-        'logo': await MultipartFile.fromFile(logo.path),
+        'logo': await logoMultipart(logo),
       });
       final response = await _dio.post(
         '/api/v1/auth/preview-logo-upload',
@@ -1904,10 +1909,14 @@ class ApiService {
     }
   }
 
-  Future<Map<String, dynamic>> uploadLogo(File logo) async {
+  /// Uploads a custom logo for an already-registered tenant.
+  ///
+  /// Cross-platform: reads the picked image as BYTES (works on web and
+  /// mobile). See [logoMultipart].
+  Future<Map<String, dynamic>> uploadLogo(XFile logo) async {
     try {
       final formData = FormData.fromMap({
-        'logo': await MultipartFile.fromFile(logo.path),
+        'logo': await logoMultipart(logo),
       });
       final response =
           await _dio.post('/api/v1/tenant/upload-logo', data: formData);
@@ -1915,6 +1924,40 @@ class ApiService {
     } on DioException catch (e) {
       throw AppError.fromDioException(e);
     }
+  }
+
+  /// Builds a Dio [MultipartFile] from a picked [XFile] using its
+  /// BYTES instead of a filesystem path.
+  ///
+  /// Why bytes: on Flutter web there is no `dart:io` filesystem, so
+  /// `File(xfile.path)` / `MultipartFile.fromFile` throws — `XFile.path`
+  /// is only a blob URL. `XFile.readAsBytes()` works identically on web
+  /// and mobile, so this single path serves every platform.
+  @visibleForTesting
+  static Future<MultipartFile> logoMultipart(XFile logo) async {
+    final bytes = await logo.readAsBytes();
+    final filename =
+        logo.name.isNotEmpty ? logo.name : 'logo-${const Uuid().v4()}.jpg';
+    final contentType = logo.mimeType ?? mimeFromName(filename);
+    return MultipartFile.fromBytes(
+      bytes,
+      filename: filename,
+      contentType: DioMediaType.parse(contentType),
+    );
+  }
+
+  /// Best-effort MIME type from a filename extension. Used only as a
+  /// fallback when [XFile.mimeType] is null (common on mobile pickers).
+  @visibleForTesting
+  static String mimeFromName(String name) {
+    final lower = name.toLowerCase();
+    if (lower.endsWith('.png')) return 'image/png';
+    if (lower.endsWith('.webp')) return 'image/webp';
+    if (lower.endsWith('.gif')) return 'image/gif';
+    if (lower.endsWith('.heic') || lower.endsWith('.heif')) {
+      return 'image/heic';
+    }
+    return 'image/jpeg';
   }
 
   // ═══════════════════════════════════════════════════════════════════════════

@@ -1,4 +1,3 @@
-import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:geolocator/geolocator.dart';
@@ -190,7 +189,9 @@ class _BusinessProfileScreenState extends State<BusinessProfileScreen> {
 
     setState(() => _uploadingLogo = true);
     try {
-      final result = await _api.uploadLogo(File(photo.path));
+      // Pass the XFile directly — the service reads its bytes, which
+      // works on web (no filesystem) and mobile. Avoids `dart:io File`.
+      final result = await _api.uploadLogo(photo);
       final newUrl = result['logo_url'] as String?;
       if (newUrl != null && mounted) {
         setState(() => _logoUrl = newUrl);

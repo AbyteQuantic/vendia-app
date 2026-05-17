@@ -1,11 +1,10 @@
-import 'dart:io';
-
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 
 import '../../../services/api_service.dart';
+import '../../../services/app_error.dart';
 import '../../../services/auth_service.dart';
 import '../../../theme/app_theme.dart';
 import '../onboarding_stepper_controller.dart';
@@ -90,7 +89,9 @@ class _StepLogoState extends State<StepLogo> {
       if (!mounted) return;
       setState(() {
         _status = _LogoStatus.error;
-        _errorMsg = 'No se pudo generar el logo. Intente de nuevo.';
+        _errorMsg = e is AppError
+            ? e.message
+            : 'No se pudo generar el logo. Intente de nuevo.';
       });
     }
   }
@@ -110,7 +111,10 @@ class _StepLogoState extends State<StepLogo> {
       _errorMsg = null;
     });
     try {
-      final data = await _api.previewLogoUpload(File(picked.path));
+      // Pass the XFile directly — the service reads its bytes, so this
+      // works on web (no filesystem, `picked.path` is a blob URL) and
+      // on mobile alike. Avoids `dart:io File`, which throws on web.
+      final data = await _api.previewLogoUpload(picked);
       final url = data['logo_url'] as String?;
       if (!mounted) return;
       if (url == null || url.isEmpty) {
@@ -124,9 +128,15 @@ class _StepLogoState extends State<StepLogo> {
       setState(() => _status = _LogoStatus.ready);
     } catch (e) {
       if (!mounted) return;
+      // AC-03: surface the real cause instead of swallowing it. The API
+      // layer throws AppError with a meaningful Spanish message (logo
+      // > 2MB, sin conexión, error del servidor…); only fall back to a
+      // generic copy for genuinely unknown exceptions.
       setState(() {
         _status = _LogoStatus.error;
-        _errorMsg = 'No se pudo subir la imagen. Intente de nuevo.';
+        _errorMsg = e is AppError
+            ? e.message
+            : 'No se pudo subir la imagen. Intente de nuevo.';
       });
     }
   }
