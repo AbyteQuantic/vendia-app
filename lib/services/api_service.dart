@@ -6,6 +6,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:uuid/uuid.dart';
 import '../config/api_config.dart';
 import '../config/supabase_config.dart';
+import '../models/subscription.dart';
 import '../theme/app_theme.dart';
 import '../widgets/premium_upsell_sheet.dart';
 import 'app_error.dart';
@@ -2851,6 +2852,64 @@ class ApiService {
         data: {'content': content},
       );
       return response.data as Map<String, dynamic>;
+    } on DioException catch (e) {
+      throw AppError.fromDioException(e);
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // SUBSCRIPTION & BILLING (Feature 008 — planes + ePayco)
+  //
+  // Contrato: specs/008-planes-suscripcion-epayco/plan.md §4.
+  //   GET  /api/v1/subscription/plans    → catálogo (Gratis, Pro)
+  //   GET  /api/v1/subscription/status   → estado del tenant
+  //   POST /api/v1/subscription/checkout → datos del checkout de ePayco
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  /// GET /subscription/plans — catálogo de planes (Gratis, Pro
+  /// mensual/anual). El catálogo vive en config del backend (D4), no
+  /// es editable por UI.
+  Future<List<SubscriptionPlan>> fetchPlans() async {
+    try {
+      final response = await _dio.get('/api/v1/subscription/plans');
+      final list = _extractList(response);
+      return list
+          .map(SubscriptionPlan.fromJson)
+          .toList(growable: false);
+    } on DioException catch (e) {
+      throw AppError.fromDioException(e);
+    }
+  }
+
+  /// GET /subscription/status — estado actual de la suscripción del
+  /// tenant. El backend ya degrada trial/Pro vencido a FREE (AC-08),
+  /// así que la UI confía en lo que recibe.
+  Future<SubscriptionStatus> fetchSubscriptionStatus() async {
+    try {
+      final response = await _dio.get('/api/v1/subscription/status');
+      return SubscriptionStatus.fromJson(_extractData(response));
+    } on DioException catch (e) {
+      throw AppError.fromDioException(e);
+    }
+  }
+
+  /// POST /subscription/checkout — pide al backend los datos para
+  /// abrir el checkout de ePayco de un plan. El webhook de
+  /// confirmación es la fuente de verdad de la promoción a Pro (D2);
+  /// esta llamada solo arma el checkout.
+  ///
+  /// [plan] es el id del plan (`pro`); [interval] es `mensual` |
+  /// `anual`.
+  Future<CheckoutSession> createCheckout({
+    required String plan,
+    required String interval,
+  }) async {
+    try {
+      final response = await _dio.post(
+        '/api/v1/subscription/checkout',
+        data: {'plan': plan, 'interval': interval},
+      );
+      return CheckoutSession.fromJson(_extractData(response));
     } on DioException catch (e) {
       throw AppError.fromDioException(e);
     }
