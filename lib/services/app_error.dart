@@ -1,4 +1,5 @@
 import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 
 enum AppErrorType { network, auth, validation, server, unknown }
 
@@ -45,9 +46,21 @@ class AppError implements Exception {
     }
 
     if (e.type == DioExceptionType.connectionError) {
+      // On the web build a `connectionError` (no HTTP response reached
+      // the client) almost never means the merchant's wifi is down —
+      // the browser raises it when a CORS preflight is rejected or the
+      // API host is unreachable from this origin. Claiming "sin
+      // conexión a internet" there hides the real cause (AC-03), so we
+      // surface a message that reflects what actually failed and is
+      // actionable for whoever is debugging the deploy. Mobile keeps
+      // the original copy because there `connectionError` genuinely
+      // is a lost-network condition.
       return const AppError(
         type: AppErrorType.network,
-        message: 'Sin conexión a internet. Verifique su red.',
+        message: kIsWeb
+            ? 'No se pudo contactar el servidor de VendIA. Verifique su '
+                'conexión o intente más tarde.'
+            : 'Sin conexión a internet. Verifique su red.',
       );
     }
 
