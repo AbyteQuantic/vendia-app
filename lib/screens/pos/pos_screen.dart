@@ -1465,10 +1465,7 @@ class _PosScreenBodyState extends State<_PosScreenBody> {
       final allSales = await db.getSalesToday();
       final match = allSales.where((s) => s.uuid == saleUuid).toList();
       if (match.isNotEmpty) {
-        await db.isar.writeTxn(() async {
-          match.first.synced = true;
-          await db.isar.localSales.put(match.first);
-        });
+        await db.markSaleSynced(match.first);
       }
     } catch (e) {
       // Non-blocking: keep the UX flowing. The sale stays in Isar with

@@ -100,15 +100,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
     _loadLowStockCount();
     _loadStoreStatus();
 
-    final isar = _db.isar;
+    _salesSub = _db.watchSalesLazy().listen((_) => _debouncedLoad());
 
-    _salesSub = isar.localSales
-        .watchLazy(fireImmediately: false)
-        .listen((_) => _debouncedLoad());
-
-    _productsSub = isar.localProducts
-        .watchLazy(fireImmediately: false)
-        .listen((_) => _debouncedLoad());
+    _productsSub = _db.watchProductsLazy().listen((_) => _debouncedLoad());
 
     // Reload all dashboard data when the branch changes
     WidgetsBinding.instance.addPostFrameCallback((_) {

@@ -3,6 +3,15 @@
 <plist version="1.0">
 <dict>
 	<!-- Permite HTTP cleartext para desarrollo local (backend en red WiFi) -->
+	<!-- Cámara: escaneo de códigos de barras y captura de facturas/productos
+	     (mobile_scanner + image_picker). Sin esta clave iOS cierra la app
+	     al primer acceso a la cámara. -->
+	<key>NSCameraUsageDescription</key>
+	<string>VendIA usa la cámara para escanear los códigos de barras de sus productos y tomar fotos de sus facturas.</string>
+	<!-- Galería de fotos: seleccionar imágenes de productos o facturas ya
+	     guardadas en el teléfono (image_picker + image_cropper). -->
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>VendIA accede a sus fotos para que pueda elegir imágenes de sus productos o facturas desde la galería.</string>
 	<!-- Permiso de ubicación GPS -->
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>VendIA necesita su ubicación para encontrar la dirección de su negocio automáticamente.</string>
@@ -24,7 +33,7 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>
-	<string>Vendia Pos</string>
+	<string>VendIA</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
