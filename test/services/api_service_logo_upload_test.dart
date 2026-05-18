@@ -9,9 +9,14 @@
 //
 //   Spec 010 — iPhone photos are HEIC; `image_picker` on web ignores
 //   `maxWidth`/`imageQuality`, so the raw HEIC reached Supabase, which
-//   rejects `image/heic` -> 500. The fix normalizes every logo to a
-//   downsized JPEG via `normalizeLogoImage` BEFORE upload, so
-//   `logoMultipart` now ALWAYS emits `image/jpeg` with a `.jpg` filename.
+//   rejects `image/heic` -> 500. The fix normalizes every logo via
+//   `normalizeLogoImage` BEFORE upload.
+//
+//   Spec 010 §9 / D1 (refined 2026-05-18) — tenderos often upload an
+//   AI-generated logo (ChatGPT, Nano Banana/Gemini) that is a PNG/WebP
+//   with a transparent background. A JPEG re-encode flattened that
+//   transparency onto black. The normalizer now emits **PNG**, so
+//   `logoMultipart` ALWAYS sends `image/png` with a `.png` filename.
 //
 // These tests exercise `logoMultipart` with the in-memory XFile shape the
 // web image_picker returns (`XFile.fromData`) — no filesystem, no network.
@@ -45,7 +50,7 @@ void main() {
     return XFile.fromData(bytes, name: name, mimeType: mimeType);
   }
 
-  group('ApiService.logoMultipart (Spec 010 — normalized JPEG upload)', () {
+  group('ApiService.logoMultipart (Spec 010 — normalized PNG upload)', () {
     test(
         'builds a MultipartFile from an in-memory XFile '
         '(the bytes shape image_picker returns) without a filesystem path',
@@ -59,28 +64,29 @@ void main() {
     });
 
     test(
-        'always sends Content-Type image/jpeg regardless of the source '
-        'format (Spec 010 — Supabase rejects image/heic)', () async {
-      // A PNG source must still leave as JPEG.
+        'always sends Content-Type image/png regardless of the source '
+        'format (Spec 010 §9 — Supabase rejects image/heic; PNG keeps '
+        'AI-logo transparency)', () async {
+      // A PNG source leaves as PNG.
       final fromPng = await ApiService.logoMultipart(
         imageFile(name: 'brand.png', mimeType: 'image/png'),
       );
-      expect(fromPng.contentType?.mimeType, 'image/jpeg');
+      expect(fromPng.contentType?.mimeType, 'image/png');
 
-      // A JPEG source: still normalized and sent as JPEG.
+      // A JPEG source: still normalized and re-encoded as PNG.
       final fromJpeg = await ApiService.logoMultipart(
         imageFile(name: 'foto.jpg', mimeType: 'image/jpeg', png: false),
       );
-      expect(fromJpeg.contentType?.mimeType, 'image/jpeg');
+      expect(fromJpeg.contentType?.mimeType, 'image/png');
     });
 
-    test('always sends a .jpg filename so the upload matches the bytes',
+    test('always sends a .png filename so the upload matches the bytes',
         () async {
       final part = await ApiService.logoMultipart(
         imageFile(name: 'whatever-the-user-picked.png'),
       );
       expect(part.filename, isNotNull);
-      expect(part.filename, endsWith('.jpg'));
+      expect(part.filename, endsWith('.png'));
     });
 
     test('downsizes a large image before upload (AC-03 — no 2MB error)',
@@ -91,9 +97,10 @@ void main() {
       final tinyPng = await ApiService.logoMultipart(
         imageFile(width: 200, height: 200, name: 'chica.png'),
       );
-      // The 3000px source, capped to 1024px and JPEG-compressed, must be
-      // produced without error.
+      // The 3000px source, capped to ~768px and PNG-encoded, must be
+      // produced without error and stay under the backend 2MB cap.
       expect(hugePng.length, greaterThan(0));
+      expect(hugePng.length, lessThanOrEqualTo(2 * 1024 * 1024));
       expect(tinyPng.length, greaterThan(0));
     });
   });
