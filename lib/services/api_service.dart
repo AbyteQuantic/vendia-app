@@ -591,50 +591,143 @@ class ApiService {
     }
   }
 
-  Future<Map<String, dynamic>> enhanceProductPhoto(String uuid, {
-    String? name, String? presentation, String? content,
-  }) async {
+  // Spec 016 / D3: AI photo ops are async. The POST kicks off a backend
+  // job and returns a job_id immediately (202); the result arrives later
+  // via polling. These tune that loop:
+  //  - poll every ~4s (slow enough to be light on Render free, fast
+  //    enough that a ~30s job feels responsive),
+  //  - give up after ~3 min so a stuck job never blocks the tendero
+  //    forever (the backend itself also reaps jobs >5 min — FR-06).
+  static const Duration _defaultAiPollInterval = Duration(seconds: 4);
+  static const Duration _defaultAiPollTimeout = Duration(minutes: 3);
+
+  // Test seam (Spec 016): instance overrides so the polling loop can be
+  // exercised in milliseconds instead of minutes. Production never sets
+  // these, so the defaults above apply.
+  Duration? _aiPollIntervalOverride;
+  Duration? _aiPollTimeoutOverride;
+
+  Duration get _aiPollInterval =>
+      _aiPollIntervalOverride ?? _defaultAiPollInterval;
+  Duration get _aiPollTimeout =>
+      _aiPollTimeoutOverride ?? _defaultAiPollTimeout;
+
+  /// Test seam (Spec 016): shrinks the poll interval / total budget so a
+  /// scripted adapter can drive the polling loop without real waits.
+  /// Production code never calls this.
+  @visibleForTesting
+  void setAiPollTimingForTesting({Duration? interval, Duration? timeout}) {
+    _aiPollIntervalOverride = interval;
+    _aiPollTimeoutOverride = timeout;
+  }
+
+  /// Spec 016 / FR-03..FR-05: kicks off a backend AI photo job and polls
+  /// its status until it finishes.
+  ///
+  /// Each HTTP call here — the POST that starts the job and every status
+  /// GET — is short, so they keep normal timeouts; the long wait is the
+  /// poll loop, not a single blocked request (that was the fragile F015
+  /// model this replaces).
+  ///
+  /// Returns the job result map (`{photo_url: ...}`) on `done` so callers
+  /// that `await enhanceProductPhoto(...)` barely change. Throws
+  /// [AppError] with a Spanish message when the job reports `failed` or
+  /// when the ~3 min poll budget is exhausted — never a raw timeout.
+  Future<Map<String, dynamic>> _runAiPhotoJob(
+    String uuid,
+    String startPath,
+    Map<String, String> params,
+  ) async {
     try {
-      final params = <String, String>{};
-      if (name != null && name.isNotEmpty) params['name'] = name;
-      if (presentation != null && presentation.isNotEmpty) params['presentation'] = presentation;
-      if (content != null && content.isNotEmpty) params['content'] = content;
-      // Spec 015 / FR-02: AI image ops are slow (Gemini ~27s + download +
-      // upload). The global receiveTimeout (60s) cut the request before the
-      // backend could answer. 140s > the backend's ~110s context window, so
-      // the client always receives the backend's response or error first.
-      final response = await _dio.post(
-        '/api/v1/products/$uuid/enhance',
+      final startResponse = await _dio.post(
+        '/api/v1/products/$uuid$startPath',
         queryParameters: params.isEmpty ? null : params,
-        options: Options(receiveTimeout: const Duration(seconds: 140)),
       );
-      return _extractData(response);
+      final startData = _extractData(startResponse);
+      final jobId = startData['job_id'] as String?;
+      if (jobId == null || jobId.isEmpty) {
+        throw const AppError(
+          type: AppErrorType.server,
+          message: 'No pudimos iniciar el procesamiento con IA. '
+              'Intenta de nuevo.',
+        );
+      }
+      return await _pollAiJob(uuid, jobId);
     } on DioException catch (e) {
       throw AppError.fromDioException(e);
     }
   }
 
+  /// Polls `GET /products/{id}/ai-job/{jobId}` every [_aiPollInterval]
+  /// until the status is `done` (returns the result) or `failed` (throws
+  /// the backend's Spanish reason). Stops after [_aiPollTimeout] and
+  /// throws a clear Spanish message so the tendero never sees a frozen
+  /// screen or a technical timeout (Spec 016 / FR-05).
+  Future<Map<String, dynamic>> _pollAiJob(String uuid, String jobId) async {
+    final deadline = DateTime.now().add(_aiPollTimeout);
+    while (true) {
+      Map<String, dynamic> job;
+      try {
+        final response =
+            await _dio.get('/api/v1/products/$uuid/ai-job/$jobId');
+        job = _extractData(response);
+      } on DioException catch (e) {
+        throw AppError.fromDioException(e);
+      }
+
+      final status = job['status'] as String?;
+      if (status == 'done') {
+        return job;
+      }
+      if (status == 'failed') {
+        final reason = job['error'] as String?;
+        throw AppError(
+          type: AppErrorType.server,
+          message: (reason != null && reason.isNotEmpty)
+              ? reason
+              : 'No pudimos procesar la foto con IA. Intenta de nuevo.',
+        );
+      }
+
+      // status == 'processing' (or anything unknown) → keep waiting,
+      // unless we have run out of the poll budget.
+      if (!DateTime.now().add(_aiPollInterval).isBefore(deadline)) {
+        throw const AppError(
+          type: AppErrorType.network,
+          message: 'La IA está tardando más de lo normal. '
+              'Intenta de nuevo en un momento.',
+        );
+      }
+      await Future<void>.delayed(_aiPollInterval);
+    }
+  }
+
+  Future<Map<String, dynamic>> enhanceProductPhoto(String uuid, {
+    String? name, String? presentation, String? content,
+  }) async {
+    final params = <String, String>{};
+    if (name != null && name.isNotEmpty) params['name'] = name;
+    if (presentation != null && presentation.isNotEmpty) {
+      params['presentation'] = presentation;
+    }
+    if (content != null && content.isNotEmpty) params['content'] = content;
+    // Spec 016: POST returns 202 with a job_id; _runAiPhotoJob then polls
+    // for the result, so callers keep their plain `await` + loader.
+    return _runAiPhotoJob(uuid, '/enhance', params);
+  }
+
   Future<Map<String, dynamic>> generateProductImage(String uuid, {
     String? name, String? presentation, String? content, String? barcode,
   }) async {
-    try {
-      final params = <String, String>{};
-      if (name != null && name.isNotEmpty) params['name'] = name;
-      if (presentation != null && presentation.isNotEmpty) params['presentation'] = presentation;
-      if (content != null && content.isNotEmpty) params['content'] = content;
-      if (barcode != null && barcode.isNotEmpty) params['barcode'] = barcode;
-      // Spec 015 / FR-02: same long-timeout treatment as enhanceProductPhoto
-      // — generating an image with Gemini can take longer than the 60s
-      // global receiveTimeout. 140s > the backend's ~110s context window.
-      final response = await _dio.post(
-        '/api/v1/products/$uuid/generate-image',
-        queryParameters: params.isEmpty ? null : params,
-        options: Options(receiveTimeout: const Duration(seconds: 140)),
-      );
-      return _extractData(response);
-    } on DioException catch (e) {
-      throw AppError.fromDioException(e);
+    final params = <String, String>{};
+    if (name != null && name.isNotEmpty) params['name'] = name;
+    if (presentation != null && presentation.isNotEmpty) {
+      params['presentation'] = presentation;
     }
+    if (content != null && content.isNotEmpty) params['content'] = content;
+    if (barcode != null && barcode.isNotEmpty) params['barcode'] = barcode;
+    // Spec 016: same async POST + polling flow as enhanceProductPhoto.
+    return _runAiPhotoJob(uuid, '/generate-image', params);
   }
 
   // ═══════════════════════════════════════════════════════════════════════════
