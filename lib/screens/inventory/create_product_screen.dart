@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
@@ -9,9 +8,11 @@ import '../../database/collections/local_catalog_product.dart';
 import '../../database/collections/local_product.dart';
 import '../../services/api_service.dart';
 import '../../services/auth_service.dart';
+import '../../services/image_normalizer.dart' show ImageNormalizationException;
 import '../../theme/app_theme.dart';
 import '../../utils/barcode_validator.dart';
 import '../../utils/currency_input.dart';
+import '../../widgets/picked_image_preview.dart';
 import '../pos/scan_screen.dart';
 
 /// Manual product creation form — single-screen, no scroll.
@@ -34,7 +35,9 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
   final _contentCtrl = TextEditingController(); // e.g. "350ml", "500g"
   OverlayEntry? _overlayEntry;
 
-  String? _photoPath;
+  // Spec 013: keep the picked XFile (not just a path string) so the
+  // preview and upload work on web, where `XFile.path` is a blob URL.
+  XFile? _photoFile;
   String? _photoUrl; // from barcode lookup
   String? _pendingUuid; // set after create, before enhance
   String? _pendingCatalogImageId; // set after enhance/generate, sent on save
@@ -416,7 +419,7 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
     _removeOverlay();
     _suggestions = [];
 
-    final hadUserPhoto = _photoPath != null;
+    final hadUserPhoto = _photoFile != null;
 
     setState(() {
       // Auto-fill image (only if user hasn't taken their own photo)
@@ -461,7 +464,7 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
     );
     if (photo != null && mounted) {
       setState(() {
-        _photoPath = photo.path;
+        _photoFile = photo;
         _photoUrl = null; // local photo takes precedence
       });
     }
@@ -537,7 +540,7 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
       if (url != null && mounted) {
         setState(() {
           _photoUrl = url;
-          _photoPath = null;
+          _photoFile = null;
           if (catalogImgId != null && catalogImgId.isNotEmpty) {
             _pendingCatalogImageId = catalogImgId;
           }
@@ -584,7 +587,7 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
         _nameCtrl.text = name;
       }
       setState(() {
-        if (imageUrl != null && imageUrl.isNotEmpty && _photoPath == null) {
+        if (imageUrl != null && imageUrl.isNotEmpty && _photoFile == null) {
           _photoUrl = imageUrl;
         }
       });
@@ -694,28 +697,51 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
         });
       }
 
-      // Upload local photo if taken from camera/gallery
-      if (_photoPath != null && _photoPath!.isNotEmpty && _photoUrl == null) {
+      // Upload local photo if taken from camera/gallery.
+      // Spec 013: pass the picked XFile — `uploadProductPhoto` reads its
+      // bytes and normalizes to PNG, so this works on web and the photo
+      // renders on Android.
+      final pickedPhoto = _photoFile;
+      if (pickedPhoto != null && _photoUrl == null) {
         try {
-          final uploadRes = await api.uploadProductPhoto(id, File(_photoPath!));
+          final uploadRes = await api.uploadProductPhoto(id, pickedPhoto);
           final url = (uploadRes['photo_url'] as String?) ??
               (uploadRes['image_url'] as String?);
           if (url != null && url.isNotEmpty) {
             _photoUrl = url;
             await api.updateProduct(id, {'image_url': url});
           }
-        } catch (_) {
-          // Photo upload failed — product saved without image
+        } on ImageNormalizationException catch (e) {
+          // Could not normalize the picked image — tell the merchant in
+          // Spanish; the product is still saved without a photo.
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text(e.message)),
+            );
+          }
+        } catch (e) {
+          // Network / backend failure — the product is saved without an
+          // image; let the merchant know instead of staying silent.
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text(
+                    'El producto se guardó, pero no pudimos subir la foto.'),
+              ),
+            );
+          }
         }
       }
 
-      // Save to local Isar for offline
+      // Save to local Isar for offline. Only a durable photo URL is
+      // stored — never a transient local/blob path that would be a dead
+      // reference after a refresh.
       final product = LocalProduct()
         ..uuid = id
         ..name = productName
         ..price = price
         ..stock = stock
-        ..imageUrl = _photoUrl ?? _photoPath
+        ..imageUrl = _photoUrl
         ..isAvailable = true
         ..requiresContainer = false
         ..containerPrice = 0
@@ -758,7 +784,7 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
   bool get _isDirty =>
       _nameCtrl.text.trim().isNotEmpty ||
       _skuCtrl.text.trim().isNotEmpty ||
-      _photoPath != null ||
+      _photoFile != null ||
       _photoUrl != null;
 
   Future<bool> _confirmDiscard() async {
@@ -793,7 +819,7 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final hasPhoto = _photoPath != null || _photoUrl != null;
+    final hasPhoto = _photoFile != null || _photoUrl != null;
 
     return PopScope(
       canPop: false,
@@ -1038,7 +1064,7 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
                             HapticFeedback.lightImpact();
                             setState(() {
                               _photoUrl = url;
-                              _photoPath = null;
+                              _photoFile = null;
                             });
                           },
                           child: Container(
@@ -1561,8 +1587,12 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
     // edge-to-edge don't get cropped past the rounded container. The
     // Gemini prompt now reserves a 12% safe zone, but older generated
     // assets or user-uploaded tight crops still need this fallback.
-    if (_photoPath != null) {
-      return Image.file(File(_photoPath!), fit: BoxFit.contain);
+    if (_photoFile != null) {
+      return PickedImagePreview(
+        file: _photoFile!,
+        fit: BoxFit.contain,
+        errorBuilder: (_, __, ___) => _photoPlaceholder(),
+      );
     }
     if (_photoUrl != null) {
       return Image.network(_photoUrl!, fit: BoxFit.contain,
