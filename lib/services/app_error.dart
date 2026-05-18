@@ -1,5 +1,4 @@
 import 'package:dio/dio.dart';
-import 'package:flutter/foundation.dart' show kIsWeb;
 
 enum AppErrorType { network, auth, validation, server, unknown }
 
@@ -46,21 +45,22 @@ class AppError implements Exception {
     }
 
     if (e.type == DioExceptionType.connectionError) {
-      // On the web build a `connectionError` (no HTTP response reached
-      // the client) almost never means the merchant's wifi is down —
-      // the browser raises it when a CORS preflight is rejected or the
-      // API host is unreachable from this origin. Claiming "sin
-      // conexión a internet" there hides the real cause (AC-03), so we
-      // surface a message that reflects what actually failed and is
-      // actionable for whoever is debugging the deploy. Mobile keeps
-      // the original copy because there `connectionError` genuinely
-      // is a lost-network condition.
+      // Spec 012 — this branch is only reached AFTER the cold-start
+      // retry interceptor has exhausted its attempts (~60-75 s window).
+      // By then the backend either is genuinely unreachable or there is
+      // no internet. Either way the copy must be SOFT and not alarming
+      // (FR-04): a tendero 50+ should read "intenta de nuevo", not feel
+      // the app is broken. The message intentionally also fits the
+      // real no-internet case — "Revisa tu internet" is the first thing
+      // to check there too, so it does not regress AC-02.
+      //
+      // On web a `connectionError` is almost never lost wifi (the
+      // browser raises it for a rejected CORS preflight or an
+      // unreachable API host); the copy stays generic enough to fit
+      // that case without claiming the network is down.
       return const AppError(
         type: AppErrorType.network,
-        message: kIsWeb
-            ? 'No se pudo contactar el servidor de VendIA. Verifique su '
-                'conexión o intente más tarde.'
-            : 'Sin conexión a internet. Verifique su red.',
+        message: 'No pudimos conectar. Revisa tu internet e intenta de nuevo.',
       );
     }
 
