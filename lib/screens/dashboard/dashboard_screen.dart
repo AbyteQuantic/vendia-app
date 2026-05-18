@@ -11,6 +11,7 @@ import '../../services/branch_provider.dart';
 import '../../services/role_manager.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/online_orders_bell.dart';
+import '../../widgets/trial_bar.dart';
 import '../auth/login_screen.dart';
 import '../admin/suppliers_screen.dart';
 import '../inventory/add_merchandise_screen.dart';
@@ -1283,7 +1284,11 @@ class _HeroHeaderDelegate extends SliverPersistentHeaderDelegate {
     colors: [Color(0xFF1E3A8A), Color(0xFF3B82F6), Color(0xFF6366F1)],
   );
 
-  static const double _expandedBody = 170;
+  // El cuerpo expandido incluye, además del saludo y la fila de
+  // estado/fecha, la barra del trial (F009). 226 = 170 base + ~56 de
+  // la barra; cuando el tenant es Pro la barra es `SizedBox.shrink`
+  // y el espacio extra queda como aire — sin overflow a 360dp.
+  static const double _expandedBody = 226;
   static const double _collapsedBody = 52;
 
   @override
@@ -1417,26 +1422,41 @@ class _HeroHeaderDelegate extends SliverPersistentHeaderDelegate {
                   child: Opacity(
                     opacity: detailsOpacity,
                     child: Padding(
-                      padding: const EdgeInsets.only(top: 8),
-                      child: Row(
+                      padding: const EdgeInsets.only(top: 8, right: 12),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
                         children: [
-                          _StoreStatusPill(
-                            isOpen: isStoreOpen,
-                            loading: loadingStoreStatus,
-                            onToggle: onToggleStore,
+                          Row(
+                            children: [
+                              _StoreStatusPill(
+                                isOpen: isStoreOpen,
+                                loading: loadingStoreStatus,
+                                onToggle: onToggleStore,
+                              ),
+                              const SizedBox(width: 12),
+                              Icon(Icons.calendar_today_rounded,
+                                  size: 12,
+                                  color: Colors.white
+                                      .withValues(alpha: 0.5)),
+                              const SizedBox(width: 5),
+                              Flexible(
+                                child: Text(todayLabel,
+                                    style: TextStyle(
+                                        fontSize: 12,
+                                        color: Colors.white
+                                            .withValues(alpha: 0.5)),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis),
+                              ),
+                            ],
                           ),
-                          const SizedBox(width: 12),
-                          Icon(Icons.calendar_today_rounded,
-                              size: 12, color: Colors.white.withValues(alpha: 0.5)),
-                          const SizedBox(width: 5),
-                          Flexible(
-                            child: Text(todayLabel,
-                                style: TextStyle(
-                                    fontSize: 12,
-                                    color: Colors.white.withValues(alpha: 0.5)),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis),
-                          ),
+                          // ── Barra del trial (Feature 009) ────────
+                          // Acceso directo a la vista de planes. Se
+                          // pinta sola: TRIAL → barra; FREE → prompt;
+                          // PRO → `SizedBox.shrink` (no ocupa nada).
+                          const SizedBox(height: 10),
+                          const TrialBar(),
                         ],
                       ),
                     ),

@@ -316,4 +316,181 @@ void main() {
     expect(calls, equals(0),
         reason: 'no navigatorKey.currentContext → short-circuit');
   });
+
+  // ── Feature 009: comparación Gratis vs Pro + contador de prueba ──
+  //
+  // La vista de planes rediseñada (T-22/T-23) muestra una comparación
+  // clara con las funciones reales de cada plan y, arriba, el contador
+  // de prueba prominente. Estas pruebas cubren AC-06.
+
+  /// Plan Gratis y Pro con funciones reales del spec §8.
+  List<SubscriptionPlan> f009Plans() => const [
+        SubscriptionPlan(
+          id: PlanId.gratis,
+          name: 'Gratis',
+          description: 'Lo esencial para vender',
+          prices: [
+            PlanPrice(interval: BillingInterval.mensual, amount: 0)
+          ],
+          features: [
+            'Registrar ventas (POS)',
+            'Inventario',
+            'Fiado con recordatorios',
+            'Clientes',
+            'Reportes básicos',
+          ],
+        ),
+        SubscriptionPlan(
+          id: PlanId.pro,
+          name: 'Pro',
+          description: 'Todas las herramientas para crecer',
+          prices: [
+            PlanPrice(interval: BillingInterval.mensual, amount: 29900),
+            PlanPrice(interval: BillingInterval.anual, amount: 299000),
+          ],
+          features: [
+            'Generación de logo con IA',
+            'Escaneo de facturas con IA',
+            'Voz a catálogo',
+            'Catálogo web público',
+            'Multi-sede',
+          ],
+        ),
+      ];
+
+  testWidgets(
+      'F009: muestra el contador de prueba prominente cuando es TRIAL',
+      (tester) async {
+    final api = _FakeApi(
+      onPlans: () async => f009Plans(),
+      onStatus: () async => const SubscriptionStatus(
+        status: SubscriptionStatusValue.trial,
+        plan: PlanId.pro,
+        trialDaysRemaining: 8,
+        trialTotalDays: 14,
+      ),
+    );
+
+    await pumpSheet(tester, api: api);
+
+    expect(find.byKey(const Key('premium_upsell_trial_counter')),
+        findsOneWidget);
+    expect(find.textContaining('8 días'), findsWidgets);
+    expect(find.textContaining('prueba Pro'), findsWidgets);
+  });
+
+  testWidgets(
+      'F009: el contador de prueba no aparece para un tenant FREE',
+      (tester) async {
+    final api = _FakeApi(
+      onPlans: () async => f009Plans(),
+      onStatus: () async => const SubscriptionStatus(
+        status: SubscriptionStatusValue.free,
+        plan: PlanId.gratis,
+      ),
+    );
+
+    await pumpSheet(tester, api: api);
+
+    expect(find.byKey(const Key('premium_upsell_trial_counter')),
+        findsNothing);
+  });
+
+  testWidgets(
+      'F009: la comparación lista las funciones reales de cada plan',
+      (tester) async {
+    final api = _FakeApi(onPlans: () async => f009Plans());
+
+    await pumpSheet(tester, api: api);
+
+    // Funciones reales del plan Gratis (spec §8).
+    expect(find.text('Registrar ventas (POS)'), findsOneWidget);
+    expect(find.text('Fiado con recordatorios'), findsOneWidget);
+    // Funciones reales del plan Pro (spec §8).
+    expect(find.text('Generación de logo con IA'), findsOneWidget);
+    expect(find.text('Voz a catálogo'), findsOneWidget);
+    expect(find.text('Multi-sede'), findsOneWidget);
+  });
+
+  testWidgets(
+      'F009: ya no se muestran las viñetas hardcodeadas inexactas',
+      (tester) async {
+    final api = _FakeApi(onPlans: () async => f009Plans());
+
+    await pumpSheet(tester, api: api);
+
+    // Estas eran las viñetas hardcodeadas de F008 que el spec §8
+    // marca como inexactas — no deben aparecer más.
+    expect(find.text('Fiar a tus clientes con recordatorios'),
+        findsNothing);
+    expect(find.text('Mesas, KDS, servicios y combos con IA'),
+        findsNothing);
+  });
+
+  testWidgets(
+      'F009: las tarjetas se apilan en ancho móvil (360dp)',
+      (tester) async {
+    tester.view.physicalSize = const Size(360, 1400);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+
+    final api = _FakeApi(onPlans: () async => f009Plans());
+
+    await tester.pumpWidget(MaterialApp(
+      home: Builder(
+        builder: (context) => Scaffold(
+          body: Center(
+            child: ElevatedButton(
+              onPressed: () =>
+                  showPremiumUpsellSheet(context, api: api),
+              child: const Text('open'),
+            ),
+          ),
+        ),
+      ),
+    ));
+    await tester.tap(find.text('open'));
+    await tester.pumpAndSettle();
+
+    final gratis = tester.getRect(
+        find.byKey(const Key('plan_card_gratis')));
+    final pro = tester.getRect(find.byKey(const Key('plan_card_pro')));
+    // Apiladas: la tarjeta Pro queda debajo de la Gratis.
+    expect(pro.top, greaterThanOrEqualTo(gratis.bottom - 1));
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets(
+      'F009: las tarjetas van lado a lado en ancho de escritorio',
+      (tester) async {
+    tester.view.physicalSize = const Size(1280, 1600);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+
+    final api = _FakeApi(onPlans: () async => f009Plans());
+
+    await tester.pumpWidget(MaterialApp(
+      home: Builder(
+        builder: (context) => Scaffold(
+          body: Center(
+            child: ElevatedButton(
+              onPressed: () =>
+                  showPremiumUpsellSheet(context, api: api),
+              child: const Text('open'),
+            ),
+          ),
+        ),
+      ),
+    ));
+    await tester.tap(find.text('open'));
+    await tester.pumpAndSettle();
+
+    final gratis = tester.getRect(
+        find.byKey(const Key('plan_card_gratis')));
+    final pro = tester.getRect(find.byKey(const Key('plan_card_pro')));
+    // Lado a lado: comparten franja vertical, una a la izquierda de la
+    // otra.
+    expect(gratis.right, lessThanOrEqualTo(pro.left + 1));
+    expect(tester.takeException(), isNull);
+  });
 }

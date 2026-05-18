@@ -158,12 +158,18 @@ class SubscriptionStatus {
   /// Días restantes del trial; 0 fuera de trial.
   final int trialDaysRemaining;
 
+  /// Total de días del trial (14 por defecto). F009: el backend lo
+  /// envía como `trial_total_days` para que el frontend dibuje la
+  /// barra de progreso sin adivinar el denominador.
+  final int trialTotalDays;
+
   const SubscriptionStatus({
     required this.status,
     required this.plan,
     this.interval,
     this.expiresAt,
     this.trialDaysRemaining = 0,
+    this.trialTotalDays = 14,
   });
 
   /// `true` cuando el tenant tiene acceso a las funciones PRO.
@@ -173,6 +179,23 @@ class SubscriptionStatus {
 
   /// `true` cuando el tenant está en período de prueba.
   bool get isTrial => status == SubscriptionStatusValue.trial;
+
+  /// Días del trial ya consumidos; nunca negativo. Útil para la barra
+  /// de progreso del Dashboard (F009).
+  int get trialDaysUsed {
+    final used = trialTotalDays - trialDaysRemaining;
+    return used < 0 ? 0 : used;
+  }
+
+  /// Fracción del trial transcurrida en `[0, 1]`. `0` cuando el total
+  /// es inválido — evita una división por cero al dibujar la barra.
+  double get trialProgress {
+    if (trialTotalDays <= 0) return 0;
+    final fraction = trialDaysUsed / trialTotalDays;
+    if (fraction < 0) return 0;
+    if (fraction > 1) return 1;
+    return fraction;
+  }
 
   factory SubscriptionStatus.fromJson(Map<String, dynamic> json) {
     DateTime? parseDate(dynamic value) {
@@ -191,6 +214,11 @@ class SubscriptionStatus {
           parseDate(json['trial_ends_at']),
       trialDaysRemaining:
           (json['trial_days_remaining'] as num?)?.toInt() ?? 0,
+      // F009: el backend envía `trial_total_days`. Si un cliente habla
+      // con un backend viejo que no lo manda, caemos a 14 (el total
+      // estándar del trial) en vez de romper la barra de progreso.
+      trialTotalDays:
+          (json['trial_total_days'] as num?)?.toInt() ?? 14,
     );
   }
 }
