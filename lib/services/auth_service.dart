@@ -33,51 +33,63 @@ class AuthService {
               IOSOptions(accessibility: KeychainAccessibility.first_unlock),
         );
 
+  // ── Persistencia de sesión ────────────────────────────────────────────────
+  //
+  // F011 — TODAS las escrituras de sesión van EN SERIE, nunca con
+  // `Future.wait`. En web, `flutter_secure_storage_web` genera la clave AES
+  // (`localStorage['FlutterSecureStorage']`) con un check-then-act: dos
+  // escrituras concurrentes en la primera sesión generan claves distintas y
+  // la última sobrescribe a la anterior, dejando huérfanos los valores ya
+  // cifrados → `getToken()` revienta luego con `OperationError`. Escribir
+  // en serie garantiza que la primera escritura fija la clave AES y todas las
+  // demás la reutilizan. En móvil el cambio es funcionalmente neutro.
+  // Ver specs/011-web-auth-token/spec.md §2.
+
   Future<void> _saveFeatureFlags(Map<String, dynamic> source) async {
     final flags = source['feature_flags'];
     final types = source['business_types'];
-    await Future.wait([
-      _storage.write(
-        key: _keyFeatureFlags,
-        value: flags is Map ? jsonEncode(flags) : null,
-      ),
-      _storage.write(
-        key: _keyBusinessTypes,
-        value: types is List ? jsonEncode(types) : null,
-      ),
-    ]);
+    await _storage.write(
+      key: _keyFeatureFlags,
+      value: flags is Map ? jsonEncode(flags) : null,
+    );
+    await _storage.write(
+      key: _keyBusinessTypes,
+      value: types is List ? jsonEncode(types) : null,
+    );
   }
 
   /// Save full session after login/register (new contract with refresh tokens).
+  ///
+  /// Escrituras EN SERIE — ver nota F011 arriba.
   Future<void> saveSession({
     required String accessToken,
     required String refreshToken,
     required Map<String, dynamic> tenant,
   }) async {
-    await Future.wait([
-      _storage.write(key: _keyAccessToken, value: accessToken),
-      _storage.write(key: _keyRefreshToken, value: refreshToken),
-      _storage.write(key: _keyTenantId, value: tenant['id']?.toString() ?? ''),
-      _storage.write(
-          key: _keyOwnerName, value: tenant['owner_name']?.toString() ?? ''),
-      _storage.write(
-          key: _keyBusinessName,
-          value: tenant['business_name']?.toString() ?? ''),
-      _storage.write(
-          key: _keyBusinessType,
-          value: tenant['business_type']?.toString() ?? ''),
-      _storage.write(
-          key: _keyChargeMode,
-          value: tenant['charge_mode']?.toString() ?? ''),
-      _storage.write(
-          key: _keyStoreSlug, value: tenant['store_slug']?.toString() ?? ''),
-      _storage.write(
-          key: _keyLogoUrl, value: tenant['logo_url']?.toString() ?? ''),
-    ]);
+    await _storage.write(key: _keyAccessToken, value: accessToken);
+    await _storage.write(key: _keyRefreshToken, value: refreshToken);
+    await _storage.write(
+        key: _keyTenantId, value: tenant['id']?.toString() ?? '');
+    await _storage.write(
+        key: _keyOwnerName, value: tenant['owner_name']?.toString() ?? '');
+    await _storage.write(
+        key: _keyBusinessName,
+        value: tenant['business_name']?.toString() ?? '');
+    await _storage.write(
+        key: _keyBusinessType,
+        value: tenant['business_type']?.toString() ?? '');
+    await _storage.write(
+        key: _keyChargeMode, value: tenant['charge_mode']?.toString() ?? '');
+    await _storage.write(
+        key: _keyStoreSlug, value: tenant['store_slug']?.toString() ?? '');
+    await _storage.write(
+        key: _keyLogoUrl, value: tenant['logo_url']?.toString() ?? '');
     await _saveFeatureFlags(tenant);
   }
 
   /// Legacy save for backward compatibility (old format).
+  ///
+  /// Escrituras EN SERIE — ver nota F011 arriba.
   Future<void> saveLegacySession({
     required String token,
     required String tenantId,
@@ -86,12 +98,10 @@ class AuthService {
     Map<String, dynamic>? featureFlags,
     List<String>? businessTypes,
   }) async {
-    await Future.wait([
-      _storage.write(key: _keyAccessToken, value: token),
-      _storage.write(key: _keyTenantId, value: tenantId),
-      _storage.write(key: _keyOwnerName, value: ownerName),
-      _storage.write(key: _keyBusinessName, value: businessName),
-    ]);
+    await _storage.write(key: _keyAccessToken, value: token);
+    await _storage.write(key: _keyTenantId, value: tenantId);
+    await _storage.write(key: _keyOwnerName, value: ownerName);
+    await _storage.write(key: _keyBusinessName, value: businessName);
     await _saveFeatureFlags({
       'feature_flags': featureFlags,
       'business_types': businessTypes,
@@ -99,14 +109,14 @@ class AuthService {
   }
 
   /// Save new token pair after refresh.
+  ///
+  /// Escrituras EN SERIE — ver nota F011 arriba.
   Future<void> saveTokens({
     required String accessToken,
     required String refreshToken,
   }) async {
-    await Future.wait([
-      _storage.write(key: _keyAccessToken, value: accessToken),
-      _storage.write(key: _keyRefreshToken, value: refreshToken),
-    ]);
+    await _storage.write(key: _keyAccessToken, value: accessToken);
+    await _storage.write(key: _keyRefreshToken, value: refreshToken);
   }
 
   // ── Getters ──────────────────────────────────────────────────────────────
@@ -147,6 +157,8 @@ class AuthService {
   }
 
   /// Save workspace session after workspace selection.
+  ///
+  /// Escrituras EN SERIE — ver nota F011 arriba.
   Future<void> saveWorkspaceSession({
     required String accessToken,
     required String refreshToken,
@@ -159,16 +171,14 @@ class AuthService {
     Map<String, dynamic>? featureFlags,
     List<String>? businessTypes,
   }) async {
-    await Future.wait([
-      _storage.write(key: _keyAccessToken, value: accessToken),
-      _storage.write(key: _keyRefreshToken, value: refreshToken),
-      _storage.write(key: _keyTenantId, value: tenantId),
-      _storage.write(key: _keyOwnerName, value: ownerName),
-      _storage.write(key: _keyBusinessName, value: businessName),
-      _storage.write(key: _keyUserId, value: userId),
-      _storage.write(key: _keyBranchId, value: branchId),
-      _storage.write(key: _keyRole, value: role),
-    ]);
+    await _storage.write(key: _keyAccessToken, value: accessToken);
+    await _storage.write(key: _keyRefreshToken, value: refreshToken);
+    await _storage.write(key: _keyTenantId, value: tenantId);
+    await _storage.write(key: _keyOwnerName, value: ownerName);
+    await _storage.write(key: _keyBusinessName, value: businessName);
+    await _storage.write(key: _keyUserId, value: userId);
+    await _storage.write(key: _keyBranchId, value: branchId);
+    await _storage.write(key: _keyRole, value: role);
     await _saveFeatureFlags({
       'feature_flags': featureFlags,
       'business_types': businessTypes,
