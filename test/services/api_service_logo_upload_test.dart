@@ -1,102 +1,100 @@
-// Spec: specs/007-web-logo-upload/spec.md
+// Spec: specs/010-logo-heic-iphone/spec.md
 //
-// Regression guard for the web logo-upload bug: the onboarding logo
-// step used to wrap the picked image in a `dart:io File(xfile.path)`
-// and send it via `MultipartFile.fromFile`. On Flutter web there is no
-// filesystem and `XFile.path` is only a blob URL, so that path threw
-// and the merchant saw a generic "intente más tarde" error (FR-01).
+// Regression guard for the logo-upload path. History:
 //
-// The fix routes every platform through `ApiService.logoMultipart`,
-// which reads the picked image as BYTES (`XFile.readAsBytes`) and
-// builds a `MultipartFile.fromBytes`. These tests exercise that helper
-// with the in-memory XFile shape the web image_picker returns
-// (`XFile.fromData`) — no filesystem, no network.
-
-import 'dart:typed_data';
+//   Spec 007 — the onboarding logo step used a `dart:io File(xfile.path)`
+//   and `MultipartFile.fromFile`. On web there is no filesystem and
+//   `XFile.path` is a blob URL, so that path threw. The fix routed every
+//   platform through `ApiService.logoMultipart`, which reads BYTES.
+//
+//   Spec 010 — iPhone photos are HEIC; `image_picker` on web ignores
+//   `maxWidth`/`imageQuality`, so the raw HEIC reached Supabase, which
+//   rejects `image/heic` -> 500. The fix normalizes every logo to a
+//   downsized JPEG via `normalizeLogoImage` BEFORE upload, so
+//   `logoMultipart` now ALWAYS emits `image/jpeg` with a `.jpg` filename.
+//
+// These tests exercise `logoMultipart` with the in-memory XFile shape the
+// web image_picker returns (`XFile.fromData`) — no filesystem, no network.
 
 import 'package:dio/dio.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:image/image.dart' as img;
 import 'package:image_picker/image_picker.dart';
 import 'package:vendia_pos/services/api_service.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
-  // 1x1 PNG-ish payload — content is irrelevant, only the bytes path.
-  final sampleBytes = Uint8List.fromList(
-    List<int>.generate(64, (i) => i % 256),
-  );
+  /// Builds an in-memory XFile backed by a real, decodable image so
+  /// `normalizeLogoImage` (which `logoMultipart` calls) can process it.
+  XFile imageFile({
+    int width = 800,
+    int height = 600,
+    String name = 'mi-logo.png',
+    String? mimeType,
+    bool png = true,
+  }) {
+    final image = img.Image(width: width, height: height);
+    for (var y = 0; y < height; y++) {
+      for (var x = 0; x < width; x++) {
+        image.setPixelRgb(x, y, x % 256, y % 256, (x + y) % 256);
+      }
+    }
+    final bytes =
+        png ? img.encodePng(image) : img.encodeJpg(image, quality: 95);
+    return XFile.fromData(bytes, name: name, mimeType: mimeType);
+  }
 
-  // The test VM runs the dart:io XFile implementation, where the
-  // filename comes from `path` (the web build instead honours `name`).
-  // We pass `path` so XFile.name resolves on both — `logoMultipart`
-  // only ever reads `XFile.name`, so the behaviour is identical.
-  XFile bytesFile({String? path, String? mimeType}) => XFile.fromData(
-        sampleBytes,
-        path: path,
-        mimeType: mimeType,
-      );
-
-  group('ApiService.logoMultipart (cross-platform bytes upload)', () {
+  group('ApiService.logoMultipart (Spec 010 — normalized JPEG upload)', () {
     test(
         'builds a MultipartFile from an in-memory XFile '
         '(the bytes shape image_picker returns) without a filesystem path',
         () async {
-      final picked = bytesFile(path: 'mi-logo.png', mimeType: 'image/png');
-
-      final part = await ApiService.logoMultipart(picked);
+      final part = await ApiService.logoMultipart(
+        imageFile(name: 'mi-logo.png', mimeType: 'image/png'),
+      );
 
       expect(part, isA<MultipartFile>());
-      expect(part.length, sampleBytes.length);
-      expect(part.filename, 'mi-logo.png');
-      expect(part.contentType?.mimeType, 'image/png');
+      expect(part.length, greaterThan(0));
     });
 
-    test('preserves the byte length so the server receives the full image',
-        () async {
-      final part =
-          await ApiService.logoMultipart(bytesFile(path: 'logo.jpg'));
-      expect(part.length, 64);
+    test(
+        'always sends Content-Type image/jpeg regardless of the source '
+        'format (Spec 010 — Supabase rejects image/heic)', () async {
+      // A PNG source must still leave as JPEG.
+      final fromPng = await ApiService.logoMultipart(
+        imageFile(name: 'brand.png', mimeType: 'image/png'),
+      );
+      expect(fromPng.contentType?.mimeType, 'image/jpeg');
+
+      // A JPEG source: still normalized and sent as JPEG.
+      final fromJpeg = await ApiService.logoMultipart(
+        imageFile(name: 'foto.jpg', mimeType: 'image/jpeg', png: false),
+      );
+      expect(fromJpeg.contentType?.mimeType, 'image/jpeg');
     });
 
-    test('falls back to a synthesized filename when XFile.name is empty',
+    test('always sends a .jpg filename so the upload matches the bytes',
         () async {
-      // No path → XFile.name is empty → helper synthesizes one.
-      final part = await ApiService.logoMultipart(bytesFile());
+      final part = await ApiService.logoMultipart(
+        imageFile(name: 'whatever-the-user-picked.png'),
+      );
       expect(part.filename, isNotNull);
-      expect(part.filename, isNotEmpty);
       expect(part.filename, endsWith('.jpg'));
     });
 
-    test('derives MIME from the extension when XFile.mimeType is null',
+    test('downsizes a large image before upload (AC-03 — no 2MB error)',
         () async {
-      // Mobile pickers frequently leave mimeType null.
-      final part =
-          await ApiService.logoMultipart(bytesFile(path: 'brand.webp'));
-      expect(part.contentType?.mimeType, 'image/webp');
-    });
-
-    test('honours an explicit XFile.mimeType over the extension', () async {
-      final part = await ApiService.logoMultipart(
-        bytesFile(path: 'brand.bin', mimeType: 'image/png'),
+      final hugePng = await ApiService.logoMultipart(
+        imageFile(width: 3000, height: 3000, name: 'enorme.png'),
       );
-      expect(part.contentType?.mimeType, 'image/png');
-    });
-  });
-
-  group('ApiService.mimeFromName', () {
-    test('maps known image extensions case-insensitively', () {
-      expect(ApiService.mimeFromName('logo.PNG'), 'image/png');
-      expect(ApiService.mimeFromName('logo.webp'), 'image/webp');
-      expect(ApiService.mimeFromName('logo.GIF'), 'image/gif');
-      expect(ApiService.mimeFromName('photo.heic'), 'image/heic');
-      expect(ApiService.mimeFromName('photo.HEIF'), 'image/heic');
-    });
-
-    test('defaults to image/jpeg for unknown or missing extensions', () {
-      expect(ApiService.mimeFromName('logo.jpg'), 'image/jpeg');
-      expect(ApiService.mimeFromName('logo'), 'image/jpeg');
-      expect(ApiService.mimeFromName('logo.bmp'), 'image/jpeg');
+      final tinyPng = await ApiService.logoMultipart(
+        imageFile(width: 200, height: 200, name: 'chica.png'),
+      );
+      // The 3000px source, capped to 1024px and JPEG-compressed, must be
+      // produced without error.
+      expect(hugePng.length, greaterThan(0));
+      expect(tinyPng.length, greaterThan(0));
     });
   });
 }

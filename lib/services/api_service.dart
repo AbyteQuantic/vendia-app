@@ -12,6 +12,7 @@ import '../widgets/premium_upsell_sheet.dart';
 import 'app_error.dart';
 import 'auth_service.dart';
 import 'cart_session_service.dart';
+import 'image_normalizer.dart';
 
 /// Central API client for the VendIA backend.
 /// Integrates with the full contract: 18 modules, 70+ endpoints.
@@ -1927,38 +1928,30 @@ class ApiService {
     }
   }
 
-  /// Builds a Dio [MultipartFile] from a picked [XFile] using its
-  /// BYTES instead of a filesystem path.
+  /// Builds a Dio [MultipartFile] for a picked logo [XFile].
   ///
-  /// Why bytes: on Flutter web there is no `dart:io` filesystem, so
-  /// `File(xfile.path)` / `MultipartFile.fromFile` throws — `XFile.path`
-  /// is only a blob URL. `XFile.readAsBytes()` works identically on web
-  /// and mobile, so this single path serves every platform.
+  /// Spec 010: the image is first normalized to a downsized **JPEG** via
+  /// [normalizeLogoImage] (the browser decodes HEIC on web; `package:image`
+  /// re-encodes on mobile). The resulting part is always sent as
+  /// `image/jpeg` with a `.jpg` filename, so the Supabase `store-logos`
+  /// bucket — which rejects `image/heic` — always receives an accepted
+  /// format. This is shared by onboarding (`previewLogoUpload`) and the
+  /// business profile (`uploadLogo`).
+  ///
+  /// Reading bytes (not a filesystem path) keeps this working on Flutter
+  /// web, where there is no `dart:io` filesystem and `XFile.path` is only
+  /// a blob URL.
+  ///
+  /// Throws [ImageNormalizationException] (Spanish message) when the
+  /// picked image cannot be decoded; callers surface it to the merchant.
   @visibleForTesting
   static Future<MultipartFile> logoMultipart(XFile logo) async {
-    final bytes = await logo.readAsBytes();
-    final filename =
-        logo.name.isNotEmpty ? logo.name : 'logo-${const Uuid().v4()}.jpg';
-    final contentType = logo.mimeType ?? mimeFromName(filename);
+    final jpegBytes = await normalizeLogoImage(logo);
     return MultipartFile.fromBytes(
-      bytes,
-      filename: filename,
-      contentType: DioMediaType.parse(contentType),
+      jpegBytes,
+      filename: 'logo-${const Uuid().v4()}.jpg',
+      contentType: DioMediaType('image', 'jpeg'),
     );
-  }
-
-  /// Best-effort MIME type from a filename extension. Used only as a
-  /// fallback when [XFile.mimeType] is null (common on mobile pickers).
-  @visibleForTesting
-  static String mimeFromName(String name) {
-    final lower = name.toLowerCase();
-    if (lower.endsWith('.png')) return 'image/png';
-    if (lower.endsWith('.webp')) return 'image/webp';
-    if (lower.endsWith('.gif')) return 'image/gif';
-    if (lower.endsWith('.heic') || lower.endsWith('.heif')) {
-      return 'image/heic';
-    }
-    return 'image/jpeg';
   }
 
   // ═══════════════════════════════════════════════════════════════════════════

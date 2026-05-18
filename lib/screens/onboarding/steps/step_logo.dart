@@ -6,6 +6,7 @@ import 'package:provider/provider.dart';
 import '../../../services/api_service.dart';
 import '../../../services/app_error.dart';
 import '../../../services/auth_service.dart';
+import '../../../services/image_normalizer.dart';
 import '../../../theme/app_theme.dart';
 import '../onboarding_stepper_controller.dart';
 
@@ -126,6 +127,15 @@ class _StepLogoState extends State<StepLogo> {
       }
       context.read<OnboardingStepperController>().setLogoUrl(url);
       setState(() => _status = _LogoStatus.ready);
+    } on ImageNormalizationException catch (e) {
+      // Spec 010 (FR-04): the picked photo could not be decoded — e.g. a
+      // HEIC file in a browser that cannot decode it. Show the clear,
+      // actionable Spanish message the normalizer provides.
+      if (!mounted) return;
+      setState(() {
+        _status = _LogoStatus.error;
+        _errorMsg = e.message;
+      });
     } catch (e) {
       if (!mounted) return;
       // AC-03: surface the real cause instead of swallowing it. The API
