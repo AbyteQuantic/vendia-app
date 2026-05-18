@@ -11,7 +11,8 @@
 
 import 'dart:async';
 
-import 'package:flutter/foundation.dart' show kIsWeb, visibleForTesting;
+import 'package:flutter/foundation.dart'
+    show debugPrint, kIsWeb, visibleForTesting;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -98,6 +99,12 @@ Future<void> showPremiumUpsellSheet(
     context: context,
     isScrollControlled: true,
     backgroundColor: Colors.transparent,
+    // En escritorio el modal por defecto se limita a 640dp de ancho;
+    // ampliamos el tope a 920dp para que la comparación Gratis vs Pro
+    // pueda mostrarse con las tarjetas lado a lado (F009 D4). En móvil
+    // (360dp) el `BoxConstraints` no recorta nada — la hoja sigue a
+    // todo el ancho y las tarjetas se apilan.
+    constraints: const BoxConstraints(maxWidth: 920),
     builder: (_) => _PremiumUpsellSheet(
       reason: reason,
       api: api,
@@ -143,6 +150,11 @@ class _PremiumUpsellSheetState extends State<_PremiumUpsellSheet> {
 
   List<SubscriptionPlan> _plans = const [];
 
+  /// Estado de suscripción del tenant. Alimenta el contador de prueba
+  /// prominente (F009). `null` si el tenant no está en prueba o si su
+  /// fetch falló — en ese caso simplemente no se muestra el contador.
+  SubscriptionStatus? _status;
+
   /// Intervalo elegido para el plan Pro (`mensual` | `anual`).
   String _selectedInterval = BillingInterval.mensual;
 
@@ -167,9 +179,14 @@ class _PremiumUpsellSheetState extends State<_PremiumUpsellSheet> {
     });
     try {
       final plans = await _api.fetchPlans();
+      // El estado de suscripción alimenta el contador de prueba
+      // (F009). Su fallo NO bloquea el catálogo: si no llega, el
+      // contador simplemente no se muestra — los planes sí.
+      final status = await _loadStatusBestEffort();
       if (!mounted) return;
       setState(() {
         _plans = plans;
+        _status = status;
         _state = _LoadState.ready;
       });
     } on AppError catch (e) {
@@ -187,6 +204,24 @@ class _PremiumUpsellSheetState extends State<_PremiumUpsellSheet> {
             'No pudimos cargar los planes. Revisa tu conexión e intenta de nuevo.';
         _state = _LoadState.error;
       });
+    }
+  }
+
+  /// Carga el estado de suscripción sin que su fallo tumbe el catálogo
+  /// (F009). Devuelve `null` ante cualquier error — el contador de
+  /// prueba simplemente no se dibuja. No se traga el error: se reporta
+  /// por consola para diagnóstico.
+  Future<SubscriptionStatus?> _loadStatusBestEffort() async {
+    try {
+      return await _api.fetchSubscriptionStatus();
+    } on AppError catch (e) {
+      debugPrint('PremiumUpsellSheet: no se pudo cargar el estado de '
+          'suscripción: ${e.message}');
+      return null;
+    } catch (e) {
+      debugPrint('PremiumUpsellSheet: error inesperado al cargar el '
+          'estado de suscripción: $e');
+      return null;
     }
   }
 
@@ -450,6 +485,15 @@ class _PremiumUpsellSheetState extends State<_PremiumUpsellSheet> {
     final pro = _proPlan;
     final widgets = <Widget>[];
 
+    // Contador de prueba prominente (F009): solo cuando el tenant
+    // está en TRIAL. Va arriba de todo para que el usuario vea
+    // primero cuánto tiempo le queda.
+    final status = _status;
+    if (status != null && status.isTrial) {
+      widgets.add(_TrialCounterBanner(status: status));
+      widgets.add(const SizedBox(height: 16));
+    }
+
     if (widget.reason != null) {
       widgets.add(
         Container(
@@ -468,33 +512,50 @@ class _PremiumUpsellSheetState extends State<_PremiumUpsellSheet> {
       widgets.add(const SizedBox(height: 16));
     }
 
-    // Tarjeta del plan Gratis.
-    widgets.add(_FreePlanCard(plan: _gratisPlan()));
-    widgets.add(const SizedBox(height: 14));
+    // Comparación Gratis vs Pro (F009). Responsive: en ancho de
+    // escritorio (≥ 600dp) las tarjetas van lado a lado; en móvil
+    // (360dp) se apilan. `LayoutBuilder` mide el ancho disponible —
+    // sin anchos fijos (regla mobile-first del frontend).
+    final gratisCard = _FreePlanCard(plan: _gratisPlan());
+    final proCard = pro != null
+        ? _ProPlanCard(
+            plan: pro,
+            selectedInterval: _selectedInterval,
+            onIntervalChanged: (interval) {
+              setState(() {
+                _selectedInterval = interval;
+                _checkoutError = null;
+              });
+            },
+          )
+        : const _ProUnavailableCard();
 
-    // Tarjeta del plan Pro con selector mensual/anual.
-    if (pro != null) {
-      widgets.add(
-        _ProPlanCard(
-          plan: pro,
-          selectedInterval: _selectedInterval,
-          onIntervalChanged: (interval) {
-            setState(() {
-              _selectedInterval = interval;
-              _checkoutError = null;
-            });
-          },
-        ),
-      );
-    } else {
-      widgets.add(
-        const Text(
-          'El plan Pro no está disponible por ahora.',
-          style:
-              TextStyle(fontSize: 14, color: AppTheme.textSecondary),
-        ),
-      );
-    }
+    widgets.add(
+      LayoutBuilder(
+        builder: (context, constraints) {
+          final sideBySide = constraints.maxWidth >= 600;
+          if (sideBySide) {
+            return IntrinsicHeight(
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Expanded(child: gratisCard),
+                  const SizedBox(width: 14),
+                  Expanded(child: proCard),
+                ],
+              ),
+            );
+          }
+          return Column(
+            children: [
+              gratisCard,
+              const SizedBox(height: 14),
+              proCard,
+            ],
+          );
+        },
+      ),
+    );
 
     if (_checkoutError != null) {
       widgets.add(const SizedBox(height: 14));
@@ -656,10 +717,153 @@ class _FreePlanCard extends StatelessWidget {
           ),
           if (plan.features.isNotEmpty) ...[
             const SizedBox(height: 10),
+            const _ComparisonHeading(text: 'Incluye:'),
             ...plan.features.map(
               (f) => _PlanFeatureRow(text: f, highlighted: false),
             ),
           ],
+        ],
+      ),
+    );
+  }
+}
+
+/// Encabezado pequeño de la lista de funciones dentro de una tarjeta
+/// de plan — separa visualmente "qué incluye" del nombre/precio.
+class _ComparisonHeading extends StatelessWidget {
+  const _ComparisonHeading({required this.text});
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 4),
+      child: Text(
+        text,
+        style: const TextStyle(
+          fontSize: 13,
+          fontWeight: FontWeight.w700,
+          color: AppTheme.textSecondary,
+          letterSpacing: 0.2,
+        ),
+      ),
+    );
+  }
+}
+
+/// Tarjeta que se muestra en lugar del plan Pro cuando el backend no
+/// lo devolvió — mantiene la comparación con dos columnas en vez de
+/// dejar un hueco.
+class _ProUnavailableCard extends StatelessWidget {
+  const _ProUnavailableCard();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      key: const Key('plan_card_pro'),
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: AppTheme.primary.withValues(alpha: 0.06),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: AppTheme.primary, width: 1.5),
+      ),
+      child: const Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.workspace_premium_rounded,
+                  color: AppTheme.primary, size: 22),
+              SizedBox(width: 8),
+              Text('Pro',
+                  style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                      color: AppTheme.textPrimary)),
+            ],
+          ),
+          SizedBox(height: 8),
+          Text(
+            'El plan Pro no está disponible por ahora. Intenta de '
+            'nuevo en unos minutos.',
+            style:
+                TextStyle(fontSize: 14, color: AppTheme.textSecondary),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Banner del contador de prueba prominente (F009) — se muestra arriba
+/// de la comparación de planes cuando el tenant está en TRIAL. Incluye
+/// la barra de progreso días-usados/total y la etiqueta en español.
+class _TrialCounterBanner extends StatelessWidget {
+  const _TrialCounterBanner({required this.status});
+  final SubscriptionStatus status;
+
+  @override
+  Widget build(BuildContext context) {
+    final remaining = status.trialDaysRemaining;
+    final dayWord = remaining == 1 ? 'día' : 'días';
+
+    return Container(
+      key: const Key('premium_upsell_trial_counter'),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [
+            AppTheme.primary.withValues(alpha: 0.12),
+            AppTheme.primaryLight.withValues(alpha: 0.10),
+          ],
+        ),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: AppTheme.primary.withValues(alpha: 0.25),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.timer_outlined,
+                  color: AppTheme.primary, size: 22),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  'Te quedan $remaining $dayWord de prueba Pro',
+                  style: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w800,
+                    color: AppTheme.textPrimary,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(999),
+            child: LinearProgressIndicator(
+              key: const Key('premium_upsell_trial_progress'),
+              value: status.trialProgress,
+              minHeight: 8,
+              backgroundColor: AppTheme.primary.withValues(alpha: 0.15),
+              valueColor: const AlwaysStoppedAnimation<Color>(
+                  AppTheme.primary),
+            ),
+          ),
+          const SizedBox(height: 6),
+          const Text(
+            'Disfruta todas las herramientas Pro mientras dura tu '
+            'prueba. Elige un plan para no perderlas.',
+            style: TextStyle(
+              fontSize: 13,
+              color: AppTheme.textSecondary,
+              height: 1.3,
+            ),
+          ),
         ],
       ),
     );
@@ -763,26 +967,25 @@ class _ProPlanCard extends StatelessWidget {
                   color: AppTheme.textPrimary),
             ),
           ],
-          if (plan.features.isNotEmpty) ...[
-            const SizedBox(height: 12),
+          // Las funciones llegan del catálogo del backend (F009 §8).
+          // Ya no hay viñetas hardcodeadas: si el backend no envía
+          // funciones, mostramos un texto neutral en vez de una lista
+          // inexacta.
+          const SizedBox(height: 12),
+          const _ComparisonHeading(text: 'Todo lo de Gratis, y además:'),
+          if (plan.features.isNotEmpty)
             ...plan.features.map(
               (f) => _PlanFeatureRow(text: f, highlighted: true),
+            )
+          else
+            const Padding(
+              padding: EdgeInsets.only(top: 6),
+              child: Text(
+                'Estamos cargando las funciones de este plan.',
+                style: TextStyle(
+                    fontSize: 14, color: AppTheme.textSecondary),
+              ),
             ),
-          ] else ...[
-            const SizedBox(height: 12),
-            const _PlanFeatureRow(
-                text: 'Reportes y analíticas de tu negocio',
-                highlighted: true),
-            const _PlanFeatureRow(
-                text: 'Fiar a tus clientes con recordatorios',
-                highlighted: true),
-            const _PlanFeatureRow(
-                text: 'Respaldo de tus ventas en la nube',
-                highlighted: true),
-            const _PlanFeatureRow(
-                text: 'Mesas, KDS, servicios y combos con IA',
-                highlighted: true),
-          ],
         ],
       ),
     );
@@ -827,37 +1030,45 @@ class _IntervalChip extends StatelessWidget {
         ),
         child: Column(
           children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(
-                  selected
-                      ? Icons.radio_button_checked_rounded
-                      : Icons.radio_button_unchecked_rounded,
-                  size: 18,
-                  color: selected
-                      ? AppTheme.primary
-                      : AppTheme.textSecondary,
-                ),
-                const SizedBox(width: 6),
-                Text(
-                  title,
-                  style: TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w700,
+            // FittedBox: en 360dp el chip mide ~100dp; el ícono +
+            // título se escalan hacia abajo en vez de hacer overflow.
+            FittedBox(
+              fit: BoxFit.scaleDown,
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    selected
+                        ? Icons.radio_button_checked_rounded
+                        : Icons.radio_button_unchecked_rounded,
+                    size: 18,
                     color: selected
                         ? AppTheme.primary
-                        : AppTheme.textPrimary,
+                        : AppTheme.textSecondary,
                   ),
-                ),
-              ],
+                  const SizedBox(width: 6),
+                  Text(
+                    title,
+                    style: TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w700,
+                      color: selected
+                          ? AppTheme.primary
+                          : AppTheme.textPrimary,
+                    ),
+                  ),
+                ],
+              ),
             ),
             const SizedBox(height: 4),
-            Text(
-              subtitle,
-              textAlign: TextAlign.center,
-              style: const TextStyle(
-                  fontSize: 13, color: AppTheme.textSecondary),
+            FittedBox(
+              fit: BoxFit.scaleDown,
+              child: Text(
+                subtitle,
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                    fontSize: 13, color: AppTheme.textSecondary),
+              ),
             ),
           ],
         ),
