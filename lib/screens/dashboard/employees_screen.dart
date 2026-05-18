@@ -7,6 +7,8 @@ import '../../services/api_service.dart';
 import '../../services/auth_service.dart';
 import '../../services/branch_provider.dart';
 import '../../theme/app_theme.dart';
+import '../../widgets/profile_photo_avatar.dart';
+import '../../widgets/profile_photo_picker.dart';
 
 /// EmployeesScreen — employees grouped by branch using ExpansionTile.
 /// Implements the multi-branch hierarchy: Negocio → Sucursal → Empleados.
@@ -618,6 +620,8 @@ class _EmployeeTile extends StatelessWidget {
     final role = emp['role'] as String? ?? 'cashier';
     final isOwner = emp['is_owner'] as bool? ?? false;
     final color = roleColor(role);
+    final rawPhoto = (emp['photo_url'] as String?)?.trim();
+    final photoUrl = (rawPhoto == null || rawPhoto.isEmpty) ? null : rawPhoto;
 
     return InkWell(
       onTap: () => _openAdminSheet(context),
@@ -625,16 +629,13 @@ class _EmployeeTile extends StatelessWidget {
         padding: const EdgeInsets.fromLTRB(16, 6, 16, 6),
         child: Row(
           children: [
-            Container(
-              width: 44, height: 44,
-              decoration: BoxDecoration(
-                color: color.withValues(alpha: 0.10),
-                borderRadius: BorderRadius.circular(14),
-              ),
-              child: Icon(
-                isOwner ? Icons.star_rounded : Icons.person_rounded,
-                color: color, size: 22,
-              ),
+            // Spec 019 / FR-05: profile photo as a circular avatar,
+            // initials placeholder when there is no photo.
+            ProfilePhotoAvatar(
+              name: name,
+              photoUrl: photoUrl,
+              diameter: 44,
+              backgroundColor: color,
             ),
             const SizedBox(width: 12),
             Expanded(
@@ -712,6 +713,10 @@ class _EmployeeAdminSheetState extends State<_EmployeeAdminSheet> {
   bool _saving = false;
   bool _passwordSaving = false;
 
+  // Spec 019: profile photo URL — advances when a photo is uploaded
+  // through the embedded ProfilePhotoPicker.
+  String? _photoUrl;
+
   // Original values to detect deltas and avoid no-op PATCHes.
   late final String _origName;
   late final String _origPhone;
@@ -741,6 +746,9 @@ class _EmployeeAdminSheetState extends State<_EmployeeAdminSheet> {
     _branchId = _origBranchId;
     _role = _origRole;
     _isActive = _origActive;
+
+    final rawPhoto = (widget.emp['photo_url'] as String?)?.trim();
+    _photoUrl = (rawPhoto == null || rawPhoto.isEmpty) ? null : rawPhoto;
   }
 
   @override
@@ -1002,6 +1010,25 @@ class _EmployeeAdminSheetState extends State<_EmployeeAdminSheet> {
                     ),
                   ),
                 const SizedBox(height: 16),
+
+                // ── Foto de perfil (Spec 019) ─────────────
+                const _SectionLabel('Foto de perfil'),
+                const SizedBox(height: 10),
+                ProfilePhotoPicker(
+                  key: const Key('employee_admin_photo_picker'),
+                  api: _api,
+                  employeeUuid: _employeeId,
+                  name: _origName.isEmpty ? 'Empleado' : _origName,
+                  photoUrl: _photoUrl,
+                  isOwner: _isOwner,
+                  onUploaded: (url) {
+                    if (!mounted) return;
+                    setState(() => _photoUrl = url);
+                    // Refresh the parent list so the new avatar shows.
+                    widget.onUpdated();
+                  },
+                ),
+                const SizedBox(height: 20),
 
                 // ── Datos básicos ─────────────────────────
                 const _SectionLabel('Datos básicos'),
