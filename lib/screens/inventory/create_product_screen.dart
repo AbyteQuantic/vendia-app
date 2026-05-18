@@ -509,13 +509,14 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
 
     HapticFeedback.lightImpact();
     setState(() => _enhancing = true);
-    // Spec 015 / FR-05: AI image ops are slow (~30s–2min). Tell the tendero
-    // it is working so a long wait does not read as a failure.
+    // Spec 016 / FR-03: the AI photo job runs asynchronously on the
+    // backend; ApiService polls its status under the hood. Tell the
+    // tendero it is processing so the wait never reads as a failure.
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
       content: Text(
         hasExistingPhoto
-            ? 'Mejorando tu foto con IA… puede tardar hasta un par de minutos.'
-            : 'Generando la imagen con IA… puede tardar hasta un par de minutos.',
+            ? 'Procesando tu foto con IA…'
+            : 'Generando la imagen con IA…',
         style: const TextStyle(fontSize: 16),
       ),
       backgroundColor: const Color(0xFF7C3AED),
