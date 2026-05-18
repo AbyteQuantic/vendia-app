@@ -4,6 +4,7 @@ import 'package:image_picker/image_picker.dart';
 import '../../database/database_service.dart';
 import '../../theme/app_theme.dart';
 import '../../services/api_service.dart';
+import '../../services/app_error.dart';
 import '../../services/auth_service.dart';
 import '../../services/image_normalizer.dart' show ImageNormalizationException;
 import '../../utils/barcode_validator.dart';
@@ -836,6 +837,19 @@ class _EditProductSheetState extends State<_EditProductSheet> {
 
     HapticFeedback.lightImpact();
     setState(() => _enhancing = true);
+    // Spec 015 / FR-05: AI image ops are slow (~30s–2min). Tell the tendero
+    // it is working so a long wait does not read as a failure.
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text(
+        useExisting
+            ? 'Mejorando tu foto con IA… puede tardar hasta un par de minutos.'
+            : 'Generando la imagen con IA… puede tardar hasta un par de minutos.',
+        style: const TextStyle(fontSize: 16),
+      ),
+      backgroundColor: const Color(0xFF7C3AED),
+      behavior: SnackBarBehavior.floating,
+      duration: const Duration(seconds: 8),
+    ));
     try {
       final api = ApiService(AuthService());
       final Map<String, dynamic> result;
@@ -861,8 +875,14 @@ class _EditProductSheetState extends State<_EditProductSheet> {
       }
     } catch (e) {
       if (mounted) {
+        // Spec 015 / FR-04: never leak the raw type
+        // (AppError(AppErrorType.x): ...) to a tendero 50+. AppError
+        // already carries a clean Spanish message; use it.
+        final message = e is AppError
+            ? e.message
+            : 'No pudimos procesar la foto con IA. Intente de nuevo.';
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text('Error: $e', style: const TextStyle(fontSize: 16)),
+          content: Text(message, style: const TextStyle(fontSize: 16)),
           backgroundColor: AppTheme.error,
           behavior: SnackBarBehavior.floating,
         ));

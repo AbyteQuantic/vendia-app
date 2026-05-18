@@ -5,6 +5,7 @@ import 'package:uuid/uuid.dart';
 import '../../database/database_service.dart';
 import '../../database/collections/local_product.dart';
 import '../../services/api_service.dart';
+import '../../services/app_error.dart';
 import '../../services/auth_service.dart';
 import '../../services/image_normalizer.dart' show ImageNormalizationException;
 import '../../services/margin_service.dart';
@@ -395,6 +396,19 @@ class _IaResultScreenState extends State<IaResultScreen> {
     }
 
     setState(() => p.enhancing = true);
+    // Spec 015 / FR-05: AI image ops are slow (~30s–2min). Tell the tendero
+    // it is working so a long wait does not read as a failure.
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text(
+        p.photoFile != null
+            ? 'Mejorando tu foto con IA… puede tardar hasta un par de minutos.'
+            : 'Generando la imagen con IA… puede tardar hasta un par de minutos.',
+        style: const TextStyle(fontSize: 14),
+      ),
+      backgroundColor: const Color(0xFF7C3AED),
+      behavior: SnackBarBehavior.floating,
+      duration: const Duration(seconds: 8),
+    ));
     try {
       final api = ApiService(AuthService());
       // Create a throwaway product just so the AI photo endpoints have
@@ -451,8 +465,14 @@ class _IaResultScreenState extends State<IaResultScreen> {
     } catch (e) {
       if (!mounted) return;
       setState(() => p.enhancing = false);
+      // Spec 015 / FR-04: never leak the raw type
+      // (AppError(AppErrorType.x): ...) to a tendero 50+. AppError already
+      // carries a clean Spanish message; use it.
+      final message = e is AppError
+          ? e.message
+          : 'No pudimos procesar la imagen con IA. Intente de nuevo.';
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text('Error IA: $e', style: const TextStyle(fontSize: 14)),
+        content: Text(message, style: const TextStyle(fontSize: 14)),
         backgroundColor: AppTheme.error,
         behavior: SnackBarBehavior.floating,
       ));
