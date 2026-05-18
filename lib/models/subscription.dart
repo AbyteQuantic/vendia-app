@@ -26,9 +26,13 @@ class PlanId {
 }
 
 /// Intervalos de facturación soportados por el plan Pro.
+/// El backend (`billing/plans.go`) los emite como `monthly` / `yearly`;
+/// los valores deben coincidir exactos o `priceFor()` no encuentra el
+/// precio (bug F009). El nombre del campo queda en español; solo el
+/// valor sigue el contrato del backend.
 class BillingInterval {
-  static const String mensual = 'mensual';
-  static const String anual = 'anual';
+  static const String mensual = 'monthly';
+  static const String anual = 'yearly';
 }
 
 /// Un precio de un plan para un intervalo de facturación.

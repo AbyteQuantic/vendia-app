@@ -5,66 +5,71 @@ import 'package:vendia_pos/models/subscription.dart';
 /// Unit tests for the Feature 008 subscription models. The headline
 /// invariant (lesson of F1): models READ the `id` from the backend
 /// payload — they never invent it.
+///
+/// Los literales usan el contrato REAL del backend (`billing/plans.go`):
+/// ids de plan en MAYÚSCULAS (`FREE` / `PRO`) e intervalos en inglés
+/// (`monthly` / `yearly`). Si estos tests usaran español/minúsculas no
+/// detectarían los desajustes de casing que rompieron la vista de planes.
 void main() {
   group('SubscriptionPlan.fromJson', () {
     test('reads id from the backend payload, not a generated value', () {
       final plan = SubscriptionPlan.fromJson(const {
-        'id': 'pro',
+        'id': 'PRO',
         'name': 'Pro',
         'description': 'Todas las herramientas',
         'prices': [
-          {'interval': 'mensual', 'amount': 29900, 'currency': 'COP'},
-          {'interval': 'anual', 'amount': 299000, 'currency': 'COP'},
+          {'interval': 'monthly', 'amount': 29900, 'currency': 'COP'},
+          {'interval': 'yearly', 'amount': 299000, 'currency': 'COP'},
         ],
         'features': ['Reportes', 'Fiar a clientes'],
       });
 
-      expect(plan.id, equals('pro'));
+      expect(plan.id, equals('PRO'));
       expect(plan.name, equals('Pro'));
       expect(plan.prices, hasLength(2));
-      expect(plan.priceFor('mensual')?.amount, equals(29900));
-      expect(plan.priceFor('anual')?.amount, equals(299000));
+      expect(plan.priceFor('monthly')?.amount, equals(29900));
+      expect(plan.priceFor('yearly')?.amount, equals(299000));
       expect(plan.isFree, isFalse);
       expect(plan.features, contains('Reportes'));
     });
 
     test('Gratis plan with a single zero-cost price is reported as free', () {
       final plan = SubscriptionPlan.fromJson(const {
-        'id': 'gratis',
+        'id': 'FREE',
         'name': 'Gratis',
         'prices': [
-          {'interval': 'mensual', 'amount': 0},
+          {'interval': 'monthly', 'amount': 0},
         ],
       });
 
-      expect(plan.id, equals('gratis'));
+      expect(plan.id, equals('FREE'));
       expect(plan.isFree, isTrue);
     });
 
     test('falls back to flat monthly/yearly fields when prices is absent',
         () {
       final plan = SubscriptionPlan.fromJson(const {
-        'id': 'pro',
+        'id': 'PRO',
         'name': 'Pro',
         'monthly_amount': 29900,
         'yearly_amount': 299000,
       });
 
-      expect(plan.priceFor('mensual')?.amount, equals(29900));
-      expect(plan.priceFor('anual')?.amount, equals(299000));
+      expect(plan.priceFor('monthly')?.amount, equals(29900));
+      expect(plan.priceFor('yearly')?.amount, equals(299000));
     });
 
     test('priceFor returns null for an interval the plan does not offer',
         () {
       final plan = SubscriptionPlan.fromJson(const {
-        'id': 'pro',
+        'id': 'PRO',
         'name': 'Pro',
         'prices': [
-          {'interval': 'mensual', 'amount': 29900},
+          {'interval': 'monthly', 'amount': 29900},
         ],
       });
 
-      expect(plan.priceFor('anual'), isNull);
+      expect(plan.priceFor('yearly'), isNull);
     });
   });
 
@@ -72,14 +77,14 @@ void main() {
     test('parses an active Pro subscription', () {
       final status = SubscriptionStatus.fromJson(const {
         'status': 'PRO_ACTIVE',
-        'plan': 'pro',
-        'interval': 'mensual',
+        'plan': 'PRO',
+        'interval': 'monthly',
         'expires_at': '2026-06-17T00:00:00Z',
       });
 
       expect(status.status, equals('PRO_ACTIVE'));
-      expect(status.plan, equals('pro'));
-      expect(status.interval, equals('mensual'));
+      expect(status.plan, equals('PRO'));
+      expect(status.interval, equals('monthly'));
       expect(status.expiresAt, isNotNull);
       expect(status.isPremium, isTrue);
       expect(status.isTrial, isFalse);
@@ -88,7 +93,7 @@ void main() {
     test('accepts current_period_end as an alias for expires_at', () {
       final status = SubscriptionStatus.fromJson(const {
         'status': 'PRO_ACTIVE',
-        'plan': 'pro',
+        'plan': 'PRO',
         'current_period_end': '2026-12-31T00:00:00Z',
       });
 
@@ -98,7 +103,7 @@ void main() {
     test('a trial counts as premium and exposes days remaining', () {
       final status = SubscriptionStatus.fromJson(const {
         'status': 'TRIAL',
-        'plan': 'pro',
+        'plan': 'PRO',
         'trial_days_remaining': 9,
       });
 
@@ -110,7 +115,7 @@ void main() {
     test('FREE status is not premium', () {
       final status = SubscriptionStatus.fromJson(const {
         'status': 'FREE',
-        'plan': 'gratis',
+        'plan': 'FREE',
       });
 
       expect(status.isPremium, isFalse);
@@ -130,15 +135,15 @@ void main() {
         'checkout_url': 'https://checkout.epayco.co/abc',
         'amount': 29900,
         'description': 'VendIA Pro mensual',
-        'plan': 'pro',
-        'interval': 'mensual',
+        'plan': 'PRO',
+        'interval': 'monthly',
       });
 
       expect(session.reference, equals('VENDIA-PRO-001'));
       expect(session.checkoutUrl, equals('https://checkout.epayco.co/abc'));
       expect(session.hasUrl, isTrue);
       expect(session.amount, equals(29900));
-      expect(session.plan, equals('pro'));
+      expect(session.plan, equals('PRO'));
     });
 
     test('hasUrl is false when the backend sends no URL', () {
@@ -146,7 +151,7 @@ void main() {
         'reference': 'VENDIA-PRO-002',
         'amount': 299000,
         'description': 'VendIA Pro anual',
-        'plan': 'pro',
+        'plan': 'PRO',
       });
 
       expect(session.hasUrl, isFalse);
@@ -157,7 +162,7 @@ void main() {
         'ref': 'R-123',
         'url': 'https://checkout.epayco.co/x',
         'amount': 29900,
-        'plan': 'pro',
+        'plan': 'PRO',
       });
 
       expect(session.reference, equals('R-123'));
