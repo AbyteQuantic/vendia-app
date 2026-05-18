@@ -1,6 +1,8 @@
-// Spec: specs/010-logo-heic-iphone/spec.md
+// Spec: specs/013-foto-producto-web-ios/spec.md
+// (originally Spec: specs/010-logo-heic-iphone/spec.md)
 //
-// Logo image normalization — IO (mobile / non-web) implementation.
+// Image normalization — IO (mobile / non-web) implementation. Shared by
+// the store logo (F010) and the product photo (F013) upload paths.
 //
 // On mobile the image_picker already honours `maxWidth` / `imageQuality`,
 // but routing every platform through the same normalizer guarantees a
@@ -28,13 +30,14 @@ import 'image_normalizer_types.dart';
 const _cannotProcessMessage = 'No pudimos procesar esa foto. Intente con '
     'otra, o tome una captura de pantalla de la foto y súbala.';
 
-/// IO implementation of `normalizeLogoImage`. Selected by the conditional
-/// import in `image_normalizer.dart` on every non-web platform.
+/// IO implementation of `normalizeImageForUpload`. Selected by the
+/// conditional import in `image_normalizer.dart` on every non-web
+/// platform.
 ///
 /// `package:image`'s `decodeImage` auto-detects the format from the bytes,
 /// so PNG, JPEG and WebP (the usual AI-generator outputs) all decode here
 /// without any per-format branching.
-Future<Uint8List> normalizeLogoImageImpl(XFile source) async {
+Future<Uint8List> normalizeImageForUploadImpl(XFile source) async {
   final bytes = await source.readAsBytes();
 
   final decoded = img.decodeImage(bytes);

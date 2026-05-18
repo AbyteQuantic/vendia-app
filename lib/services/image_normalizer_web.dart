@@ -1,13 +1,36 @@
-// Spec: specs/010-logo-heic-iphone/spec.md
+// Spec: specs/013-foto-producto-web-ios/spec.md
+// (originally Spec: specs/010-logo-heic-iphone/spec.md)
 //
-// Logo image normalization — WEB implementation.
+// Image normalization — WEB implementation. Shared by the store logo
+// (F010) and the product photo (F013) upload paths.
 //
 // Why decode with the BROWSER instead of `package:image`: iPhone photos
 // are HEIC and `package:image` cannot decode HEIC. Safari (the browser an
 // iPhone user runs) CAN decode HEIC natively. So on web we hand the raw
-// bytes to the browser via an `<img>` element, draw it onto a `<canvas>`
-// resized to the cap, and export the canvas. The merchant's own browser
-// does the HEIC -> raster conversion for us.
+// bytes to the browser and let its native decoder produce a raster image,
+// then draw it onto a `<canvas>` resized to the cap and export the canvas.
+// The merchant's own browser does the HEIC -> raster conversion for us.
+//
+// Spec 013 / D4 — robust, race-free decode. The previous approach loaded
+// the bytes into an `<img>` and waited for `onLoad`. `onLoad` fires when
+// the resource is *fetched*, NOT when it is fully *decoded*; on Safari
+// (iOS) drawing the `<img>` onto a canvas before the decode finished
+// produced a black frame (Spec 013, root cause). The fix uses the
+// browser's `HTMLImageElement.decode()` API: it returns a Promise that
+// resolves ONLY once the image is fully decoded into memory, so the
+// subsequent `drawImage` can never race the decoder.
+//
+// Implementation note (deviation from Spec 013 / D4 wording): the spec
+// suggests `window.createImageBitmap`. That call is not surfaced by
+// `dart:html`, and reaching it would require importing `dart:js_util`,
+// which the project's analyzer/build setup rejects with a
+// `uri_does_not_exist` error inside a conditional-import file. `<img>`'s
+// native `decode()` IS exposed by `dart:html`, gives the exact same
+// "fully decoded before it resolves — no timing race" guarantee that D4
+// requires, and decodes HEIC on Safari just like `createImageBitmap`
+// would. The decoded `<img>` is dropped right after `drawImage` so its
+// memory is released by the GC. The robustness requirement (FR-04) is
+// met; only the specific browser API differs.
 //
 // Spec 010 §9 / D1: the canvas is exported as **PNG** (`image/png`), not
 // JPEG. A `<canvas>` is RGBA, so a logo with a transparent background
@@ -18,7 +41,7 @@
 // transparent.
 //
 // If the browser cannot decode the source (a non-Safari browser handed a
-// HEIC file), the `<img>` fires `onError` and we throw a clear Spanish
+// HEIC file) `decode()` rejects, and we throw a clear Spanish
 // `ImageNormalizationException` — never a silent failure.
 //
 // `dart:html` is deprecated but still works on the current Flutter web
@@ -47,19 +70,24 @@ const _cannotProcessMessage = 'No pudimos procesar esa foto. Intente con '
 const _tooHeavyMessage = 'Esa imagen es demasiado pesada. Intente con una '
     'foto más sencilla o con menos detalle.';
 
-/// Web implementation of `normalizeLogoImage`. Selected by the conditional
-/// import in `image_normalizer.dart` when `dart.library.html` is available.
-Future<Uint8List> normalizeLogoImageImpl(XFile source) async {
+/// Web implementation of `normalizeImageForUpload`. Selected by the
+/// conditional import in `image_normalizer.dart` when `dart.library.html`
+/// is available.
+Future<Uint8List> normalizeImageForUploadImpl(XFile source) async {
   final bytes = await source.readAsBytes();
 
-  // Wrap the raw bytes in a Blob and hand it to the browser as an <img>.
-  // The browser decoder runs here — this is what makes HEIC work on
-  // Safari, and PNG/WebP (with alpha) on every browser.
-  final blob = html.Blob(<dynamic>[bytes]);
+  // Wrap the raw bytes in a Blob and tag it with the source MIME type so
+  // the browser's decoder picks the right codec — in particular
+  // `image/heic` on Safari for an iPhone photo. An empty or unknown
+  // `mimeType` still works: the browser sniffs the bytes.
+  final mimeType = source.mimeType;
+  final blob = (mimeType != null && mimeType.isNotEmpty)
+      ? html.Blob(<dynamic>[bytes], mimeType)
+      : html.Blob(<dynamic>[bytes]);
   final objectUrl = html.Url.createObjectUrlFromBlob(blob);
 
   try {
-    final image = await _loadImage(objectUrl);
+    final image = await _decodeImage(objectUrl);
     return _drawAndExport(image);
   } finally {
     // Always release the blob URL, success or failure.
@@ -67,40 +95,34 @@ Future<Uint8List> normalizeLogoImageImpl(XFile source) async {
   }
 }
 
-/// Loads [objectUrl] into an [html.ImageElement], completing when the
-/// browser has decoded it. Throws [ImageNormalizationException] if the
-/// browser cannot decode the source format.
-Future<html.ImageElement> _loadImage(String objectUrl) {
-  final completer = Completer<html.ImageElement>();
+/// Loads [objectUrl] into an [html.ImageElement] and **fully decodes** it
+/// before completing.
+///
+/// `ImageElement.decode()` returns a Future that resolves only once the
+/// browser has finished decoding the pixels — unlike `onLoad`, which
+/// fires on fetch and leaves a decode race that showed up as a black
+/// frame on Safari/iOS (Spec 013 / D4).
+///
+/// Throws [ImageNormalizationException] when the browser cannot decode
+/// the source format (a non-Safari browser handed a HEIC file).
+Future<html.ImageElement> _decodeImage(String objectUrl) async {
   final image = html.ImageElement();
-
-  // `onLoad` / `onError` fire exactly once each; capture subscriptions so
-  // we can cancel the other after the first event.
-  late final StreamSubscription<html.Event> loadSub;
-  late final StreamSubscription<html.Event> errorSub;
-
-  loadSub = image.onLoad.listen((_) {
-    errorSub.cancel();
-    loadSub.cancel();
-    if (!completer.isCompleted) {
-      completer.complete(image);
-    }
-  });
-
-  errorSub = image.onError.listen((_) {
-    loadSub.cancel();
-    errorSub.cancel();
-    if (!completer.isCompleted) {
-      // The browser could not decode the bytes — typically a non-Safari
-      // browser handed a HEIC file. Surface a clear, actionable message.
-      completer.completeError(
-        const ImageNormalizationException(_cannotProcessMessage),
-      );
-    }
-  });
-
   image.src = objectUrl;
-  return completer.future;
+  try {
+    // `decode()` completes only after a successful, complete decode; it
+    // rejects for an undecodable source. No `onLoad` timing race.
+    await image.decode();
+  } catch (_) {
+    // The browser could not decode the bytes — typically a non-Safari
+    // browser handed a HEIC file. Surface a clear, actionable message
+    // instead of a silent failure or a black box.
+    throw const ImageNormalizationException(_cannotProcessMessage);
+  }
+  if (image.naturalWidth == 0 || image.naturalHeight == 0) {
+    // A zero-sized decode result is not a usable image.
+    throw const ImageNormalizationException(_cannotProcessMessage);
+  }
+  return image;
 }
 
 /// Draws [image] onto a downsized `<canvas>` and exports it as PNG bytes.

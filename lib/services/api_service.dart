@@ -545,11 +545,23 @@ class ApiService {
     }
   }
 
+  /// Uploads a merchant-picked photo for product [uuid].
+  ///
+  /// Spec 013 / D2: takes an [XFile] (not a `dart:io File`) and reads its
+  /// BYTES, so it works on Flutter web — where there is no filesystem and
+  /// `XFile.path` is only a blob URL. Spec 013 / D3: the image is first
+  /// normalized to a downsized **PNG** via [normalizeImageForUpload]
+  /// (the browser decodes HEIC on web; `package:image` re-encodes on
+  /// mobile), so an iPhone HEIC photo also renders on Android. This is the
+  /// same path `logoMultipart` uses for the store logo.
+  ///
+  /// Throws [ImageNormalizationException] (Spanish message) when the
+  /// picked image cannot be decoded; callers surface it to the merchant.
   Future<Map<String, dynamic>> uploadProductPhoto(
-      String uuid, File photo) async {
+      String uuid, XFile photo) async {
     try {
       final formData = FormData.fromMap({
-        'photo': await MultipartFile.fromFile(photo.path),
+        'photo': await _imageMultipart(photo, prefix: 'foto'),
       });
       final response = await _dio.post('/api/v1/products/$uuid/photo',
           data: formData);
@@ -1942,7 +1954,7 @@ class ApiService {
   /// Builds a Dio [MultipartFile] for a picked logo [XFile].
   ///
   /// Spec 010 §9 / D1: the image is first normalized to a downsized **PNG**
-  /// via [normalizeLogoImage] (the browser decodes HEIC on web;
+  /// via [normalizeImageForUpload] (the browser decodes HEIC on web;
   /// `package:image` re-encodes on mobile). The resulting part is always
   /// sent as `image/png` with a `.png` filename, so the Supabase
   /// `store-logos` bucket — which accepts png but rejects `image/heic` —
@@ -1958,11 +1970,31 @@ class ApiService {
   /// Throws [ImageNormalizationException] (Spanish message) when the
   /// picked image cannot be decoded; callers surface it to the merchant.
   @visibleForTesting
-  static Future<MultipartFile> logoMultipart(XFile logo) async {
-    final pngBytes = await normalizeLogoImage(logo);
+  static Future<MultipartFile> logoMultipart(XFile logo) =>
+      _imageMultipart(logo, prefix: 'logo');
+
+  /// Builds a Dio [MultipartFile] for any picked image [XFile] — a store
+  /// logo or a product photo (Spec 013 / D2, D3).
+  ///
+  /// The image is normalized to a downsized **PNG** via
+  /// [normalizeImageForUpload] and always sent as `image/png` with a
+  /// `.png` filename ([prefix]-<uuid>.png). Normalizing on every platform
+  /// is what makes an iPhone HEIC photo render on Android, and reading
+  /// BYTES (not a filesystem path) is what makes this work on Flutter web.
+  ///
+  /// Throws [ImageNormalizationException] (Spanish message) when the
+  /// picked image cannot be decoded; callers surface it to the merchant.
+  @visibleForTesting
+  static Future<MultipartFile> imageMultipart(XFile image,
+          {required String prefix}) =>
+      _imageMultipart(image, prefix: prefix);
+
+  static Future<MultipartFile> _imageMultipart(XFile image,
+      {required String prefix}) async {
+    final pngBytes = await normalizeImageForUpload(image);
     return MultipartFile.fromBytes(
       pngBytes,
-      filename: 'logo-${const Uuid().v4()}.png',
+      filename: '$prefix-${const Uuid().v4()}.png',
       contentType: DioMediaType('image', 'png'),
     );
   }

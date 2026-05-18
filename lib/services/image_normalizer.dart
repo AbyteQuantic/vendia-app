@@ -1,16 +1,22 @@
-// Spec: specs/010-logo-heic-iphone/spec.md
+// Spec: specs/013-foto-producto-web-ios/spec.md
+// (originally Spec: specs/010-logo-heic-iphone/spec.md)
 //
-// Logo image normalization — public, cross-platform facade.
+// Image normalization — public, cross-platform facade. Shared by the
+// store logo (F010) and the product photo (F013) upload paths.
 //
 // Why this exists: iPhone photos are HEIC. On Flutter web `image_picker`
 // ignores `maxWidth` / `imageQuality`, so a raw HEIC reached the backend
 // untouched; the Supabase `store-logos` bucket only accepts
-// jpeg/png/webp/gif and rejected `image/heic` -> 500 "error al subir logo".
+// jpeg/png/webp/gif and rejected `image/heic` -> 500 "error al subir
+// logo". The product-photo bucket (`product-photos`) does not restrict
+// MIME, but a raw HEIC still has to be re-encoded so it RENDERS on a
+// device whose browser cannot decode HEIC (e.g. an Android phone).
 //
-// The fix: re-encode every logo to a downsized **PNG** BEFORE upload.
-//   - Web   -> decode with the BROWSER (a `<canvas>`), which on Safari can
-//              decode HEIC, then export `image/png`. See
-//              `image_normalizer_web.dart`.
+// The fix: re-encode every picked image to a downsized **PNG** BEFORE
+// upload.
+//   - Web   -> decode with the BROWSER (`createImageBitmap` + `<canvas>`),
+//              which on Safari can decode HEIC, then export `image/png`.
+//              See `image_normalizer_web.dart`.
 //   - Mobile / other -> decode with `package:image`. See
 //              `image_normalizer_io.dart`.
 //
@@ -42,8 +48,8 @@ export 'image_normalizer_types.dart'
         kLogoMaxBytes,
         kLogoMinSide;
 
-/// Re-encodes [source] into a downsized **PNG** suitable for upload to the
-/// `store-logos` bucket.
+/// Re-encodes [source] into a downsized **PNG** suitable for upload
+/// (the store logo or a product photo).
 ///
 /// - The longest side is capped at [kLogoMaxSide]; smaller images are not
 ///   upscaled.
@@ -52,8 +58,11 @@ export 'image_normalizer_types.dart'
 ///   flattened to an opaque background.
 /// - The PNG stays under [kLogoMaxBytes]; a pathological input is shrunk
 ///   further until it fits.
+/// - Because the output is PNG, a HEIC photo taken on an iPhone renders
+///   on every platform — including an Android browser that cannot decode
+///   HEIC natively.
 ///
 /// Throws [ImageNormalizationException] (with a Spanish message) when the
 /// image cannot be decoded or cannot be brought under the size cap.
-Future<Uint8List> normalizeLogoImage(XFile source) =>
-    normalizeLogoImageImpl(source);
+Future<Uint8List> normalizeImageForUpload(XFile source) =>
+    normalizeImageForUploadImpl(source);

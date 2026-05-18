@@ -1,4 +1,3 @@
-import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
@@ -6,9 +5,11 @@ import '../../database/database_service.dart';
 import '../../theme/app_theme.dart';
 import '../../services/api_service.dart';
 import '../../services/auth_service.dart';
+import '../../services/image_normalizer.dart' show ImageNormalizationException;
 import '../../utils/barcode_validator.dart';
 import '../../utils/currency_input.dart';
 import '../../widgets/negative_stock_banner.dart';
+import '../../widgets/picked_image_preview.dart';
 import '../../widgets/stock_badge.dart';
 import '../pos/scan_screen.dart';
 import 'kardex_screen.dart';
@@ -623,7 +624,10 @@ class _EditProductSheetState extends State<_EditProductSheet> {
   bool _saving = false;
   bool _enhancing = false;
   String? _photoUrl;
-  String? _photoPath;
+  // Spec 013: store the picked XFile (not just its path string) so the
+  // preview and upload both work cross-platform — on web `XFile.path` is
+  // a blob URL, useless to `dart:io File`.
+  XFile? _photoFile;
   String? _skuError;
 
   final _presentations = [
@@ -675,7 +679,7 @@ class _EditProductSheetState extends State<_EditProductSheet> {
     );
     if (photo == null || !mounted) return;
     setState(() {
-      _photoPath = photo.path;
+      _photoFile = photo;
       _photoUrl = null;
     });
     // Upload immediately so "Mejorar foto" becomes available
@@ -683,18 +687,36 @@ class _EditProductSheetState extends State<_EditProductSheet> {
   }
 
   Future<void> _uploadLocalPhoto() async {
-    if (_photoPath == null) return;
+    final photo = _photoFile;
+    if (photo == null) return;
     final id = widget.product['id'] as String? ?? '';
     if (id.isEmpty) return;
     try {
       final api = ApiService(AuthService());
-      final result = await api.uploadProductPhoto(id, File(_photoPath!));
+      final result = await api.uploadProductPhoto(id, photo);
       final url = result['photo_url'] as String?;
       if (url != null && mounted) {
         setState(() => _photoUrl = url);
       }
-    } catch (_) {
-      // Upload failed — user can still generate from scratch
+    } on ImageNormalizationException catch (e) {
+      // The picked image could not be normalized — tell the merchant in
+      // Spanish instead of swallowing the failure (Constitution Art. V).
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(e.message)),
+        );
+      }
+    } catch (e) {
+      // Upload failed (network / backend) — the merchant can still
+      // generate a photo from scratch. Surface it instead of staying
+      // silent so they know the camera photo did not save.
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('No pudimos subir la foto. Intente de nuevo.'),
+          ),
+        );
+      }
     }
   }
 
@@ -731,11 +753,11 @@ class _EditProductSheetState extends State<_EditProductSheet> {
       return;
     }
 
-    final hasExistingPhoto = (_photoUrl != null && _photoUrl!.isNotEmpty) ||
-        (_photoPath != null && _photoPath!.isNotEmpty);
+    final hasExistingPhoto =
+        (_photoUrl != null && _photoUrl!.isNotEmpty) || _photoFile != null;
 
     // If we have a local photo but no URL yet, upload first
-    if (_photoPath != null && (_photoUrl == null || _photoUrl!.isEmpty)) {
+    if (_photoFile != null && (_photoUrl == null || _photoUrl!.isEmpty)) {
       await _uploadLocalPhoto();
     }
 
@@ -834,7 +856,7 @@ class _EditProductSheetState extends State<_EditProductSheet> {
       if (url != null && mounted) {
         setState(() {
           _photoUrl = url;
-          _photoPath = null;
+          _photoFile = null;
         });
       }
     } catch (e) {
@@ -1065,9 +1087,14 @@ class _EditProductSheetState extends State<_EditProductSheet> {
                           color: AppTheme.surfaceGrey,
                           borderRadius: BorderRadius.circular(16),
                         ),
-                        child: _photoPath != null
-                            ? Image.file(File(_photoPath!),
-                                width: 110, height: 110, fit: BoxFit.contain)
+                        child: _photoFile != null
+                            ? PickedImagePreview(
+                                file: _photoFile!,
+                                width: 110,
+                                height: 110,
+                                fit: BoxFit.contain,
+                                errorBuilder: (_, __, ___) =>
+                                    _photoPlaceholder())
                             : (_photoUrl != null && _photoUrl!.isNotEmpty)
                                 ? Image.network(_photoUrl!,
                                     width: 110, height: 110, fit: BoxFit.contain,

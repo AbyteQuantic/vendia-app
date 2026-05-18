@@ -1,5 +1,3 @@
-import 'dart:io';
-
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
@@ -8,10 +6,12 @@ import '../../database/database_service.dart';
 import '../../database/collections/local_product.dart';
 import '../../services/api_service.dart';
 import '../../services/auth_service.dart';
+import '../../services/image_normalizer.dart' show ImageNormalizationException;
 import '../../services/margin_service.dart';
 import '../../theme/app_theme.dart';
 import '../../utils/product_matcher.dart';
 import '../../utils/currency_input.dart';
+import '../../widgets/picked_image_preview.dart';
 import '../admin/suppliers_screen.dart';
 
 /// Colombian rounding: ceil to nearest $50 COP
@@ -351,7 +351,7 @@ class _IaResultScreenState extends State<IaResultScreen> {
     );
     if (picked == null || !mounted) return;
     setState(() {
-      _products[index].photoPath = picked.path;
+      _products[index].photoFile = picked;
       _products[index].photoUrl = null;
     });
   }
@@ -366,7 +366,7 @@ class _IaResultScreenState extends State<IaResultScreen> {
     );
     if (picked == null || !mounted) return;
     setState(() {
-      _products[index].photoPath = picked.path;
+      _products[index].photoFile = picked;
       _products[index].photoUrl = null;
     });
   }
@@ -412,8 +412,11 @@ class _IaResultScreenState extends State<IaResultScreen> {
 
       Map<String, dynamic> result;
       try {
-        if (p.photoPath != null) {
-          await api.uploadProductPhoto(tempUuid, File(p.photoPath!));
+        // Spec 013: pass the picked XFile — `uploadProductPhoto` reads
+        // its bytes and normalizes to PNG, so this works on web.
+        final picked = p.photoFile;
+        if (picked != null) {
+          await api.uploadProductPhoto(tempUuid, picked);
           result = await api.enhanceProductPhoto(tempUuid);
         } else {
           result = await api.generateProductImage(
@@ -432,9 +435,19 @@ class _IaResultScreenState extends State<IaResultScreen> {
       final url = result['photo_url'] as String? ?? result['image_url'] as String?;
       setState(() {
         p.photoUrl = url;
-        p.photoPath = null;
+        p.photoFile = null;
         p.enhancing = false;
       });
+    } on ImageNormalizationException catch (e) {
+      // The picked photo could not be normalized — show the Spanish
+      // message directly, not a raw exception string.
+      if (!mounted) return;
+      setState(() => p.enhancing = false);
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(e.message, style: const TextStyle(fontSize: 14)),
+        backgroundColor: AppTheme.error,
+        behavior: SnackBarBehavior.floating,
+      ));
     } catch (e) {
       if (!mounted) return;
       setState(() => p.enhancing = false);
@@ -483,7 +496,7 @@ class _IaResultScreenState extends State<IaResultScreen> {
     final buyCtrl = TextEditingController(text: p.purchasePrice.round().toString());
     final sellCtrl = TextEditingController(text: p.sellPrice.round().toString());
     DateTime? draftExpiry = p.expiryDate;
-    String? draftPhotoPath = p.photoPath;
+    XFile? draftPhotoFile = p.photoFile;
     String? draftPhotoUrl = p.photoUrl;
 
     showModalBottomSheet(
@@ -532,7 +545,7 @@ class _IaResultScreenState extends State<IaResultScreen> {
                         child: Container(
                           width: 80, height: 80,
                           color: AppTheme.surfaceGrey,
-                          child: _editThumb(draftPhotoPath, draftPhotoUrl),
+                          child: _editThumb(draftPhotoFile, draftPhotoUrl),
                         ),
                       ),
                       const SizedBox(width: 12),
@@ -553,7 +566,7 @@ class _IaResultScreenState extends State<IaResultScreen> {
                                     );
                                     if (picked == null) return;
                                     sbSet(() {
-                                      draftPhotoPath = picked.path;
+                                      draftPhotoFile = picked;
                                       draftPhotoUrl = null;
                                     });
                                   },
@@ -570,7 +583,7 @@ class _IaResultScreenState extends State<IaResultScreen> {
                                     );
                                     if (picked == null) return;
                                     sbSet(() {
-                                      draftPhotoPath = picked.path;
+                                      draftPhotoFile = picked;
                                       draftPhotoUrl = null;
                                     });
                                   },
@@ -722,7 +735,7 @@ class _IaResultScreenState extends State<IaResultScreen> {
                           p.purchasePrice = CurrencyUtils.parseToDouble(buyCtrl.text);
                           p.sellPrice = CurrencyUtils.parseToDouble(sellCtrl.text);
                           p.expiryDate = draftExpiry;
-                          p.photoPath = draftPhotoPath;
+                          p.photoFile = draftPhotoFile;
                           p.photoUrl = draftPhotoUrl;
                         });
                         Navigator.of(ctx).pop();
@@ -744,9 +757,16 @@ class _IaResultScreenState extends State<IaResultScreen> {
     );
   }
 
-  Widget _editThumb(String? photoPath, String? photoUrl) {
-    if (photoPath != null && photoPath.isNotEmpty) {
-      return Image.file(File(photoPath), fit: BoxFit.cover);
+  Widget _editThumb(XFile? photoFile, String? photoUrl) {
+    if (photoFile != null) {
+      // Spec 013: cross-platform preview of the just-picked image.
+      return PickedImagePreview(
+        file: photoFile,
+        fit: BoxFit.cover,
+        errorBuilder: (_, __, ___) => const Icon(
+            Icons.broken_image_outlined, size: 28,
+            color: AppTheme.textSecondary),
+      );
     }
     if (photoUrl != null && photoUrl.isNotEmpty) {
       return Image.network(photoUrl, fit: BoxFit.cover,
@@ -1316,8 +1336,15 @@ class _ProductCard extends StatelessWidget {
           child: SizedBox(width: 24, height: 24,
               child: CircularProgressIndicator(strokeWidth: 2.5)));
     }
-    if (product.photoPath != null && product.photoPath!.isNotEmpty) {
-      return Image.file(File(product.photoPath!), fit: BoxFit.cover);
+    if (product.photoFile != null) {
+      // Spec 013: cross-platform preview of the just-picked image.
+      return PickedImagePreview(
+        file: product.photoFile!,
+        fit: BoxFit.cover,
+        errorBuilder: (_, __, ___) => const Icon(
+            Icons.broken_image_outlined, size: 28,
+            color: AppTheme.textSecondary),
+      );
     }
     if (product.photoUrl != null && product.photoUrl!.isNotEmpty) {
       return Image.network(product.photoUrl!, fit: BoxFit.cover,
@@ -1455,7 +1482,10 @@ class _EditableProduct {
   double sellPrice;
   double confidence;
   DateTime? expiryDate;
-  String? photoPath;
+  // Spec 013: the picked image as an XFile (not a path string) so the
+  // preview and upload work cross-platform — on web `XFile.path` is a
+  // blob URL, unusable by `dart:io File`.
+  XFile? photoFile;
   String? photoUrl;
   bool enhancing;
 
@@ -1478,11 +1508,11 @@ class _EditableProduct {
     this.barcode = '',
     this.content = '',
     this.expiryDate,
-    // Stable API: fields are mutated post-construction (e.g. p.photoPath
-    // = picked.path) but exposing them as optional ctor params keeps the
+    // Stable API: fields are mutated post-construction (e.g. p.photoFile
+    // = picked) but exposing them as optional ctor params keeps the
     // class extensible without forcing a breaking change.
     // ignore: unused_element_parameter
-    this.photoPath,
+    this.photoFile,
     this.photoUrl,
     // ignore: unused_element_parameter
     this.enhancing = false,
@@ -1496,6 +1526,5 @@ class _EditableProduct {
   });
 
   bool get hasPhoto =>
-      (photoPath != null && photoPath!.isNotEmpty) ||
-      (photoUrl != null && photoUrl!.isNotEmpty);
+      photoFile != null || (photoUrl != null && photoUrl!.isNotEmpty);
 }
