@@ -1,0 +1,18 @@
+{
+  "_comment": "Reference copy of the Vercel routing config for the vendia-app project (domain vendia.store). The deployed file lives at build/web/vercel.json, which is gitignored — the .github/workflows/deploy-web.yml workflow regenerates it from this same content at deploy time. CRITICAL: the /admin rewrites MUST come before the SPA catch-all so vendia.store/admin keeps proxying to the Next.js admin (vendia-admin.vercel.app). Deploying without them breaks /admin.",
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "rewrites": [
+    {
+      "source": "/admin",
+      "destination": "https://vendia-admin.vercel.app/admin"
+    },
+    {
+      "source": "/admin/:path*",
+      "destination": "https://vendia-admin.vercel.app/admin/:path*"
+    },
+    {
+      "source": "/(.*)",
+      "destination": "/index.html"
+    }
+  ]
+}

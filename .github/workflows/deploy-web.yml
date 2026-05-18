@@ -1,0 +1,113 @@
+# Auto-deploy of the Flutter web build to Vercel (project: vendia-app).
+#
+# Why this exists: the web app at vendia.store is a static Flutter build
+# served by Vercel. Before this workflow, a push to main only redeployed
+# the backend/admin — the web build had to be rebuilt and `vercel deploy`d
+# by hand, so vendia.store would silently keep serving a stale bundle.
+# This workflow closes that gap: every push to main rebuilds `build/web`
+# and ships it to production.
+#
+# CRITICAL — domain routing must be preserved:
+# `build/web/vercel.json` carries TWO rewrites and both are required:
+#   1. /admin and /admin/:path*  ->  https://vendia-admin.vercel.app/admin/...
+#      (proxies the Next.js admin; listed FIRST so it wins over the SPA rule)
+#   2. /(.*)  ->  /index.html   (Flutter SPA fallback)
+# Deploying without rule #1 breaks vendia.store/admin. The file is written
+# by the "Write vercel.json" step below — keep both rules in sync with the
+# committed reference at `web/vercel.json`.
+name: deploy-web
+
+on:
+  push:
+    branches: [main]
+
+concurrency:
+  group: deploy-web-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-deploy:
+    name: build web + deploy to Vercel
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: '3.41.6'
+          cache: true
+
+      - name: Verify SDK
+        run: flutter --version
+
+      - name: Restore pub cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.pub-cache
+            .dart_tool
+          key: pub-${{ runner.os }}-${{ hashFiles('pubspec.lock') }}
+          restore-keys: |
+            pub-${{ runner.os }}-
+
+      - name: Resolve dependencies
+        run: flutter pub get
+
+      - name: Generate code (Isar schemas, JSON)
+        # `*.g.dart` files are gitignored — without this the web build
+        # fails on missing `part 'X.g.dart'` symbols.
+        run: dart run build_runner build --delete-conflicting-outputs
+
+      - name: Prepare .env
+        # `.env` is a gitignored Flutter asset; `.env.example` carries no
+        # secrets and is enough for a release build of the web bundle.
+        run: cp .env.example .env
+
+      - name: Build web
+        run: flutter build web --release --dart-define=API_BASE_URL=https://api.vendia.store
+
+      - name: Write vercel.json (domain routing)
+        # Reproduce BOTH rewrites inside the deployed output. The /admin
+        # proxy MUST be listed before the SPA catch-all so it takes
+        # priority — otherwise vendia.store/admin is swallowed by Flutter.
+        run: |
+          cat > build/web/vercel.json <<'JSON'
+          {
+            "$schema": "https://openapi.vercel.sh/vercel.json",
+            "rewrites": [
+              {
+                "source": "/admin",
+                "destination": "https://vendia-admin.vercel.app/admin"
+              },
+              {
+                "source": "/admin/:path*",
+                "destination": "https://vendia-admin.vercel.app/admin/:path*"
+              },
+              {
+                "source": "/(.*)",
+                "destination": "/index.html"
+              }
+            ]
+          }
+          JSON
+          echo "--- build/web/vercel.json ---"
+          cat build/web/vercel.json
+
+      - name: Install Vercel CLI
+        run: npm install --global vercel@latest
+
+      - name: Deploy build/web to Vercel production
+        # `vercel deploy` on a prebuilt static directory: it uploads the
+        # files as-is (no Vercel build step) and aliases the project's
+        # production domain (vendia.store) on success.
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+        run: |
+          vercel deploy build/web \
+            --prod \
+            --yes \
+            --token "$VERCEL_TOKEN"
