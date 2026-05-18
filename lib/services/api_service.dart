@@ -362,6 +362,37 @@ class ApiService {
     }
   }
 
+  /// Uploads a profile photo for the employee (or owner) [uuid].
+  ///
+  /// Spec 019 / FR-04, D2: takes an [XFile] — never a `dart:io File` —
+  /// reads its BYTES and normalizes the image to a downsized **PNG** via
+  /// [normalizeImageForUpload] before building the multipart part. This
+  /// is the same `uploadProductPhoto` (F013) / `logoMultipart` (F010)
+  /// pipeline, so it works on Flutter web (no filesystem, `XFile.path` is
+  /// only a blob URL) and on iOS Safari (HEIC re-encoded to PNG).
+  ///
+  /// Sends the part as the `photo` field. The backend stores the image
+  /// and returns `{data:{photo_url}}` (Plan 019 §4). Returns that data
+  /// map so callers can read the new `photo_url`.
+  ///
+  /// Throws [ImageNormalizationException] (Spanish message) when the
+  /// picked image cannot be decoded; callers surface it to the merchant.
+  Future<Map<String, dynamic>> uploadEmployeePhoto(
+      String uuid, XFile photo) async {
+    try {
+      final formData = FormData.fromMap({
+        'photo': await _imageMultipart(photo, prefix: 'perfil'),
+      });
+      final response = await _dio.post(
+        '/api/v1/employees/$uuid/photo',
+        data: formData,
+      );
+      return _extractData(response);
+    } on DioException catch (e) {
+      throw AppError.fromDioException(e);
+    }
+  }
+
   // ═══════════════════════════════════════════════════════════════════════════
   // 3. PRODUCTS
   // ═══════════════════════════════════════════════════════════════════════════

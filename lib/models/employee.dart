@@ -15,6 +15,9 @@ class Employee {
   final String? branchId;
   /// Display-only branch name, resolved by the API; not stored locally.
   final String? branchName;
+  /// Profile photo URL (Spec 019). Null when the employee/owner has not
+  /// uploaded a photo yet — the UI falls back to an initials avatar.
+  final String? photoUrl;
 
   Employee({
     required this.uuid,
@@ -27,6 +30,7 @@ class Employee {
     this.serverId,
     this.branchId,
     this.branchName,
+    this.photoUrl,
   }) : createdAt = createdAt ?? DateTime.now();
 
   /// Initials for avatar display (e.g., "PM" for "Pedro Martínez")
@@ -60,6 +64,9 @@ class Employee {
       serverId: json['id'] as int?,
       branchId: json['branch_id'] as String?,
       branchName: json['branch_name'] as String?,
+      photoUrl: (json['photo_url'] as String?)?.isEmpty ?? true
+          ? null
+          : json['photo_url'] as String?,
     );
   }
 
@@ -80,6 +87,7 @@ class Employee {
     bool? isActive,
     String? branchId,
     String? branchName,
+    String? photoUrl,
   }) {
     return Employee(
       uuid: uuid,
@@ -92,6 +100,7 @@ class Employee {
       serverId: serverId,
       branchId: branchId ?? this.branchId,
       branchName: branchName ?? this.branchName,
+      photoUrl: photoUrl ?? this.photoUrl,
     );
   }
 }
