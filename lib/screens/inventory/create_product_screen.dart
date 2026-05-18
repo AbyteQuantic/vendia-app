@@ -7,6 +7,7 @@ import '../../database/database_service.dart';
 import '../../database/collections/local_catalog_product.dart';
 import '../../database/collections/local_product.dart';
 import '../../services/api_service.dart';
+import '../../services/app_error.dart';
 import '../../services/auth_service.dart';
 import '../../services/image_normalizer.dart' show ImageNormalizationException;
 import '../../theme/app_theme.dart';
@@ -517,6 +518,13 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
       // Create a temporary product in backend ONLY for AI processing
       // This is needed because enhance/generate endpoints require a product ID.
       // The real save happens only when user presses "Guardar".
+      //
+      // Spec 014: this call no longer swallows its error with a mute
+      // `.catchError`. CreateProduct is idempotent on the backend, so a
+      // repeated id returns the existing product instead of failing —
+      // there is nothing to "ignore". Any genuine error (network,
+      // validation, server) now propagates to the catch block below and
+      // is shown to the user in Spanish.
       await api.createProduct({
         'id': _pendingUuid,
         'name': _nameCtrl.text.trim().isEmpty ? 'Producto temporal' : _nameCtrl.text.trim(),
@@ -525,7 +533,7 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
         'image_url': _photoUrl,
         'presentation': _presentation,
         'content': _contentCtrl.text.trim(),
-      }).catchError((_) => <String, dynamic>{}); // Ignore if already exists
+      });
 
       // If product has a photo URL, enhance it. Otherwise, generate from scratch.
       final Map<String, dynamic> result;
@@ -548,9 +556,16 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
       }
     } catch (e) {
       if (mounted) {
+        // Spec 014: this catch now also receives errors from
+        // createProduct (the mute `.catchError` was removed). Surface a
+        // clean Spanish message — AppError already carries one — instead
+        // of leaking the exception type to a tendero 50+.
+        final message = e is AppError
+            ? e.message
+            : 'No pudimos procesar la imagen. Intente de nuevo.';
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Error: $e'),
+            content: Text(message),
             backgroundColor: Colors.red.shade700,
             behavior: SnackBarBehavior.floating,
           ),
