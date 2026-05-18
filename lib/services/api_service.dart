@@ -12,6 +12,7 @@ import '../widgets/premium_upsell_sheet.dart';
 import 'app_error.dart';
 import 'auth_service.dart';
 import 'cart_session_service.dart';
+import 'cold_start_retry_interceptor.dart';
 import 'image_normalizer.dart';
 
 /// Central API client for the VendIA backend.
@@ -123,6 +124,16 @@ class ApiService {
         handler.next(error);
       },
     ));
+
+    // Spec 012 — cold-start resilience. Registered AFTER the auth/
+    // paywall interceptor on purpose: Dio runs error interceptors in
+    // registration order, so the wrapper above still handles 401
+    // (token refresh) and the soft-paywall 403 first. Only errors it
+    // chooses to pass through reach this retry interceptor, which acts
+    // solely on the transient cold-start shape (connectionError /
+    // timeouts / 502-503-504). A 401 is never a cold start and is
+    // never retried here. See cold_start_retry_interceptor.dart.
+    _dio.interceptors.add(ColdStartRetryInterceptor(dio: _dio));
   }
 
   Future<bool> _tryRefreshToken() async {

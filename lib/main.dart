@@ -10,6 +10,7 @@ import 'database/sync/sync_service.dart';
 import 'services/active_fiado_service.dart';
 import 'services/api_service.dart';
 import 'services/auth_service.dart';
+import 'services/backend_warmup.dart';
 import 'services/hardware_service.dart';
 import 'services/tax_settings_service.dart';
 import 'models/branch.dart';
@@ -31,6 +32,15 @@ Future<void> main() async {
       statusBarIconBrightness: Brightness.dark,
     ),
   );
+
+  // Spec 012 (FR-03) — wake the backend early. Render's free tier
+  // sleeps after ~15 min idle; firing this fire-and-forget ping before
+  // the merchant's first action lets the ~50 s cold start overlap with
+  // the splash + login instead of stalling that first call. Not
+  // awaited: a sleeping backend makes this request slow, and nothing
+  // in the UI may wait on it.
+  BackendWarmup.ping();
+
   runApp(const VendIAApp());
 }
 

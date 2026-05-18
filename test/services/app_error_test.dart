@@ -1,14 +1,15 @@
 // Spec: specs/007-web-logo-upload/spec.md (AC-03/AC-04)
+// Spec: specs/012-cold-start-resiliencia/spec.md (FR-04/AC-02)
 //
 // Covers AppError.fromDioException — the layer the logo step (and
 // every screen) relies on to surface a real cause instead of a
-// generic "intente más tarde". The connectionError branch is now
-// platform-aware: on the web build a connectionError is almost never
-// a lost-wifi event (the browser raises it for a rejected CORS
-// preflight or an unreachable API host), so the copy must not claim
-// "sin conexión a internet" there. Under `flutter test` kIsWeb is
-// false, so these assertions pin the mobile branch; the web copy is
-// guarded by the same kIsWeb switch in lib/services/app_error.dart.
+// generic "intente más tarde".
+//
+// Spec 012 changed the connectionError branch: that error is now only
+// reached after the cold-start retry interceptor has exhausted its
+// attempts, so the copy is a single soft, non-alarming message
+// ("No pudimos conectar...") that fits both a genuinely unreachable
+// backend and a real no-internet case, on every platform.
 import 'package:dio/dio.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:vendia_pos/services/app_error.dart';
@@ -43,14 +44,17 @@ void main() {
       }
     });
 
-    test('connectionError maps to a network error (mobile copy under VM tests)',
-        () {
+    test(
+        'connectionError maps to a network error with the soft '
+        'cold-start copy (Spec 012 FR-04)', () {
       final err = AppError.fromDioException(
         _dio(type: DioExceptionType.connectionError),
       );
       expect(err.type, AppErrorType.network);
-      // kIsWeb is false in `flutter test`, so the mobile branch is hit.
-      expect(err.message, 'Sin conexión a internet. Verifique su red.');
+      // Reached only after the retry interceptor gave up — soft, not
+      // alarming, and fits the real no-internet case too.
+      expect(err.message,
+          'No pudimos conectar. Revisa tu internet e intenta de nuevo.');
     });
 
     test('a 500 surfaces the backend "error" field — not a generic toast', () {
