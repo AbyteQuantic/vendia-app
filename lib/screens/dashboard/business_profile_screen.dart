@@ -5,6 +5,7 @@ import 'package:geocoding/geocoding.dart';
 import 'package:image_picker/image_picker.dart';
 import '../../services/api_service.dart';
 import '../../services/auth_service.dart';
+import '../../services/image_normalizer.dart';
 import '../../theme/app_theme.dart';
 
 /// Perfil del Negocio — Gerontodiseño: textos grandes, alto contraste,
@@ -198,6 +199,11 @@ class _BusinessProfileScreenState extends State<BusinessProfileScreen> {
         await AuthService().updateLogoUrl(newUrl);
         _showSnack('Logo actualizado');
       }
+    } on ImageNormalizationException catch (e) {
+      // Spec 010 (FR-04 / AC-05): the picked photo could not be decoded
+      // (e.g. a HEIC file the browser cannot handle). Show the clear,
+      // actionable Spanish message instead of a raw exception dump.
+      if (mounted) _showSnack(e.message, isError: true);
     } catch (e) {
       if (mounted) _showSnack('Error al subir logo: $e', isError: true);
     } finally {
