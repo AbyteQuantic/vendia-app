@@ -599,9 +599,14 @@ class ApiService {
       if (name != null && name.isNotEmpty) params['name'] = name;
       if (presentation != null && presentation.isNotEmpty) params['presentation'] = presentation;
       if (content != null && content.isNotEmpty) params['content'] = content;
+      // Spec 015 / FR-02: AI image ops are slow (Gemini ~27s + download +
+      // upload). The global receiveTimeout (60s) cut the request before the
+      // backend could answer. 140s > the backend's ~110s context window, so
+      // the client always receives the backend's response or error first.
       final response = await _dio.post(
         '/api/v1/products/$uuid/enhance',
         queryParameters: params.isEmpty ? null : params,
+        options: Options(receiveTimeout: const Duration(seconds: 140)),
       );
       return _extractData(response);
     } on DioException catch (e) {
@@ -618,9 +623,13 @@ class ApiService {
       if (presentation != null && presentation.isNotEmpty) params['presentation'] = presentation;
       if (content != null && content.isNotEmpty) params['content'] = content;
       if (barcode != null && barcode.isNotEmpty) params['barcode'] = barcode;
+      // Spec 015 / FR-02: same long-timeout treatment as enhanceProductPhoto
+      // — generating an image with Gemini can take longer than the 60s
+      // global receiveTimeout. 140s > the backend's ~110s context window.
       final response = await _dio.post(
         '/api/v1/products/$uuid/generate-image',
         queryParameters: params.isEmpty ? null : params,
+        options: Options(receiveTimeout: const Duration(seconds: 140)),
       );
       return _extractData(response);
     } on DioException catch (e) {
