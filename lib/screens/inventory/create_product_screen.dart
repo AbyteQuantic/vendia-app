@@ -1,3 +1,4 @@
+// Spec: specs/018-nuevo-producto-fixes/spec.md
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -43,6 +44,18 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
   String? _pendingUuid; // set after create, before enhance
   String? _pendingCatalogImageId; // set after enhance/generate, sent on save
   List<String> _catalogImages = []; // accepted images from catalog
+  // Spec 018 / FR-04: the product name the catalog strip was captured for.
+  // Once the typed name diverges from this, the strip is dropped so it can
+  // never show photos of an unrelated product (the "Llavero Kitty" -> alien
+  // keychains report). Empty when there is no catalog strip.
+  String _catalogSourceName = '';
+  // Spec 018 / FR-03: true once a suggested/AI/looked-up image is showing
+  // (as opposed to a photo the merchant took or picked). Such an image is
+  // cleared when the name diverges so it can't stay pinned to an old name.
+  bool _imageIsSuggested = false;
+  // The product name the suggested image was captured for. When the typed
+  // name no longer overlaps this, the suggested image is stale and dropped.
+  String _suggestedImageSourceName = '';
   bool _saving = false;
   bool _enhancing = false;
   bool _lookingUp = false;
@@ -68,12 +81,21 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
     {'value': 'unidad', 'label': 'Unidad', 'icon': '🔘'},
   ];
 
+  // Spec 018 / FR-02: stable key on the name field so its context can be
+  // scrolled into view above the keyboard via Scrollable.ensureVisible.
+  final _nameFieldKey = GlobalKey();
+
   @override
   void initState() {
     super.initState();
     _nameFocus.addListener(() {
       if (!_nameFocus.hasFocus) {
         _confirmNameField(unfocus: false);
+      } else {
+        // FR-02: when the name field gains focus the iOS keyboard slides
+        // up and covers the suggestion list. Scroll the form so the field
+        // — and the suggestions rendered right under it — stay visible.
+        _ensureNameFieldVisible();
       }
     });
     // Pre-fill SKU if coming from scanner
@@ -108,151 +130,170 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
   void _showSuggestionsOverlay() {
     _removeOverlay();
     if (_suggestions.isEmpty) return;
+    // FR-02: re-scroll so the field stays above the keyboard once the
+    // list is about to render under it.
+    _ensureNameFieldVisible();
 
     _overlayEntry = OverlayEntry(
-      builder: (context) => CompositedTransformFollower(
-        link: _nameLayerLink,
-        showWhenUnlinked: false,
-        offset: const Offset(0, 60),
-        child: Align(
-          alignment: Alignment.topLeft,
-          child: Padding(
-            padding: const EdgeInsets.only(top: 4),
-            child: SizedBox(
-              width: MediaQuery.of(context).size.width - 32,
-              child: Material(
-                elevation: 8,
-                shadowColor: Colors.black26,
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(16),
-                clipBehavior: Clip.antiAlias,
-                child: ConstrainedBox(
-                  constraints: const BoxConstraints(maxHeight: 300),
-                  child: ListView.builder(
-                    shrinkWrap: true,
-                    padding: const EdgeInsets.symmetric(vertical: 8),
-                    itemCount: _suggestions.length,
-                    itemBuilder: (_, i) {
-                      final s = _suggestions[i];
-                      // Subtitle: Presentación - Contenido (priority), fallback to brand
-                      final pres = s.presentation ?? '';
-                      final cont = s.content ?? '';
-                      final detail = [
-                        if (pres.isNotEmpty) pres,
-                        if (cont.isNotEmpty) cont,
-                      ].join(' - ');
-                      final subtitleText = detail.isNotEmpty
-                          ? detail
-                          : (s.brand.isNotEmpty ? s.brand : 'Sin especificar');
+      builder: (context) {
+        // Spec 018 / FR-02: cap the list height so it never extends
+        // behind the on-screen keyboard. `viewInsets.bottom` is the
+        // keyboard height; what is left below the field (~field bottom
+        // at offset 60) minus that inset is the visible room.
+        final media = MediaQuery.of(context);
+        const fieldBottomOffset = 60.0; // CompositedTransformFollower offset
+        final available = media.size.height -
+            media.viewInsets.bottom -
+            fieldBottomOffset -
+            24; // breathing room above the keyboard
+        final maxHeight = available.clamp(120.0, 300.0);
+        return CompositedTransformFollower(
+          link: _nameLayerLink,
+          showWhenUnlinked: false,
+          offset: const Offset(0, fieldBottomOffset),
+          child: Align(
+            alignment: Alignment.topLeft,
+            child: Padding(
+              padding: const EdgeInsets.only(top: 4),
+              child: SizedBox(
+                width: media.size.width - 32,
+                child: Material(
+                  elevation: 8,
+                  shadowColor: Colors.black26,
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(16),
+                  clipBehavior: Clip.antiAlias,
+                  child: ConstrainedBox(
+                    constraints: BoxConstraints(maxHeight: maxHeight),
+                    child: ListView.builder(
+                      shrinkWrap: true,
+                      padding: const EdgeInsets.symmetric(vertical: 8),
+                      itemCount: _suggestions.length,
+                      itemBuilder: (_, i) {
+                        final s = _suggestions[i];
+                        // Subtitle: Presentación - Contenido (priority), fallback to brand
+                        final pres = s.presentation ?? '';
+                        final cont = s.content ?? '';
+                        final detail = [
+                          if (pres.isNotEmpty) pres,
+                          if (cont.isNotEmpty) cont,
+                        ].join(' - ');
+                        final subtitleText = detail.isNotEmpty
+                            ? detail
+                            : (s.brand.isNotEmpty
+                                ? s.brand
+                                : 'Sin especificar');
 
-                      return InkWell(
-                        onTap: () => _selectSuggestion(s),
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 14, vertical: 10),
-                          child: Row(
-                            children: [
-                              // Image (strict 48x48)
-                              ClipRRect(
-                                borderRadius: BorderRadius.circular(8),
-                                child: Container(
-                                  width: 48,
-                                  height: 48,
-                                  color: Colors.grey.shade100,
-                                  child: s.imageUrl != null && s.imageUrl!.isNotEmpty
-                                      ? Image.network(
-                                          s.imageUrl!,
-                                          width: 48,
-                                          height: 48,
-                                          fit: BoxFit.contain,
-                                          errorBuilder: (_, __, ___) =>
-                                              _suggestionPlaceholder(),
-                                        )
-                                      : _suggestionPlaceholder(),
+                        return InkWell(
+                          onTap: () => _selectSuggestion(s),
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 14, vertical: 10),
+                            child: Row(
+                              children: [
+                                // Image (strict 48x48)
+                                ClipRRect(
+                                  borderRadius: BorderRadius.circular(8),
+                                  child: Container(
+                                    width: 48,
+                                    height: 48,
+                                    color: Colors.grey.shade100,
+                                    child: s.imageUrl != null &&
+                                            s.imageUrl!.isNotEmpty
+                                        ? Image.network(
+                                            s.imageUrl!,
+                                            width: 48,
+                                            height: 48,
+                                            fit: BoxFit.contain,
+                                            errorBuilder: (_, __, ___) =>
+                                                _suggestionPlaceholder(),
+                                          )
+                                        : _suggestionPlaceholder(),
+                                  ),
                                 ),
-                              ),
-                              const SizedBox(width: 12),
-                              // Title + Subtitle
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment:
-                                      CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      s.brand.isNotEmpty
-                                          ? '${s.name} (${s.brand})'
-                                          : s.name,
-                                      style: const TextStyle(
-                                        fontSize: 15,
-                                        fontWeight: FontWeight.w600,
-                                        color: AppTheme.textPrimary,
+                                const SizedBox(width: 12),
+                                // Title + Subtitle
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        s.brand.isNotEmpty
+                                            ? '${s.name} (${s.brand})'
+                                            : s.name,
+                                        style: const TextStyle(
+                                          fontSize: 15,
+                                          fontWeight: FontWeight.w600,
+                                          color: AppTheme.textPrimary,
+                                        ),
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
                                       ),
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
+                                      const SizedBox(height: 2),
+                                      Text(
+                                        subtitleText,
+                                        style: TextStyle(
+                                          fontSize: 14,
+                                          color: Colors.grey.shade700,
+                                        ),
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                // Source badge (pill style)
+                                if (s.source == 'user')
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(
+                                        horizontal: 8, vertical: 3),
+                                    decoration: BoxDecoration(
+                                      color: const Color(0xFF7C3AED)
+                                          .withValues(alpha: 0.1),
+                                      borderRadius: BorderRadius.circular(100),
                                     ),
-                                    const SizedBox(height: 2),
-                                    Text(
-                                      subtitleText,
+                                    child: const Text(
+                                      'VendIA',
                                       style: TextStyle(
-                                        fontSize: 14,
-                                        color: Colors.grey.shade700,
+                                        fontSize: 11,
+                                        color: Color(0xFF7C3AED),
+                                        fontWeight: FontWeight.w600,
                                       ),
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
                                     ),
-                                  ],
-                                ),
-                              ),
-                              const SizedBox(width: 8),
-                              // Source badge (pill style)
-                              if (s.source == 'user')
-                                Container(
-                                  padding: const EdgeInsets.symmetric(
-                                      horizontal: 8, vertical: 3),
-                                  decoration: BoxDecoration(
-                                    color: const Color(0xFF7C3AED)
-                                        .withValues(alpha: 0.1),
-                                    borderRadius: BorderRadius.circular(100),
-                                  ),
-                                  child: const Text(
-                                    'VendIA',
-                                    style: TextStyle(
-                                      fontSize: 11,
-                                      color: Color(0xFF7C3AED),
-                                      fontWeight: FontWeight.w600,
+                                  )
+                                else if (s.isLocal)
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(
+                                        horizontal: 8, vertical: 3),
+                                    decoration: BoxDecoration(
+                                      color: const Color(0xFF10B981)
+                                          .withValues(alpha: 0.08),
+                                      borderRadius: BorderRadius.circular(100),
+                                    ),
+                                    child: const Text(
+                                      'Mi tienda',
+                                      style: TextStyle(
+                                        fontSize: 11,
+                                        color: Color(0xFF0D8B5E),
+                                        fontWeight: FontWeight.w600,
+                                      ),
                                     ),
                                   ),
-                                )
-                              else if (s.isLocal)
-                                Container(
-                                  padding: const EdgeInsets.symmetric(
-                                      horizontal: 8, vertical: 3),
-                                  decoration: BoxDecoration(
-                                    color: const Color(0xFF10B981)
-                                        .withValues(alpha: 0.08),
-                                    borderRadius: BorderRadius.circular(100),
-                                  ),
-                                  child: const Text(
-                                    'Mi tienda',
-                                    style: TextStyle(
-                                      fontSize: 11,
-                                      color: Color(0xFF0D8B5E),
-                                      fontWeight: FontWeight.w600,
-                                    ),
-                                  ),
-                                ),
-                            ],
+                              ],
+                            ),
                           ),
-                        ),
-                      );
-                    },
+                        );
+                      },
+                    ),
                   ),
                 ),
               ),
             ),
           ),
-        ),
-      ),
+        );
+      },
     );
     Overlay.of(context).insert(_overlayEntry!);
   }
@@ -270,8 +311,73 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
     );
   }
 
+  /// Scrolls the form so the name field sits above the keyboard, leaving
+  /// room for the suggestion overlay rendered just below it (FR-02). Run
+  /// after a frame so the keyboard inset is already applied.
+  void _ensureNameFieldVisible() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final ctx = _nameFieldKey.currentContext;
+      if (ctx == null || !mounted) return;
+      Scrollable.ensureVisible(
+        ctx,
+        duration: const Duration(milliseconds: 300),
+        curve: Curves.easeOut,
+        // Pull the field toward the top of the viewport so the
+        // suggestion list below it does not fall behind the keyboard.
+        alignment: 0.05,
+      );
+    });
+  }
+
+  /// Drops a suggested/AI/looked-up image and the catalog strip when the
+  /// typed name no longer matches what they were captured for (FR-03/04).
+  ///
+  /// Never touches `_photoFile`: a photo the merchant took or picked is
+  /// theirs and always wins (D2). Only suggested imagery is volatile.
+  void _dropStaleSuggestedImage(String typedName) {
+    if (_photoFile != null) return; // merchant photo — leave it alone
+
+    var changed = false;
+
+    // A suggested URL (catalog/AI/barcode lookup) is pinned to the name it
+    // was captured for. Once the typed name diverges from that name, the
+    // image is stale and unrelated — clear it so the thumbnail reflects the
+    // current product. A small edit ("Kitty" -> "Kitty Rosado") keeps it.
+    if (_imageIsSuggested &&
+        _photoUrl != null &&
+        !CreateProductImagePolicy.catalogStillMatchesName(
+          catalogSourceName: _suggestedImageSourceName,
+          currentName: typedName,
+        )) {
+      _photoUrl = null;
+      _pendingCatalogImageId = null;
+      _imageIsSuggested = false;
+      _suggestedImageSourceName = '';
+      changed = true;
+    }
+
+    // The catalog strip belongs to a specific product name. Once the typed
+    // name diverges from it, the strip would show unrelated photos — drop it.
+    if (_catalogImages.isNotEmpty &&
+        !CreateProductImagePolicy.catalogStillMatchesName(
+          catalogSourceName: _catalogSourceName,
+          currentName: typedName,
+        )) {
+      _catalogImages = [];
+      _catalogSourceName = '';
+      changed = true;
+    }
+
+    if (changed) setState(() {});
+  }
+
   void _onNameChanged(String query) {
     _debounce?.cancel();
+    // FR-03/FR-04: the name now describes a (possibly) different product.
+    // Drop any image/catalog data that belonged to an earlier name so the
+    // screen never keeps a stale, unrelated photo pinned. A photo the
+    // merchant took or picked is never touched — D2, it always wins.
+    _dropStaleSuggestedImage(query);
     if (query.trim().length < 3) {
       _suggestions = [];
       _searching = false;
@@ -374,7 +480,10 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
       // Merge: local first, then remote (deduplicated)
       final seen = <String>{};
       final merged = <_ProductSuggestion>[];
-      for (final s in [..._suggestions.where((s) => s.isLocal), ...remoteResults]) {
+      for (final s in [
+        ..._suggestions.where((s) => s.isLocal),
+        ...remoteResults
+      ]) {
         final key = s.name.toLowerCase();
         if (seen.add(key)) merged.add(s);
         if (merged.length >= 6) break;
@@ -414,18 +523,21 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
   }
 
   void _selectSuggestion(_ProductSuggestion s) {
-    final fullName =
-        s.brand.isNotEmpty ? '${s.name} (${s.brand})' : s.name;
+    final fullName = s.brand.isNotEmpty ? '${s.name} (${s.brand})' : s.name;
     _nameCtrl.text = fullName;
     _removeOverlay();
     _suggestions = [];
 
-    final hadUserPhoto = _photoFile != null;
-
     setState(() {
-      // Auto-fill image (only if user hasn't taken their own photo)
-      if (!hadUserPhoto && s.imageUrl != null && s.imageUrl!.isNotEmpty) {
+      // Auto-fill image — D2: only when the merchant has not taken/picked
+      // their own photo; their photo always wins over a suggested one.
+      if (CreateProductImagePolicy.canApplySuggestedImage(
+        hasMerchantPhoto: _photoFile != null,
+        suggestedUrl: s.imageUrl,
+      )) {
         _photoUrl = s.imageUrl;
+        _imageIsSuggested = true;
+        _suggestedImageSourceName = fullName;
       }
 
       // Auto-fill presentation & content
@@ -441,8 +553,10 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
         _skuCtrl.text = s.barcode!;
       }
 
-      // Store catalog images for selection
+      // Store catalog images for selection, tagged with the name they
+      // belong to so a later name change can drop them (FR-04).
       _catalogImages = s.images;
+      _catalogSourceName = s.images.isEmpty ? '' : fullName;
 
       // Show "data loaded" indicator
       _dataFromCatalog = true;
@@ -456,17 +570,33 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
 
   // ── Photo ──────────────────────────────────────────────────────────────────
 
-  Future<void> _takePhoto() async {
+  Future<void> _takePhoto() => _pickPhoto(ImageSource.camera);
+
+  /// Spec 018 / FR-01: lets the merchant choose a photo from the phone
+  /// album. "Editar Producto" already offers this; "Nuevo Producto" must
+  /// too, so the merchant can hand the AI a real reference photo.
+  Future<void> _pickFromGallery() => _pickPhoto(ImageSource.gallery);
+
+  /// Shared photo picker for camera and gallery. The picked [XFile] is
+  /// kept as-is (not a path string) so the preview and the byte-based
+  /// upload work on web too — the cross-platform pattern of Spec 013.
+  Future<void> _pickPhoto(ImageSource source) async {
     HapticFeedback.lightImpact();
     final picker = ImagePicker();
     final photo = await picker.pickImage(
-      source: ImageSource.camera,
+      source: source,
       imageQuality: 80,
     );
     if (photo != null && mounted) {
       setState(() {
+        // D2 — a photo the merchant picked always wins: drop any
+        // suggested/generated URL and its catalog metadata so the
+        // chosen photo is the one that gets saved.
         _photoFile = photo;
-        _photoUrl = null; // local photo takes precedence
+        _photoUrl = null;
+        _pendingCatalogImageId = null;
+        _imageIsSuggested = false;
+        _suggestedImageSourceName = '';
       });
     }
   }
@@ -476,7 +606,9 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
     final missingFields = <String>[];
     if (_nameCtrl.text.trim().isEmpty) missingFields.add('nombre');
     if (_presentation.isEmpty) missingFields.add('presentación');
-    if (_contentCtrl.text.trim().isEmpty) missingFields.add('contenido (ej: 350ml)');
+    if (_contentCtrl.text.trim().isEmpty) {
+      missingFields.add('contenido (ej: 350ml)');
+    }
 
     if (missingFields.isNotEmpty) {
       if (!mounted) return;
@@ -541,7 +673,9 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
       // is shown to the user in Spanish.
       await api.createProduct({
         'id': _pendingUuid,
-        'name': _nameCtrl.text.trim().isEmpty ? 'Producto temporal' : _nameCtrl.text.trim(),
+        'name': _nameCtrl.text.trim().isEmpty
+            ? 'Producto temporal'
+            : _nameCtrl.text.trim(),
         'price': CurrencyUtils.parseToDouble(_sellPriceCtrl.text),
         'stock': int.tryParse(_quantityCtrl.text.trim()) ?? 1,
         'image_url': _photoUrl,
@@ -563,6 +697,11 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
         setState(() {
           _photoUrl = url;
           _photoFile = null;
+          // FR-03: an AI image is generated for the *current* name — mark
+          // it suggested and tag it with that name so that, if the merchant
+          // later edits the name, the stale render is dropped, not pinned.
+          _imageIsSuggested = true;
+          _suggestedImageSourceName = _nameCtrl.text.trim();
           if (catalogImgId != null && catalogImgId.isNotEmpty) {
             _pendingCatalogImageId = catalogImgId;
           }
@@ -616,8 +755,18 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
         _nameCtrl.text = name;
       }
       setState(() {
-        if (imageUrl != null && imageUrl.isNotEmpty && _photoFile == null) {
+        // D2 — only adopt the looked-up image if the merchant has no photo
+        // of their own. Tag it as suggested so a later name edit clears it.
+        if (CreateProductImagePolicy.canApplySuggestedImage(
+          hasMerchantPhoto: _photoFile != null,
+          suggestedUrl: imageUrl,
+        )) {
           _photoUrl = imageUrl;
+          _imageIsSuggested = true;
+          // Tie the image to the product name from the lookup so a later
+          // name edit can detect when it has gone stale.
+          _suggestedImageSourceName =
+              (name != null && name.isNotEmpty) ? name : _nameCtrl.text.trim();
         }
       });
     } catch (_) {
@@ -632,8 +781,7 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
   /// Formats a DateTime as ISO `YYYY-MM-DD` for wire transport (backend
   /// Postgres DATE column + local Isar). Kept as a local helper to avoid
   /// the `intl` dependency for a single-purpose format.
-  String _isoDate(DateTime d) =>
-      '${d.year.toString().padLeft(4, '0')}-'
+  String _isoDate(DateTime d) => '${d.year.toString().padLeft(4, '0')}-'
       '${d.month.toString().padLeft(2, '0')}-'
       '${d.day.toString().padLeft(2, '0')}';
 
@@ -641,8 +789,18 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
   /// abbreviation beats a numeric DD/MM/YY that people mis-read.
   String _displayExpiry(DateTime d) {
     const months = [
-      'ene', 'feb', 'mar', 'abr', 'may', 'jun',
-      'jul', 'ago', 'sep', 'oct', 'nov', 'dic',
+      'ene',
+      'feb',
+      'mar',
+      'abr',
+      'may',
+      'jun',
+      'jul',
+      'ago',
+      'sep',
+      'oct',
+      'nov',
+      'dic',
     ];
     return '${d.day} ${months[d.month - 1]} ${d.year}';
   }
@@ -858,698 +1016,740 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
         if (shouldPop && context.mounted) Navigator.of(context).pop();
       },
       child: Scaffold(
-      backgroundColor: const Color(0xFFF5F7FA),
-      appBar: AppBar(
         backgroundColor: const Color(0xFFF5F7FA),
-        elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back_rounded,
-              color: AppTheme.textPrimary, size: 28),
-          tooltip: 'Volver',
-          onPressed: () async {
-            final shouldPop = await _confirmDiscard();
-            if (shouldPop && context.mounted) Navigator.of(context).pop();
-          },
-        ),
-        title: const Text(
-          'Nuevo Producto',
-          style: TextStyle(
-            fontSize: 22,
-            fontWeight: FontWeight.bold,
-            color: AppTheme.textPrimary,
+        appBar: AppBar(
+          backgroundColor: const Color(0xFFF5F7FA),
+          elevation: 0,
+          leading: IconButton(
+            icon: const Icon(Icons.arrow_back_rounded,
+                color: AppTheme.textPrimary, size: 28),
+            tooltip: 'Volver',
+            onPressed: () async {
+              final shouldPop = await _confirmDiscard();
+              if (shouldPop && context.mounted) Navigator.of(context).pop();
+            },
+          ),
+          title: const Text(
+            'Nuevo Producto',
+            style: TextStyle(
+              fontSize: 22,
+              fontWeight: FontWeight.bold,
+              color: AppTheme.textPrimary,
+            ),
           ),
         ),
-      ),
-      // Fixed Cancel + Save buttons at the bottom
-      bottomNavigationBar: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
-          child: Row(
-            children: [
-              // Cancel button
-              Expanded(
-                flex: 2,
-                child: SizedBox(
-                  height: 56,
-                  child: OutlinedButton(
-                    onPressed: () async {
-                      final shouldPop = await _confirmDiscard();
-                      if (shouldPop && context.mounted) Navigator.of(context).pop();
-                    },
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: AppTheme.textSecondary,
-                      side: const BorderSide(color: AppTheme.borderColor),
-                      shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(16)),
+        // Fixed Cancel + Save buttons at the bottom
+        bottomNavigationBar: SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+            child: Row(
+              children: [
+                // Cancel button
+                Expanded(
+                  flex: 2,
+                  child: SizedBox(
+                    height: 56,
+                    child: OutlinedButton(
+                      onPressed: () async {
+                        final shouldPop = await _confirmDiscard();
+                        if (shouldPop && context.mounted) {
+                          Navigator.of(context).pop();
+                        }
+                      },
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: AppTheme.textSecondary,
+                        side: const BorderSide(color: AppTheme.borderColor),
+                        shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(16)),
+                      ),
+                      child: const Text('Cancelar',
+                          style: TextStyle(
+                              fontSize: 17, fontWeight: FontWeight.w600)),
                     ),
-                    child: const Text('Cancelar',
-                        style: TextStyle(fontSize: 17, fontWeight: FontWeight.w600)),
                   ),
                 ),
-              ),
-              const SizedBox(width: 10),
-              // Save button
-              Expanded(
-                flex: 3,
-                child: SizedBox(
-                  height: 56,
-                  child: DecoratedBox(
+                const SizedBox(width: 10),
+                // Save button
+                Expanded(
+                  flex: 3,
+                  child: SizedBox(
+                    height: 56,
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(
+                        gradient: const LinearGradient(
+                          colors: [Color(0xFF667EEA), Color(0xFF764BA2)],
+                        ),
+                        borderRadius: BorderRadius.circular(16),
+                        boxShadow: [
+                          BoxShadow(
+                            color:
+                                const Color(0xFF667EEA).withValues(alpha: 0.3),
+                            blurRadius: 10,
+                            offset: const Offset(0, 4),
+                          ),
+                        ],
+                      ),
+                      child: ElevatedButton.icon(
+                        onPressed: _saving ? null : _save,
+                        icon: _saving
+                            ? const SizedBox(
+                                width: 20,
+                                height: 20,
+                                child: CircularProgressIndicator(
+                                    color: Colors.white, strokeWidth: 2.5))
+                            : const Icon(Icons.save_rounded,
+                                size: 20, color: Colors.white),
+                        label: Text(
+                          _saving ? 'Guardando...' : 'Guardar',
+                          style: const TextStyle(
+                              fontSize: 19,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.white),
+                        ),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.transparent,
+                          shadowColor: Colors.transparent,
+                          minimumSize: const Size(0, 56),
+                          shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(16)),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        body: SafeArea(
+          child: Form(
+            key: _formKey,
+            child: ListView(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+              children: [
+                // ═══════════════════════════════════════════════════════════
+                // HERO: Scan Barcode Button
+                // ═══════════════════════════════════════════════════════════
+                GestureDetector(
+                  onTap: _lookingUp ? null : _scanBarcode,
+                  child: Container(
+                    height: 64,
                     decoration: BoxDecoration(
                       gradient: const LinearGradient(
-                        colors: [Color(0xFF667EEA), Color(0xFF764BA2)],
+                        colors: [Color(0xFF667EEA), Color(0xFF5A67D8)],
                       ),
-                      borderRadius: BorderRadius.circular(16),
+                      borderRadius: BorderRadius.circular(20),
                       boxShadow: [
                         BoxShadow(
                           color: const Color(0xFF667EEA).withValues(alpha: 0.3),
-                          blurRadius: 10,
+                          blurRadius: 12,
                           offset: const Offset(0, 4),
                         ),
                       ],
                     ),
-                    child: ElevatedButton.icon(
-                      onPressed: _saving ? null : _save,
-                      icon: _saving
-                          ? const SizedBox(
-                              width: 20, height: 20,
-                              child: CircularProgressIndicator(
-                                  color: Colors.white, strokeWidth: 2.5))
-                          : const Icon(Icons.save_rounded,
-                              size: 20, color: Colors.white),
-                      label: Text(
-                        _saving ? 'Guardando...' : 'Guardar',
-                        style: const TextStyle(
-                            fontSize: 19, fontWeight: FontWeight.bold,
-                            color: Colors.white),
-                      ),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.transparent,
-                        shadowColor: Colors.transparent,
-                        minimumSize: const Size(0, 56),
-                        shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(16)),
-                      ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        if (_lookingUp)
+                          const SizedBox(
+                            width: 22,
+                            height: 22,
+                            child: CircularProgressIndicator(
+                                strokeWidth: 2.5, color: Colors.white),
+                          )
+                        else
+                          const Icon(Icons.qr_code_scanner_rounded,
+                              color: Colors.white, size: 26),
+                        const SizedBox(width: 12),
+                        Text(
+                          _lookingUp
+                              ? 'Buscando producto...'
+                              : 'Escanear Código de Barras',
+                          style: const TextStyle(
+                            fontSize: 20,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.white,
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                 ),
-              ),
-            ],
-          ),
-        ),
-      ),
-      body: SafeArea(
-        child: Form(
-          key: _formKey,
-          child: ListView(
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
-            children: [
-              // ═══════════════════════════════════════════════════════════
-              // HERO: Scan Barcode Button
-              // ═══════════════════════════════════════════════════════════
-              GestureDetector(
-                onTap: _lookingUp ? null : _scanBarcode,
-                child: Container(
-                  height: 64,
-                  decoration: BoxDecoration(
-                    gradient: const LinearGradient(
-                      colors: [Color(0xFF667EEA), Color(0xFF5A67D8)],
-                    ),
-                    borderRadius: BorderRadius.circular(20),
-                    boxShadow: [
-                      BoxShadow(
-                        color: const Color(0xFF667EEA).withValues(alpha: 0.3),
-                        blurRadius: 12,
-                        offset: const Offset(0, 4),
-                      ),
-                    ],
-                  ),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
+                const SizedBox(height: 6),
+                const Center(
+                  child: Text('Escanee para auto-completar los datos',
+                      style: TextStyle(
+                          fontSize: 14, color: AppTheme.textSecondary)),
+                ),
+
+                const SizedBox(height: 20),
+
+                // ═══════════════════════════════════════════════════════════
+                // CARD 1: Identidad Visual y Nombre
+                // ═══════════════════════════════════════════════════════════
+                _card(children: [
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      if (_lookingUp)
-                        const SizedBox(
-                          width: 22, height: 22,
-                          child: CircularProgressIndicator(
-                              strokeWidth: 2.5, color: Colors.white),
-                        )
-                      else
-                        const Icon(Icons.qr_code_scanner_rounded,
-                            color: Colors.white, size: 26),
-                      const SizedBox(width: 12),
-                      Text(
-                        _lookingUp ? 'Buscando producto...' : 'Escanear Código de Barras',
-                        style: const TextStyle(
-                          fontSize: 20, fontWeight: FontWeight.bold, color: Colors.white,
+                      // Photo thumbnail (110x110)
+                      GestureDetector(
+                        onTap: _takePhoto,
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(16),
+                          child: Container(
+                            width: 110,
+                            height: 110,
+                            decoration: BoxDecoration(
+                              color: AppTheme.surfaceGrey,
+                              borderRadius: BorderRadius.circular(16),
+                            ),
+                            child: _buildPhotoContent(),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 14),
+                      // Action buttons column
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            // Spec 018 / FR-01: camera + gallery side by side,
+                            // matching "Editar Producto". Two compact buttons
+                            // keep the card short on a 360dp screen.
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: _actionButton(
+                                    key: const Key('btn_take_photo'),
+                                    label: 'Tomar foto',
+                                    icon: Icons.camera_alt_rounded,
+                                    color: AppTheme.primary,
+                                    onTap: _takePhoto,
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: _actionButton(
+                                    key: const Key('btn_pick_gallery'),
+                                    label: 'Galería',
+                                    icon: Icons.photo_library_rounded,
+                                    color: AppTheme.success,
+                                    onTap: _pickFromGallery,
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 8),
+                            _actionButton(
+                              label: _enhancing
+                                  ? (hasPhoto ? 'Mejorando...' : 'Generando...')
+                                  : (hasPhoto
+                                      ? 'Mejorar con IA'
+                                      : 'Generar con IA'),
+                              icon: _enhancing
+                                  ? null
+                                  : (hasPhoto
+                                      ? Icons.auto_fix_high_rounded
+                                      : Icons.auto_awesome_rounded),
+                              color: const Color(0xFF7C3AED),
+                              loading: _enhancing,
+                              onTap:
+                                  _enhancing ? null : _enhanceOrGeneratePhoto,
+                            ),
+                          ],
                         ),
                       ),
                     ],
                   ),
-                ),
-              ),
-              const SizedBox(height: 6),
-              const Center(
-                child: Text('Escanee para auto-completar los datos',
-                    style: TextStyle(fontSize: 14, color: AppTheme.textSecondary)),
-              ),
 
-              const SizedBox(height: 20),
-
-              // ═══════════════════════════════════════════════════════════
-              // CARD 1: Identidad Visual y Nombre
-              // ═══════════════════════════════════════════════════════════
-              _card(children: [
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // Photo thumbnail (110x110)
-                    GestureDetector(
-                      onTap: _takePhoto,
-                      child: ClipRRect(
-                        borderRadius: BorderRadius.circular(16),
-                        child: Container(
-                          width: 110,
-                          height: 110,
-                          decoration: BoxDecoration(
-                            color: AppTheme.surfaceGrey,
-                            borderRadius: BorderRadius.circular(16),
-                          ),
-                          child: _buildPhotoContent(),
-                        ),
+                  // ── Catalog image options ─────────────────────────────────
+                  if (_catalogImages.length > 1) ...[
+                    const SizedBox(height: 12),
+                    const Text(
+                      'Fotos del catálogo',
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                        color: AppTheme.textSecondary,
                       ),
                     ),
-                    const SizedBox(width: 14),
-                    // Action buttons column
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                    const SizedBox(height: 8),
+                    SizedBox(
+                      height: 72,
+                      child: ListView.separated(
+                        scrollDirection: Axis.horizontal,
+                        itemCount: _catalogImages.length,
+                        separatorBuilder: (_, __) => const SizedBox(width: 10),
+                        itemBuilder: (context, index) {
+                          final url = _catalogImages[index];
+                          final isSelected = _photoUrl == url;
+                          return GestureDetector(
+                            onTap: () {
+                              HapticFeedback.lightImpact();
+                              setState(() {
+                                // A catalog photo is tied to the catalog
+                                // entry, not a merchant photo — mark it
+                                // suggested and tag it with the catalog name
+                                // so it drops if the typed name diverges.
+                                _photoUrl = url;
+                                _photoFile = null;
+                                _imageIsSuggested = true;
+                                _suggestedImageSourceName = _catalogSourceName;
+                              });
+                            },
+                            child: Container(
+                              width: 72,
+                              height: 72,
+                              decoration: BoxDecoration(
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(
+                                  color: isSelected
+                                      ? AppTheme.primary
+                                      : AppTheme.borderColor,
+                                  width: isSelected ? 2.5 : 1,
+                                ),
+                              ),
+                              child: ClipRRect(
+                                borderRadius: BorderRadius.circular(10),
+                                child: Image.network(url,
+                                    fit: BoxFit.contain,
+                                    errorBuilder: (_, __, ___) => const Icon(
+                                        Icons.broken_image_rounded,
+                                        size: 24,
+                                        color: AppTheme.textSecondary)),
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                  ],
+
+                  const SizedBox(height: 16),
+
+                  // ── Product name with autocomplete ────────────────────────
+                  _fieldLabel('Nombre del producto'),
+                  const SizedBox(height: 6),
+                  CompositedTransformTarget(
+                    link: _nameLayerLink,
+                    child: TextFormField(
+                      key: _nameFieldKey,
+                      controller: _nameCtrl,
+                      focusNode: _nameFocus,
+                      style: const TextStyle(fontSize: 18),
+                      textInputAction: TextInputAction.next,
+                      onChanged: _onNameChanged,
+                      onFieldSubmitted: (_) => _confirmNameField(),
+                      decoration: InputDecoration(
+                        hintText: 'Buscar o escribir nombre...',
+                        hintStyle: TextStyle(
+                          color: Colors.grey.shade400,
+                          fontWeight: FontWeight.w400,
+                          fontStyle: FontStyle.italic,
+                        ),
+                        prefixIcon: const Icon(Icons.search_rounded,
+                            color: AppTheme.primary, size: 22),
+                        suffixIcon: _searching
+                            ? const Padding(
+                                padding: EdgeInsets.all(12),
+                                child: SizedBox(
+                                  width: 18,
+                                  height: 18,
+                                  child: CircularProgressIndicator(
+                                      strokeWidth: 2, color: AppTheme.primary),
+                                ),
+                              )
+                            : null,
+                        contentPadding: const EdgeInsets.symmetric(
+                            vertical: 12, horizontal: 12),
+                      ),
+                      validator: (v) {
+                        if (v == null || v.trim().isEmpty) {
+                          return 'Ingrese el nombre';
+                        }
+                        return null;
+                      },
+                    ),
+                  ),
+                ]),
+
+                const SizedBox(height: 14),
+
+                // ═══════════════════════════════════════════════════════════
+                // CARD 2: SKU, Presentación, Contenido
+                // ═══════════════════════════════════════════════════════════
+                _card(children: [
+                  // ── "Data loaded from catalog" indicator ──────────────────
+                  if (_dataFromCatalog) ...[
+                    Container(
+                      margin: const EdgeInsets.only(bottom: 12),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 14, vertical: 8),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF7C3AED).withValues(alpha: 0.08),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                            color:
+                                const Color(0xFF7C3AED).withValues(alpha: 0.2)),
+                      ),
+                      child: const Row(
                         children: [
-                          _actionButton(
-                            label: 'Tomar foto',
-                            icon: Icons.camera_alt_rounded,
-                            color: AppTheme.primary,
-                            onTap: _takePhoto,
-                          ),
-                          const SizedBox(height: 8),
-                          _actionButton(
-                            label: _enhancing
-                                ? (hasPhoto ? 'Mejorando...' : 'Generando...')
-                                : (hasPhoto ? 'Mejorar con IA' : 'Generar con IA'),
-                            icon: _enhancing
-                                ? null
-                                : (hasPhoto ? Icons.auto_fix_high_rounded : Icons.auto_awesome_rounded),
-                            color: const Color(0xFF7C3AED),
-                            loading: _enhancing,
-                            onTap: _enhancing ? null : _enhanceOrGeneratePhoto,
+                          Icon(Icons.auto_awesome_rounded,
+                              size: 18, color: Color(0xFF7C3AED)),
+                          SizedBox(width: 8),
+                          Text(
+                            'Datos cargados del catálogo',
+                            style: TextStyle(
+                              fontSize: 15,
+                              fontWeight: FontWeight.w600,
+                              color: Color(0xFF7C3AED),
+                            ),
                           ),
                         ],
                       ),
                     ),
                   ],
-                ),
 
-                // ── Catalog image options ─────────────────────────────────
-                if (_catalogImages.length > 1) ...[
-                  const SizedBox(height: 12),
-                  const Text(
-                    'Fotos del catálogo',
-                    style: TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w600,
-                      color: AppTheme.textSecondary,
+                  // ── SKU / Barcode ─────────────────────────────────────────
+                  _fieldLabel('Codigo SKU / Barras'),
+                  const SizedBox(height: 6),
+                  TextFormField(
+                    controller: _skuCtrl,
+                    keyboardType: TextInputType.number,
+                    style: const TextStyle(fontSize: 18),
+                    textInputAction: TextInputAction.next,
+                    onChanged: (v) {
+                      if (v.trim().isNotEmpty) {
+                        setState(() =>
+                            _skuError = BarcodeValidator.validate(v.trim()));
+                      } else {
+                        setState(() => _skuError = null);
+                      }
+                    },
+                    decoration: InputDecoration(
+                      hintText: 'Ej: 7702535011119',
+                      hintStyle: TextStyle(
+                        color: Colors.grey.shade400,
+                        fontWeight: FontWeight.w400,
+                        fontStyle: FontStyle.italic,
+                      ),
+                      prefixIcon: const Icon(Icons.qr_code_rounded,
+                          color: AppTheme.textSecondary, size: 22),
+                      errorText: _skuError,
+                      suffixIcon: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          IconButton(
+                            onPressed: _scanBarcode,
+                            icon: const Icon(Icons.qr_code_scanner_rounded,
+                                color: AppTheme.success, size: 22),
+                            tooltip: 'Escanear código',
+                          ),
+                          IconButton(
+                            onPressed: _generateSku,
+                            icon: const Icon(Icons.auto_fix_high_rounded,
+                                color: Color(0xFF7C3AED), size: 22),
+                            tooltip: 'Generar SKU interno',
+                          ),
+                        ],
+                      ),
+                      contentPadding: const EdgeInsets.symmetric(
+                          vertical: 12, horizontal: 12),
                     ),
                   ),
-                  const SizedBox(height: 8),
+                  const SizedBox(height: 14),
+
+                  // ── Presentation chips ────────────────────────────────────
+                  _fieldLabel('Presentación'),
+                  const SizedBox(height: 6),
                   SizedBox(
-                    height: 72,
+                    height: 48,
                     child: ListView.separated(
                       scrollDirection: Axis.horizontal,
-                      itemCount: _catalogImages.length,
-                      separatorBuilder: (_, __) => const SizedBox(width: 10),
-                      itemBuilder: (context, index) {
-                        final url = _catalogImages[index];
-                        final isSelected = _photoUrl == url;
+                      itemCount: _presentationOptions.length,
+                      separatorBuilder: (_, __) => const SizedBox(width: 6),
+                      itemBuilder: (_, i) {
+                        final opt = _presentationOptions[i];
+                        final selected = _presentation == opt['value'];
                         return GestureDetector(
-                          onTap: () {
-                            HapticFeedback.lightImpact();
-                            setState(() {
-                              _photoUrl = url;
-                              _photoFile = null;
-                            });
-                          },
-                          child: Container(
-                            width: 72,
-                            height: 72,
+                          onTap: () =>
+                              setState(() => _presentation = opt['value']!),
+                          child: AnimatedContainer(
+                            duration: const Duration(milliseconds: 200),
+                            padding: const EdgeInsets.symmetric(horizontal: 12),
                             decoration: BoxDecoration(
+                              color: selected
+                                  ? AppTheme.primary.withValues(alpha: 0.12)
+                                  : Colors.white,
                               borderRadius: BorderRadius.circular(12),
                               border: Border.all(
-                                color: isSelected
+                                color: selected
                                     ? AppTheme.primary
                                     : AppTheme.borderColor,
-                                width: isSelected ? 2.5 : 1,
+                                width: selected ? 2 : 1,
                               ),
                             ),
-                            child: ClipRRect(
-                              borderRadius: BorderRadius.circular(10),
-                              child: Image.network(url,
-                                  fit: BoxFit.contain,
-                                  errorBuilder: (_, __, ___) => const Icon(
-                                      Icons.broken_image_rounded,
-                                      size: 24,
-                                      color: AppTheme.textSecondary)),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Text(opt['icon']!,
+                                    style: const TextStyle(fontSize: 18)),
+                                const SizedBox(width: 4),
+                                Text(
+                                  opt['label']!,
+                                  style: TextStyle(
+                                    fontSize: 14,
+                                    fontWeight: selected
+                                        ? FontWeight.w700
+                                        : FontWeight.w500,
+                                    color: selected
+                                        ? AppTheme.primary
+                                        : AppTheme.textPrimary,
+                                  ),
+                                ),
+                              ],
                             ),
                           ),
                         );
                       },
                     ),
                   ),
-                ],
+                  const SizedBox(height: 14),
 
-                const SizedBox(height: 16),
-
-                // ── Product name with autocomplete ────────────────────────
-                _fieldLabel('Nombre del producto'),
-                const SizedBox(height: 6),
-                CompositedTransformTarget(
-                  link: _nameLayerLink,
-                  child: TextFormField(
-                    controller: _nameCtrl,
-                    focusNode: _nameFocus,
+                  // ── Content / gramaje ─────────────────────────────────────
+                  _fieldLabel('Contenido'),
+                  const SizedBox(height: 6),
+                  TextFormField(
+                    controller: _contentCtrl,
+                    keyboardType: TextInputType.text,
                     style: const TextStyle(fontSize: 18),
                     textInputAction: TextInputAction.next,
-                    onChanged: _onNameChanged,
-                    onFieldSubmitted: (_) => _confirmNameField(),
-                    decoration: InputDecoration(
-                      hintText: 'Buscar o escribir nombre...',
-                      hintStyle: TextStyle(
-                        color: Colors.grey.shade400,
-                        fontWeight: FontWeight.w400,
-                        fontStyle: FontStyle.italic,
-                      ),
-                      prefixIcon: const Icon(Icons.search_rounded,
-                          color: AppTheme.primary, size: 22),
-                      suffixIcon: _searching
-                          ? const Padding(
-                              padding: EdgeInsets.all(12),
-                              child: SizedBox(
-                                width: 18,
-                                height: 18,
-                                child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                    color: AppTheme.primary),
-                              ),
-                            )
-                          : null,
-                      contentPadding: const EdgeInsets.symmetric(
-                          vertical: 12, horizontal: 12),
+                    decoration: _inputDecoration(
+                      hint: 'Ej: 350ml, 500g, 1L, 6 unidades',
+                      icon: Icons.scale_rounded,
+                      iconColor: AppTheme.textSecondary,
                     ),
-                    validator: (v) {
-                      if (v == null || v.trim().isEmpty) {
-                        return 'Ingrese el nombre';
-                      }
-                      return null;
-                    },
                   ),
-                ),
-              ]),
+                ]),
 
-              const SizedBox(height: 14),
+                const SizedBox(height: 14),
 
-              // ═══════════════════════════════════════════════════════════
-              // CARD 2: SKU, Presentación, Contenido
-              // ═══════════════════════════════════════════════════════════
-              _card(children: [
-                // ── "Data loaded from catalog" indicator ──────────────────
-                if (_dataFromCatalog) ...[
+                // ═══════════════════════════════════════════════════════════
+                // CARD 3: Precios y Cantidad
+                // ═══════════════════════════════════════════════════════════
+                _card(children: [
+                  // ── Prices row ─────────────────────────────────────────────
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            _fieldLabel('Precio compra'),
+                            const SizedBox(height: 6),
+                            TextFormField(
+                              controller: _buyPriceCtrl,
+                              keyboardType: TextInputType.number,
+                              style: const TextStyle(fontSize: 18),
+                              textInputAction: TextInputAction.next,
+                              inputFormatters: const [CurrencyInputFormatter()],
+                              decoration: _inputDecoration(
+                                hint: '\$0',
+                                icon: Icons.attach_money_rounded,
+                                iconColor: AppTheme.textSecondary,
+                              ),
+                              validator: (v) {
+                                if (v == null || v.isEmpty) return 'Requerido';
+                                return null;
+                              },
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            _fieldLabel('Precio venta'),
+                            const SizedBox(height: 6),
+                            TextFormField(
+                              controller: _sellPriceCtrl,
+                              keyboardType: TextInputType.number,
+                              style: const TextStyle(
+                                fontSize: 18,
+                                color: Color(0xFF10B981),
+                                fontWeight: FontWeight.bold,
+                              ),
+                              textInputAction: TextInputAction.next,
+                              inputFormatters: const [CurrencyInputFormatter()],
+                              decoration: _inputDecoration(
+                                hint: '\$0',
+                                icon: Icons.attach_money_rounded,
+                                iconColor: const Color(0xFF10B981),
+                              ),
+                              validator: (v) {
+                                if (v == null || v.isEmpty) return 'Requerido';
+                                return null;
+                              },
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+
+                  const SizedBox(height: 14),
+
+                  // ── Quantity stepper (unified component) ──────────────────
+                  _fieldLabel('Cantidad'),
+                  const SizedBox(height: 8),
                   Container(
-                    margin: const EdgeInsets.only(bottom: 12),
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                    height: 60,
                     decoration: BoxDecoration(
-                      color: const Color(0xFF7C3AED).withValues(alpha: 0.08),
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(
-                          color:
-                              const Color(0xFF7C3AED).withValues(alpha: 0.2)),
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(color: AppTheme.borderColor),
                     ),
-                    child: const Row(
+                    child: Row(
                       children: [
-                        Icon(Icons.auto_awesome_rounded,
-                            size: 18, color: Color(0xFF7C3AED)),
-                        SizedBox(width: 8),
-                        Text(
-                          'Datos cargados del catálogo',
-                          style: TextStyle(
-                            fontSize: 15,
-                            fontWeight: FontWeight.w600,
-                            color: Color(0xFF7C3AED),
+                        // Minus button
+                        GestureDetector(
+                          onTap: () {
+                            final c = int.tryParse(_quantityCtrl.text) ?? 1;
+                            if (c > 1) {
+                              HapticFeedback.lightImpact();
+                              _quantityCtrl.text = '${c - 1}';
+                              setState(() {});
+                            }
+                          },
+                          child: Container(
+                            width: 64,
+                            height: double.infinity,
+                            decoration: const BoxDecoration(
+                              color: Color(0xFFF5F7FA),
+                              borderRadius: BorderRadius.horizontal(
+                                  left: Radius.circular(15)),
+                            ),
+                            child: const Icon(Icons.remove_rounded,
+                                color: AppTheme.textPrimary, size: 26),
+                          ),
+                        ),
+                        // Center value
+                        Expanded(
+                          child: Container(
+                            decoration: const BoxDecoration(
+                              border: Border.symmetric(
+                                vertical: BorderSide(
+                                    color: AppTheme.borderColor, width: 1),
+                              ),
+                            ),
+                            child: TextField(
+                              controller: _quantityCtrl,
+                              keyboardType: TextInputType.number,
+                              textAlign: TextAlign.center,
+                              style: const TextStyle(
+                                fontSize: 26,
+                                fontWeight: FontWeight.bold,
+                                color: AppTheme.textPrimary,
+                              ),
+                              inputFormatters: [
+                                FilteringTextInputFormatter.digitsOnly,
+                              ],
+                              decoration: const InputDecoration(
+                                contentPadding: EdgeInsets.zero,
+                                border: InputBorder.none,
+                              ),
+                              onChanged: (v) {
+                                if (v.isEmpty || int.tryParse(v) == null) {
+                                  return;
+                                }
+                                setState(() {});
+                              },
+                            ),
+                          ),
+                        ),
+                        // Plus button
+                        GestureDetector(
+                          onTap: () {
+                            HapticFeedback.lightImpact();
+                            final c = int.tryParse(_quantityCtrl.text) ?? 1;
+                            _quantityCtrl.text = '${c + 1}';
+                            setState(() {});
+                          },
+                          child: Container(
+                            width: 64,
+                            height: double.infinity,
+                            decoration: const BoxDecoration(
+                              color: AppTheme.primary,
+                              borderRadius: BorderRadius.horizontal(
+                                  right: Radius.circular(15)),
+                            ),
+                            child: const Icon(Icons.add_rounded,
+                                color: Colors.white, size: 26),
                           ),
                         ),
                       ],
                     ),
                   ),
-                ],
+                ]),
 
-                // ── SKU / Barcode ─────────────────────────────────────────
-                _fieldLabel('Codigo SKU / Barras'),
-                const SizedBox(height: 6),
-                TextFormField(
-                  controller: _skuCtrl,
-                  keyboardType: TextInputType.number,
-                  style: const TextStyle(fontSize: 18),
-                  textInputAction: TextInputAction.next,
-                  onChanged: (v) {
-                    if (v.trim().isNotEmpty) {
-                      setState(() => _skuError = BarcodeValidator.validate(v.trim()));
-                    } else {
-                      setState(() => _skuError = null);
-                    }
-                  },
-                  decoration: InputDecoration(
-                    hintText: 'Ej: 7702535011119',
-                    hintStyle: TextStyle(
-                      color: Colors.grey.shade400,
-                      fontWeight: FontWeight.w400,
-                      fontStyle: FontStyle.italic,
-                    ),
-                    prefixIcon: const Icon(Icons.qr_code_rounded,
-                        color: AppTheme.textSecondary, size: 22),
-                    errorText: _skuError,
-                    suffixIcon: Row(
+                // ═══════════════════════════════════════════════════════════
+                // Advanced options (collapsed by default)
+                // ═══════════════════════════════════════════════════════════
+                Theme(
+                  data: Theme.of(context)
+                      .copyWith(dividerColor: Colors.transparent),
+                  child: ExpansionTile(
+                    tilePadding: const EdgeInsets.symmetric(horizontal: 4),
+                    title: const Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        IconButton(
-                          onPressed: _scanBarcode,
-                          icon: const Icon(Icons.qr_code_scanner_rounded,
-                              color: AppTheme.success, size: 22),
-                          tooltip: 'Escanear código',
-                        ),
-                        IconButton(
-                          onPressed: _generateSku,
-                          icon: const Icon(Icons.auto_fix_high_rounded,
-                              color: Color(0xFF7C3AED), size: 22),
-                          tooltip: 'Generar SKU interno',
-                        ),
+                        Icon(Icons.tune_rounded,
+                            size: 20, color: AppTheme.textSecondary),
+                        SizedBox(width: 8),
+                        Text('Opciones avanzadas',
+                            style: TextStyle(
+                                fontSize: 16, color: AppTheme.textSecondary)),
                       ],
                     ),
-                    contentPadding: const EdgeInsets.symmetric(
-                        vertical: 12, horizontal: 12),
-                  ),
-                ),
-                const SizedBox(height: 14),
-
-                // ── Presentation chips ────────────────────────────────────
-                _fieldLabel('Presentación'),
-                const SizedBox(height: 6),
-                SizedBox(
-                  height: 48,
-                  child: ListView.separated(
-                    scrollDirection: Axis.horizontal,
-                    itemCount: _presentationOptions.length,
-                    separatorBuilder: (_, __) =>
-                        const SizedBox(width: 6),
-                    itemBuilder: (_, i) {
-                      final opt = _presentationOptions[i];
-                      final selected =
-                          _presentation == opt['value'];
-                      return GestureDetector(
-                        onTap: () => setState(
-                            () => _presentation = opt['value']!),
-                        child: AnimatedContainer(
-                          duration: const Duration(
-                              milliseconds: 200),
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 12),
-                          decoration: BoxDecoration(
-                            color: selected
-                                ? AppTheme.primary
-                                    .withValues(alpha: 0.12)
-                                : Colors.white,
-                            borderRadius:
-                                BorderRadius.circular(12),
-                            border: Border.all(
-                              color: selected
-                                  ? AppTheme.primary
-                                  : AppTheme.borderColor,
-                              width: selected ? 2 : 1,
-                            ),
-                          ),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Text(opt['icon']!,
-                                  style: const TextStyle(
-                                      fontSize: 18)),
-                              const SizedBox(width: 4),
-                              Text(
-                                opt['label']!,
-                                style: TextStyle(
-                                  fontSize: 14,
-                                  fontWeight: selected
-                                      ? FontWeight.w700
-                                      : FontWeight.w500,
-                                  color: selected
-                                      ? AppTheme.primary
-                                      : AppTheme.textPrimary,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      );
-                    },
-                  ),
-                ),
-                const SizedBox(height: 14),
-
-                // ── Content / gramaje ─────────────────────────────────────
-                _fieldLabel('Contenido'),
-                const SizedBox(height: 6),
-                TextFormField(
-                  controller: _contentCtrl,
-                  keyboardType: TextInputType.text,
-                  style: const TextStyle(fontSize: 18),
-                  textInputAction: TextInputAction.next,
-                  decoration: _inputDecoration(
-                    hint: 'Ej: 350ml, 500g, 1L, 6 unidades',
-                    icon: Icons.scale_rounded,
-                    iconColor: AppTheme.textSecondary,
-                  ),
-                ),
-              ]),
-
-              const SizedBox(height: 14),
-
-              // ═══════════════════════════════════════════════════════════
-              // CARD 3: Precios y Cantidad
-              // ═══════════════════════════════════════════════════════════
-              _card(children: [
-                // ── Prices row ─────────────────────────────────────────────
-                Row(
-                  children: [
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          _fieldLabel('Precio compra'),
-                          const SizedBox(height: 6),
-                          TextFormField(
-                            controller: _buyPriceCtrl,
-                            keyboardType: TextInputType.number,
-                            style: const TextStyle(fontSize: 18),
-                            textInputAction: TextInputAction.next,
-                            inputFormatters: const [CurrencyInputFormatter()],
-                            decoration: _inputDecoration(
-                              hint: '\$0',
-                              icon: Icons.attach_money_rounded,
-                              iconColor: AppTheme.textSecondary,
-                            ),
-                            validator: (v) {
-                              if (v == null || v.isEmpty) return 'Requerido';
-                              return null;
-                            },
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          _fieldLabel('Precio venta'),
-                          const SizedBox(height: 6),
-                          TextFormField(
-                            controller: _sellPriceCtrl,
-                            keyboardType: TextInputType.number,
-                            style: const TextStyle(
-                              fontSize: 18,
-                              color: Color(0xFF10B981),
-                              fontWeight: FontWeight.bold,
-                            ),
-                            textInputAction: TextInputAction.next,
-                            inputFormatters: const [CurrencyInputFormatter()],
-                            decoration: _inputDecoration(
-                              hint: '\$0',
-                              icon: Icons.attach_money_rounded,
-                              iconColor: const Color(0xFF10B981),
-                            ),
-                            validator: (v) {
-                              if (v == null || v.isEmpty) return 'Requerido';
-                              return null;
-                            },
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-
-                const SizedBox(height: 14),
-
-                // ── Quantity stepper (unified component) ──────────────────
-                _fieldLabel('Cantidad'),
-                const SizedBox(height: 8),
-                Container(
-                  height: 60,
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(16),
-                    border: Border.all(color: AppTheme.borderColor),
-                  ),
-                  child: Row(
                     children: [
-                      // Minus button
-                      GestureDetector(
-                        onTap: () {
-                          final c = int.tryParse(_quantityCtrl.text) ?? 1;
-                          if (c > 1) {
-                            HapticFeedback.lightImpact();
-                            _quantityCtrl.text = '${c - 1}';
-                            setState(() {});
-                          }
-                        },
-                        child: Container(
-                          width: 64,
-                          height: double.infinity,
-                          decoration: const BoxDecoration(
-                            color: Color(0xFFF5F7FA),
-                            borderRadius: BorderRadius.horizontal(
-                                left: Radius.circular(15)),
-                          ),
-                          child: const Icon(Icons.remove_rounded,
-                              color: AppTheme.textPrimary, size: 26),
-                        ),
-                      ),
-                      // Center value
-                      Expanded(
-                        child: Container(
-                          decoration: const BoxDecoration(
-                            border: Border.symmetric(
-                              vertical: BorderSide(
-                                  color: AppTheme.borderColor, width: 1),
-                            ),
-                          ),
-                          child: TextField(
-                            controller: _quantityCtrl,
-                            keyboardType: TextInputType.number,
-                            textAlign: TextAlign.center,
-                            style: const TextStyle(
-                              fontSize: 26,
-                              fontWeight: FontWeight.bold,
-                              color: AppTheme.textPrimary,
-                            ),
-                            inputFormatters: [
-                              FilteringTextInputFormatter.digitsOnly,
-                            ],
-                            decoration: const InputDecoration(
-                              contentPadding: EdgeInsets.zero,
-                              border: InputBorder.none,
-                            ),
-                            onChanged: (v) {
-                              if (v.isEmpty || int.tryParse(v) == null) return;
-                              setState(() {});
-                            },
+                      _card(children: [
+                        _fieldLabel('Fecha de vencimiento'),
+                        const SizedBox(height: 6),
+                        _expiryDateField(),
+                        const SizedBox(height: 14),
+                        _fieldLabel('Categoría'),
+                        const SizedBox(height: 6),
+                        TextFormField(
+                          style: const TextStyle(fontSize: 18),
+                          decoration: _inputDecoration(
+                            hint: 'Ej: Bebidas, Aseo, Snacks',
+                            icon: Icons.category_rounded,
+                            iconColor: AppTheme.textSecondary,
                           ),
                         ),
-                      ),
-                      // Plus button
-                      GestureDetector(
-                        onTap: () {
-                          HapticFeedback.lightImpact();
-                          final c = int.tryParse(_quantityCtrl.text) ?? 1;
-                          _quantityCtrl.text = '${c + 1}';
-                          setState(() {});
-                        },
-                        child: Container(
-                          width: 64,
-                          height: double.infinity,
-                          decoration: const BoxDecoration(
-                            color: AppTheme.primary,
-                            borderRadius: BorderRadius.horizontal(
-                                right: Radius.circular(15)),
+                        const SizedBox(height: 14),
+                        _fieldLabel('Proveedor'),
+                        const SizedBox(height: 6),
+                        TextFormField(
+                          style: const TextStyle(fontSize: 18),
+                          decoration: _inputDecoration(
+                            hint: 'Ej: Coca-Cola, Postobón',
+                            icon: Icons.local_shipping_rounded,
+                            iconColor: AppTheme.textSecondary,
                           ),
-                          child: const Icon(Icons.add_rounded,
-                              color: Colors.white, size: 26),
                         ),
-                      ),
+                      ]),
                     ],
                   ),
                 ),
-              ]),
 
-              // ═══════════════════════════════════════════════════════════
-              // Advanced options (collapsed by default)
-              // ═══════════════════════════════════════════════════════════
-              Theme(
-                data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
-                child: ExpansionTile(
-                  tilePadding: const EdgeInsets.symmetric(horizontal: 4),
-                  title: const Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(Icons.tune_rounded, size: 20, color: AppTheme.textSecondary),
-                      SizedBox(width: 8),
-                      Text('Opciones avanzadas',
-                          style: TextStyle(fontSize: 16, color: AppTheme.textSecondary)),
-                    ],
-                  ),
-                  children: [
-                    _card(children: [
-                      _fieldLabel('Fecha de vencimiento'),
-                      const SizedBox(height: 6),
-                      _expiryDateField(),
-                      const SizedBox(height: 14),
-                      _fieldLabel('Categoría'),
-                      const SizedBox(height: 6),
-                      TextFormField(
-                        style: const TextStyle(fontSize: 18),
-                        decoration: _inputDecoration(
-                          hint: 'Ej: Bebidas, Aseo, Snacks',
-                          icon: Icons.category_rounded,
-                          iconColor: AppTheme.textSecondary,
-                        ),
-                      ),
-                      const SizedBox(height: 14),
-                      _fieldLabel('Proveedor'),
-                      const SizedBox(height: 6),
-                      TextFormField(
-                        style: const TextStyle(fontSize: 18),
-                        decoration: _inputDecoration(
-                          hint: 'Ej: Coca-Cola, Postobón',
-                          icon: Icons.local_shipping_rounded,
-                          iconColor: AppTheme.textSecondary,
-                        ),
-                      ),
-                    ]),
-                  ],
-                ),
-              ),
-
-              const SizedBox(height: 24),
-            ],
+                const SizedBox(height: 24),
+              ],
+            ),
           ),
         ),
-      ),
-    ), // PopScope
+      ), // PopScope
     );
   }
 
@@ -1577,6 +1777,7 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
   }
 
   Widget _actionButton({
+    Key? key,
     required String label,
     IconData? icon,
     required Color color,
@@ -1586,18 +1787,25 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
     return SizedBox(
       height: 44,
       child: OutlinedButton.icon(
+        key: key,
         onPressed: onTap,
         icon: loading
             ? SizedBox(
                 width: 18,
                 height: 18,
-                child: CircularProgressIndicator(
-                    strokeWidth: 2, color: color),
+                child: CircularProgressIndicator(strokeWidth: 2, color: color),
               )
             : Icon(icon, size: 20),
-        label: Text(
-          label,
-          style: const TextStyle(fontSize: 16),
+        // FittedBox keeps the label readable on 360dp: "Tomar foto" and
+        // "Galería" sit in narrow side-by-side slots — shrink, never wrap
+        // or overflow (UI_RULES § texto de longitud variable).
+        label: FittedBox(
+          fit: BoxFit.scaleDown,
+          child: Text(
+            label,
+            maxLines: 1,
+            style: const TextStyle(fontSize: 16),
+          ),
         ),
         style: OutlinedButton.styleFrom(
           foregroundColor: color,
@@ -1605,7 +1813,7 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(12),
           ),
-          padding: const EdgeInsets.symmetric(horizontal: 10),
+          padding: const EdgeInsets.symmetric(horizontal: 8),
         ),
       ),
     );
@@ -1624,7 +1832,8 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
       );
     }
     if (_photoUrl != null) {
-      return Image.network(_photoUrl!, fit: BoxFit.contain,
+      return Image.network(_photoUrl!,
+          fit: BoxFit.contain,
           errorBuilder: (_, __, ___) => _photoPlaceholder());
     }
     return _photoPlaceholder();
@@ -1634,8 +1843,7 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
     return const Column(
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
-        Icon(Icons.camera_alt_rounded,
-            size: 32, color: AppTheme.textSecondary),
+        Icon(Icons.camera_alt_rounded, size: 32, color: AppTheme.textSecondary),
         SizedBox(height: 4),
         Text(
           'Foto',
@@ -1676,9 +1884,8 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
             color: hasDate ? AppTheme.primary : AppTheme.borderColor,
             width: hasDate ? 1.5 : 1,
           ),
-          color: hasDate
-              ? AppTheme.primary.withValues(alpha: 0.04)
-              : Colors.white,
+          color:
+              hasDate ? AppTheme.primary.withValues(alpha: 0.04) : Colors.white,
         ),
         child: Row(
           children: [
@@ -1697,9 +1904,7 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
                   fontSize: 17,
                   fontWeight: hasDate ? FontWeight.w600 : FontWeight.w400,
                   fontStyle: hasDate ? FontStyle.normal : FontStyle.italic,
-                  color: hasDate
-                      ? AppTheme.textPrimary
-                      : Colors.grey.shade500,
+                  color: hasDate ? AppTheme.textPrimary : Colors.grey.shade500,
                 ),
               ),
             ),
@@ -1722,15 +1927,23 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
     HapticFeedback.lightImpact();
     final name = _nameCtrl.text.trim().toUpperCase();
     final presMap = {
-      'botella': 'BOT', 'lata': 'LAT', 'bolsa': 'BLS', 'caja': 'CAJ',
-      'frasco': 'FRA', 'paquete': 'PAQ', 'unidad': 'UNI', 'sobre': 'SOB',
+      'botella': 'BOT',
+      'lata': 'LAT',
+      'bolsa': 'BLS',
+      'caja': 'CAJ',
+      'frasco': 'FRA',
+      'paquete': 'PAQ',
+      'unidad': 'UNI',
+      'sobre': 'SOB',
     };
     final pres = presMap[_presentation.toLowerCase()] ?? 'GEN';
     final letters = name.replaceAll(RegExp(r'[^A-Z]'), '');
-    final nameCode =
-        letters.length >= 3 ? letters.substring(0, 3) : letters.padRight(3, 'X');
-    final digits =
-        (DateTime.now().millisecondsSinceEpoch % 10000).toString().padLeft(4, '0');
+    final nameCode = letters.length >= 3
+        ? letters.substring(0, 3)
+        : letters.padRight(3, 'X');
+    final digits = (DateTime.now().millisecondsSinceEpoch % 10000)
+        .toString()
+        .padLeft(4, '0');
     setState(() {
       _skuCtrl.text = 'VND-$pres-$nameCode-$digits';
     });
@@ -1749,8 +1962,7 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
         fontStyle: FontStyle.italic,
       ),
       prefixIcon: Icon(icon, color: iconColor, size: 22),
-      contentPadding:
-          const EdgeInsets.symmetric(vertical: 12, horizontal: 12),
+      contentPadding: const EdgeInsets.symmetric(vertical: 12, horizontal: 12),
     );
   }
 }
@@ -1777,4 +1989,59 @@ class _ProductSuggestion {
     this.source = 'off',
     this.images = const [],
   });
+}
+
+/// Pure decision helpers for "Nuevo Producto" image handling (Feature 018,
+/// FR-03 / FR-04). Kept free of any state or I/O so the rules can be unit
+/// tested directly — see `test/create_product_screen_fixes_test.dart`.
+///
+/// Why this exists: the screen used to pin an AI/catalog image (`_photoUrl`)
+/// and a catalog image strip (`_catalogImages`) that were never cleared when
+/// the typed name changed. A merchant who looked up "Llavero Alien" and then
+/// retyped "Llavero Kitty" kept seeing the alien keychains — the catalog
+/// strip had no link to the *current* name. These two rules fix that.
+class CreateProductImagePolicy {
+  const CreateProductImagePolicy._();
+
+  /// Whether a suggested/looked-up/generated image URL may be adopted as
+  /// the product photo.
+  ///
+  /// D2 — the merchant's own photo (camera or gallery) always wins: once
+  /// [hasMerchantPhoto] is true no suggested image may overwrite it. An
+  /// empty or null [suggestedUrl] is never adopted.
+  static bool canApplySuggestedImage({
+    required bool hasMerchantPhoto,
+    required String? suggestedUrl,
+  }) {
+    if (hasMerchantPhoto) return false;
+    return suggestedUrl != null && suggestedUrl.trim().isNotEmpty;
+  }
+
+  /// Whether a catalog image strip — captured for [catalogSourceName] when
+  /// the merchant picked that suggestion — still belongs to the product the
+  /// merchant is now describing in [currentName].
+  ///
+  /// FR-04: rather than show unrelated catalog photos, the strip is kept
+  /// only while the typed name is still the *same product* — i.e. every
+  /// meaningful word of the source name is still present in the current
+  /// name. That survives a refinement ("Llavero Kitty" -> "Llavero Kitty
+  /// Rosado") but drops on a real divergence ("Llavero Kitty" -> "Llavero
+  /// Alien"), which is the reported "alien keychains" disparity.
+  static bool catalogStillMatchesName({
+    required String catalogSourceName,
+    required String currentName,
+  }) {
+    final source = _words(catalogSourceName);
+    final current = _words(currentName);
+    if (source.isEmpty || current.isEmpty) return false;
+    // Keep only while the current name still contains every word of the
+    // name the strip came from — a pure extension of the same product.
+    return source.difference(current).isEmpty;
+  }
+
+  static Set<String> _words(String value) => value
+      .toLowerCase()
+      .split(RegExp(r'[^a-záéíóúñ0-9]+'))
+      .where((w) => w.length > 1)
+      .toSet();
 }
