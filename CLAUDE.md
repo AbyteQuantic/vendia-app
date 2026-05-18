@@ -12,8 +12,8 @@ App móvil Flutter del POS VendIA. Es la cara que ve el tendero todos los días.
 - **Flutter / Dart** — SDK `>=3.3.0 <4.0.0`
 - **Estado:** Provider
 - **HTTP:** Dio (contra el backend Go — ver [`BACKEND_CONTRACT_v2.md`](BACKEND_CONTRACT_v2.md))
-- **DB local / offline:** Isar
-- **Plataformas:** Android (prioridad — gama baja) e iOS
+- **DB local / offline:** Isar (solo móvil — ver § Web)
+- **Plataformas:** Android (prioridad — gama baja), iOS y **Web**
 
 ## Estructura
 
@@ -53,6 +53,25 @@ Adaptación a este repo (Flutter):
   sin conexión — escritura en Isar + cola de sync, nunca asumir red.
 - **Verificación:** `flutter analyze` + `flutter test` en verde, cobertura ≥ 80%.
 - **Trazabilidad:** primera línea de cada archivo nuevo → `// Spec: specs/NNN-slug/spec.md`.
+
+## Web — plataforma, despliegue y limitaciones
+
+- La plataforma web está habilitada; la app web se sirve en **`vendia.store`**
+  (proyecto Vercel `vendia-app`).
+- ⚠️ **NO auto-despliega al mergear a `main`.** Hay que `flutter build web
+  --release --dart-define=API_BASE_URL=https://api.vendia.store` y
+  `vercel deploy --prod`. El workflow `.github/workflows/deploy-web.yml` lo
+  automatiza cuando se agregue el secret `VERCEL_TOKEN`. **Mergear ≠ desplegar.**
+- **Limitación offline:** Isar es **solo móvil**. En web `DatabaseService` es un
+  stub en memoria (`database_service_web.dart`) — los datos locales se pierden
+  al refrescar. Detalle en [`web/README_WEB.md`](web/README_WEB.md).
+- **Imágenes cross-platform:** nunca `dart:io File` ni `XFile.path` en el camino
+  web (no hay sistema de archivos) — usar `XFile.readAsBytes()` +
+  `MultipartFile.fromBytes`. (Causa del bug del logo, F007.)
+- **iOS:** el proyecto está configurado, pero compilar/desplegar requiere un Mac
+  con Xcode + cuenta Apple Developer.
+- **Verifica los cambios en `vendia.store` desplegado**, no en un build local
+  (Constitución Art. XII).
 
 ## Reglas de UI (resumen — el detalle está en UI_RULES.md)
 
