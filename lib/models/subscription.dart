@@ -17,9 +17,12 @@ class SubscriptionStatusValue {
 }
 
 /// Identificadores de plan del catálogo del backend.
+/// El backend (`billing/plans.go`) los emite en MAYÚSCULAS — igual que
+/// [SubscriptionStatusValue]. Deben coincidir exactos o las tarjetas de
+/// la vista de planes no encuentran su plan (bug F009).
 class PlanId {
-  static const String gratis = 'gratis';
-  static const String pro = 'pro';
+  static const String gratis = 'FREE';
+  static const String pro = 'PRO';
 }
 
 /// Intervalos de facturación soportados por el plan Pro.
@@ -57,8 +60,8 @@ class PlanPrice {
 
 /// Un plan del catálogo de suscripción (Gratis o Pro).
 class SubscriptionPlan {
-  /// Identificador del plan tal como lo envía el backend (`gratis`,
-  /// `pro`). Lección de F1: se lee, no se inventa.
+  /// Identificador del plan tal como lo envía el backend (`FREE`,
+  /// `PRO`). Lección de F1: se lee, no se inventa.
   final String id;
 
   /// Nombre legible en español ("Gratis", "Pro").
