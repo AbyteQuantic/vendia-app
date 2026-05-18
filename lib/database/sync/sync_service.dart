@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import '../../config/api_config.dart';
+import '../../services/api_service.dart';
 import '../../services/auth_service.dart';
 import '../database_service.dart';
 import '../collections/pending_operation.dart';
@@ -154,8 +155,20 @@ class SyncService extends ChangeNotifier {
       final token = await _auth.getToken();
       if (token == null) return;
 
+      // Spec 014: the POS reads products from Isar, populated here.
+      // Inventario and Dashboard fetch with `?branch_id=` via
+      // ApiService.fetchProducts. This pull must use the SAME sede
+      // scope so all three screens see one consistent set — otherwise
+      // the POS shows products the other screens never load.
+      final params = <String, dynamic>{};
+      final branchId = ApiService.currentBranchId;
+      if (branchId != null && branchId.isNotEmpty) {
+        params['branch_id'] = branchId;
+      }
+
       final response = await _dio.get(
         '/api/v1/products',
+        queryParameters: params,
         options: Options(headers: {'Authorization': 'Bearer $token'}),
       );
 

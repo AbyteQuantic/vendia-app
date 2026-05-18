@@ -136,6 +136,13 @@ class ApiService {
     _dio.interceptors.add(ColdStartRetryInterceptor(dio: _dio));
   }
 
+  /// Test seam (Spec 014): swap the underlying Dio HTTP adapter for a
+  /// scripted one so request payloads can be asserted without hitting
+  /// the network. Production code never calls this.
+  @visibleForTesting
+  set httpClientAdapterForTesting(HttpClientAdapter adapter) =>
+      _dio.httpClientAdapter = adapter;
+
   Future<bool> _tryRefreshToken() async {
     try {
       final refreshToken = await _auth.getRefreshToken();
@@ -392,7 +399,20 @@ class ApiService {
   Future<Map<String, dynamic>> createProduct(
       Map<String, dynamic> data) async {
     try {
-      final response = await _dio.post('/api/v1/products', data: data);
+      // Spec 014: defense-in-depth — inject the active sede into the
+      // payload so a product is never created with branch_id NULL, the
+      // same pattern createSale already follows. The backend resolves
+      // the tenant's default sede as the source of truth; this only
+      // covers the case where the JWT carries no branch claim. We don't
+      // overwrite an explicit branch_id set by the caller.
+      final payload = Map<String, dynamic>.from(data);
+      final bid = currentBranchId;
+      if (bid != null &&
+          bid.isNotEmpty &&
+          (payload['branch_id'] == null || payload['branch_id'] == '')) {
+        payload['branch_id'] = bid;
+      }
+      final response = await _dio.post('/api/v1/products', data: payload);
       return _extractData(response);
     } on DioException catch (e) {
       throw AppError.fromDioException(e);
