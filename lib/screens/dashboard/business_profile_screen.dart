@@ -1,3 +1,4 @@
+// Spec: specs/023-capacidades-opcionales-negocio/spec.md
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:geolocator/geolocator.dart';
@@ -7,6 +8,8 @@ import '../../services/api_service.dart';
 import '../../services/auth_service.dart';
 import '../../services/image_normalizer.dart';
 import '../../theme/app_theme.dart';
+import '../../utils/business_capability_map.dart';
+import '../../widgets/optional_capabilities_section.dart';
 
 /// Perfil del Negocio — Gerontodiseño: textos grandes, alto contraste,
 /// cero fricción. Fetch real al backend, sin datos hardcodeados.
@@ -36,6 +39,14 @@ class _BusinessProfileScreenState extends State<BusinessProfileScreen> {
   // flags. Se persiste como lista de 1 en el payload para no romper
   // el contrato del wire.
   String? _selectedType;
+
+  // F023: capacidades opcionales — ValueNotifiers para que
+  // OptionalCapabilitiesSection se reconstruya sin setState global.
+  // El estado inicial se deriva de _featureFlags después del fetch.
+  FeatureFlags _featureFlags = const FeatureFlags();
+  late final ValueNotifier<bool> _offersServices = ValueNotifier(false);
+  late final ValueNotifier<bool> _sellsByWeight = ValueNotifier(false);
+  late final ValueNotifier<bool> _hasTables = ValueNotifier(false);
 
   // 1:1 con la whitelist del backend (models.ValidBusinessTypes,
   // migración 020). Cada entry es (valor_snake_case, ícono, etiqueta).
@@ -76,6 +87,9 @@ class _BusinessProfileScreenState extends State<BusinessProfileScreen> {
     _nameCtrl.dispose();
     _nitCtrl.dispose();
     _addressCtrl.dispose();
+    _offersServices.dispose();
+    _sellsByWeight.dispose();
+    _hasTables.dispose();
     super.dispose();
   }
 
@@ -110,6 +124,23 @@ class _BusinessProfileScreenState extends State<BusinessProfileScreen> {
         if (initial != null) {
           _selectedType = _legacyTypeRemap[initial] ?? initial;
         }
+
+        // F023: derivar estado de los toggles desde feature_flags.
+        // Un toggle está ON si su flag está activo Y el tipo no lo implica.
+        // Spec: "un toggle está ON si su flag está activo y el tipo no lo implica"
+        final rawFlags = data['feature_flags'];
+        if (rawFlags is Map<String, dynamic>) {
+          _featureFlags = FeatureFlags.fromJson(rawFlags);
+        }
+        final currentType = _selectedType;
+        final implied = impliedCapabilities(currentType);
+        _offersServices.value = _featureFlags.enableServices &&
+            !implied.contains(OptionalCapability.services);
+        _sellsByWeight.value = _featureFlags.enableFractionalUnits &&
+            !implied.contains(OptionalCapability.fractionalUnits);
+        _hasTables.value = _featureFlags.enableTables &&
+            !implied.contains(OptionalCapability.tables);
+
         _loading = false;
       });
     } catch (e) {
@@ -358,6 +389,13 @@ class _BusinessProfileScreenState extends State<BusinessProfileScreen> {
         'address': _addressCtrl.text.trim(),
         if (_latitude != 0) 'latitude': _latitude,
         if (_longitude != 0) 'longitude': _longitude,
+        // F023: capacidades opcionales — se envían en config para que
+        // el backend recalcule feature_flags con tipo OR toggles.
+        'config': {
+          'has_tables': _hasTables.value,
+          'offers_services': _offersServices.value,
+          'sells_by_weight': _sellsByWeight.value,
+        },
       };
 
       await _api.updateBusinessProfile(updates);
@@ -506,6 +544,15 @@ class _BusinessProfileScreenState extends State<BusinessProfileScreen> {
             const SizedBox(height: 12),
             _buildBusinessTypeRadioGrid(),
 
+            // F023: capacidades opcionales debajo del selector de tipo
+            OptionalCapabilitiesSection(
+              selectedType: _selectedType,
+              flags: _featureFlags,
+              offersServices: _offersServices,
+              sellsByWeight: _sellsByWeight,
+              hasTables: _hasTables,
+            ),
+
             const SizedBox(height: 40),
           ],
         ),
@@ -538,7 +585,20 @@ class _BusinessProfileScreenState extends State<BusinessProfileScreen> {
             key: Key('profile_btype_$value'),
             onTap: () {
               HapticFeedback.lightImpact();
-              setState(() => _selectedType = value);
+              setState(() {
+                _selectedType = value;
+                // F023: limpiar toggles que el nuevo tipo ya implica
+                final implied = impliedCapabilities(value);
+                if (implied.contains(OptionalCapability.services)) {
+                  _offersServices.value = false;
+                }
+                if (implied.contains(OptionalCapability.fractionalUnits)) {
+                  _sellsByWeight.value = false;
+                }
+                if (implied.contains(OptionalCapability.tables)) {
+                  _hasTables.value = false;
+                }
+              });
             },
             child: AnimatedContainer(
               duration: const Duration(milliseconds: 180),

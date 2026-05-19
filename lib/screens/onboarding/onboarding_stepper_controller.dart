@@ -1,4 +1,6 @@
+// Spec: specs/023-capacidades-opcionales-negocio/spec.md
 import 'package:flutter/material.dart';
+import '../../utils/business_capability_map.dart';
 
 enum StepperStatus { idle, loading, success, error }
 
@@ -49,6 +51,28 @@ class OnboardingStepperController extends ChangeNotifier {
   List<String> saleTypes = ['products'];
   bool hasShowcases = false;
   bool hasTables = false;
+
+  // ── Capacidades opcionales (F023) ─────────────────────────────────────────
+  // Estos toggles se incluyen en config.{offers_services, sells_by_weight}
+  // dentro de _buildPayload. Cada uno se muestra solo si el tipo elegido no
+  // concede ya esa capacidad — ver business_capability_map.dart.
+  bool offersServices = false;
+  bool sellsByWeight = false;
+
+  void setOffersServices(bool value) {
+    offersServices = value;
+    notifyListeners();
+  }
+
+  void setSellsByWeight(bool value) {
+    sellsByWeight = value;
+    notifyListeners();
+  }
+
+  void setHasTables(bool value) {
+    hasTables = value;
+    notifyListeners();
+  }
 
   // Backward compat getter (tipo principal = primero de la lista)
   String get businessType =>
@@ -145,6 +169,14 @@ class OnboardingStepperController extends ChangeNotifier {
     // stack — mirror it here so the branches/config step defaults are
     // sensible even before the backend recomputes feature_flags.
     hasTables = {'bar', 'restaurante', 'comidas_rapidas'}.contains(type);
+
+    // F023: limpiar los toggles opcionales que el nuevo tipo ya implica,
+    // de modo que no queden activados valores que el tipo hace redundantes.
+    final implied = impliedCapabilities(type);
+    if (implied.contains(OptionalCapability.services)) offersServices = false;
+    if (implied.contains(OptionalCapability.fractionalUnits)) sellsByWeight = false;
+    // hasTables se maneja arriba (el tipo food ya lo activa implícitamente)
+
     notifyListeners();
   }
 
@@ -203,6 +235,9 @@ class OnboardingStepperController extends ChangeNotifier {
         'sale_types': saleTypes,
         'has_showcases': hasShowcases,
         'has_tables': hasTables,
+        // F023: capacidades opcionales
+        'offers_services': offersServices,
+        'sells_by_weight': sellsByWeight,
       },
       // Fase 2: empleados se agrega en el módulo Administrar (Fase 4)
       'employees': [],
