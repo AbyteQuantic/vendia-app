@@ -1,7 +1,9 @@
+// Spec: specs/023-capacidades-opcionales-negocio/spec.md
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import '../../../theme/app_theme.dart';
+import '../../../utils/business_capability_map.dart';
 import '../onboarding_stepper_controller.dart';
 
 /// Paso 4 — Categoría principal del negocio: SELECCIÓN ÚNICA.
@@ -174,6 +176,12 @@ class StepConfig extends StatelessWidget {
                         ),
                       ],
                     ),
+                  ),
+                  // F023 — Sección de capacidades opcionales.
+                  // Solo muestra los toggles que el tipo elegido no concede ya.
+                  _OptionalCapabilitiesSection(
+                    selectedType: selectedValue,
+                    controller: ctrl,
                   ),
                 ],
 
@@ -352,4 +360,151 @@ class _BusinessTypeOption {
     required this.description,
     required this.icon,
   });
+}
+
+// ── F023: Sección de capacidades opcionales ───────────────────────────────────
+//
+// Muestra hasta 3 SwitchListTile bajo el grid de tipos, uno por cada
+// capacidad que el tipo elegido NO concede implícitamente.
+//
+// El mapa tipo→capacidades implícitas está centralizado en
+// lib/utils/business_capability_map.dart (espejo de tenant.go en el backend).
+
+class _OptionalCapabilitiesSection extends StatelessWidget {
+  final String selectedType;
+  final OnboardingStepperController controller;
+
+  const _OptionalCapabilitiesSection({
+    required this.selectedType,
+    required this.controller,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final toggleable = toggleableCapabilities(selectedType);
+    if (toggleable.isEmpty) return const SizedBox.shrink();
+
+    return Container(
+      key: const Key('optional_caps_section'),
+      margin: const EdgeInsets.only(top: 24),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            '¿Su negocio también…?',
+            style: TextStyle(
+              fontSize: 20,
+              fontWeight: FontWeight.bold,
+              color: AppTheme.textPrimary,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            'Active lo que aplique — puede cambiarlo después.',
+            style: TextStyle(
+              fontSize: 16,
+              color: Colors.grey.shade600,
+            ),
+          ),
+          const SizedBox(height: 12),
+          Container(
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: AppTheme.borderColor),
+            ),
+            child: Column(
+              children: [
+                if (toggleable.contains(OptionalCapability.services))
+                  _CapabilityTile(
+                    tileKey: const Key('toggle_services'),
+                    title: 'Cobra servicios o trabajos por encargo',
+                    subtitle: 'Ej: arreglos, instalaciones, cortes a domicilio',
+                    value: controller.offersServices,
+                    onChanged: controller.setOffersServices,
+                    showDivider: toggleable.length > 1 &&
+                        (toggleable.contains(OptionalCapability.fractionalUnits) ||
+                            toggleable.contains(OptionalCapability.tables)),
+                  ),
+                if (toggleable.contains(OptionalCapability.fractionalUnits))
+                  _CapabilityTile(
+                    tileKey: const Key('toggle_fractional'),
+                    title: 'Vende productos a granel o fraccionados',
+                    subtitle: 'Ej: arroz por libra, aceite por litro, granos',
+                    value: controller.sellsByWeight,
+                    onChanged: controller.setSellsByWeight,
+                    showDivider:
+                        toggleable.contains(OptionalCapability.tables),
+                  ),
+                if (toggleable.contains(OptionalCapability.tables))
+                  _CapabilityTile(
+                    tileKey: const Key('toggle_tables'),
+                    title: 'Atiende clientes en mesas',
+                    subtitle: 'Ej: sala de espera, mesas de juego, comedor',
+                    value: controller.hasTables,
+                    onChanged: controller.setHasTables,
+                    showDivider: false,
+                  ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _CapabilityTile extends StatelessWidget {
+  final Key tileKey;
+  final String title;
+  final String subtitle;
+  final bool value;
+  final ValueChanged<bool> onChanged;
+  final bool showDivider;
+
+  const _CapabilityTile({
+    required this.tileKey,
+    required this.title,
+    required this.subtitle,
+    required this.value,
+    required this.onChanged,
+    required this.showDivider,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        SwitchListTile(
+          key: tileKey,
+          value: value,
+          onChanged: onChanged,
+          activeThumbColor: AppTheme.primary,
+          contentPadding:
+              const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+          title: Text(
+            title,
+            style: const TextStyle(
+              fontSize: 17,
+              fontWeight: FontWeight.w600,
+              color: AppTheme.textPrimary,
+            ),
+          ),
+          subtitle: Padding(
+            padding: const EdgeInsets.only(top: 2),
+            child: Text(
+              subtitle,
+              style: TextStyle(
+                fontSize: 14,
+                color: Colors.grey.shade600,
+                height: 1.3,
+              ),
+            ),
+          ),
+        ),
+        if (showDivider)
+          const Divider(height: 1, indent: 16, endIndent: 16),
+      ],
+    );
+  }
 }
