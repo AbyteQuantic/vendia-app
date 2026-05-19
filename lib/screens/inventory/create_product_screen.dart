@@ -130,9 +130,15 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
   void _showSuggestionsOverlay() {
     _removeOverlay();
     if (_suggestions.isEmpty) return;
-    // FR-02: re-scroll so the field stays above the keyboard once the
-    // list is about to render under it.
-    _ensureNameFieldVisible();
+    // Note (regresión F018 → fix): NO se llama aquí a
+    // `_ensureNameFieldVisible()`. Antes esta función disparaba un
+    // `Scrollable.ensureVisible` (scroll animado) en CADA resultado de
+    // búsqueda; mostrar las sugerencias quedaba acoplado a un scroll que
+    // podía fallar/abortar y dejar el autocompletado sin pintar. Mostrar
+    // la lista ahora solo construye e inserta el overlay — nada más.
+    // FR-02 (sugerencias sobre el teclado) sigue cubierto por el
+    // `maxHeight` que respeta `viewInsets` y por el `ensureVisible` que
+    // se ejecuta al enfocar el campo.
 
     _overlayEntry = OverlayEntry(
       builder: (context) {
@@ -312,20 +318,33 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
   }
 
   /// Scrolls the form so the name field sits above the keyboard, leaving
-  /// room for the suggestion overlay rendered just below it (FR-02). Run
-  /// after a frame so the keyboard inset is already applied.
+  /// room for the suggestion overlay rendered just below it (FR-02).
+  ///
+  /// Se invoca SOLO al enfocar el campo (una vez), no en cada resultado
+  /// de búsqueda. Acoplar este scroll a `_showSuggestionsOverlay` —como
+  /// hacía F018— hacía que mostrar las sugerencias dependiera de un
+  /// scroll animado que se disparaba en cada tecla; eso es la regresión
+  /// que dejó el autocompletado sin funcionar. Cualquier fallo aquí se
+  /// registra pero nunca puede impedir que el overlay se pinte.
   void _ensureNameFieldVisible() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      final ctx = _nameFieldKey.currentContext;
-      if (ctx == null || !mounted) return;
-      Scrollable.ensureVisible(
-        ctx,
-        duration: const Duration(milliseconds: 300),
-        curve: Curves.easeOut,
-        // Pull the field toward the top of the viewport so the
-        // suggestion list below it does not fall behind the keyboard.
-        alignment: 0.05,
-      );
+      try {
+        final ctx = _nameFieldKey.currentContext;
+        if (ctx == null || !mounted) return;
+        Scrollable.ensureVisible(
+          ctx,
+          duration: const Duration(milliseconds: 300),
+          curve: Curves.easeOut,
+          // Pull the field toward the top of the viewport so the
+          // suggestion list below it does not fall behind the keyboard.
+          alignment: 0.05,
+        );
+      } catch (e) {
+        // El ajuste de scroll es cosmético (FR-02). Si falla, se ignora
+        // explícitamente —con log, sin `catch` mudo— para no arrastrar
+        // el autocompletado.
+        debugPrint('CreateProductScreen._ensureNameFieldVisible error: $e');
+      }
     });
   }
 
@@ -377,7 +396,16 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
     // Drop any image/catalog data that belonged to an earlier name so the
     // screen never keeps a stale, unrelated photo pinned. A photo the
     // merchant took or picked is never touched — D2, it always wins.
-    _dropStaleSuggestedImage(query);
+    //
+    // Regresión F018 → fix: este descarte de imagen es SECUNDARIO; jamás
+    // debe impedir la búsqueda. Se aísla en su propio try/catch para que,
+    // si algo falla aquí, el autocompletado siga corriendo igual.
+    try {
+      _dropStaleSuggestedImage(query);
+    } catch (e, st) {
+      debugPrint('CreateProductScreen._dropStaleSuggestedImage falló '
+          '(se ignora para no romper el autocompletado): $e\n$st');
+    }
     if (query.trim().length < 3) {
       _suggestions = [];
       _searching = false;
@@ -441,12 +469,18 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
         _suggestions = matches;
         _showSuggestionsOverlay();
       }
-    }).catchError((_) {});
+    }).catchError((Object e, StackTrace st) {
+      // No silenciar: la búsqueda local es offline-first; si Isar falla
+      // queremos verlo en los logs (no un `catchError` mudo). El
+      // autocompletado remoto sigue intentándolo aparte.
+      debugPrint('CreateProductScreen._searchLocal error: $e\n$st');
+    });
   }
 
   Future<void> _searchRemote(String query) async {
     if (!mounted) return;
     setState(() => _searching = true);
+    List<_ProductSuggestion>? merged;
     try {
       final api = ApiService(AuthService());
       final res = await api.searchCatalog(query);
@@ -479,21 +513,32 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
 
       // Merge: local first, then remote (deduplicated)
       final seen = <String>{};
-      final merged = <_ProductSuggestion>[];
+      final out = <_ProductSuggestion>[];
       for (final s in [
         ..._suggestions.where((s) => s.isLocal),
         ...remoteResults
       ]) {
         final key = s.name.toLowerCase();
-        if (seen.add(key)) merged.add(s);
-        if (merged.length >= 6) break;
+        if (seen.add(key)) out.add(s);
+        if (out.length >= 6) break;
       }
-      _suggestions = merged;
-      _showSuggestionsOverlay();
-    } catch (_) {
-      // keep local results if backend fails
+      merged = out;
+    } on Object catch (e) {
+      // El backend falló: se conservan los resultados locales (si los
+      // hay). NO se silencia mudo — se registra para diagnóstico.
+      // `merged` queda en null, así que el overlay no se vuelve a pintar
+      // abajo y el autocompletado local visible se mantiene intacto.
+      debugPrint('CreateProductScreen._searchRemote error: $e');
     } finally {
       if (mounted) setState(() => _searching = false);
+    }
+    // Pintar las sugerencias va FUERA del try del backend a propósito:
+    // si construir/insertar el overlay fallara, ese error ya no quedaría
+    // atrapado por el catch del backend (la causa de que, tras F018, una
+    // falla del overlay se viera como "el autocompletado no funciona").
+    if (merged != null && mounted) {
+      _suggestions = merged;
+      _showSuggestionsOverlay();
     }
   }
 
