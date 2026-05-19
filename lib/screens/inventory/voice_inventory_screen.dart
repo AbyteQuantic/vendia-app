@@ -1,15 +1,20 @@
+// Spec: specs/020-voz-inventario-web/spec.md
+//
+// Phase-4 "Killer feature": Voice-to-Catalog. Spec 020 made this screen
+// cross-platform: the recording path no longer depends on `dart:io` /
+// `path_provider`, so it works on Flutter web (`vendia.store`) too.
+
 import 'dart:async';
-import 'dart:io';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:path_provider/path_provider.dart';
 import 'package:record/record.dart';
 
 import '../../services/api_service.dart';
 import '../../services/app_error.dart';
 import '../../services/auth_service.dart';
+import '../../services/voice_recorder.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/premium_upsell_sheet.dart';
 import 'ia_result_screen.dart';
@@ -22,27 +27,43 @@ import 'ia_result_screen.dart';
 /// so the tendero reviews + edits + saves with the same muscle memory
 /// as the OCR flow.
 ///
-/// The screen accepts injectable [recorder], [apiCall] and
-/// [openPathSuffix] so widget tests can exercise press/release
-/// behavior without touching the microphone or the network.
+/// Spec 020: the audio is captured cross-platform — m4a on mobile,
+/// WebM/Opus on web — and handed to the API layer as raw BYTES, so the
+/// upload uses `MultipartFile.fromBytes` and never touches a filesystem.
+///
+/// The screen accepts injectable [recorder], [apiCall], [resolvePath]
+/// and [readAudio] so widget tests can exercise press/release behavior
+/// without touching the microphone, `path_provider` or the network.
 typedef VoiceApiCall = Future<List<Map<String, dynamic>>> Function({
-  required File audioFile,
+  required Uint8List audioBytes,
   required String mimeType,
+  required String filename,
 });
+
+/// Resolves the path passed to [AudioRecorder.start]. Defaults to the
+/// cross-platform [recordingPath] (temp dir on mobile, ignored on web).
+typedef VoiceResolvePath = Future<String> Function();
+
+/// Turns the value returned by [AudioRecorder.stop] into upload-ready
+/// bytes. Defaults to the cross-platform [readRecordedAudio].
+typedef VoiceReadAudio = Future<RecordedAudio> Function(String stopResult);
 
 class VoiceInventoryScreen extends StatefulWidget {
   const VoiceInventoryScreen({
     super.key,
     AudioRecorder? recorder,
     VoiceApiCall? apiCall,
-    Future<Directory> Function()? resolveTempDir,
+    VoiceResolvePath? resolvePath,
+    VoiceReadAudio? readAudio,
   })  : _recorder = recorder,
         _apiCall = apiCall,
-        _resolveTempDir = resolveTempDir;
+        _resolvePath = resolvePath,
+        _readAudio = readAudio;
 
   final AudioRecorder? _recorder;
   final VoiceApiCall? _apiCall;
-  final Future<Directory> Function()? _resolveTempDir;
+  final VoiceResolvePath? _resolvePath;
+  final VoiceReadAudio? _readAudio;
 
   @override
   State<VoiceInventoryScreen> createState() => _VoiceInventoryScreenState();
@@ -54,7 +75,8 @@ class _VoiceInventoryScreenState extends State<VoiceInventoryScreen>
     with TickerProviderStateMixin {
   late final AudioRecorder _recorder;
   late final VoiceApiCall _apiCall;
-  late final Future<Directory> Function() _resolveTempDir;
+  late final VoiceResolvePath _resolvePath;
+  late final VoiceReadAudio _readAudio;
 
   late final AnimationController _pulseCtrl;
   late final AnimationController _wavesCtrl;
@@ -75,7 +97,8 @@ class _VoiceInventoryScreenState extends State<VoiceInventoryScreen>
     super.initState();
     _recorder = widget._recorder ?? AudioRecorder();
     _apiCall = widget._apiCall ?? _defaultApiCall;
-    _resolveTempDir = widget._resolveTempDir ?? getTemporaryDirectory;
+    _resolvePath = widget._resolvePath ?? recordingPath;
+    _readAudio = widget._readAudio ?? readRecordedAudio;
 
     _pulseCtrl = AnimationController(
       vsync: this,
@@ -88,11 +111,15 @@ class _VoiceInventoryScreenState extends State<VoiceInventoryScreen>
   }
 
   Future<List<Map<String, dynamic>>> _defaultApiCall({
-    required File audioFile,
+    required Uint8List audioBytes,
     required String mimeType,
+    required String filename,
   }) {
-    return ApiService(AuthService())
-        .voiceInventory(audioFile: audioFile, mimeType: mimeType);
+    return ApiService(AuthService()).voiceInventory(
+      audioBytes: audioBytes,
+      mimeType: mimeType,
+      filename: filename,
+    );
   }
 
   @override
@@ -116,47 +143,61 @@ class _VoiceInventoryScreenState extends State<VoiceInventoryScreen>
       HapticFeedback.mediumImpact();
     } catch (_) {}
 
-    final hasPermission = await _recorder.hasPermission();
-    if (!hasPermission) {
+    // Spec 020 / FR-04: the WHOLE start path is guarded. A denied mic
+    // permission, a browser without MediaRecorder support, or any
+    // exception from `record` must land on a clear Spanish error — the
+    // mic icon never stays mute and never throws unhandled. (The old
+    // code threw on web here because `path_provider` has no web impl.)
+    try {
+      final hasPermission = await _recorder.hasPermission();
+      if (!hasPermission) {
+        if (!mounted) return;
+        setState(() {
+          _status = _VoiceStatus.error;
+          _errorMessage =
+              'Sin permiso para usar el micrófono. Actívalo en los '
+              'ajustes del navegador o del teléfono.';
+        });
+        return;
+      }
+
+      // On mobile this is a temp-dir file path; on web `record` ignores
+      // it (the clip lives in browser memory as a blob). Either way no
+      // `path_provider` call ever runs on the web build.
+      final path = await _resolvePath();
+
+      await _recorder.start(recordConfigForPlatform(), path: path);
+
+      if (!mounted) return;
+      setState(() {
+        _status = _VoiceStatus.recording;
+        _recordingStartedAt = DateTime.now();
+        _elapsed = Duration.zero;
+        _errorMessage = null;
+      });
+
+      _elapsedTimer?.cancel();
+      _elapsedTimer = Timer.periodic(const Duration(milliseconds: 200), (_) {
+        if (_recordingStartedAt == null) return;
+        final now = DateTime.now();
+        if (!mounted) return;
+        setState(() => _elapsed = now.difference(_recordingStartedAt!));
+        if (_elapsed >= _maxDuration) {
+          _stopAndSend();
+        }
+      });
+    } catch (e, stack) {
+      debugPrint('[VOICE] start recording failed: $e\n$stack');
+      _elapsedTimer?.cancel();
+      _recordingStartedAt = null;
+      if (!mounted) return;
       setState(() {
         _status = _VoiceStatus.error;
         _errorMessage =
-            'Sin permiso para usar el micrófono. Actívalo en Ajustes.';
+            'No pudimos iniciar la grabación. Revisa el permiso del '
+            'micrófono e intenta otra vez.';
       });
-      return;
     }
-
-    final tempDir = await _resolveTempDir();
-    final path =
-        '${tempDir.path}/vendia_voice_${DateTime.now().millisecondsSinceEpoch}.m4a';
-
-    await _recorder.start(
-      const RecordConfig(
-        encoder: AudioEncoder.aacLc,
-        bitRate: 128000,
-        sampleRate: 44100,
-      ),
-      path: path,
-    );
-
-    if (!mounted) return;
-    setState(() {
-      _status = _VoiceStatus.recording;
-      _recordingStartedAt = DateTime.now();
-      _elapsed = Duration.zero;
-      _errorMessage = null;
-    });
-
-    _elapsedTimer?.cancel();
-    _elapsedTimer = Timer.periodic(const Duration(milliseconds: 200), (_) {
-      if (_recordingStartedAt == null) return;
-      final now = DateTime.now();
-      if (!mounted) return;
-      setState(() => _elapsed = now.difference(_recordingStartedAt!));
-      if (_elapsed >= _maxDuration) {
-        _stopAndSend();
-      }
-    });
   }
 
   Future<void> _stopAndSend() async {
@@ -166,14 +207,25 @@ class _VoiceInventoryScreenState extends State<VoiceInventoryScreen>
       HapticFeedback.lightImpact();
     } catch (_) {}
 
-    final path = await _recorder.stop();
-    if (path == null) {
+    // `stop()` returns a filesystem path on mobile and a blob URL on
+    // web — `_recorder.stop` itself is cross-platform; we only branch
+    // when turning that result into bytes (see `readRecordedAudio`).
+    String? stopResult;
+    try {
+      stopResult = await _recorder.stop();
+    } catch (e, stack) {
+      debugPrint('[VOICE] stop recording failed: $e\n$stack');
+      stopResult = null;
+    }
+    if (stopResult == null) {
+      if (!mounted) return;
       setState(() {
         _status = _VoiceStatus.error;
         _errorMessage = 'No se pudo guardar el audio. Intenta otra vez.';
       });
       return;
     }
+    final String result = stopResult;
 
     // Require a minimum duration so the user doesn't waste an API
     // round-trip on a 200 ms tap. Use real-clock elapsed (not the
@@ -184,34 +236,45 @@ class _VoiceInventoryScreenState extends State<VoiceInventoryScreen>
         ? Duration.zero
         : DateTime.now().difference(_recordingStartedAt!);
     if (realElapsed.inMilliseconds < 1200) {
+      if (!mounted) return;
       setState(() {
         _status = _VoiceStatus.error;
         _errorMessage =
             'Grabación muy corta. Mantén presionado mientras dictas los productos.';
       });
-      try {
-        await File(path).delete();
-      } catch (_) {}
+      unawaited(disposeRecordedAudio(result));
       return;
     }
 
     setState(() => _status = _VoiceStatus.processing);
 
-    // Audit log — ship the file size + duration before the API call.
-    // The architecture records audio + ships straight to Gemini
-    // multimodal (no on-device STT), so there's no transcript to
-    // log here; the backend logs the raw Gemini response for
-    // diagnosis when the extracted items look wrong.
+    // Read the recorded clip as bytes — `dart:io` on mobile, a blob
+    // fetch on web. The architecture records audio + ships straight to
+    // Gemini multimodal (no on-device STT), so there is no transcript
+    // to log here; the backend logs the raw Gemini response when the
+    // extracted items look wrong.
+    final RecordedAudio audio;
     try {
-      final sizeBytes = await File(path).length();
-      debugPrint(
-          '[VOICE] uploading audio duration=${realElapsed.inMilliseconds}ms size=${sizeBytes}B');
-    } catch (_) {}
+      audio = await _readAudio(result);
+    } catch (e, stack) {
+      debugPrint('[VOICE] reading recorded audio failed: $e\n$stack');
+      unawaited(disposeRecordedAudio(result));
+      if (!mounted) return;
+      setState(() {
+        _status = _VoiceStatus.error;
+        _errorMessage = 'No se pudo leer el audio grabado. Intenta otra vez.';
+      });
+      return;
+    }
+    debugPrint(
+        '[VOICE] uploading audio duration=${realElapsed.inMilliseconds}ms '
+        'size=${audio.bytes.length}B type=${audio.mimeType}');
 
     try {
       final items = await _apiCall(
-        audioFile: File(path),
-        mimeType: 'audio/m4a',
+        audioBytes: audio.bytes,
+        mimeType: audio.mimeType,
+        filename: audio.filename,
       );
       debugPrint(
           '[VOICE] extracted ${items.length} items: '
@@ -273,11 +336,11 @@ class _VoiceInventoryScreenState extends State<VoiceInventoryScreen>
       }
     } finally {
       // Fire-and-forget the cleanup so the state transition above is
-      // visible to the framework without waiting on real file I/O —
-      // matters for widget tests where the fake path doesn't exist
-      // and the delete throws, but production benefits too: the user
-      // sees the error banner instantly instead of after a disk op.
-      unawaited(File(path).delete().catchError((_) => File(path)));
+      // visible to the framework without waiting on I/O — matters for
+      // widget tests where the fake path doesn't exist, but production
+      // benefits too: the user sees the result/error instantly instead
+      // of after a disk op (mobile) or a blob revoke (web).
+      unawaited(disposeRecordedAudio(result));
     }
   }
 

@@ -1,19 +1,25 @@
-import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:record/record.dart';
 
 import 'package:vendia_pos/screens/inventory/voice_inventory_screen.dart';
+import 'package:vendia_pos/services/voice_recorder.dart';
 
 /// Widget tests for the Phase-4 Voice Inventory screen.
 ///
-/// The screen has two external collaborators:
-///   1. An AudioRecorder — we inject a fake that satisfies the
-///      ~4 methods the widget actually calls (`hasPermission`,
-///      `start`, `stop`, `dispose`).
-///   2. An API call — we inject a VoiceApiCall lambda so the tests
-///      can simulate the happy path + empty-result path.
+/// Spec 020 made the screen cross-platform. The recording path no longer
+/// depends on `path_provider`/`dart:io File` directly — the screen reads
+/// the clip through the `voice_recorder.dart` facade. The screen exposes
+/// four injectable seams so a test never touches the microphone,
+/// `path_provider`, a filesystem, a browser blob, or the network:
+///   1. `recorder`     — a fake AudioRecorder.
+///   2. `apiCall`      — the upload lambda (Spec 020: receives `Uint8List`).
+///   3. `resolvePath`  — the path passed to `recorder.start` (no
+///                       `path_provider` in the test VM).
+///   4. `readAudio`    — turns `recorder.stop()`'s result into bytes (no
+///                       file read / blob fetch in the test VM).
 ///
 /// The mic orb is activated via a GestureDetector whose onTapDown +
 /// onTapUp fire synchronously with `tester.press`/`releasePointer`,
@@ -24,7 +30,7 @@ class _FakeRecorder implements AudioRecorder {
   _FakeRecorder({this.grantPermission = true});
 
   final bool grantPermission;
-  String stopPath = '/tmp/fake.m4a';
+  String stopResult = 'fake-clip';
 
   bool started = false;
   bool stopped = false;
@@ -39,13 +45,12 @@ class _FakeRecorder implements AudioRecorder {
   @override
   Future<void> start(RecordConfig config, {required String path}) async {
     started = true;
-    stopPath = path;
   }
 
   @override
   Future<String?> stop() async {
     stopped = true;
-    return stopPath;
+    return stopResult;
   }
 
   @override
@@ -61,7 +66,35 @@ class _FakeRecorder implements AudioRecorder {
       throw UnimplementedError('FakeRecorder: ${invocation.memberName}');
 }
 
-Future<Directory> _tempDir() async => Directory.systemTemp;
+/// A recorder whose `start` throws — stands in for the web failure mode
+/// where the recording-start path used to throw an unhandled exception
+/// (`path_provider` has no web implementation).
+class _ThrowingRecorder implements AudioRecorder {
+  @override
+  Future<bool> hasPermission({bool request = true}) async => true;
+
+  @override
+  Future<void> start(RecordConfig config, {required String path}) async {
+    throw StateError('recorder unavailable');
+  }
+
+  @override
+  Future<void> dispose() async {}
+
+  @override
+  noSuchMethod(Invocation invocation) =>
+      throw UnimplementedError('ThrowingRecorder: ${invocation.memberName}');
+}
+
+/// Test seam: a fixed path, no `path_provider`.
+Future<String> _fakePath() async => 'fake-clip';
+
+/// Test seam: fixed bytes, no filesystem / blob fetch.
+Future<RecordedAudio> _fakeAudio(String _) async => RecordedAudio(
+      bytes: Uint8List.fromList(const [1, 2, 3, 4]),
+      mimeType: 'audio/webm',
+      filename: 'vendia_voice.webm',
+    );
 
 Widget _wrap(Widget child) => MaterialApp(home: child);
 
@@ -72,8 +105,9 @@ void main() {
       (tester) async {
     await tester.pumpWidget(_wrap(VoiceInventoryScreen(
       recorder: _FakeRecorder(),
-      apiCall: ({required audioFile, required mimeType}) async => [],
-      resolveTempDir: _tempDir,
+      apiCall: ({required audioBytes, required mimeType, required filename}) async => [],
+      resolvePath: _fakePath,
+      readAudio: _fakeAudio,
     )));
     await tester.pump();
 
@@ -87,8 +121,9 @@ void main() {
     final recorder = _FakeRecorder();
     await tester.pumpWidget(_wrap(VoiceInventoryScreen(
       recorder: recorder,
-      apiCall: ({required audioFile, required mimeType}) async => [],
-      resolveTempDir: _tempDir,
+      apiCall: ({required audioBytes, required mimeType, required filename}) async => [],
+      resolvePath: _fakePath,
+      readAudio: _fakeAudio,
     )));
     await tester.pump();
 
@@ -120,11 +155,12 @@ void main() {
     int apiCalls = 0;
     await tester.pumpWidget(_wrap(VoiceInventoryScreen(
       recorder: recorder,
-      apiCall: ({required audioFile, required mimeType}) async {
+      apiCall: ({required audioBytes, required mimeType, required filename}) async {
         apiCalls++;
         return [];
       },
-      resolveTempDir: _tempDir,
+      resolvePath: _fakePath,
+      readAudio: _fakeAudio,
     )));
     await tester.pump();
 
@@ -138,7 +174,7 @@ void main() {
     // pumpAndSettle can't be used — the mic orb runs continuous
     // pulse + wave animations that never settle. runAsync flushes
     // the real event loop so async chains (recorder.stop → apiCall
-    // → setState → unawaited File.delete) resolve, then a discrete
+    // → setState → unawaited cleanup) resolve, then a discrete
     // pump rebuilds the tree with the new state.
     await tester.runAsync(() async {
       await Future<void>.delayed(const Duration(milliseconds: 100));
@@ -156,10 +192,11 @@ void main() {
     final recorder = _FakeRecorder();
     await tester.pumpWidget(_wrap(VoiceInventoryScreen(
       recorder: recorder,
-      apiCall: ({required audioFile, required mimeType}) async {
+      apiCall: ({required audioBytes, required mimeType, required filename}) async {
         throw Exception('boom');
       },
-      resolveTempDir: _tempDir,
+      resolvePath: _fakePath,
+      readAudio: _fakeAudio,
     )));
     await tester.pump();
 
@@ -177,7 +214,7 @@ void main() {
     // pumpAndSettle can't be used — the mic orb runs continuous
     // pulse + wave animations that never settle. runAsync flushes
     // the real event loop so async chains (recorder.stop → apiCall
-    // → setState → unawaited File.delete) resolve, then a discrete
+    // → setState → unawaited cleanup) resolve, then a discrete
     // pump rebuilds the tree with the new state.
     await tester.runAsync(() async {
       await Future<void>.delayed(const Duration(milliseconds: 100));
@@ -194,8 +231,9 @@ void main() {
     final recorder = _FakeRecorder();
     await tester.pumpWidget(_wrap(VoiceInventoryScreen(
       recorder: recorder,
-      apiCall: ({required audioFile, required mimeType}) async => [],
-      resolveTempDir: _tempDir,
+      apiCall: ({required audioBytes, required mimeType, required filename}) async => [],
+      resolvePath: _fakePath,
+      readAudio: _fakeAudio,
     )));
     await tester.pump();
 
@@ -213,7 +251,7 @@ void main() {
     // pumpAndSettle can't be used — the mic orb runs continuous
     // pulse + wave animations that never settle. runAsync flushes
     // the real event loop so async chains (recorder.stop → apiCall
-    // → setState → unawaited File.delete) resolve, then a discrete
+    // → setState → unawaited cleanup) resolve, then a discrete
     // pump rebuilds the tree with the new state.
     await tester.runAsync(() async {
       await Future<void>.delayed(const Duration(milliseconds: 100));
@@ -224,13 +262,52 @@ void main() {
     expect(find.textContaining('No identificamos productos'), findsOneWidget);
   });
 
+  testWidgets('the API call receives the recorded audio as bytes',
+      (tester) async {
+    // Spec 020 / FR-03: the upload lambda is fed `Uint8List` + the real
+    // MIME type, not a `dart:io File` — that is what lets the upload use
+    // `MultipartFile.fromBytes` on web.
+    Uint8List? receivedBytes;
+    String? receivedMime;
+    await tester.pumpWidget(_wrap(VoiceInventoryScreen(
+      recorder: _FakeRecorder(),
+      apiCall: ({required audioBytes, required mimeType, required filename}) async {
+        receivedBytes = audioBytes;
+        receivedMime = mimeType;
+        return [];
+      },
+      resolvePath: _fakePath,
+      readAudio: _fakeAudio,
+    )));
+    await tester.pump();
+
+    final gesture = await tester.startGesture(
+        tester.getCenter(find.byKey(const Key('voice_mic_button'))));
+    await tester.pump();
+    await tester.runAsync(() async {
+      await Future<void>.delayed(const Duration(milliseconds: 1500));
+    });
+    await tester.pump();
+    await gesture.up();
+    await tester.runAsync(() async {
+      await Future<void>.delayed(const Duration(milliseconds: 100));
+    });
+    await tester.pump();
+    await tester.pump();
+
+    expect(receivedBytes, isNotNull);
+    expect(receivedBytes, equals(Uint8List.fromList(const [1, 2, 3, 4])));
+    expect(receivedMime, 'audio/webm');
+  });
+
   testWidgets('permission denied short-circuits into an error state',
       (tester) async {
     final recorder = _FakeRecorder(grantPermission: false);
     await tester.pumpWidget(_wrap(VoiceInventoryScreen(
       recorder: recorder,
-      apiCall: ({required audioFile, required mimeType}) async => [],
-      resolveTempDir: _tempDir,
+      apiCall: ({required audioBytes, required mimeType, required filename}) async => [],
+      resolvePath: _fakePath,
+      readAudio: _fakeAudio,
     )));
     await tester.pump();
 
@@ -241,7 +318,7 @@ void main() {
     // pumpAndSettle can't be used — the mic orb runs continuous
     // pulse + wave animations that never settle. runAsync flushes
     // the real event loop so async chains (recorder.stop → apiCall
-    // → setState → unawaited File.delete) resolve, then a discrete
+    // → setState → unawaited cleanup) resolve, then a discrete
     // pump rebuilds the tree with the new state.
     await tester.runAsync(() async {
       await Future<void>.delayed(const Duration(milliseconds: 100));
@@ -253,5 +330,33 @@ void main() {
         reason: 'Recorder.start must not fire when permission is denied');
     expect(find.byKey(const Key('voice_status_error')), findsOneWidget);
     expect(find.textContaining('Sin permiso'), findsOneWidget);
+  });
+
+  testWidgets('a throwing recorder lands on the error state, never mute',
+      (tester) async {
+    // Spec 020 / FR-04: any exception from the start path (here a
+    // recorder whose `start` throws — the web symptom was `path_provider`
+    // throwing) must surface a clear Spanish error, not a dead icon.
+    await tester.pumpWidget(_wrap(VoiceInventoryScreen(
+      recorder: _ThrowingRecorder(),
+      apiCall: ({required audioBytes, required mimeType, required filename}) async => [],
+      resolvePath: _fakePath,
+      readAudio: _fakeAudio,
+    )));
+    await tester.pump();
+
+    final gesture = await tester.startGesture(
+        tester.getCenter(find.byKey(const Key('voice_mic_button'))));
+    await tester.pump();
+    await tester.runAsync(() async {
+      await Future<void>.delayed(const Duration(milliseconds: 100));
+    });
+    await tester.pump();
+    await gesture.up();
+    await tester.pump();
+
+    expect(find.byKey(const Key('voice_status_error')), findsOneWidget);
+    expect(find.textContaining('No pudimos iniciar la grabación'),
+        findsOneWidget);
   });
 }
