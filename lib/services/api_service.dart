@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:typed_data';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
@@ -784,14 +785,23 @@ class ApiService {
   /// price}]` array. The backend gates the endpoint behind
   /// PremiumAuth — an expired trial returns 403 premium_expired and
   /// bubbles up through the existing soft-paywall interceptor.
+  ///
+  /// Spec 020: the audio arrives as raw BYTES (not a `dart:io File`) and
+  /// the multipart part is built with `MultipartFile.fromBytes`, so the
+  /// upload works on Flutter web too — where the browser hands back a
+  /// blob, not a filesystem path. [mimeType] is the real codec
+  /// (`audio/m4a` on mobile, `audio/webm` on web) and [filename] carries
+  /// the matching extension so the backend's sniffing has a hint.
   Future<List<Map<String, dynamic>>> voiceInventory({
-    required File audioFile,
+    required Uint8List audioBytes,
     required String mimeType,
+    String filename = 'vendia_voice',
   }) async {
     try {
       final fields = <String, dynamic>{
-        'audio_file': await MultipartFile.fromFile(
-          audioFile.path,
+        'audio_file': MultipartFile.fromBytes(
+          audioBytes,
+          filename: filename,
           contentType: DioMediaType.parse(mimeType),
         ),
       };
