@@ -6,11 +6,14 @@ import '../../database/database_service.dart';
 import '../../database/collections/local_sale.dart';
 import '../../database/collections/local_product.dart';
 import '../../services/api_service.dart';
+import '../../services/app_error.dart';
 import '../../services/auth_service.dart';
 import '../../services/branch_provider.dart';
 import '../../services/role_manager.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/online_orders_bell.dart';
+import '../../widgets/profile_photo_avatar.dart';
+import '../../widgets/profile_photo_picker.dart';
 import '../../widgets/trial_bar.dart';
 import '../auth/login_screen.dart';
 import '../admin/suppliers_screen.dart';
@@ -1747,93 +1750,247 @@ class _AccountMenuButton extends StatelessWidget {
         showModalBottomSheet<void>(
           context: context,
           backgroundColor: Colors.white,
+          isScrollControlled: true,
           shape: const RoundedRectangleBorder(
             borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
           ),
-          builder: (ctx) => SafeArea(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(20, 12, 20, 16),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
+          builder: (ctx) => _AccountSheetContent(
+            ownerName: ownerName,
+            businessName: businessName,
+            roleLabel: roleLabel,
+            onLogout: onLogout,
+          ),
+        );
+      },
+    );
+  }
+}
+
+/// Body of the "Mi cuenta" bottom sheet.
+///
+/// Spec 022 / FR-01, FR-02, FR-04: the owner reaches their profile from
+/// "Mi cuenta" (the header profile icon), not from the Empleados screen.
+/// This sheet shows the owner's circular avatar and lets them load or
+/// change their profile photo, reusing F019's [ProfilePhotoAvatar],
+/// [ProfilePhotoPicker] and `ApiService.uploadEmployeePhoto`.
+///
+/// Spec 022 / FR-03, D2: the owner is the [Employee] with `is_owner`.
+/// The id is resolved from the frontend by calling `fetchEmployees` and
+/// picking the `is_owner` row — no backend `me` endpoint was needed.
+class _AccountSheetContent extends StatefulWidget {
+  const _AccountSheetContent({
+    required this.ownerName,
+    required this.businessName,
+    required this.roleLabel,
+    required this.onLogout,
+  });
+
+  final String ownerName;
+  final String businessName;
+  final String roleLabel;
+  final Future<void> Function() onLogout;
+
+  @override
+  State<_AccountSheetContent> createState() => _AccountSheetContentState();
+}
+
+class _AccountSheetContentState extends State<_AccountSheetContent> {
+  late final ApiService _api;
+
+  /// UUID of the owner Employee — needed to upload the profile photo.
+  String? _ownerEmployeeId;
+
+  /// Persisted profile photo URL of the owner; advances after an upload.
+  String? _photoUrl;
+
+  /// True while resolving the owner id from `fetchEmployees`.
+  bool _loading = true;
+
+  /// Spanish message shown when the owner id could not be resolved.
+  String? _resolveError;
+
+  @override
+  void initState() {
+    super.initState();
+    _api = ApiService(AuthService());
+    _resolveOwner();
+  }
+
+  /// Resolves the owner Employee (the row with `is_owner == true`) so the
+  /// profile-photo upload has a target UUID. Spec 022 / T-01, D2.
+  Future<void> _resolveOwner() async {
+    try {
+      final employees = await _api.fetchEmployees();
+      final owner = employees.firstWhere(
+        (e) => (e['is_owner'] as bool? ?? false) == true,
+        orElse: () => <String, dynamic>{},
+      );
+      if (!mounted) return;
+      final id = (owner['id'] as String?)?.trim();
+      final rawPhoto = (owner['photo_url'] as String?)?.trim();
+      setState(() {
+        _ownerEmployeeId = (id == null || id.isEmpty) ? null : id;
+        _photoUrl = (rawPhoto == null || rawPhoto.isEmpty) ? null : rawPhoto;
+        _resolveError = _ownerEmployeeId == null
+            ? 'No pudimos cargar tu perfil. Intenta de nuevo.'
+            : null;
+        _loading = false;
+      });
+    } on AppError catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _resolveError = e.message;
+        _loading = false;
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      child: SingleChildScrollView(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 12, 20, 16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Center(
+                child: Container(
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: Colors.grey.shade300,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
+
+              // ── Foto de perfil del dueño (Spec 022) ───────────
+              Center(child: _buildProfilePhoto()),
+              const SizedBox(height: 16),
+
+              Row(
                 children: [
-                  Center(
-                    child: Container(
-                      width: 40,
-                      height: 4,
-                      decoration: BoxDecoration(
-                        color: Colors.grey.shade300,
-                        borderRadius: BorderRadius.circular(2),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  Row(
-                    children: [
-                      Container(
-                        width: 56,
-                        height: 56,
-                        decoration: BoxDecoration(
-                          color: AppTheme.primary.withValues(alpha: 0.10),
-                          shape: BoxShape.circle,
-                        ),
-                        child: const Icon(Icons.person_rounded,
-                            color: AppTheme.primary, size: 28),
-                      ),
-                      const SizedBox(width: 14),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(ownerName,
-                                style: const TextStyle(
-                                    fontSize: 22,
-                                    fontWeight: FontWeight.bold,
-                                    color: AppTheme.textPrimary),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis),
-                            const SizedBox(height: 2),
-                            Text('$roleLabel • $businessName',
-                                style: const TextStyle(
-                                    fontSize: 15,
-                                    color: AppTheme.textSecondary),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 20),
-                  SizedBox(
-                    width: double.infinity,
-                    height: 56,
-                    child: ElevatedButton.icon(
-                      icon: const Icon(Icons.logout_rounded,
-                          color: AppTheme.error),
-                      label: const Text('Cerrar sesión',
-                          style: TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.bold,
-                              color: AppTheme.error)),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor:
-                            AppTheme.error.withValues(alpha: 0.08),
-                        elevation: 0,
-                        shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(16)),
-                      ),
-                      onPressed: () async {
-                        Navigator.of(ctx).pop();
-                        await onLogout();
-                      },
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(widget.ownerName,
+                            style: const TextStyle(
+                                fontSize: 22,
+                                fontWeight: FontWeight.bold,
+                                color: AppTheme.textPrimary),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis),
+                        const SizedBox(height: 2),
+                        Text('${widget.roleLabel} • ${widget.businessName}',
+                            style: const TextStyle(
+                                fontSize: 15,
+                                color: AppTheme.textSecondary),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis),
+                      ],
                     ),
                   ),
                 ],
               ),
-            ),
+              const SizedBox(height: 20),
+              SizedBox(
+                width: double.infinity,
+                height: 56,
+                child: ElevatedButton.icon(
+                  icon: const Icon(Icons.logout_rounded,
+                      color: AppTheme.error),
+                  label: const Text('Cerrar sesión',
+                      style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                          color: AppTheme.error)),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor:
+                        AppTheme.error.withValues(alpha: 0.08),
+                    elevation: 0,
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(16)),
+                  ),
+                  onPressed: () async {
+                    Navigator.of(context).pop();
+                    await widget.onLogout();
+                  },
+                ),
+              ),
+            ],
           ),
-        );
+        ),
+      ),
+    );
+  }
+
+  /// Owner avatar + photo picker, with graceful fallbacks while the
+  /// owner id is loading or could not be resolved. Spec 022 / FR-01,
+  /// FR-02, FR-04.
+  Widget _buildProfilePhoto() {
+    if (_loading) {
+      return const Padding(
+        padding: EdgeInsets.symmetric(vertical: 24),
+        child: SizedBox(
+          width: 28,
+          height: 28,
+          child: CircularProgressIndicator(strokeWidth: 2.8),
+        ),
+      );
+    }
+
+    // Owner id could not be resolved: still show an avatar (initials)
+    // plus a retry, never an empty hole (Constitution Art. I).
+    if (_ownerEmployeeId == null) {
+      return Column(
+        children: [
+          ProfilePhotoAvatar(
+            name: widget.ownerName,
+            photoUrl: _photoUrl,
+            diameter: 104,
+          ),
+          const SizedBox(height: 10),
+          Text(
+            _resolveError ?? 'No pudimos cargar tu perfil.',
+            textAlign: TextAlign.center,
+            style: const TextStyle(
+                fontSize: 14, color: AppTheme.textSecondary),
+          ),
+          const SizedBox(height: 8),
+          TextButton.icon(
+            key: const Key('account_photo_retry'),
+            onPressed: () {
+              setState(() {
+                _loading = true;
+                _resolveError = null;
+              });
+              _resolveOwner();
+            },
+            icon: const Icon(Icons.refresh_rounded, size: 20),
+            label: const Text('Reintentar',
+                style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
+          ),
+        ],
+      );
+    }
+
+    // Spec 022 / FR-04: ProfilePhotoPicker owns the picked-image preview
+    // and the upload; on success it reports back the new URL so the
+    // avatar refreshes immediately within this sheet.
+    return ProfilePhotoPicker(
+      key: const Key('account_photo_picker'),
+      api: _api,
+      employeeUuid: _ownerEmployeeId!,
+      name: widget.ownerName.isEmpty ? 'Mi cuenta' : widget.ownerName,
+      photoUrl: _photoUrl,
+      isOwner: true,
+      onUploaded: (url) {
+        if (!mounted) return;
+        setState(() => _photoUrl = url);
       },
     );
   }
