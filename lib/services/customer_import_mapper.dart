@@ -62,7 +62,7 @@ const Map<String, List<String>> _kSynonyms = {
 String _normalize(String s) {
   // Map individual accented characters to their ASCII equivalents.
   // Both lower and upper variants are listed.
-  const _map = {
+  const map = {
     'á': 'a', 'à': 'a', 'ä': 'a', 'â': 'a', 'ã': 'a',
     'é': 'e', 'è': 'e', 'ë': 'e', 'ê': 'e',
     'í': 'i', 'ì': 'i', 'ï': 'i', 'î': 'i',
@@ -79,7 +79,7 @@ String _normalize(String s) {
   final buf = StringBuffer();
   for (final ch in s.runes) {
     final c = String.fromCharCode(ch);
-    buf.write(_map[c] ?? c);
+    buf.write(map[c] ?? c);
   }
   return buf.toString().toLowerCase().trim();
 }

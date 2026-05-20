@@ -18,8 +18,8 @@ import 'package:vendia_pos/services/auth_service.dart';
 
 // ── Scripted adapter (same pattern as cold_start_retry_interceptor_test.dart) ─
 
-class _ScriptedAdapter implements HttpClientAdapter {
-  _ScriptedAdapter(this.script);
+class ScriptedAdapter implements HttpClientAdapter {
+  ScriptedAdapter(this.script);
 
   final List<ResponseBody Function(RequestOptions, List<int>?)> script;
   int callCount = 0;
@@ -113,7 +113,7 @@ class _StubAuth extends AuthService {
 /// ColdStartRetryInterceptor is disabled so it does not add its own
 /// delays (5 s, 12 s, 25 s) on top of the import-retry logic.
 ApiService buildService(
-  _ScriptedAdapter adapter, {
+  ScriptedAdapter adapter, {
   List<Duration>? retryDelays,
 }) {
   final svc = ApiService(
@@ -145,7 +145,7 @@ void main() {
 
   group('ApiService.importCustomers — chunking (AC-06)', () {
     test('250 rows → 3 requests of 100, 100, 50', () async {
-      final adapter = _ScriptedAdapter([
+      final adapter = ScriptedAdapter([
         _okReport(created: 100),
         _okReport(created: 100),
         _okReport(created: 50),
@@ -160,7 +160,7 @@ void main() {
     });
 
     test('100 rows → 1 request', () async {
-      final adapter = _ScriptedAdapter([
+      final adapter = ScriptedAdapter([
         _okReport(created: 100),
       ]);
       final svc = buildService(adapter);
@@ -172,7 +172,7 @@ void main() {
     });
 
     test('0 rows → 0 requests, empty report', () async {
-      final adapter = _ScriptedAdapter([]);
+      final adapter = ScriptedAdapter([]);
       final svc = buildService(adapter);
 
       final report = await svc.importCustomers([]);
@@ -182,7 +182,7 @@ void main() {
     });
 
     test('101 rows → 2 requests (100 + 1)', () async {
-      final adapter = _ScriptedAdapter([
+      final adapter = ScriptedAdapter([
         _okReport(created: 100),
         _okReport(created: 1),
       ]);
@@ -195,7 +195,7 @@ void main() {
     });
 
     test('aggregates created+updated+skipped+failed across chunks', () async {
-      final adapter = _ScriptedAdapter([
+      final adapter = ScriptedAdapter([
         _okReport(created: 90, updated: 5, skipped: 3, failed: [
           {'row_index': 2, 'reason': 'nombre vacío'},
         ]),
@@ -217,7 +217,7 @@ void main() {
 
   group('ApiService.importCustomers — retry on network/5xx (AC-07, FR-11)', () {
     test('connection error on first attempt → retries → succeeds', () async {
-      final adapter = _ScriptedAdapter([
+      final adapter = ScriptedAdapter([
         _fail(DioExceptionType.connectionError),
         _okReport(created: 5),
       ]);
@@ -231,7 +231,7 @@ void main() {
     });
 
     test('5xx error on first attempt → retries → succeeds', () async {
-      final adapter = _ScriptedAdapter([
+      final adapter = ScriptedAdapter([
         _fail(DioExceptionType.badResponse, status: 500),
         _okReport(created: 3),
       ]);
@@ -244,7 +244,7 @@ void main() {
     });
 
     test('503 on first two attempts → succeeds on third', () async {
-      final adapter = _ScriptedAdapter([
+      final adapter = ScriptedAdapter([
         _fail(DioExceptionType.badResponse, status: 503),
         _fail(DioExceptionType.badResponse, status: 503),
         _okReport(created: 2),
@@ -258,7 +258,7 @@ void main() {
     });
 
     test('fails 3 times → propagates error (max retries exceeded)', () async {
-      final adapter = _ScriptedAdapter([
+      final adapter = ScriptedAdapter([
         _fail(DioExceptionType.connectionError),
         _fail(DioExceptionType.connectionError),
         _fail(DioExceptionType.connectionError),
@@ -275,7 +275,7 @@ void main() {
     });
 
     test('4xx error (400) is NOT retried', () async {
-      final adapter = _ScriptedAdapter([
+      final adapter = ScriptedAdapter([
         _fail(DioExceptionType.badResponse, status: 400),
       ]);
       final svc = buildService(adapter);
@@ -289,7 +289,7 @@ void main() {
     });
 
     test('4xx error (422) is NOT retried', () async {
-      final adapter = _ScriptedAdapter([
+      final adapter = ScriptedAdapter([
         _fail(DioExceptionType.badResponse, status: 422),
       ]);
       final svc = buildService(adapter);
@@ -305,7 +305,7 @@ void main() {
 
   group('ApiService.importCustomers — request payload', () {
     test('includes dedup_strategy=merge_by_phone', () async {
-      final adapter = _ScriptedAdapter([
+      final adapter = ScriptedAdapter([
         _okReport(created: 1),
       ]);
       final svc = buildService(adapter);
@@ -319,7 +319,7 @@ void main() {
     });
 
     test('rows are sent correctly in the payload', () async {
-      final adapter = _ScriptedAdapter([
+      final adapter = ScriptedAdapter([
         _okReport(created: 2),
       ]);
       final svc = buildService(adapter);
