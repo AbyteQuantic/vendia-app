@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../../config/api_config.dart';
 import '../../services/api_service.dart';
 import '../../services/auth_service.dart';
 import '../../theme/app_theme.dart';
@@ -95,7 +96,7 @@ class _PromoShareScreenState extends State<PromoShareScreen> {
     final hi = (customerName?.isNotEmpty ?? false) ? '¡Hola $customerName!' : '¡Hola!';
     final link = _storeSlug.isEmpty
         ? ''
-        : '\nPide aquí: https://vendia.co/$_storeSlug/menu';
+        : '\nPide aquí: ${ApiConfig.publicCatalogUrlFor(_storeSlug)}';
     return '$hi 👋\n'
         'Tenemos una súper promo en $_businessName:\n'
         '🎉 *${widget.promoName}*\n'

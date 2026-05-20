@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import '../../config/api_config.dart';
 import '../../services/api_service.dart';
 import '../../services/auth_service.dart';
 import '../../theme/app_theme.dart';
@@ -74,7 +75,7 @@ class _CatalogVirtualScreenState extends State<CatalogVirtualScreen>
       ));
       return;
     }
-    final url = 'https://vendia-admin.vercel.app/$_slug/menu';
+    final url = ApiConfig.publicCatalogUrlFor(_slug!);
     Clipboard.setData(ClipboardData(text: url));
     HapticFeedback.lightImpact();
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
@@ -150,7 +151,7 @@ class _CatalogVirtualScreenState extends State<CatalogVirtualScreen>
                     Expanded(
                       child: Text(
                         _slug != null && _slug!.isNotEmpty
-                            ? 'vendia-admin.vercel.app/$_slug/menu'
+                            ? 'tienda.vendia.store/$_slug'
                             : 'Configure el slug primero',
                         style: const TextStyle(fontSize: 14, color: Colors.white70),
                         overflow: TextOverflow.ellipsis,
