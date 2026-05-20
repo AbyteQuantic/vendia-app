@@ -115,7 +115,7 @@ void main() {
 
   group('CustomerImportScreen — Paso 3 (Preview)', () {
     testWidgets('aviso Habeas Data visible (FR-10)', (tester) async {
-      await tester.pumpWidget(MaterialApp(
+      await tester.pumpWidget(const MaterialApp(
         home: Scaffold(
           body: SingleChildScrollView(
             child: _TestStep3(
@@ -136,7 +136,7 @@ void main() {
     });
 
     testWidgets('filas inválidas se muestran en rojo con razón', (tester) async {
-      await tester.pumpWidget(MaterialApp(
+      await tester.pumpWidget(const MaterialApp(
         home: Scaffold(
           body: SingleChildScrollView(
             child: _TestStep3(
@@ -159,7 +159,7 @@ void main() {
     });
 
     testWidgets('muestra conteo de filas listas y con problemas', (tester) async {
-      await tester.pumpWidget(MaterialApp(
+      await tester.pumpWidget(const MaterialApp(
         home: Scaffold(
           body: SingleChildScrollView(
             child: _TestStep3(
@@ -181,7 +181,7 @@ void main() {
 
   group('CustomerImportScreen — Paso 4 (Importar)', () {
     testWidgets('muestra barra de progreso durante importación', (tester) async {
-      await tester.pumpWidget(MaterialApp(
+      await tester.pumpWidget(const MaterialApp(
         home: Scaffold(
           body: _TestStep4Importing(sent: 50, total: 100),
         ),
@@ -193,7 +193,7 @@ void main() {
     });
 
     testWidgets('muestra reporte al finalizar', (tester) async {
-      await tester.pumpWidget(MaterialApp(
+      await tester.pumpWidget(const MaterialApp(
         home: Scaffold(
           body: SingleChildScrollView(
             child: _TestStep4Done(created: 30, updated: 5, failed: 2),

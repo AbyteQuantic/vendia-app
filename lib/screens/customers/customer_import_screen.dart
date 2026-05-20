@@ -253,7 +253,7 @@ class _CustomerImportScreenState extends State<CustomerImportScreen> {
     // Normalize ';' to ',' for the decoder
     final normalized = sep == ';' ? content.replaceAll(';', ',') : content;
 
-    final decoder = csv_pkg.CsvDecoder(
+    const decoder = csv_pkg.CsvDecoder(
       fieldDelimiter: ',',
       skipEmptyLines: true,
     );
@@ -645,6 +645,7 @@ class ImportStep2MappingContent extends StatelessWidget {
   final void Function(int idx, String? target) onMappingChanged;
 
   const ImportStep2MappingContent({
+    super.key,
     required this.headers,
     required this.mapping,
     required this.nameIsMapped,
@@ -747,7 +748,7 @@ class _MappingRow extends StatelessWidget {
         ),
         Expanded(
           child: DropdownButtonFormField<String?>(
-            value: selectedTarget,
+            initialValue: selectedTarget,
             isExpanded: true,
             decoration: InputDecoration(
               contentPadding:
@@ -792,6 +793,7 @@ class ImportStep3PreviewContent extends StatelessWidget {
   final int totalRows;
 
   const ImportStep3PreviewContent({
+    super.key,
     required this.headers,
     required this.previewMapped,
     required this.previewValid,
@@ -966,6 +968,7 @@ class ImportStep4ResultContent extends StatelessWidget {
   final String? error;
 
   const ImportStep4ResultContent({
+    super.key,
     required this.importing,
     required this.sent,
     required this.total,
