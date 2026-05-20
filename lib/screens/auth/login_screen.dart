@@ -225,7 +225,19 @@ class _LoginScreenState extends State<LoginScreen> {
       HapticFeedback.heavyImpact();
       setState(() => _errorMessage = AppError.fromException(e).message);
     } finally {
-      if (mounted) setState(() => _isLoading = false);
+      // El token de Turnstile es de un solo uso. Después de cualquier
+      // intento (éxito o fallo) hay que limpiarlo del state y resetear
+      // el widget — sino, si el usuario reintenta tras un 401 (clave
+      // mal), el frontend re-envía el mismo token ya consumido y el
+      // backend responde 400 "verificación de seguridad falló". El
+      // reset fuerza al widget a emitir un token fresco.
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+          _captchaToken = null;
+        });
+        _captchaKey.currentState?.reset();
+      }
     }
   }
 
