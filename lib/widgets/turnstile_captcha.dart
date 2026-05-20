@@ -76,6 +76,17 @@ class TurnstileCaptchaState extends State<TurnstileCaptcha> {
   String? _currentToken;
   bool _hasError = false;
   bool _isLoading = true;
+  // Cuántos timeouts seguidos hubo sin token. El primero dispara un
+  // auto-reintento silencioso (red móvil lenta es la causa típica); a
+  // partir del segundo recién mostramos el panel de error con botón
+  // visible — así el usuario no ve un error transitorio que se cura
+  // solo en 2 s.
+  int _timeoutCount = 0;
+  // Key incrementable que envuelve al `CloudflareTurnstile` real. Al
+  // resetear, lo cambiamos para forzar que Flutter destruya y recree
+  // el widget — `refreshToken()` solo sirve si Cloudflare aceptó el
+  // primer paint; en timeouts duros hay que remontarlo.
+  int _rebuildKey = 0;
 
   /// Token actual (null si aún no hay token válido o se reseteó).
   String? get currentToken => _currentToken;
@@ -103,6 +114,7 @@ class TurnstileCaptchaState extends State<TurnstileCaptcha> {
       _currentToken = token;
       _hasError = false;
       _isLoading = false;
+      _timeoutCount = 0; // reset contador en éxito
     });
     widget.onToken(token);
   }
@@ -118,13 +130,20 @@ class TurnstileCaptchaState extends State<TurnstileCaptcha> {
   }
 
   /// Resetea el widget para que el usuario resuelva un nuevo CAPTCHA.
-  /// Llamar cuando el backend rechaza el token con 400 (AC-06).
+  /// Llamar cuando el backend rechaza el token con 400 (AC-06) o cuando
+  /// el usuario toca el botón "Reintentar" del panel de error.
   void reset() {
     if (!mounted) return;
     setState(() {
       _currentToken = null;
       _hasError = false;
       _isLoading = true;
+      _timeoutCount = 0;
+      // Forzar remount del CloudflareTurnstile real — `refreshToken()`
+      // no siempre alcanza tras un timeout duro porque el WebView ya
+      // está en estado degradado. Cambiar la key garantiza un widget
+      // fresco que empieza la negociación con Cloudflare de cero.
+      _rebuildKey++;
     });
     _controller?.refreshToken();
   }
@@ -165,11 +184,83 @@ class TurnstileCaptchaState extends State<TurnstileCaptcha> {
         ? widget.turnstileWidgetBuilder!(this)
         : _buildRealTurnstile(siteKey);
 
+    // ── Estado ERROR: el widget es la única fuente de verdad visual.
+    // Esconde el CloudflareTurnstile (que podría seguir mostrando su
+    // "Verificando seguridad…" interno) y muestra UN panel claro con
+    // botón grande de Reintentar. La pantalla padre NO debe duplicar
+    // este mensaje en su propio banner — su onError es solo para que
+    // limpie el captcha_token.
+    if (_hasError) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 8),
+        child: Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: const Color(0xFFFFF4F4),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: AppTheme.error.withValues(alpha: 0.3)),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(
+                Icons.warning_amber_rounded,
+                color: AppTheme.error,
+                size: 32,
+              ),
+              const SizedBox(height: 8),
+              const Text(
+                'La verificación de seguridad tardó demasiado',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: AppTheme.error,
+                  fontSize: 16,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                'Toque el botón para intentarlo de nuevo.',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: Colors.grey.shade700,
+                  fontSize: 14,
+                ),
+              ),
+              const SizedBox(height: 14),
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton.icon(
+                  onPressed: reset,
+                  icon: const Icon(Icons.refresh_rounded),
+                  label: const Text(
+                    'Reintentar verificación',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  style: FilledButton.styleFrom(
+                    backgroundColor: AppTheme.error,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
         // Loader mientras el widget de Cloudflare está cargando
-        if (_isLoading && !_hasError)
+        if (_isLoading)
           Padding(
             padding: const EdgeInsets.symmetric(vertical: 12),
             child: Row(
@@ -192,31 +283,12 @@ class TurnstileCaptchaState extends State<TurnstileCaptcha> {
             ),
           ),
 
-        // Mensaje de error con botón de reintentar
-        if (_hasError)
-          Padding(
-            padding: const EdgeInsets.symmetric(vertical: 8),
-            child: Row(
-              children: [
-                const Icon(Icons.warning_amber_rounded,
-                    color: AppTheme.error, size: 20),
-                const SizedBox(width: 8),
-                const Expanded(
-                  child: Text(
-                    'No se pudo verificar. Toque "Reintentar".',
-                    style: TextStyle(color: AppTheme.error, fontSize: 16),
-                  ),
-                ),
-                TextButton(
-                  onPressed: reset,
-                  child: const Text('Reintentar'),
-                ),
-              ],
-            ),
-          ),
-
-        // Widget de Turnstile (real o stub de test)
-        turnstileContent,
+        // Widget de Turnstile (real o stub de test) envuelto en KeyedSubtree
+        // para que `reset()` lo remonte cuando el reintento manual lo necesita.
+        KeyedSubtree(
+          key: ValueKey<int>(_rebuildKey),
+          child: turnstileContent,
+        ),
       ],
     );
   }
@@ -241,13 +313,24 @@ class TurnstileCaptchaState extends State<TurnstileCaptcha> {
       },
       onTimeout: () {
         if (!mounted) return;
-        setState(() {
-          _hasError = true;
-          _isLoading = false;
-        });
-        widget.onError(
-          'La verificación tardó demasiado. Toque "Reintentar".',
-        );
+        _timeoutCount++;
+        if (_timeoutCount == 1) {
+          // Primer timeout: reintento silencioso. Cloudflare en red
+          // móvil lenta a veces necesita una segunda pasada sin
+          // intervención. El usuario solo ve el loader continuar.
+          setState(() {
+            _isLoading = true;
+            _rebuildKey++; // remount fresco
+          });
+          _controller?.refreshToken();
+        } else {
+          // Segundo timeout consecutivo: ahora sí mostrar error.
+          setState(() {
+            _hasError = true;
+            _isLoading = false;
+          });
+          widget.onError('La verificación tardó demasiado.');
+        }
       },
     );
   }

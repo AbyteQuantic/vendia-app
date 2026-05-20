@@ -546,10 +546,12 @@ class _LoginScreenState extends State<LoginScreen> {
                             setState(() => _captchaToken = token);
                           },
                           onError: (msg) {
-                            setState(() {
-                              _captchaToken = null;
-                              _errorMessage = msg;
-                            });
+                            // El widget Turnstile muestra su propio panel
+                            // con botón "Reintentar verificación"; no
+                            // duplicamos el mensaje en el banner del login
+                            // (sino se pisan dos UIs de error). Solo
+                            // limpiamos el token.
+                            setState(() => _captchaToken = null);
                           },
                         ),
                         const SizedBox(height: 12),

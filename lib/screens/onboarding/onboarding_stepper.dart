@@ -392,9 +392,11 @@ class _OnboardingStepperState extends State<OnboardingStepper> {
                         setState(() => _captchaToken = token);
                       },
                       onError: (msg) {
+                        // El widget muestra su propio panel de error con
+                        // botón grande "Reintentar verificación". NO
+                        // duplicamos el mensaje en el banner del stepper
+                        // para no pisarlo. Solo limpiamos el token.
                         setState(() => _captchaToken = null);
-                        // Mostrar error en el área de errores del stepper.
-                        ctrl.setCaptchaError(msg);
                       },
                     ),
                   ),

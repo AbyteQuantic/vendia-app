@@ -129,7 +129,7 @@ void main() {
 
       expect(capturedError, equals('Error de verificación'));
       // Botón de reintentar aparece.
-      expect(find.text('Reintentar'), findsOneWidget);
+      expect(find.text('Reintentar verificación'), findsOneWidget);
       // Loader desaparece.
       expect(find.byType(CircularProgressIndicator), findsNothing);
     });
@@ -182,14 +182,14 @@ void main() {
       await tester.pump();
 
       // Botón Reintentar visible.
-      expect(find.text('Reintentar'), findsOneWidget);
+      expect(find.text('Reintentar verificación'), findsOneWidget);
 
       // Tap en reintentar.
-      await tester.tap(find.text('Reintentar'));
+      await tester.tap(find.text('Reintentar verificación'));
       await tester.pump();
 
       // El estado de error se limpia y vuelve el loader.
-      expect(find.text('Reintentar'), findsNothing);
+      expect(find.text('Reintentar verificación'), findsNothing);
       expect(find.byType(CircularProgressIndicator), findsOneWidget);
     });
   });
