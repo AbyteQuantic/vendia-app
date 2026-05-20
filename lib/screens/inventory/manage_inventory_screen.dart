@@ -15,6 +15,7 @@ import '../../widgets/stock_badge.dart';
 import '../pos/scan_screen.dart';
 import 'kardex_screen.dart';
 import 'negative_stock_screen.dart';
+import 'product_import_screen.dart';
 
 class ManageInventoryScreen extends StatefulWidget {
   const ManageInventoryScreen({super.key});
@@ -205,6 +206,22 @@ class _ManageInventoryScreenState extends State<ManageInventoryScreen> {
             color: AppTheme.textPrimary,
           ),
         ),
+        // T-16 (F027): botón de importación. El AppBar no tenía acciones
+        // previas → se agrega directamente (regla UI_RULES.md: máx 2 acciones).
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.upload_file_rounded,
+                color: AppTheme.textPrimary, size: 26),
+            tooltip: 'Importar inventario',
+            onPressed: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (_) => const ProductImportScreen(),
+                ),
+              );
+            },
+          ),
+        ],
       ),
       body: SafeArea(
         child: Column(

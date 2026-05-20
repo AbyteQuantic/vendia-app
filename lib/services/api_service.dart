@@ -3373,5 +3373,68 @@ class ApiService {
     }
     throw AppError.fromDioException(lastError!);
   }
+
+  // Spec: specs/027-importador-inventario/spec.md
+  /// Importa productos en chunks de 100 filas.
+  ///
+  /// Cada chunk se envía a `POST /api/v1/products/import` con reintentos
+  /// automáticos hasta [_kImportMaxRetries] ante errores de red o 5xx.
+  /// Los errores 4xx no se reintentan (FR-12).
+  ///
+  /// Retorna un [ImportReport] con los conteos acumulados de todos los chunks.
+  /// Espejo arquitectónico de [importCustomers] (F026).
+  Future<ImportReport> importProducts(
+    List<Map<String, dynamic>> rows, {
+    void Function(int sent, int total)? onProgress,
+  }) async {
+    if (rows.isEmpty) return const ImportReport.empty();
+
+    var aggregate = const ImportReport.empty();
+    var sent = 0;
+
+    for (var offset = 0; offset < rows.length; offset += _kImportChunkSize) {
+      final end = (offset + _kImportChunkSize).clamp(0, rows.length);
+      final chunk = rows.sublist(offset, end);
+
+      final chunkReport = await _importProductsChunkWithRetry(chunk);
+      aggregate = aggregate.merge(chunkReport);
+      sent += chunk.length;
+      onProgress?.call(sent, rows.length);
+    }
+
+    return aggregate;
+  }
+
+  Future<ImportReport> _importProductsChunkWithRetry(
+    List<Map<String, dynamic>> chunk,
+  ) async {
+    DioException? lastError;
+    for (var attempt = 0; attempt <= _kImportMaxRetries; attempt++) {
+      try {
+        final response = await _dio.post(
+          '/api/v1/products/import',
+          data: {
+            'rows': chunk,
+            'dedup_strategy': 'merge_by_barcode_then_name',
+          },
+        );
+        final data = response.data as Map<String, dynamic>;
+        return ImportReport.fromJson(data);
+      } on DioException catch (e) {
+        // Do not retry 4xx — the request is malformed or unauthorized.
+        final status = e.response?.statusCode ?? 0;
+        if (status >= 400 && status < 500) {
+          throw AppError.fromDioException(e);
+        }
+        lastError = e;
+        // Wait before retry (last attempt skips the sleep).
+        if (attempt < _kImportMaxRetries &&
+            attempt < _importRetryDelays.length) {
+          await Future.delayed(_importRetryDelays[attempt]);
+        }
+      }
+    }
+    throw AppError.fromDioException(lastError!);
+  }
 }
 
