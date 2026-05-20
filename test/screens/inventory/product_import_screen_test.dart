@@ -131,7 +131,9 @@ void main() {
   group('ProductImportScreen — Paso 3 (Preview)', () {
     testWidgets('muestra fila válida con nombre y precio parseado',
         (tester) async {
+      // ignore: prefer_const_constructors
       final previewRows = [
+        // ignore: prefer_const_constructors
         ProductPreviewRow(
           mapped: {'name': 'Coca Cola 350ml', 'price': '2500'},
           valid: true,
@@ -156,7 +158,9 @@ void main() {
     });
 
     testWidgets('muestra filas inválidas con razón en rojo', (tester) async {
+      // ignore: prefer_const_constructors
       final previewRows = [
+        // ignore: prefer_const_constructors
         ProductPreviewRow(
           mapped: {'name': '', 'price': '0'},
           valid: false,
@@ -181,7 +185,9 @@ void main() {
     });
 
     testWidgets('muestra warning de stock decimal', (tester) async {
+      // ignore: prefer_const_constructors
       final previewRows = [
+        // ignore: prefer_const_constructors
         ProductPreviewRow(
           mapped: {'name': 'Pan', 'price': '500', 'stock': '1.5'},
           valid: true,
@@ -206,7 +212,9 @@ void main() {
 
     testWidgets('muestra precio original → precio parseado (transparencia)',
         (tester) async {
+      // ignore: prefer_const_constructors
       final previewRows = [
+        // ignore: prefer_const_constructors
         ProductPreviewRow(
           mapped: {'name': 'Leche', 'price': r'$ 1.500'},
           valid: true,
@@ -220,6 +228,7 @@ void main() {
       await tester.pumpWidget(MaterialApp(
         home: Scaffold(
           body: SingleChildScrollView(
+            // ignore: prefer_const_constructors
             child: _TestStep3(previewRows: previewRows, totalRows: 1),
           ),
         ),
