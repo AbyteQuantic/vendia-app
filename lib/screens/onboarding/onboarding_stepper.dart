@@ -1,9 +1,11 @@
+// Spec: specs/024-captcha-registro-login/spec.md (T-16 — integración captcha onboarding)
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../database/database_service.dart';
 import '../../services/api_service.dart';
 import '../../services/auth_service.dart';
 import '../../theme/app_theme.dart';
+import '../../widgets/turnstile_captcha.dart';
 import '../auth/login_screen.dart';
 import '../dashboard/dashboard_screen.dart';
 import 'onboarding_stepper_controller.dart';
@@ -27,7 +29,13 @@ class OnboardingStepperScreen extends StatelessWidget {
 
     return ChangeNotifierProvider(
       create: (_) => OnboardingStepperController(
-        apiCall: (payload) => api.registerTenantFull(payload),
+        apiCall: (payload) {
+          final captchaToken = payload.remove('captcha_token') as String?;
+          return api.registerTenantFullWithCaptcha(
+            payload,
+            captchaToken: captchaToken,
+          );
+        },
         saveSession: (data) async {
           // Wipe local Isar data if switching to a different tenant.
           final tenantId = (data['tenant_id'] ?? data['tenant']?['id'] ?? '').toString();
@@ -72,7 +80,16 @@ class OnboardingStepperScreen extends StatelessWidget {
 
 /// Widget del stepper (testeable por separado via ChangeNotifierProvider.value).
 class OnboardingStepper extends StatefulWidget {
-  const OnboardingStepper({super.key});
+  const OnboardingStepper({
+    super.key,
+    /// Solo para tests — fuerza site key del TurnstileCaptcha.
+    this.captchaSiteKeyOverride,
+    /// Solo para tests — builder sustituto del widget Turnstile.
+    @visibleForTesting this.captchaWidgetBuilder,
+  });
+
+  final String? captchaSiteKeyOverride;
+  final Widget Function(TurnstileCaptchaState state)? captchaWidgetBuilder;
 
   @override
   State<OnboardingStepper> createState() => _OnboardingStepperState();
@@ -81,6 +98,8 @@ class OnboardingStepper extends StatefulWidget {
 class _OnboardingStepperState extends State<OnboardingStepper> {
   final _pageCtrl = PageController();
   late final OnboardingStepperController _ctrl;
+  final _captchaKey = GlobalKey<TurnstileCaptchaState>();
+  String? _captchaToken;
 
   // Un FormKey por paso con campos de formulario
   final _formKeys = [
@@ -143,6 +162,30 @@ class _OnboardingStepperState extends State<OnboardingStepper> {
     _ctrl.removeListener(_onControllerChange);
     _pageCtrl.dispose();
     super.dispose();
+  }
+
+  // ── CAPTCHA (F024) ────────────────────────────────────────────────────────
+
+  /// True cuando el captcha está activo (site key presente) pero sin token.
+  bool _isCaptchaBlocking(bool isRegisterStep) {
+    if (!isRegisterStep) return false;
+    final override = widget.captchaSiteKeyOverride;
+    if (override != null) return override.isNotEmpty && _captchaToken == null;
+    // Kill-switch (FR-10): sin dart-define, el captcha no bloquea.
+    const envKey = String.fromEnvironment('TURNSTILE_SITE_KEY');
+    if (envKey.isNotEmpty) return _captchaToken == null;
+    return false;
+  }
+
+  /// Wrapper de submit que incluye el captchaToken en el payload.
+  Future<void> _handleSubmit(OnboardingStepperController ctrl) async {
+    await ctrl.submitWithCaptcha(_captchaToken);
+    // Si el backend rechazó el captcha, resetear el widget.
+    if (ctrl.status == StepperStatus.error &&
+        ctrl.errorMessage.contains('verificación de seguridad')) {
+      setState(() => _captchaToken = null);
+      _captchaKey.currentState?.reset();
+    }
   }
 
   // ── Navegación ────────────────────────────────────────────────────────────
@@ -331,6 +374,25 @@ class _OnboardingStepperState extends State<OnboardingStepper> {
                     ),
                   ),
 
+                // ── CAPTCHA Turnstile (F024) — solo en el paso final ──────
+                if (isRegisterStep)
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(24, 0, 24, 0),
+                    child: TurnstileCaptcha(
+                      key: _captchaKey,
+                      siteKeyOverride: widget.captchaSiteKeyOverride,
+                      turnstileWidgetBuilder: widget.captchaWidgetBuilder,
+                      onToken: (token) {
+                        setState(() => _captchaToken = token);
+                      },
+                      onError: (msg) {
+                        setState(() => _captchaToken = null);
+                        // Mostrar error en el área de errores del stepper.
+                        ctrl.setCaptchaError(msg);
+                      },
+                    ),
+                  ),
+
                 // ── Botones de navegación ─────────────────────────────────
                 Padding(
                   padding: const EdgeInsets.fromLTRB(24, 4, 24, 24),
@@ -368,10 +430,10 @@ class _OnboardingStepperState extends State<OnboardingStepper> {
                           key: isRegisterStep
                               ? const Key('btn_submit')
                               : const Key('btn_next'),
-                          onPressed: isLoading
+                          onPressed: isLoading || _isCaptchaBlocking(isRegisterStep)
                               ? null
                               : isRegisterStep
-                                  ? ctrl.submit
+                                  ? () => _handleSubmit(ctrl)
                                   : _onNext,
                           child: isLoading
                               ? const SizedBox(

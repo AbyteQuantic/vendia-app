@@ -194,13 +194,21 @@ class OnboardingStepperController extends ChangeNotifier {
 
   // ── Submit ────────────────────────────────────────────────────────────────
 
-  Future<void> submit() async {
+  Future<void> submit() async => submitWithCaptcha(null);
+
+  /// Envía el formulario incluyendo el [captchaToken] si está disponible (F024).
+  Future<void> submitWithCaptcha(String? captchaToken) async {
     _status = StepperStatus.loading;
     _errorMessage = '';
     notifyListeners();
 
     try {
       final payload = _buildPayload();
+      // F024: incluir el token de captcha en el payload para que
+      // OnboardingStepperScreen lo extraiga y lo pase a registerTenantFull.
+      if (captchaToken != null && captchaToken.isNotEmpty) {
+        payload['captcha_token'] = captchaToken;
+      }
       final data = await apiCall(payload);
 
       await saveSession(data);
@@ -211,6 +219,14 @@ class OnboardingStepperController extends ChangeNotifier {
       _errorMessage = _friendlyError(e.toString());
     }
 
+    notifyListeners();
+  }
+
+  /// Muestra un mensaje de error de captcha sin cambiar el estado de loading.
+  /// Usado cuando el widget de captcha reporta un error antes del submit.
+  void setCaptchaError(String message) {
+    _status = StepperStatus.error;
+    _errorMessage = message;
     notifyListeners();
   }
 

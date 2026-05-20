@@ -181,6 +181,31 @@ class ApiService {
     }
   }
 
+  // Spec: specs/024-captcha-registro-login/spec.md (T-17)
+  /// Variante de [login] que incluye el token de captcha en el body (F024).
+  /// Usada por LoginScreen cuando TURNSTILE_SITE_KEY está activo.
+  /// Si el backend rechaza el token, lanza [CaptchaFailedException].
+  Future<Map<String, dynamic>> loginWithCaptcha({
+    required String phone,
+    required String password,
+    String? captchaToken,
+  }) async {
+    try {
+      final body = <String, dynamic>{
+        'phone': phone,
+        'password': password,
+      };
+      if (captchaToken != null && captchaToken.isNotEmpty) {
+        body['captcha_token'] = captchaToken;
+      }
+      final response = await _dio.post('/login', data: body);
+      return response.data as Map<String, dynamic>;
+    } on DioException catch (e) {
+      _throwIfCaptchaFailure(e);
+      throw AppError.fromDioException(e);
+    }
+  }
+
   /// Select a workspace (multi-workspace flow). Requires temp_token as auth
   /// and the password specific to the chosen workspace — the backend rejects
   /// cross-tenant credential reuse with `workspace_password_mismatch`.
@@ -212,6 +237,43 @@ class ApiService {
       return response.data as Map<String, dynamic>;
     } on DioException catch (e) {
       throw AppError.fromDioException(e);
+    }
+  }
+
+  // Spec: specs/024-captcha-registro-login/spec.md (T-17)
+  /// Variante de [registerTenantFull] que extrae [captchaToken] del payload
+  /// o lo acepta como parámetro explícito (F024).
+  /// Si el backend rechaza el token, lanza [CaptchaFailedException].
+  Future<Map<String, dynamic>> registerTenantFullWithCaptcha(
+    Map<String, dynamic> payload, {
+    String? captchaToken,
+  }) async {
+    try {
+      final body = Map<String, dynamic>.from(payload);
+      if (captchaToken != null && captchaToken.isNotEmpty) {
+        body['captcha_token'] = captchaToken;
+      }
+      final response =
+          await _dio.post('/api/v1/tenant/register', data: body);
+      return response.data as Map<String, dynamic>;
+    } on DioException catch (e) {
+      _throwIfCaptchaFailure(e);
+      throw AppError.fromDioException(e);
+    }
+  }
+
+  /// Lanza [CaptchaFailedException] si el error de Dio es un 400 de captcha.
+  /// Llamar ANTES de `throw AppError.fromDioException(e)` en login/register.
+  static void _throwIfCaptchaFailure(DioException e) {
+    final status = e.response?.statusCode;
+    if (status != 400) return;
+    final data = e.response?.data;
+    if (data is! Map) return;
+    final msg = (data['error'] as String? ?? '').toLowerCase();
+    if (msg.contains('verificación de seguridad') ||
+        msg.contains('captcha') ||
+        msg.contains('turnstile')) {
+      throw CaptchaFailedException(data['error'] as String? ?? msg);
     }
   }
 
