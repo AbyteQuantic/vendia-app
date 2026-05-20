@@ -7,6 +7,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:uuid/uuid.dart';
 import '../config/api_config.dart';
 import '../config/supabase_config.dart';
+import '../models/import_report.dart';
 import '../models/subscription.dart';
 import '../theme/app_theme.dart';
 import '../widgets/premium_upsell_sheet.dart';
@@ -23,6 +24,13 @@ class ApiService {
   late final Dio _dio;
   final AuthService _auth;
 
+  /// Delays between retries for [importCustomers].
+  /// Injected as a test seam so tests run instantly.
+  final List<Duration> _importRetryDelays;
+
+  static const _kImportChunkSize = 100;
+  static const _kImportMaxRetries = 3;
+
   static final GlobalKey<ScaffoldMessengerState> scaffoldKey =
       GlobalKey<ScaffoldMessengerState>();
 
@@ -37,7 +45,15 @@ class ApiService {
   /// branch selector.
   static String? currentBranchId;
 
-  ApiService(this._auth) {
+  ApiService(this._auth,
+      {List<Duration>? importRetryDelays,
+      @visibleForTesting bool addColdStartInterceptor = true})
+      : _importRetryDelays = importRetryDelays ??
+            const [
+              Duration(seconds: 2),
+              Duration(seconds: 5),
+              Duration(seconds: 10),
+            ] {
     _dio = Dio(BaseOptions(
       baseUrl: ApiConfig.baseUrl,
       connectTimeout: const Duration(seconds: 60),
@@ -134,7 +150,9 @@ class ApiService {
     // solely on the transient cold-start shape (connectionError /
     // timeouts / 502-503-504). A 401 is never a cold start and is
     // never retried here. See cold_start_retry_interceptor.dart.
-    _dio.interceptors.add(ColdStartRetryInterceptor(dio: _dio));
+    if (addColdStartInterceptor) {
+      _dio.interceptors.add(ColdStartRetryInterceptor(dio: _dio));
+    }
   }
 
   /// Test seam (Spec 014): swap the underlying Dio HTTP adapter for a
@@ -3288,6 +3306,72 @@ class ApiService {
       return data['error'] == 'premium_feature_locked';
     }
     return false;
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // CUSTOMERS IMPORT — Spec F026
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  // Spec: specs/026-importador-clientes/spec.md
+  /// Importa clientes en chunks de 100 filas.
+  ///
+  /// Cada chunk se envía a `POST /api/v1/customers/import` con reintentos
+  /// automáticos hasta [_kImportMaxRetries] ante errores de red o 5xx.
+  /// Los errores 4xx no se reintentan (AC-07 / FR-11).
+  ///
+  /// Retorna un [ImportReport] con los conteos acumulados de todos los chunks.
+  Future<ImportReport> importCustomers(
+    List<Map<String, dynamic>> rows, {
+    void Function(int sent, int total)? onProgress,
+  }) async {
+    if (rows.isEmpty) return const ImportReport.empty();
+
+    var aggregate = const ImportReport.empty();
+    var sent = 0;
+
+    for (var offset = 0; offset < rows.length; offset += _kImportChunkSize) {
+      final end = (offset + _kImportChunkSize).clamp(0, rows.length);
+      final chunk = rows.sublist(offset, end);
+
+      final chunkReport = await _importChunkWithRetry(chunk);
+      aggregate = aggregate.merge(chunkReport);
+      sent += chunk.length;
+      onProgress?.call(sent, rows.length);
+    }
+
+    return aggregate;
+  }
+
+  Future<ImportReport> _importChunkWithRetry(
+    List<Map<String, dynamic>> chunk,
+  ) async {
+    DioException? lastError;
+    for (var attempt = 0; attempt <= _kImportMaxRetries; attempt++) {
+      try {
+        final response = await _dio.post(
+          '/api/v1/customers/import',
+          data: {
+            'rows': chunk,
+            'dedup_strategy': 'merge_by_phone',
+          },
+        );
+        final data = response.data as Map<String, dynamic>;
+        return ImportReport.fromJson(data);
+      } on DioException catch (e) {
+        // Do not retry 4xx — the request is malformed or unauthorized.
+        final status = e.response?.statusCode ?? 0;
+        if (status >= 400 && status < 500) {
+          throw AppError.fromDioException(e);
+        }
+        lastError = e;
+        // Wait before retry (last attempt skips the sleep).
+        if (attempt < _kImportMaxRetries &&
+            attempt < _importRetryDelays.length) {
+          await Future.delayed(_importRetryDelays[attempt]);
+        }
+      }
+    }
+    throw AppError.fromDioException(lastError!);
   }
 }
 

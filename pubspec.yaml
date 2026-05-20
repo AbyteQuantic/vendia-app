@@ -78,6 +78,10 @@ dependencies:
 
   # CAPTCHA Cloudflare Turnstile — Spec F024
   cloudflare_turnstile: ^3.6.2
+  file_picker: ^11.0.2
+  csv: ^8.0.0
+  archive: ^4.0.9
+  xml: ^6.6.1
 
 dev_dependencies:
   flutter_test:
