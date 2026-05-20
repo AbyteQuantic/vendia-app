@@ -1754,7 +1754,7 @@ class _FiadoDetailScreenState extends State<_FiadoDetailScreen> {
       return;
     }
 
-    final acceptUrl = 'https://vendia-admin.vercel.app/fiado/$fiadoToken';
+    final acceptUrl = ApiConfig.fiadoUrlFor(fiadoToken);
     final body =
         'Hola $name, este es el estado actualizado de tu cuenta. Saldo pendiente: ${_fmt(balance)}.\n\n$acceptUrl';
 

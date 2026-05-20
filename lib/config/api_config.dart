@@ -41,6 +41,14 @@ class ApiConfig {
   static String fiadoUrlFor(String token) =>
       '$publicSiteUrl/fiado/$token';
 
+  /// Canonical public URL of a tenant's catálogo. Forma corta
+  /// (`tienda.vendia.store/<slug>`), sin `/menu` ni `/admin`.
+  /// El proyecto admin-web reescribe `/<slug>` y `/<slug>/menu`
+  /// (ambos) hacia `/admin/<slug>/menu` cuando el host es
+  /// `tienda.vendia.store`. Hotfix #45.
+  static String publicCatalogUrlFor(String slug) =>
+      '$publicSiteUrl/$slug';
+
   /// WhatsApp number for the "Chat por WhatsApp" secondary CTA in
   /// SupportScreen. International format without "+". Falls back to
   /// the commercial number baked into the repo so a missing env var
