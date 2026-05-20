@@ -1,3 +1,4 @@
+// Spec: specs/024-captcha-registro-login/spec.md (T-14 — integración captcha)
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
@@ -7,12 +8,30 @@ import '../../services/app_error.dart';
 import '../../services/auth_service.dart';
 import '../../services/role_manager.dart';
 import '../../theme/app_theme.dart';
+import '../../widgets/turnstile_captcha.dart';
 import '../dashboard/dashboard_screen.dart';
 import '../onboarding/onboarding_stepper.dart';
 import 'branch_selector_screen.dart'; // exports WorkspaceInfo + WorkspaceSelectorScreen
 
 class LoginScreen extends StatefulWidget {
-  const LoginScreen({super.key});
+  const LoginScreen({
+    super.key,
+    /// Solo para tests — inyecta un ApiService fake.
+    @visibleForTesting this.apiOverride,
+    /// Solo para tests — fuerza un site key concreto en el TurnstileCaptcha.
+    @visibleForTesting this.captchaSiteKeyOverride,
+    /// Solo para tests — builder sustituto del widget interno de Turnstile.
+    @visibleForTesting this.captchaWidgetBuilder,
+  });
+
+  @visibleForTesting
+  final ApiService? apiOverride;
+
+  @visibleForTesting
+  final String? captchaSiteKeyOverride;
+
+  @visibleForTesting
+  final Widget Function(TurnstileCaptchaState state)? captchaWidgetBuilder;
 
   @override
   State<LoginScreen> createState() => _LoginScreenState();
@@ -24,6 +43,7 @@ class _LoginScreenState extends State<LoginScreen> {
   final _pinCtrl = TextEditingController();
   final _phoneFocus = FocusNode();
   final _pinFocus = FocusNode();
+  final _captchaKey = GlobalKey<TurnstileCaptchaState>();
 
   late final AuthService _auth;
   late final ApiService _api;
@@ -31,12 +51,13 @@ class _LoginScreenState extends State<LoginScreen> {
   bool _isLoading = false;
   bool _pinVisible = false;
   String? _errorMessage;
+  String? _captchaToken;
 
   @override
   void initState() {
     super.initState();
     _auth = AuthService();
-    _api = ApiService(_auth);
+    _api = widget.apiOverride ?? ApiService(_auth);
     _phoneFocus.addListener(() => setState(() {}));
     _pinFocus.addListener(() => setState(() {}));
   }
@@ -50,8 +71,23 @@ class _LoginScreenState extends State<LoginScreen> {
     super.dispose();
   }
 
+  /// Site key efectiva para el captcha en esta pantalla.
+  /// Si [widget.captchaSiteKeyOverride] está seteado (tests), se usa ese valor.
+  String? get _captchaSiteKeyOverride => widget.captchaSiteKeyOverride;
+
+  /// True cuando el captcha está activo (hay site key) pero aún sin token.
+  bool get _captchaActive {
+    final override = _captchaSiteKeyOverride;
+    if (override != null) return override.isNotEmpty && _captchaToken == null;
+    // Kill-switch (FR-10): sin dart-define, el captcha no bloquea.
+    const envKey = String.fromEnvironment('TURNSTILE_SITE_KEY');
+    if (envKey.isNotEmpty) return _captchaToken == null;
+    return false;
+  }
+
   Future<void> _handleLogin() async {
     if (!_formKey.currentState!.validate()) return;
+    if (_captchaActive) return; // guard extra (el botón ya está deshabilitado)
 
     setState(() {
       _isLoading = true;
@@ -59,9 +95,10 @@ class _LoginScreenState extends State<LoginScreen> {
     });
 
     try {
-      final data = await _api.login(
+      final data = await _api.loginWithCaptcha(
         phone: _phoneCtrl.text.trim(),
         password: _pinCtrl.text.trim(),
+        captchaToken: _captchaToken,
       );
 
       // ── Selector response: backend returns `workspaces` whenever
@@ -167,6 +204,15 @@ class _LoginScreenState extends State<LoginScreen> {
           transitionDuration: const Duration(milliseconds: 400),
         ),
       );
+    } on CaptchaFailedException catch (e) {
+      // AC-06: el backend rechazó el token → resetear el captcha para que
+      // el usuario resuelva uno nuevo sin recargar la pantalla.
+      HapticFeedback.heavyImpact();
+      setState(() {
+        _captchaToken = null;
+        _errorMessage = e.message;
+      });
+      _captchaKey.currentState?.reset();
     } on AppError catch (e) {
       HapticFeedback.heavyImpact();
       if (e.statusCode == 401) {
@@ -476,15 +522,44 @@ class _LoginScreenState extends State<LoginScreen> {
                         const Spacer(flex: 2),
                         const SizedBox(height: 16),
 
+                        // ── CAPTCHA Turnstile (F024) ───────────────────────
+                        // Visible solo cuando hay site key (FR-10).
+                        // Deshabilita el botón hasta tener token.
+                        TurnstileCaptcha(
+                          key: _captchaKey,
+                          siteKeyOverride: _captchaSiteKeyOverride,
+                          turnstileWidgetBuilder:
+                              widget.captchaWidgetBuilder,
+                          onToken: (token) {
+                            setState(() => _captchaToken = token);
+                          },
+                          onError: (msg) {
+                            setState(() {
+                              _captchaToken = null;
+                              _errorMessage = msg;
+                            });
+                          },
+                        ),
+                        const SizedBox(height: 12),
+
                         // ── Login Button (always visible) ─────────────────
                         Container(
+                          key: const Key('btn_login'),
                           width: double.infinity,
                           height: 64,
                           decoration: BoxDecoration(
-                            gradient: const LinearGradient(
+                            gradient: LinearGradient(
                               begin: Alignment.topLeft,
                               end: Alignment.bottomRight,
-                              colors: [Color(0xFF1A2FA0), Color(0xFF2541B2)],
+                              colors: _captchaActive
+                                  ? [
+                                      const Color(0xFF9CA3AF),
+                                      const Color(0xFFB0B7C3),
+                                    ]
+                                  : [
+                                      const Color(0xFF1A2FA0),
+                                      const Color(0xFF2541B2),
+                                    ],
                             ),
                             borderRadius: BorderRadius.circular(20),
                             boxShadow: [
@@ -499,7 +574,9 @@ class _LoginScreenState extends State<LoginScreen> {
                             color: Colors.transparent,
                             child: InkWell(
                               borderRadius: BorderRadius.circular(20),
-                              onTap: _isLoading ? null : _handleLogin,
+                              onTap: (_isLoading || _captchaActive)
+                                  ? null
+                                  : _handleLogin,
                               child: Center(
                                 child: _isLoading
                                     ? const SizedBox(

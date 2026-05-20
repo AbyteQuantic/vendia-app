@@ -76,6 +76,9 @@ dependencies:
   permission_handler: ^12.0.1
   http: ^1.6.0
 
+  # CAPTCHA Cloudflare Turnstile — Spec F024
+  cloudflare_turnstile: ^3.6.2
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

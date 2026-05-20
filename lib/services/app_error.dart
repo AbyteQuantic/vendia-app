@@ -1,6 +1,18 @@
+// Spec: specs/024-captcha-registro-login/spec.md (partial — CaptchaFailedException)
 import 'package:dio/dio.dart';
 
 enum AppErrorType { network, auth, validation, server, unknown }
+
+/// Excepción tipada lanzada cuando el backend rechaza un token de CAPTCHA
+/// con 400 y el mensaje canónico de Turnstile. Permite que las pantallas
+/// llamen a [TurnstileCaptchaState.reset()] sin hacer string-matching (AC-06).
+class CaptchaFailedException implements Exception {
+  const CaptchaFailedException([this.message = 'Verificación de seguridad fallida.']);
+  final String message;
+
+  @override
+  String toString() => 'CaptchaFailedException: $message';
+}
 
 class AppError implements Exception {
   final AppErrorType type;
