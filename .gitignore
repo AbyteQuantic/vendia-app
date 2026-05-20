@@ -43,3 +43,4 @@ Thumbs.db
 
 # Claude Code — CLAUDE.md sí se versiona (contexto del proyecto)
 .claude/
+.vercel

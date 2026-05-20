@@ -12,6 +12,7 @@ import 'fiar_controller.dart';
 import 'widgets/debtor_card.dart';
 import 'customer_form_screen.dart';
 import 'credit_detail_screen.dart';
+import '../customers/customer_import_screen.dart';
 
 class FiarScreen extends StatefulWidget {
   const FiarScreen({super.key});
@@ -79,6 +80,25 @@ class _FiarScreenState extends State<FiarScreen> {
             color: AppTheme.textPrimary,
           ),
         ),
+        actions: [
+          Semantics(
+            button: true,
+            label: 'Importar clientes desde Excel o CSV',
+            child: IconButton(
+              icon: const Icon(Icons.upload_file_rounded,
+                  color: AppTheme.textPrimary, size: 28),
+              tooltip: 'Importar clientes',
+              onPressed: () {
+                HapticFeedback.lightImpact();
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => const CustomerImportScreen(),
+                  ),
+                );
+              },
+            ),
+          ),
+        ],
       ),
       floatingActionButton: Semantics(
         button: true,
