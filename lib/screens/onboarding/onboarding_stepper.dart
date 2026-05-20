@@ -179,12 +179,18 @@ class _OnboardingStepperState extends State<OnboardingStepper> {
 
   /// Wrapper de submit que incluye el captchaToken en el payload.
   Future<void> _handleSubmit(OnboardingStepperController ctrl) async {
-    await ctrl.submitWithCaptcha(_captchaToken);
-    // Si el backend rechazó el captcha, resetear el widget.
-    if (ctrl.status == StepperStatus.error &&
-        ctrl.errorMessage.contains('verificación de seguridad')) {
-      setState(() => _captchaToken = null);
-      _captchaKey.currentState?.reset();
+    try {
+      await ctrl.submitWithCaptcha(_captchaToken);
+    } finally {
+      // El token Turnstile es de un solo uso. Limpiá el state y resetá
+      // el widget tras CUALQUIER intento — éxito o fallo. Sin esto, si
+      // el primer submit falló por otro motivo (validación, 500, etc.)
+      // el siguiente click re-envía el token ya consumido y el backend
+      // responde 400 "verificación de seguridad falló".
+      if (mounted) {
+        setState(() => _captchaToken = null);
+        _captchaKey.currentState?.reset();
+      }
     }
   }
 
