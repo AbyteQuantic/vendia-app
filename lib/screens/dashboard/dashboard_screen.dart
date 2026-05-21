@@ -1717,7 +1717,16 @@ void _showBranchPicker(BuildContext context, BranchProvider provider) {
   );
 }
 
-class _AccountMenuButton extends StatelessWidget {
+/// Icono de "Mi cuenta" en el AppBar del Dashboard.
+///
+/// Bug F022 follow-up: el botón antes era `StatelessWidget` que pintaba
+/// SIEMPRE el ícono genérico `Icons.person_rounded`. La foto de perfil
+/// solo se cargaba dentro del bottom-sheet — el usuario subía foto en
+/// "Mi cuenta", se veía OK ahí, pero al cerrar el sheet el avatar del
+/// Dashboard seguía con el ícono default. Ahora el botón también lee
+/// la foto del Employee `is_owner` y la muestra circular, con refresh
+/// automático tras cerrar el sheet (por si la subió o cambió).
+class _AccountMenuButton extends StatefulWidget {
   final String ownerName;
   final String businessName;
   final Future<void> Function() onLogout;
@@ -1731,23 +1740,65 @@ class _AccountMenuButton extends StatelessWidget {
   });
 
   @override
+  State<_AccountMenuButton> createState() => _AccountMenuButtonState();
+}
+
+class _AccountMenuButtonState extends State<_AccountMenuButton> {
+  late final ApiService _api;
+  String? _photoUrl;
+
+  @override
+  void initState() {
+    super.initState();
+    _api = ApiService(AuthService());
+    _loadOwnerPhoto();
+  }
+
+  Future<void> _loadOwnerPhoto() async {
+    try {
+      final employees = await _api.fetchEmployees();
+      final owner = employees.firstWhere(
+        (e) => (e['is_owner'] as bool? ?? false) == true,
+        orElse: () => <String, dynamic>{},
+      );
+      final rawPhoto = (owner['photo_url'] as String?)?.trim();
+      if (!mounted) return;
+      setState(() {
+        _photoUrl = (rawPhoto == null || rawPhoto.isEmpty) ? null : rawPhoto;
+      });
+    } catch (_) {
+      // Silencio adrede: si la red falla, mantenemos el placeholder de
+      // iniciales — el sheet hará un fetch nuevo cuando se abra y allí
+      // se reporta el error si hace falta.
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
     final roleLabel = context.watch<RoleManager>().role.label;
+    final hasPhoto = _photoUrl != null && _photoUrl!.isNotEmpty;
     return IconButton(
       tooltip: 'Mi cuenta',
-      icon: Container(
-        width: 40,
-        height: 40,
-        decoration: BoxDecoration(
-          color: iconColor.withValues(alpha: 0.15),
-          shape: BoxShape.circle,
-        ),
-        child: Icon(Icons.person_rounded,
-            color: iconColor, size: 24),
-      ),
-      onPressed: () {
+      icon: hasPhoto
+          ? ProfilePhotoAvatar(
+              name: widget.ownerName,
+              photoUrl: _photoUrl,
+              diameter: 40,
+              backgroundColor: widget.iconColor,
+            )
+          : Container(
+              width: 40,
+              height: 40,
+              decoration: BoxDecoration(
+                color: widget.iconColor.withValues(alpha: 0.15),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(Icons.person_rounded,
+                  color: widget.iconColor, size: 24),
+            ),
+      onPressed: () async {
         HapticFeedback.lightImpact();
-        showModalBottomSheet<void>(
+        await showModalBottomSheet<void>(
           context: context,
           backgroundColor: Colors.white,
           isScrollControlled: true,
@@ -1755,12 +1806,16 @@ class _AccountMenuButton extends StatelessWidget {
             borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
           ),
           builder: (ctx) => _AccountSheetContent(
-            ownerName: ownerName,
-            businessName: businessName,
+            ownerName: widget.ownerName,
+            businessName: widget.businessName,
             roleLabel: roleLabel,
-            onLogout: onLogout,
+            onLogout: widget.onLogout,
           ),
         );
+        // Al cerrar el sheet, releemos por si subió/cambió la foto.
+        // No depende del result del sheet — la lectura es barata y el
+        // sheet no expone callback de cambio.
+        if (mounted) await _loadOwnerPhoto();
       },
     );
   }
