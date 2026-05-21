@@ -1588,6 +1588,10 @@ class _PosScreenBodyState extends State<_PosScreenBody> {
       // F029: tier de precios elegido en Confirmar Venta. Por default
       // 'retail' para que las llamadas previas a F029 sigan compilando.
       String priceTier = 'retail',
+      // F030: cliente asociado a la venta. Null = venta anónima
+      // (comportamiento legacy). Cuando viene, el backend valida que
+      // el customer pertenezca al tenant.
+      String? customerId,
       }) async {
     try {
       final api = ApiService(AuthService());
@@ -1626,6 +1630,11 @@ class _PosScreenBodyState extends State<_PosScreenBody> {
       };
       if (creditAccountId != null && creditAccountId.isNotEmpty) {
         payload['credit_account_id'] = creditAccountId;
+      }
+      // F030: el customer_id viaja solo cuando el cajero asoció un
+      // cliente. Sin él la venta queda anónima (customer_id = null).
+      if (customerId != null && customerId.isNotEmpty) {
+        payload['customer_id'] = customerId;
       }
       if (dynamicQrPayload != null && dynamicQrPayload.isNotEmpty) {
         payload['dynamic_qr_payload'] = dynamicQrPayload;
@@ -1691,6 +1700,10 @@ class _PosScreenBodyState extends State<_PosScreenBody> {
         // después no afecta esta venta (los SaleItems guardan el
         // precio efectivo aplicado).
         final priceTier = ctrl.selectedPriceTier;
+        // F030: snapshot del customer_id ANTES de limpiar el carrito —
+        // clearActiveCart resetea selectedCustomer, así que lo capturamos
+        // aquí para que viaje con la venta.
+        final customerId = ctrl.salePayloadCustomerId;
         final saleTotal = ctrl.activeTotal;
         final saleTotalFormatted = _formatCOP(saleTotal.round());
 
@@ -1786,6 +1799,7 @@ class _PosScreenBodyState extends State<_PosScreenBody> {
           creditAccountId: result.creditAccountId,
           dynamicQrPayload: result.dynamicQrPayload,
           priceTier: priceTier,
+          customerId: customerId,
         );
         // Credit sales can leave a fiado in pending state; refresh the
         // badge so the cashier sees it in the Cuaderno indicator. The

@@ -1,5 +1,6 @@
 // Spec: specs/023-capacidades-opcionales-negocio/spec.md
 // Spec: specs/029-precios-multi-tier/spec.md
+// Spec: specs/030-administracion-clientes-no-tienda/spec.md
 //
 // Widget reutilizable: sección "¿Su negocio también…?" con
 // SwitchListTile para las capacidades opcionales del tenant.
@@ -34,6 +35,10 @@ import '../utils/business_capability_map.dart';
 /// [priceTier1NameCtrl] (F029) → controller del nombre del tier 1.
 /// [priceTier2NameCtrl] (F029) → controller del nombre del tier 2.
 /// [priceTier3NameCtrl] (F029) → controller del nombre del tier 3.
+/// [enableCustomerManagement] (F030) → ValueNotifier del toggle "Gestión
+///                    de clientes". Cuando el padre no lo cablea (ej.
+///                    onboarding), el toggle no se renderiza — misma
+///                    invariante que priceTiers.
 class OptionalCapabilitiesSection extends StatelessWidget {
   final String? selectedType;
   final FeatureFlags flags;
@@ -49,6 +54,11 @@ class OptionalCapabilitiesSection extends StatelessWidget {
   final TextEditingController? priceTier2NameCtrl;
   final TextEditingController? priceTier3NameCtrl;
 
+  // F030 — toggle "Gestión de clientes". Igual que priceTiers: el padre
+  // (business_profile_screen) cablea el ValueNotifier; si es null el
+  // toggle no se muestra.
+  final ValueNotifier<bool>? enableCustomerManagement;
+
   const OptionalCapabilitiesSection({
     super.key,
     required this.selectedType,
@@ -60,6 +70,7 @@ class OptionalCapabilitiesSection extends StatelessWidget {
     this.priceTier1NameCtrl,
     this.priceTier2NameCtrl,
     this.priceTier3NameCtrl,
+    this.enableCustomerManagement,
   });
 
   @override
@@ -77,8 +88,12 @@ class OptionalCapabilitiesSection extends StatelessWidget {
         priceTier1NameCtrl != null &&
         priceTier2NameCtrl != null &&
         priceTier3NameCtrl != null;
+    // F030: el toggle customerManagement solo se renderiza cuando el
+    // padre cableó su ValueNotifier — misma invariante que priceTiers.
+    final hasCustomerWiring = enableCustomerManagement != null;
     final visible = toggleable.where((c) {
       if (c == OptionalCapability.priceTiers) return hasTierWiring;
+      if (c == OptionalCapability.customerManagement) return hasCustomerWiring;
       return true;
     }).toSet();
     if (visible.isEmpty) return const SizedBox.shrink();
@@ -128,6 +143,7 @@ class OptionalCapabilitiesSection extends StatelessWidget {
       OptionalCapability.fractionalUnits,
       OptionalCapability.tables,
       OptionalCapability.priceTiers,
+      OptionalCapability.customerManagement,
     ].where(toggleable.contains).toList();
 
     for (var i = 0; i < ordered.length; i++) {
@@ -165,6 +181,15 @@ class OptionalCapabilitiesSection extends StatelessWidget {
             tier1Ctrl: priceTier1NameCtrl!,
             tier2Ctrl: priceTier2NameCtrl!,
             tier3Ctrl: priceTier3NameCtrl!,
+            showDivider: showDivider,
+          ));
+        case OptionalCapability.customerManagement:
+          tiles.add(_CapabilityTile(
+            tileKey: const Key('toggle_customer_management'),
+            title: 'Gestión de clientes',
+            subtitle: 'Sepa quién le compra: registre clientes y vea '
+                'su historial de compras',
+            notifier: enableCustomerManagement!,
             showDivider: showDivider,
           ));
       }

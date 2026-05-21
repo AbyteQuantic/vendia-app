@@ -1,4 +1,5 @@
 // Spec: specs/029-precios-multi-tier/spec.md
+// Spec: specs/030-administracion-clientes-no-tienda/spec.md
 import 'dart:async';
 import 'dart:convert';
 import 'dart:developer' as developer;
@@ -6,6 +7,7 @@ import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../database/database_service.dart';
 import '../../database/collections/local_product.dart';
+import '../../models/customer.dart';
 import '../../models/product.dart';
 import '../../models/cart_item.dart';
 import '../../services/api_service.dart';
@@ -212,6 +214,37 @@ class CartController extends ChangeNotifier {
     if (effectiveTier == 'retail') return false;
     if (item.isService) return false;
     return !item.product.hasPriceForTier(effectiveTier);
+  }
+
+  // ── F030 — Cliente asociado a la venta ───────────────────────────
+  //
+  // Cliente identificado para la venta en curso. Null = venta anónima
+  // (comportamiento legacy idéntico cuando la capacidad
+  // `enable_customer_management` está OFF). Lo elige el cajero en el
+  // tile "Cliente" del checkout; al confirmar la venta el `customer_id`
+  // viaja en el payload de createSale.
+  Customer? _selectedCustomer;
+
+  /// Cliente actualmente asociado a la venta, o null si es anónima.
+  Customer? get selectedCustomer => _selectedCustomer;
+
+  /// UUID del cliente listo para el payload `customer_id` de createSale.
+  /// Null cuando no hay cliente o su id está vacío (defensive — un
+  /// cliente sin uuid no debe contaminar el payload).
+  String? get salePayloadCustomerId {
+    final c = _selectedCustomer;
+    if (c == null || c.id.isEmpty) return null;
+    return c.id;
+  }
+
+  /// Asocia (o desasocia, con null) un [customer] a la venta en curso.
+  /// Notifica solo cuando el cliente cambia de verdad — el checkout se
+  /// suscribe vía Provider y repintar de más es desperdicio.
+  void setCustomer(Customer? customer) {
+    final current = _selectedCustomer;
+    if (current?.id == customer?.id) return;
+    _selectedCustomer = customer;
+    notifyListeners();
   }
 
   // ── Background table-tab persistence ───────────────────────────
@@ -966,6 +999,10 @@ class CartController extends ChangeNotifier {
     }
     activeCart.clear();
     _contexts[_activeIndex] = const AccountContext();
+    // F030: una venta cerrada/limpiada arranca anónima de nuevo — el
+    // cliente no debe "pegarse" a la siguiente venta sin que el cajero
+    // lo vuelva a elegir.
+    _selectedCustomer = null;
     notifyListeners();
     _persistCarts();
     _persistContexts();

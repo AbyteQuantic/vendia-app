@@ -59,6 +59,12 @@ class _BusinessProfileScreenState extends State<BusinessProfileScreen> {
   // mismos labels que el backend va a aplicar cuando se prenda la
   // capacidad.
   late final ValueNotifier<bool> _enablePriceTiers = ValueNotifier(false);
+
+  // F030: capacidad opcional "Gestión de clientes". Default OFF — un
+  // tenant pre-migración no ve la funcionalidad hasta que la prenda.
+  late final ValueNotifier<bool> _enableCustomerManagement =
+      ValueNotifier(false);
+
   final _priceTier1NameCtrl =
       TextEditingController(text: 'Depósito contado');
   final _priceTier2NameCtrl =
@@ -110,6 +116,8 @@ class _BusinessProfileScreenState extends State<BusinessProfileScreen> {
     _hasTables.dispose();
     // F029: liberar los recursos de los tier names.
     _enablePriceTiers.dispose();
+    // F030: liberar el toggle de gestión de clientes.
+    _enableCustomerManagement.dispose();
     _priceTier1NameCtrl.dispose();
     _priceTier2NameCtrl.dispose();
     _priceTier3NameCtrl.dispose();
@@ -179,6 +187,14 @@ class _BusinessProfileScreenState extends State<BusinessProfileScreen> {
         if (t2 != null && t2.isNotEmpty) _priceTier2NameCtrl.text = t2;
         final t3 = (data['price_tier_3_name'] as String?)?.trim();
         if (t3 != null && t3.isNotEmpty) _priceTier3NameCtrl.text = t3;
+
+        // F030: hidratar el toggle de gestión de clientes. El backend
+        // expone `enable_customer_management` en el perfil; somos
+        // defensivos y también miramos el feature_flag para tenants
+        // donde el campo aún no esté presente en el GET del perfil.
+        _enableCustomerManagement.value =
+            data['enable_customer_management'] == true ||
+                _featureFlags.enableCustomerManagement;
 
         _loading = false;
       });
@@ -448,6 +464,9 @@ class _BusinessProfileScreenState extends State<BusinessProfileScreen> {
             'price_tier_2_name': _priceTier2NameCtrl.text.trim(),
             'price_tier_3_name': _priceTier3NameCtrl.text.trim(),
           },
+          // F030: el toggle de gestión de clientes viaja en el mismo
+          // `config` (un solo bag de toggles de negocio).
+          'enable_customer_management': _enableCustomerManagement.value,
         },
         // F035: credit_label_mode lo persiste CreditSettingsScreen aparte.
       };
@@ -613,6 +632,8 @@ class _BusinessProfileScreenState extends State<BusinessProfileScreen> {
               priceTier1NameCtrl: _priceTier1NameCtrl,
               priceTier2NameCtrl: _priceTier2NameCtrl,
               priceTier3NameCtrl: _priceTier3NameCtrl,
+              // F030: toggle "Gestión de clientes".
+              enableCustomerManagement: _enableCustomerManagement,
             ),
 
             // F035: el selector de vocabulario se movió a la pantalla
