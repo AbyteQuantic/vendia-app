@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 
 import '../services/bank_notification_service.dart';
@@ -176,6 +177,48 @@ class _BankAutoDetectTileState extends State<BankAutoDetectTile>
 
   @override
   Widget build(BuildContext context) {
+    // Solo Android tiene la API de "Acceso a notificaciones" que este
+    // listener necesita. En web la API no existe (no hay cómo leer las
+    // notificaciones del banco desde un browser); mostrar el toggle
+    // ahí confunde al tendero: tap → diálogo → "Ir a Configuración" →
+    // no pasa nada (el method channel no tiene implementación web).
+    // Lo declaramos no disponible con copy claro para que sepa que
+    // existe pero solo en la app móvil.
+    if (kIsWeb) {
+      return Container(
+        margin: const EdgeInsets.fromLTRB(20, 16, 20, 4),
+        padding: const EdgeInsets.fromLTRB(18, 14, 18, 14),
+        decoration: BoxDecoration(
+          color: const Color(0xFFF6F7F9),
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(color: const Color(0xFFE5E7EB)),
+        ),
+        child: const Row(
+          children: [
+            Icon(Icons.smartphone_rounded,
+                color: Color(0xFF6B7280), size: 22),
+            SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('Auto-detectar pagos de Nequi/Bancolombia',
+                      style: TextStyle(
+                          fontSize: 15, fontWeight: FontWeight.w700)),
+                  SizedBox(height: 2),
+                  Text(
+                    'Solo disponible en la app móvil — la web no puede leer notificaciones del banco.',
+                    style:
+                        TextStyle(fontSize: 12, color: Color(0xFF6B7280)),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
     return Container(
       margin: const EdgeInsets.fromLTRB(20, 16, 20, 4),
       decoration: BoxDecoration(
