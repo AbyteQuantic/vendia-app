@@ -6,13 +6,11 @@ import 'package:flutter/services.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:geocoding/geocoding.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:provider/provider.dart';
 import '../../services/api_service.dart';
 import '../../services/auth_service.dart';
 import '../../services/image_normalizer.dart';
 import '../../theme/app_theme.dart';
 import '../../utils/business_capability_map.dart';
-import '../../utils/credit_labels.dart';
 import '../../widgets/optional_capabilities_section.dart';
 
 /// Perfil del Negocio — Gerontodiseño: textos grandes, alto contraste,
@@ -52,8 +50,7 @@ class _BusinessProfileScreenState extends State<BusinessProfileScreen> {
   late final ValueNotifier<bool> _sellsByWeight = ValueNotifier(false);
   late final ValueNotifier<bool> _hasTables = ValueNotifier(false);
 
-  // F028: vocabulario del cuaderno — 'fiar' (default) o 'credit'.
-  String _creditLabelMode = 'fiar';
+  // F035: el modo de vocabulario vive ahora en CreditSettingsScreen.
 
   // F029: capacidad opcional "Manejo precios diferentes para mayorista
   // y minorista" + los 3 nombres de tiers renombrables. Los defaults
@@ -167,9 +164,8 @@ class _BusinessProfileScreenState extends State<BusinessProfileScreen> {
         _hasTables.value = _featureFlags.enableTables &&
             !implied.contains(OptionalCapability.tables);
 
-        // F028: leer el modo actual desde el perfil.
-        final rawMode = data['credit_label_mode'] as String?;
-        _creditLabelMode = (rawMode == 'credit') ? 'credit' : 'fiar';
+        // F035: el modo de vocabulario lo gestiona CreditSettingsScreen,
+        // ya no se carga ni se persiste desde esta pantalla.
 
         // F029: hidratar el toggle + nombres de tiers desde el perfil.
         // El backend siempre devuelve los 4 campos (con sus DEFAULTs si
@@ -453,17 +449,10 @@ class _BusinessProfileScreenState extends State<BusinessProfileScreen> {
             'price_tier_3_name': _priceTier3NameCtrl.text.trim(),
           },
         },
-        // F028: vocabulario del cuaderno — persistido en tenant.
-        'credit_label_mode': _creditLabelMode,
+        // F035: credit_label_mode lo persiste CreditSettingsScreen aparte.
       };
 
       await _api.updateBusinessProfile(updates);
-
-      // F028: actualizar la caché de AuthService para que CreditLabels.of()
-      // refleje el nuevo vocabulario en el mismo paint sin relogueo (AC-03).
-      if (mounted) {
-        await context.read<AuthService>().updateCreditLabelMode(_creditLabelMode);
-      }
 
       if (!mounted) return;
       _showSnack('Perfil guardado correctamente');
@@ -626,9 +615,10 @@ class _BusinessProfileScreenState extends State<BusinessProfileScreen> {
               priceTier3NameCtrl: _priceTier3NameCtrl,
             ),
 
-            // F028: vocabulario del cuaderno ─────────────────────────
-            const SizedBox(height: 28),
-            _buildCreditLabelSection(),
+            // F035: el selector de vocabulario se movió a la pantalla
+            // dedicada CreditSettingsScreen (accesible desde Mi Negocio
+            // → tile del cuaderno de créditos). Mantener TODO lo del
+            // cuaderno agrupado mejora hallabilidad para el tendero.
 
             const SizedBox(height: 40),
           ],
@@ -762,67 +752,9 @@ class _BusinessProfileScreenState extends State<BusinessProfileScreen> {
     );
   }
 
-  // F028 — Vocabulario del cuaderno ─────────────────────────────────────────
-
-  /// Segmented control para elegir el vocabulario de fiar/crédito.
-  /// Renderizado inmediatamente debajo de OptionalCapabilitiesSection (F023).
-  Widget _buildCreditLabelSection() {
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: const Color(0xFFD6D0C8)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Row(
-            children: [
-              Icon(Icons.menu_book_rounded,
-                  size: 24, color: AppTheme.primary),
-              SizedBox(width: 10),
-              Expanded(
-                child: Text(
-                  'Vocabulario del cuaderno',
-                  style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.w700,
-                    color: AppTheme.textPrimary,
-                  ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 6),
-          const Text(
-            'Elige cómo se llama el registro de ventas a crédito en su negocio.',
-            style: TextStyle(fontSize: 15, color: AppTheme.textSecondary),
-          ),
-          const SizedBox(height: 16),
-          // Two options rendered as radio tiles — more legible on
-          // small screens (360dp) than a SegmentedButton with long labels.
-          _CreditLabelOption(
-            key: const Key('credit_label_fiar'),
-            value: 'fiar',
-            groupValue: _creditLabelMode,
-            title: CreditLabels.optionFiarLabel,
-            subtitle: 'Vocabulario de barrio colombiano (por defecto)',
-            onChanged: (v) => setState(() => _creditLabelMode = v),
-          ),
-          const SizedBox(height: 8),
-          _CreditLabelOption(
-            key: const Key('credit_label_credit'),
-            value: 'credit',
-            groupValue: _creditLabelMode,
-            title: CreditLabels.optionCreditLabel,
-            subtitle: 'Vocabulario formal para ferreterías y distribuidoras',
-            onChanged: (v) => setState(() => _creditLabelMode = v),
-          ),
-        ],
-      ),
-    );
-  }
+  // F035: _buildCreditLabelSection() se trasladó a credit_settings_screen.dart.
+  // El estado _creditLabelMode + load/save de credit_label_mode también se
+  // remueven más abajo para evitar UI fantasma.
 
   Widget _buildLogoSection() {
     return Column(
@@ -1034,88 +966,5 @@ class _LogoOptionTile extends StatelessWidget {
   }
 }
 
-// F028 — Radio tile para seleccionar el vocabulario del cuaderno.
-class _CreditLabelOption extends StatelessWidget {
-  final String value;
-  final String groupValue;
-  final String title;
-  final String subtitle;
-  final ValueChanged<String> onChanged;
-
-  const _CreditLabelOption({
-    super.key,
-    required this.value,
-    required this.groupValue,
-    required this.title,
-    required this.subtitle,
-    required this.onChanged,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final selected = value == groupValue;
-    return GestureDetector(
-      onTap: () {
-        HapticFeedback.lightImpact();
-        onChanged(value);
-      },
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 150),
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-        decoration: BoxDecoration(
-          color: selected
-              ? AppTheme.primary.withValues(alpha: 0.08)
-              : AppTheme.surfaceGrey,
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(
-            color: selected ? AppTheme.primary : const Color(0xFFD6D0C8),
-            width: selected ? 2 : 1,
-          ),
-        ),
-        child: Row(
-          children: [
-            Container(
-              width: 22,
-              height: 22,
-              decoration: BoxDecoration(
-                color: Colors.white,
-                shape: BoxShape.circle,
-                border: Border.all(
-                  color: selected ? AppTheme.primary : const Color(0xFFB0A99A),
-                  width: 2,
-                ),
-              ),
-              child: selected
-                  ? const Center(
-                      child: Icon(Icons.circle,
-                          size: 10, color: AppTheme.primary),
-                    )
-                  : null,
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    title,
-                    style: TextStyle(
-                      fontSize: 17,
-                      fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
-                      color: Colors.black87,
-                    ),
-                  ),
-                  Text(
-                    subtitle,
-                    style: const TextStyle(
-                        fontSize: 13, color: AppTheme.textSecondary),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
+// F035: _CreditLabelOption se trasladó a credit_settings_screen.dart
+// como _VocabOption. Esta pantalla ya no lo necesita.
