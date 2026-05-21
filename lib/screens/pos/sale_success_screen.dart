@@ -1,7 +1,9 @@
+// Spec: specs/028-copy-fiar-credito-configurable/spec.md
 import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../../theme/app_theme.dart';
+import '../../utils/credit_labels.dart';
 
 class SaleSuccessScreen extends StatefulWidget {
   final String total;
@@ -160,10 +162,10 @@ class _SaleSuccessScreenState extends State<SaleSuccessScreen>
     super.dispose();
   }
 
-  String get _methodLabel => switch (widget.paymentMethod) {
+  String _methodLabel(BuildContext context) => switch (widget.paymentMethod) {
         'transfer' => 'Transferencia',
         'card' => 'Tarjeta',
-        'credit' => 'Fiado',
+        'credit' => CreditLabels.of(context).nounSingularCapitalized,
         _ => 'Efectivo',
       };
 
@@ -178,9 +180,9 @@ class _SaleSuccessScreenState extends State<SaleSuccessScreen>
       : Icons.check_circle_rounded;
   String get _title =>
       widget.fiadoPending ? 'Venta guardada' : '¡Venta registrada!';
-  String get _subtitle => widget.fiadoPending
+  String _subtitle(BuildContext context) => widget.fiadoPending
       ? 'Esperando firma del cliente'
-      : 'Pago con $_methodLabel';
+      : 'Pago con ${_methodLabel(context)}';
 
   @override
   Widget build(BuildContext context) {
@@ -274,7 +276,7 @@ class _SaleSuccessScreenState extends State<SaleSuccessScreen>
                   child: Opacity(
                     opacity: _methodFade.value,
                     child: Text(
-                      _subtitle,
+                      _subtitle(context),
                       style: const TextStyle(
                         fontSize: 20,
                         color: AppTheme.textSecondary,
@@ -292,7 +294,7 @@ class _SaleSuccessScreenState extends State<SaleSuccessScreen>
                         padding: const EdgeInsets.symmetric(horizontal: 32),
                         child: Text(
                           'Ya puedes seguir vendiendo. Te avisaremos '
-                          'cuando el cliente acepte el fiado.',
+                          '${CreditLabels.of(context).pendingAcceptanceMsg}',
                           textAlign: TextAlign.center,
                           style: TextStyle(
                             fontSize: 14,

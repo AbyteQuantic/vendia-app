@@ -31,6 +31,7 @@ import '../../services/panic_trigger_service.dart';
 import '../../services/receipt_builder.dart';
 import '../../services/tax_settings_service.dart';
 import '../../database/collections/local_sale.dart';
+import '../../utils/credit_labels.dart';
 import '../inventory/add_merchandise_screen.dart';
 import '../payments/confirm_payment_scanner_screen.dart';
 import '../tables/tab_review_screen.dart';
@@ -131,10 +132,10 @@ class _PosScreenBodyState extends State<_PosScreenBody> {
         // Best-effort UX confirmation. The cashier may already be
         // mid-typing on a different slot, so we keep the message brief.
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            duration: Duration(seconds: 3),
+          SnackBar(
+            duration: const Duration(seconds: 3),
             behavior: SnackBarBehavior.floating,
-            content: Text('Fiado aceptado por el cliente. Slot liberado.'),
+            content: Text(CreditLabels.of(context).acceptedNotificationMsg),
           ),
         );
       }
@@ -1395,12 +1396,12 @@ class _PosScreenBodyState extends State<_PosScreenBody> {
                   ),
                 ),
               ),
-              const Row(
+              Row(
                 children: [
-                  Text('📓', style: TextStyle(fontSize: 28)),
-                  SizedBox(width: 10),
-                  Text('Fiar a un Cliente',
-                      style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
+                  const Text('📓', style: TextStyle(fontSize: 28)),
+                  const SizedBox(width: 10),
+                  Text(CreditLabels.of(context).fiarClienteLabel,
+                      style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
                 ],
               ),
               const SizedBox(height: 16),
@@ -3211,9 +3212,15 @@ class _CartTabs extends StatelessWidget {
           final String label;
           if (hasPendingCredit) {
             final name = (ctx.customerName ?? '').trim();
-            label = name.isEmpty ? 'Fiado' : 'Fiado: $name';
+            final cl = CreditLabels.of(context);
+            label = name.isEmpty ? cl.cartLabel : cl.cartLabelWithName(name);
           } else if (hasContext) {
-            label = ctx.tabLabel;
+            // For fiado tabs with no customer name, use localized noun
+            if (ctx.type == AccountType.fiado && (ctx.customerName ?? '').isEmpty) {
+              label = CreditLabels.of(context).cartLabel;
+            } else {
+              label = ctx.tabLabel;
+            }
           } else {
             label = 'C${i + 1}';
           }
@@ -3746,7 +3753,7 @@ class _AccountContextSheet extends StatelessWidget {
             _ContextOption(
               icon: Icons.menu_book_rounded,
               emoji: '📓',
-              label: 'Fiar a un Cliente',
+              label: CreditLabels.of(context).fiarClienteLabel,
               subtitle: 'Anotar en el cuaderno',
               color: const Color(0xFF6D28D9),
               onTap: onFiado,

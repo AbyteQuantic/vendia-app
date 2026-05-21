@@ -1,3 +1,4 @@
+// Spec: specs/028-copy-fiar-credito-configurable/spec.md
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -5,6 +6,7 @@ import '../../database/sync/sales_sync.dart';
 import '../../services/api_service.dart';
 import '../../services/auth_service.dart';
 import '../../theme/app_theme.dart';
+import '../../utils/credit_labels.dart';
 import 'receipt_detail_screen.dart';
 
 class SalesHistoryScreen extends StatefulWidget {
@@ -97,9 +99,11 @@ class _SalesHistoryScreenState extends State<SalesHistoryScreen> {
       setState(() => _filtered = _sales);
       return;
     }
+    // Use the current credit mode for label resolution
+    final labels = CreditLabels(AuthService().creditLabelMode);
     setState(() {
       _filtered = _sales.where((s) {
-        final customer = _customerLabel(s).toLowerCase();
+        final customer = _customerLabel(s, labels: labels).toLowerCase();
         final employee = ((s['employee_name'] as String?) ?? '').toLowerCase();
         final items = _itemsSummary(s).toLowerCase();
         final date = _formatDate(s['created_at'] as String?).toLowerCase();
@@ -111,7 +115,7 @@ class _SalesHistoryScreenState extends State<SalesHistoryScreen> {
     });
   }
 
-  String _customerLabel(Map<String, dynamic> sale) {
+  String _customerLabel(Map<String, dynamic> sale, {CreditLabels? labels}) {
     final name = (sale['customer_name_snapshot'] as String?) ?? '';
     if (name.isNotEmpty) return name;
     final origin = (sale['sale_origin'] as String?) ?? 'counter';
@@ -120,7 +124,8 @@ class _SalesHistoryScreenState extends State<SalesHistoryScreen> {
       return tableLabel;
     }
     final method = (sale['payment_method'] as String?) ?? '';
-    if (method == 'credit' || origin == 'fiado') return 'Fiado';
+    final lbl = labels ?? CreditLabels.of(context);
+    if (method == 'credit' || origin == 'fiado') return lbl.nounSingularCapitalized;
     return 'Venta Mostrador';
   }
 
@@ -364,7 +369,7 @@ class _SalesHistoryScreenState extends State<SalesHistoryScreen> {
           final sale = _filtered[i];
           final total = (sale['total'] as num?) ?? 0;
           final method = (sale['payment_method'] as String?) ?? 'cash';
-          final customer = _customerLabel(sale);
+          final customer = _customerLabel(sale, labels: CreditLabels.of(context));
           final items = _itemsSummary(sale);
           final employee = (sale['employee_name'] as String?) ?? '';
           final time = _formatTime(sale['created_at'] as String?);

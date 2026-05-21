@@ -1,3 +1,4 @@
+// Spec: specs/028-copy-fiar-credito-configurable/spec.md
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -13,6 +14,7 @@ import '../../services/auth_service.dart';
 import '../../services/bank_notification_service.dart';
 import '../../services/role_manager.dart';
 import '../../theme/app_theme.dart';
+import '../../utils/credit_labels.dart';
 import '../../widgets/owner_pin_dialog.dart';
 import '../../widgets/receipt_image_picker.dart';
 
@@ -460,7 +462,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                             _PaymentChip(
                               key: const Key('checkout_payment_chip_fiar'),
                               icon: Icons.menu_book_rounded,
-                              label: 'Fiar',
+                              label: CreditLabels.of(context).checkoutChipLabel,
                               selected: _selectedMethodKey == _kFiar,
                               onTap: () {
                                 setState(() {
@@ -815,7 +817,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                 color: const Color(0xFFF59E0B),
                 title: 'Abrir cuenta nueva',
                 subtitle:
-                    'Para un cliente que nunca le ha fiado. Se envía un link para que acepte.',
+                    CreditLabels.of(context).newAccountDescription,
                 onTap: () async {
                   Navigator.of(ctx).pop();
                   if (!mounted) return;
@@ -825,7 +827,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                     final ok = await askOwnerPin(
                       context,
                       subtitle:
-                          'Para abrir un fiado nuevo, pida al propietario que ingrese su PIN de 4 dígitos.',
+                          CreditLabels.of(context).openNewAccountPinHint,
                     );
                     if (!ok) return;
                   }
@@ -918,9 +920,10 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       if (!mounted) return;
       Navigator.of(context).pop(); // dismiss loader
       HapticFeedback.heavyImpact();
+      final labels = CreditLabels.of(context);
       final who = customerName == null || customerName.isEmpty
-          ? 'el fiado'
-          : 'el fiado de $customerName';
+          ? labels.theAccountArticle
+          : '${labels.theAccountArticle} de $customerName';
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
         content: Text('No se pudo agregar a $who: ${e.message}',
             style: const TextStyle(fontSize: 16)),
@@ -963,8 +966,8 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
               const Icon(Icons.menu_book_rounded,
                   color: Color(0xFFF59E0B), size: 40),
               const SizedBox(height: 12),
-              const Text('Registrar Fiado',
-                  style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold,
+              Text(CreditLabels.of(context).registrarLabel,
+                  style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold,
                       color: Colors.black87)),
               const SizedBox(height: 4),
               Text('Total: ${widget.formattedTotal}',
@@ -1454,7 +1457,7 @@ class _FiadoWaitingRoomState extends State<_FiadoWaitingRoom> {
     final digits = widget.customerPhone.replaceAll(RegExp(r'\D'), '');
     final full = digits.startsWith('57') ? digits : '57$digits';
     final body =
-        'Hola ${widget.customerName}, ${widget.total} le fue fiado. '
+        'Hola ${widget.customerName}, ${widget.total} le fue ${CreditLabels.of(context).nounSingular}. '
         'Acepte aquí: $_acceptUrl';
     final uri = Uri(
       scheme: 'sms',
@@ -1627,7 +1630,7 @@ class _FiadoWaitingRoomState extends State<_FiadoWaitingRoom> {
       'link_sent' => 'Link enviado',
       'link_opened' => '${widget.customerName} esta leyendo...',
       'accepted' => 'Deuda aceptada!',
-      _ => 'Error al crear fiado',
+      _ => CreditLabels.of(context).createErrorMsg,
     };
     return Text(text,
         textAlign: TextAlign.center,
@@ -1639,12 +1642,12 @@ class _FiadoWaitingRoomState extends State<_FiadoWaitingRoom> {
   }
 
   Widget _buildStatusSubtext() {
+    final labels = CreditLabels.of(context);
     final text = switch (_status) {
-      'sending' => 'Preparando solicitud de fiado...',
+      'sending' => labels.sendingStatusMsg,
       'link_sent' =>
           'Esperando que ${widget.customerName} abra el link enviado al ${widget.customerPhone}',
-      'link_opened' =>
-          '${widget.customerName} esta revisando los terminos del fiado',
+      'link_opened' => labels.reviewingTermsMsg(widget.customerName),
       'accepted' => 'Puede entregar los productos',
       _ => _errorMsg != null && _errorMsg!.isNotEmpty
           ? 'Detalle: $_errorMsg\nIntente de nuevo o registre sin firma'

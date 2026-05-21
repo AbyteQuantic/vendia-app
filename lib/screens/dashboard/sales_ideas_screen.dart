@@ -1,6 +1,9 @@
+// Spec: specs/028-copy-fiar-credito-configurable/spec.md
 import 'package:flutter/material.dart';
 import '../../database/database_service.dart';
+import '../../services/auth_service.dart';
 import '../../theme/app_theme.dart';
+import '../../utils/credit_labels.dart';
 
 /// AI-powered sales improvement suggestions — Gerontodiseño.
 class SalesIdeasScreen extends StatefulWidget {
@@ -56,12 +59,13 @@ class _SalesIdeasScreenState extends State<SalesIdeasScreen> {
       final creditTotal = creditSales.fold<double>(0, (s, e) => s + e.total);
       final total = sales.fold<double>(0, (s, e) => s + e.total);
       if (total > 0 && creditTotal / total > 0.3) {
+        final labels = CreditLabels(AuthService().creditLabelMode);
         ideas.add(_Idea(
           icon: Icons.warning_amber_rounded,
           color: const Color(0xFFDC2626),
-          title: 'Muchos fiados hoy',
+          title: labels.manyTodayTitle,
           body: 'El ${(creditTotal / total * 100).round()}% de las ventas son a credito. '
-              'Envie recordatorios por WhatsApp desde el modulo de Fiados.',
+              '${labels.manyTodayBody}',
         ));
       }
     }

@@ -1,3 +1,4 @@
+// Spec: specs/028-copy-fiar-credito-configurable/spec.md
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -5,6 +6,7 @@ import '../../services/api_service.dart';
 import '../../services/app_error.dart';
 import '../../services/auth_service.dart';
 import '../../theme/app_theme.dart';
+import '../../utils/credit_labels.dart';
 
 /// Express payment-config for the tendero — the single-method path that
 /// the public fiado portal reads. Replaces the multi-row CRUD for the
@@ -187,15 +189,15 @@ class _PaymentQuickSetupScreenState extends State<PaymentQuickSetupScreen> {
                   color: AppTheme.primary.withValues(alpha: 0.08),
                   borderRadius: BorderRadius.circular(16),
                 ),
-                child: const Row(
+                child: Row(
                   children: [
-                    Icon(Icons.info_outline_rounded,
+                    const Icon(Icons.info_outline_rounded,
                         color: AppTheme.primary, size: 24),
-                    SizedBox(width: 12),
+                    const SizedBox(width: 12),
                     Expanded(
                       child: Text(
-                        'Configure sus datos de pago. Sus clientes verán estos datos en su cuenta del fiado para pagarle sin errores.',
-                        style: TextStyle(
+                        CreditLabels.of(context).paymentSetupHint,
+                        style: const TextStyle(
                             fontSize: 14,
                             height: 1.4,
                             color: AppTheme.textPrimary),

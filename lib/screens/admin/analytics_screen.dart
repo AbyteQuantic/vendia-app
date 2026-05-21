@@ -1,6 +1,8 @@
+// Spec: specs/028-copy-fiar-credito-configurable/spec.md
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../../theme/app_theme.dart';
+import '../../utils/credit_labels.dart';
 
 class AnalyticsScreen extends StatelessWidget {
   const AnalyticsScreen({super.key});
@@ -82,11 +84,11 @@ class AnalyticsScreen extends StatelessWidget {
             const SizedBox(height: 20),
 
             // ── Stat Cards ───────────────────────────────────────────
-            const Padding(
-              padding: EdgeInsets.symmetric(horizontal: 20),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20),
               child: Column(
                 children: [
-                  _StatCard(
+                  const _StatCard(
                     label: 'Ventas de Hoy',
                     value: '\$284.500',
                     icon: Icons.trending_up_rounded,
@@ -94,8 +96,8 @@ class AnalyticsScreen extends StatelessWidget {
                     borderColor: Color(0xFF10B981),
                     bgColor: Color(0xFFD1FAE5),
                   ),
-                  SizedBox(height: 14),
-                  _StatCard(
+                  const SizedBox(height: 14),
+                  const _StatCard(
                     label: 'Ganancia Libre Estimada',
                     value: '\$68.200',
                     icon: Icons.savings_rounded,
@@ -103,14 +105,14 @@ class AnalyticsScreen extends StatelessWidget {
                     borderColor: Color(0xFF3B82F6),
                     bgColor: Color(0xFFDBEAFE),
                   ),
-                  SizedBox(height: 14),
+                  const SizedBox(height: 14),
                   _StatCard(
-                    label: 'Cuentas por Cobrar (El Fiar)',
+                    label: CreditLabels.of(context).analyticsLabel,
                     value: '\$185.000',
                     icon: Icons.menu_book_rounded,
-                    iconColor: Color(0xFFD97706),
-                    borderColor: Color(0xFFF59E0B),
-                    bgColor: Color(0xFFFEF3C7),
+                    iconColor: const Color(0xFFD97706),
+                    borderColor: const Color(0xFFF59E0B),
+                    bgColor: const Color(0xFFFEF3C7),
                   ),
                 ],
               ),

@@ -1,9 +1,11 @@
+// Spec: specs/028-copy-fiar-credito-configurable/spec.md
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../models/branch.dart';
 import '../../models/employee.dart';
+import '../../utils/credit_labels.dart';
 
 class EmployeeFormScreen extends StatefulWidget {
   /// Pass an existing employee to edit; leave null for creation.
@@ -364,6 +366,7 @@ class _EmployeeFormScreenState extends State<EmployeeFormScreen> {
   }
 
   Widget _buildRoleSelector() {
+    final labels = CreditLabels.of(context);
     return Row(
       children: [
         Expanded(
@@ -382,7 +385,7 @@ class _EmployeeFormScreenState extends State<EmployeeFormScreen> {
             gradient: _cashierGradient,
             icon: Icons.point_of_sale,
             title: 'Cajero',
-            description: 'Solo puede vender y fiar',
+            description: labels.employeeRoleDescription,
           ),
         ),
       ],
