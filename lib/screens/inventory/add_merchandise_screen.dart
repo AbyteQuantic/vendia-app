@@ -5,6 +5,7 @@ import '../../theme/app_theme.dart';
 import 'ia_loading_screen.dart';
 import 'create_product_screen.dart';
 import 'manage_inventory_screen.dart';
+import 'product_import_screen.dart';
 import 'voice_inventory_screen.dart';
 import '../pos/scan_screen.dart';
 
@@ -330,6 +331,30 @@ class AddMerchandiseScreen extends StatelessWidget {
                   },
                   icon: const Icon(Icons.qr_code_scanner_rounded, size: 24),
                   label: const Text('Escanear código de barras'),
+                ),
+              ),
+
+              const SizedBox(height: 12),
+
+              // Quaternary: bulk import desde Excel/CSV (F027).
+              // El tendero que llega aquí pensando "agregar productos" suele
+              // querer cargar TODO su inventario de una si lo tiene en hoja —
+              // por eso queda en esta misma pantalla y no escondido en el
+              // AppBar de Administrar inventario.
+              SizedBox(
+                height: 64,
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  onPressed: () {
+                    HapticFeedback.lightImpact();
+                    Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) => const ProductImportScreen(),
+                      ),
+                    );
+                  },
+                  icon: const Icon(Icons.upload_file_rounded, size: 24),
+                  label: const Text('Importar desde Excel o CSV'),
                 ),
               ),
             ],
