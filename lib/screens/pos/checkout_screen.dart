@@ -920,10 +920,10 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       if (!mounted) return;
       Navigator.of(context).pop(); // dismiss loader
       HapticFeedback.heavyImpact();
-      final _labels = CreditLabels.of(context);
+      final labels = CreditLabels.of(context);
       final who = customerName == null || customerName.isEmpty
-          ? _labels.theAccountArticle
-          : '${_labels.theAccountArticle} de $customerName';
+          ? labels.theAccountArticle
+          : '${labels.theAccountArticle} de $customerName';
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
         content: Text('No se pudo agregar a $who: ${e.message}',
             style: const TextStyle(fontSize: 16)),

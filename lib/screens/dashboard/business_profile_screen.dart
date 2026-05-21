@@ -723,12 +723,12 @@ class _BusinessProfileScreenState extends State<BusinessProfileScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
+          const Row(
             children: [
-              const Icon(Icons.menu_book_rounded,
+              Icon(Icons.menu_book_rounded,
                   size: 24, color: AppTheme.primary),
-              const SizedBox(width: 10),
-              const Expanded(
+              SizedBox(width: 10),
+              Expanded(
                 child: Text(
                   'Vocabulario del cuaderno',
                   style: TextStyle(

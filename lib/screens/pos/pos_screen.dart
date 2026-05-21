@@ -3212,8 +3212,8 @@ class _CartTabs extends StatelessWidget {
           final String label;
           if (hasPendingCredit) {
             final name = (ctx.customerName ?? '').trim();
-            final _cl = CreditLabels.of(context);
-            label = name.isEmpty ? _cl.cartLabel : _cl.cartLabelWithName(name);
+            final cl = CreditLabels.of(context);
+            label = name.isEmpty ? cl.cartLabel : cl.cartLabelWithName(name);
           } else if (hasContext) {
             // For fiado tabs with no customer name, use localized noun
             if (ctx.type == AccountType.fiado && (ctx.customerName ?? '').isEmpty) {
