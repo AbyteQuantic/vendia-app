@@ -284,6 +284,12 @@ class FeatureFlags {
   final bool enableCustomBilling;
   final bool enableFractionalUnits;
 
+  /// F029: precios multi-tier por tipo de cliente.
+  /// Cuando es `true` la UI muestra 3 inputs adicionales en
+  /// crear/editar producto (más allá del retail) y un selector
+  /// "Tipo de precio" en Confirmar Venta.
+  final bool enablePriceTiers;
+
   const FeatureFlags({
     this.enableTables = false,
     this.enableKDS = false,
@@ -291,6 +297,7 @@ class FeatureFlags {
     this.enableServices = false,
     this.enableCustomBilling = false,
     this.enableFractionalUnits = false,
+    this.enablePriceTiers = false,
   });
 
   factory FeatureFlags.fromJson(Map<String, dynamic> json) => FeatureFlags(
@@ -300,5 +307,8 @@ class FeatureFlags {
         enableServices: json['enable_services'] == true,
         enableCustomBilling: json['enable_custom_billing'] == true,
         enableFractionalUnits: json['enable_fractional_units'] == true,
+        // F029 — default false para tenants pre-migración: la UI fail-closed
+        // (no aparecen inputs ni selector) hasta que el dueño lo prenda.
+        enablePriceTiers: json['enable_price_tiers'] == true,
       );
 }

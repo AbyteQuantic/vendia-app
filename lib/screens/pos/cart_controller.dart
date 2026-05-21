@@ -1,3 +1,4 @@
+// Spec: specs/029-precios-multi-tier/spec.md
 import 'dart:async';
 import 'dart:convert';
 import 'dart:developer' as developer;
@@ -164,6 +165,54 @@ class CartController extends ChangeNotifier {
   String _search = '';
   List<Product> _products = [];
   bool _productsLoaded = false;
+
+  // F029 — tier de precios seleccionado para la venta entera. Default
+  // 'retail' (cliente final / precio default) → comportamiento legacy
+  // idéntico cuando la capacidad está OFF. Los valores válidos son los
+  // 4 reconocidos por el backend: 'retail' | 'tier_1' | 'tier_2' | 'tier_3'.
+  static const _validTiers = {'retail', 'tier_1', 'tier_2', 'tier_3'};
+  String _selectedPriceTier = 'retail';
+
+  /// Tier actualmente seleccionado para el cálculo de totales y para
+  /// el `price_tier` que se enviará con la venta.
+  String get selectedPriceTier => _selectedPriceTier;
+
+  /// Cambia el tier activo y notifica para que el checkout recalcule el
+  /// total. Valores no reconocidos se ignoran (defensive — el selector
+  /// solo expone los 4 tiers válidos, pero protegemos contra payloads
+  /// futuros).
+  void setPriceTier(String tier) {
+    if (!_validTiers.contains(tier)) return;
+    if (_selectedPriceTier == tier) return;
+    _selectedPriceTier = tier;
+    notifyListeners();
+  }
+
+  /// F029: precio efectivo (con fallback retail) para [item] en el
+  /// [tier] indicado. Para líneas de servicio respeta el customUnitPrice
+  /// como hoy — el tier nunca aplica a servicios ad-hoc.
+  double priceForItem(CartItem item, {String? tier}) {
+    final effectiveTier = tier ?? _selectedPriceTier;
+    if (item.isService) {
+      return item.customUnitPrice ?? item.product.price;
+    }
+    return item.product.priceForTier(effectiveTier);
+  }
+
+  /// F029: subtotal por item para el tier activo (price × quantity).
+  /// Para servicios ad-hoc respeta el customUnitPrice.
+  double subtotalForItem(CartItem item, {String? tier}) =>
+      priceForItem(item, tier: tier) * item.quantity;
+
+  /// F029: true cuando [item] usa fallback retail porque su producto no
+  /// tiene precio configurado para el tier activo. Las líneas de
+  /// servicio (sin tiers por definición) NUNCA muestran el aviso.
+  bool itemUsingRetailFallback(CartItem item, {String? tier}) {
+    final effectiveTier = tier ?? _selectedPriceTier;
+    if (effectiveTier == 'retail') return false;
+    if (item.isService) return false;
+    return !item.product.hasPriceForTier(effectiveTier);
+  }
 
   // ── Background table-tab persistence ───────────────────────────
   //
@@ -376,8 +425,35 @@ class CartController extends ChangeNotifier {
 
   List<CartItem> cart(int index) => _carts[index];
 
-  double get activeTotal =>
-      activeCart.fold(0.0, (sum, item) => sum + item.subtotal);
+  /// Total del carrito activo. F029: itera respetando el tier elegido
+  /// (con fallback retail por item cuando el tier no está configurado).
+  /// Cuando `selectedPriceTier == 'retail'` el resultado es idéntico al
+  /// previo a F029 — invariante de retrocompatibilidad (AC-07).
+  double get activeTotal {
+    if (_selectedPriceTier == 'retail') {
+      // Camino caliente que no toca product.priceForTier — un test de
+      // performance regresivo evitaría regressions futuras.
+      return activeCart.fold(0.0, (sum, item) => sum + item.subtotal);
+    }
+    return activeCart.fold(
+      0.0,
+      (sum, item) => sum + subtotalForItem(item),
+    );
+  }
+
+  /// F029: total para un tier arbitrario sin cambiar el estado actual.
+  /// Útil para tests y para previews futuros ("¿cuánto costaría a
+  /// mayorista?") sin disparar notifyListeners.
+  double totalForTier(String tier) {
+    if (!_validTiers.contains(tier)) return activeTotal;
+    if (tier == 'retail') {
+      return activeCart.fold(0.0, (sum, item) => sum + item.subtotal);
+    }
+    return activeCart.fold(
+      0.0,
+      (sum, item) => sum + subtotalForItem(item, tier: tier),
+    );
+  }
 
   String get formattedTotal {
     final int cents = activeTotal.round();

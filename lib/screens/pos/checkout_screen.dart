@@ -1,4 +1,5 @@
 // Spec: specs/028-copy-fiar-credito-configurable/spec.md
+// Spec: specs/029-precios-multi-tier/spec.md
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -17,6 +18,7 @@ import '../../theme/app_theme.dart';
 import '../../utils/credit_labels.dart';
 import '../../widgets/owner_pin_dialog.dart';
 import '../../widgets/receipt_image_picker.dart';
+import 'cart_controller.dart';
 
 class CheckoutResult {
   final bool confirmed;
@@ -127,10 +129,27 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   // silently remove the chip for a merchant who expects it.
   bool _fiadoEnabled = true;
 
+  // F029 — capacidad enable_price_tiers + nombres custom de los tiers.
+  // Default OFF (fail-closed): tenants pre-F029 ven la pantalla
+  // exactamente como antes (AC-01/AC-07). Cuando es ON renderizamos
+  // un selector "Tipo de precio" arriba del resumen.
+  bool _enablePriceTiers = false;
+  String _tier1Name = 'Depósito contado';
+  String _tier2Name = 'Depósito crédito';
+  String _tier3Name = 'Cliente final';
+
+  // F029: total efectivo recalculado en cada build, usado por los
+  // getters `_change` / `_isExact` que no tienen acceso al BuildContext.
+  // Cuando enable_price_tiers está OFF coincide siempre con widget.total.
+  double _currentTotal = 0;
+
   static const _denominations = [2000, 5000, 10000, 20000, 50000, 100000];
 
-  double get _change => _amountTendered - widget.total;
-  bool get _isExact => (_amountTendered - widget.total).abs() < 1;
+  // F029: usamos `_currentTotal` (refrescado en cada build con el tier
+  // activo). Para tenants sin la capacidad o sin CartController coincide
+  // con widget.total → comportamiento legacy intacto.
+  double get _change => _amountTendered - _currentTotal;
+  bool get _isExact => (_amountTendered - _currentTotal).abs() < 1;
 
   /// True when the selected chip should behave as plain cash —
   /// either the synthetic fallback chip or a tenant-configured
@@ -161,9 +180,17 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   /// implied the sale was confirmable. Now the button stays
   /// disabled until the handshake produces an accepted account
   /// (see [_handleFiarChipSelected] for the sheet dispatch).
-  bool _canConfirmWith({required bool hasActiveFiado}) {
+  // F029: el cálculo de "puede confirmar?" se hace contra el total
+  // *efectivo* (que cambia si el cajero seleccionó un tier diferente al
+  // retail). Para retrocompat, el llamador anterior pasa
+  // `widget.total` cuando la capacidad está OFF.
+  bool _canConfirmWith({
+    required bool hasActiveFiado,
+    double? effectiveTotal,
+  }) {
     if (_selectedMethodKey == _kFiar) return hasActiveFiado;
-    if (_isCash) return _amountTendered >= widget.total;
+    final total = effectiveTotal ?? widget.total;
+    if (_isCash) return _amountTendered >= total;
     return _receiptUrl != null && _receiptUrl!.isNotEmpty;
   }
 
@@ -182,7 +209,9 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   void initState() {
     super.initState();
     _amountTendered = widget.total; // default to exact
+    _currentTotal = widget.total; // F029: refrescado en build()
     _loadFiadoFlag();
+    _loadPriceTierConfig();
     if (widget.forceFiadoFlow) {
       // Defer until the first frame so the Scaffold + AppBar are mounted
       // and the handshake bottom sheet can attach to a real BuildContext.
@@ -247,6 +276,50 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     }
   }
 
+  // F029 — leemos enable_price_tiers + los nombres custom desde feature
+  // flags persistidos por AuthService (offline-safe) y desde el
+  // /store/profile para refrescar los nombres si el dueño los acaba de
+  // editar. Fail-closed: cualquier error deja _enablePriceTiers=false.
+  Future<void> _loadPriceTierConfig() async {
+    try {
+      final flags = await AuthService().getFeatureFlags();
+      if (!mounted) return;
+      if (!flags.enablePriceTiers) {
+        setState(() => _enablePriceTiers = false);
+        return;
+      }
+      String t1 = _tier1Name;
+      String t2 = _tier2Name;
+      String t3 = _tier3Name;
+      try {
+        final profile =
+            await ApiService(AuthService()).fetchBusinessProfile();
+        final raw1 = (profile['price_tier_1_name'] as String?)?.trim();
+        final raw2 = (profile['price_tier_2_name'] as String?)?.trim();
+        final raw3 = (profile['price_tier_3_name'] as String?)?.trim();
+        if (raw1 != null && raw1.isNotEmpty) t1 = raw1;
+        if (raw2 != null && raw2.isNotEmpty) t2 = raw2;
+        if (raw3 != null && raw3.isNotEmpty) t3 = raw3;
+      } catch (_) {
+        // Mantener defaults si el GET revienta.
+      }
+      if (!mounted) return;
+      setState(() {
+        _enablePriceTiers = true;
+        _tier1Name = t1;
+        _tier2Name = t2;
+        _tier3Name = t3;
+      });
+    } catch (_) {
+      if (mounted) setState(() => _enablePriceTiers = false);
+    }
+  }
+
+  // F029 — el cart controller es la SSOT del tier elegido + cálculo de
+  // totales. La lectura efectiva ocurre dentro de build() via
+  // context.watch<CartController>(); no exponemos un helper aparte para
+  // mantener el grafo de dependencias mínimo.
+
   String _formatCOP(int amount) {
     if (amount == 0) return '\$0';
     final negative = amount < 0;
@@ -285,7 +358,41 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     // accepted, this rebuild flips `_canConfirmWith` and enables
     // the Confirmar button.
     final hasActiveFiado = context.watch<ActiveFiadoService>().hasActive;
-    final canConfirm = _canConfirmWith(hasActiveFiado: hasActiveFiado);
+    // F029: nos suscribimos al CartController cuando existe para que
+    // un cambio de tier (vía setPriceTier) recalcule total + subtotales
+    // al instante (AC-05). Si el screen se monta sin Provider (tests)
+    // usamos los valores constructor-time.
+    CartController? cartCtrl;
+    try {
+      cartCtrl = context.watch<CartController>();
+    } catch (_) {
+      cartCtrl = null;
+    }
+    final effectiveTotal =
+        (_enablePriceTiers && cartCtrl != null) ? cartCtrl.activeTotal : widget.total;
+    final effectiveFormatted = (_enablePriceTiers && cartCtrl != null)
+        ? cartCtrl.formattedTotal
+        : widget.formattedTotal;
+    // Mantener el campo _currentTotal en sync para los getters
+    // _change/_isExact que no tienen contexto. Hacemos también un
+    // re-default del monto recibido (exacto) cuando el cajero NO ha
+    // movido el slider manualmente — sin esta línea cambiar el tier
+    // dejaría las "vueltas" como una resta contra el total previo.
+    if (_currentTotal != effectiveTotal) {
+      _currentTotal = effectiveTotal;
+      // Si el cajero estaba en "Exacto" (vale por igualdad floor a 1
+      // peso) ajustamos también lo que tendrá la caja registradora.
+      if ((_amountTendered - widget.total).abs() < 1 ||
+          _amountTendered == 0) {
+        _amountTendered = effectiveTotal;
+        // No usamos setState — ya estamos en build; mutamos el campo y
+        // el siguiente frame re-pintará via watch del CartController.
+      }
+    }
+    final canConfirm = _canConfirmWith(
+      hasActiveFiado: hasActiveFiado,
+      effectiveTotal: effectiveTotal,
+    );
     return Scaffold(
       backgroundColor: AppTheme.background,
       appBar: AppBar(
@@ -308,6 +415,14 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
               child: ListView(
                 padding: const EdgeInsets.symmetric(horizontal: 24),
                 children: [
+                  // ── F029: selector "Tipo de precio" — solo cuando
+                  //    enable_price_tiers está ON. Aparece ANTES del
+                  //    resumen para que el cajero elija primero.
+                  if (_enablePriceTiers && cartCtrl != null) ...[
+                    _buildPriceTierSelector(cartCtrl),
+                    const SizedBox(height: 20),
+                  ],
+
                   // ── Item summary ──────────────────────────────────
                   const Text('Resumen',
                       style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold,
@@ -324,22 +439,9 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                           Padding(
                             padding: const EdgeInsets.symmetric(
                                 horizontal: 20, vertical: 12),
-                            child: Row(
-                              children: [
-                                Expanded(
-                                  child: Text(
-                                    '${widget.items[i].quantity}× ${widget.items[i].product.name}',
-                                    style: const TextStyle(fontSize: 17,
-                                        color: AppTheme.textPrimary),
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                ),
-                                Text(widget.items[i].formattedSubtotal,
-                                    style: const TextStyle(fontSize: 17,
-                                        fontWeight: FontWeight.bold,
-                                        color: AppTheme.textPrimary)),
-                              ],
+                            child: _buildSummaryRow(
+                              widget.items[i],
+                              cartCtrl: cartCtrl,
                             ),
                           ),
                           if (i < widget.items.length - 1)
@@ -366,10 +468,16 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                             style: TextStyle(fontSize: 22,
                                 fontWeight: FontWeight.bold,
                                 color: AppTheme.textPrimary)),
-                        Text(widget.formattedTotal,
-                            style: const TextStyle(fontSize: 30,
-                                fontWeight: FontWeight.bold,
-                                color: AppTheme.primary)),
+                        // F029: usar effectiveFormatted para que el
+                        // TOTAL grande refleje el tier seleccionado.
+                        Text(
+                          key: const Key('checkout_total_value'),
+                          effectiveFormatted,
+                          style: const TextStyle(
+                              fontSize: 30,
+                              fontWeight: FontWeight.bold,
+                              color: AppTheme.primary),
+                        ),
                       ],
                     ),
                   ),
@@ -509,11 +617,13 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                       spacing: 10,
                       runSpacing: 10,
                       children: [
-                        // "Exacto" button
+                        // "Exacto" button. F029: usa el effectiveTotal
+                        // (que cambia con el tier seleccionado) en vez
+                        // del widget.total constructor-time.
                         _BillChip(
                           label: 'Exacto',
                           selected: _isExact,
-                          onTap: () => _setTendered(widget.total),
+                          onTap: () => _setTendered(effectiveTotal),
                         ),
                         // Denomination buttons
                         for (final bill in _smartBills)
@@ -660,7 +770,10 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                         alpha: canConfirm ? 1 : 0.6),
                   ),
                   label: Text(
-                    'Registrar venta por ${widget.formattedTotal}',
+                    // F029: el botón muestra el total efectivo (no el
+                    // pasado por constructor) para que el cajero vea
+                    // exactamente lo que va a cobrar.
+                    'Registrar venta por $effectiveFormatted',
                     style: TextStyle(
                       fontSize: 19,
                       fontWeight: FontWeight.bold,
@@ -674,6 +787,116 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
           ],
         ),
       ),
+    );
+  }
+
+  // F029 — selector "Tipo de precio". Vertical radio para que los
+  // 4 labels (retail + 3 tiers, potencialmente largos) entren bien
+  // en 360dp sin overflow horizontal. El selectedPriceTier vive en
+  // CartController para que totalForTier + subtotalForItem usen el
+  // mismo valor; al tocar un option llamamos setPriceTier y el
+  // controller dispara notifyListeners que rebuildea esta pantalla
+  // (suscrita via context.watch en build).
+  Widget _buildPriceTierSelector(CartController ctrl) {
+    final options = <(String, String)>[
+      ('retail', 'Cliente final'),
+      ('tier_1', _tier1Name),
+      ('tier_2', _tier2Name),
+      ('tier_3', _tier3Name),
+    ];
+    final selected = ctrl.selectedPriceTier;
+    return Container(
+      key: const Key('checkout_price_tier_selector'),
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+      decoration: BoxDecoration(
+        color: AppTheme.surfaceGrey,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: AppTheme.borderColor),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Row(
+            children: [
+              Icon(Icons.local_offer_rounded,
+                  size: 22, color: AppTheme.primary),
+              SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'Tipo de precio',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w700,
+                    color: AppTheme.textPrimary,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          for (final opt in options)
+            _TierRadioTile(
+              key: Key('tier_option_${opt.$1}'),
+              value: opt.$1,
+              label: opt.$2,
+              selected: selected == opt.$1,
+              onTap: () {
+                HapticFeedback.lightImpact();
+                ctrl.setPriceTier(opt.$1);
+              },
+            ),
+        ],
+      ),
+    );
+  }
+
+  // F029 — fila de resumen con tier-aware pricing. Cuando la capacidad
+  // está OFF o no hay CartController (tests legacy), respeta el subtotal
+  // pre-F029 sin cambios.
+  Widget _buildSummaryRow(CartItem item, {CartController? cartCtrl}) {
+    final tieredActive = _enablePriceTiers && cartCtrl != null;
+    final subtotal = tieredActive
+        ? cartCtrl.subtotalForItem(item)
+        : item.subtotal;
+    final usingRetailFallback =
+        tieredActive && cartCtrl.itemUsingRetailFallback(item);
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                '${item.quantity}× ${item.product.name}',
+                style: const TextStyle(
+                    fontSize: 17, color: AppTheme.textPrimary),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+              if (usingRetailFallback)
+                Padding(
+                  padding: const EdgeInsets.only(top: 4),
+                  child: Text(
+                    key: Key(
+                        'checkout_retail_fallback_${item.product.uuid}'),
+                    '⚠ usando precio retail',
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.amber.shade800,
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ),
+        Text(_formatCOP(subtotal.round()),
+            style: const TextStyle(
+                fontSize: 17,
+                fontWeight: FontWeight.bold,
+                color: AppTheme.textPrimary)),
+      ],
     );
   }
 
@@ -2323,3 +2546,76 @@ class _MethodQrSheetState extends State<_MethodQrSheet> {
   }
 }
 
+// F029 — radio tile vertical para el selector "Tipo de precio".
+// Objetivo táctil 56dp (≥48 mínimo). Labels en español, fontSize 17
+// (≥17 por la guía de gerontodiseño). Usado solo cuando
+// enable_price_tiers está ON.
+class _TierRadioTile extends StatelessWidget {
+  final String value;
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  const _TierRadioTile({
+    super.key,
+    required this.value,
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(12),
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+        decoration: BoxDecoration(
+          color: selected
+              ? AppTheme.primary.withValues(alpha: 0.08)
+              : Colors.white,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: selected ? AppTheme.primary : AppTheme.borderColor,
+            width: selected ? 2 : 1,
+          ),
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 22,
+              height: 22,
+              decoration: BoxDecoration(
+                color: Colors.white,
+                shape: BoxShape.circle,
+                border: Border.all(
+                  color: selected ? AppTheme.primary : const Color(0xFFB0A99A),
+                  width: 2,
+                ),
+              ),
+              child: selected
+                  ? const Center(
+                      child: Icon(Icons.circle,
+                          size: 10, color: AppTheme.primary),
+                    )
+                  : null,
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                label,
+                style: TextStyle(
+                  fontSize: 17,
+                  fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+                  color: AppTheme.textPrimary,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}

@@ -1585,12 +1585,20 @@ class _PosScreenBodyState extends State<_PosScreenBody> {
       String saleUuid, {
       String? creditAccountId,
       String? dynamicQrPayload,
+      // F029: tier de precios elegido en Confirmar Venta. Por default
+      // 'retail' para que las llamadas previas a F029 sigan compilando.
+      String priceTier = 'retail',
       }) async {
     try {
       final api = ApiService(AuthService());
       final payload = <String, dynamic>{
         'id': saleUuid,
         'payment_method': paymentMethod,
+        // F029: el tier viaja con la venta entera (no por línea); el
+        // backend lo persiste en sales.price_tier. 'retail' es el
+        // default server-side, así que un payload sin esta clave
+        // sigue siendo válido.
+        'price_tier': priceTier,
         'items': cartItems.map((item) {
           if (item.isService) {
             return {
@@ -1607,6 +1615,12 @@ class _PosScreenBodyState extends State<_PosScreenBody> {
                 ? item.product.uuid
                 : item.product.id.toString(),
             'quantity': item.quantity,
+            // F029: enviamos el precio efectivo (con fallback retail)
+            // para que el backend pueda persistirlo como `price` del
+            // SaleItem sin re-resolver el tier en su lado. Si el tier
+            // es 'retail' o el producto no tiene tier, equivale al
+            // price legacy.
+            'unit_price': item.product.priceForTier(priceTier),
           };
         }).toList(),
       };
@@ -1672,7 +1686,11 @@ class _PosScreenBodyState extends State<_PosScreenBody> {
       ),
     ).then((result) async {
       if (result is CheckoutResult && result.confirmed) {
-        // Capture total BEFORE clearing cart
+        // Capture total + tier BEFORE clearing cart. F029: el tier es
+        // el snapshot del momento de la confirmación; renombrarlo
+        // después no afecta esta venta (los SaleItems guardan el
+        // precio efectivo aplicado).
+        final priceTier = ctrl.selectedPriceTier;
         final saleTotal = ctrl.activeTotal;
         final saleTotalFormatted = _formatCOP(saleTotal.round());
 
@@ -1680,13 +1698,19 @@ class _PosScreenBodyState extends State<_PosScreenBody> {
         final db = DatabaseService.instance;
         final saleUuid = const Uuid().v4();
         final saleItems = ctrl.activeCart.map((item) {
+          // F029: el unitPrice persistido es el efectivo (price para
+          // ese tier o fallback retail). Para servicios respeta el
+          // customUnitPrice.
+          final unitPrice = item.isService
+              ? (item.customUnitPrice ?? item.product.price)
+              : item.product.priceForTier(priceTier);
           return SaleItemEmbed()
             ..productUuid = item.product.uuid.isNotEmpty
                 ? item.product.uuid
                 : item.product.id.toString()
             ..productName = item.product.name
             ..quantity = item.quantity
-            ..unitPrice = item.product.price
+            ..unitPrice = unitPrice
             ..isContainerCharge = false;
         }).toList();
 
@@ -1761,6 +1785,7 @@ class _PosScreenBodyState extends State<_PosScreenBody> {
           saleUuid,
           creditAccountId: result.creditAccountId,
           dynamicQrPayload: result.dynamicQrPayload,
+          priceTier: priceTier,
         );
         // Credit sales can leave a fiado in pending state; refresh the
         // badge so the cashier sees it in the Cuaderno indicator. The

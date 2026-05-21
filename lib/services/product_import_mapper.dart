@@ -1,4 +1,5 @@
 // Spec: specs/027-importador-inventario/spec.md
+// Spec: specs/029-precios-multi-tier/spec.md
 //
 // Mapper de importación de productos: propueMapping, validateRow,
 // normalizePriceCOP y applyMapping.
@@ -31,6 +32,13 @@ const List<String> kProductTargets = [
   'presentation',
   'content',
   'expiry_date',
+  // F029: tiers opcionales — solo se aplican si el CSV los trae y
+  // si el tenant tiene la capacidad enable_price_tiers ON. El backend
+  // ignora valores cuando la capacidad está OFF, así que mapearlos
+  // aquí nunca rompe la importación legacy.
+  'price_tier_1',
+  'price_tier_2',
+  'price_tier_3',
 ];
 
 /// Tabla de sinónimos según spec §8: target → lista de sinónimos.
@@ -131,6 +139,61 @@ const Map<String, List<String>> _kSynonyms = {
     'caduca',
     'expiry',
     'fecha de vencimiento',
+  ],
+  // F029 — sinónimos de tiers. Cobertura amplia: cualquier columna que
+  // huela a "mayorista", "contado", "depósito" o "detal" cae a su tier
+  // correspondiente. El dueño puede haber renombrado los tiers en su
+  // perfil; el importer NO los consulta — usamos un superset estable
+  // de sinónimos comunes en el comercio colombiano. El orden de
+  // sinónimos es informativo (proposeMapping toma el primero que matcha
+  // cada header, sin priorización entre sinónimos del mismo target).
+  'price_tier_1': [
+    'precio tier 1',
+    'precio_tier_1',
+    'price tier 1',
+    'price_tier_1',
+    'tier 1',
+    'tier_1',
+    'precio mayorista',
+    'mayorista',
+    'precio mayorista x12',
+    'mayorista x12',
+    'precio deposito',
+    'precio depósito',
+    'deposito',
+    'depósito',
+    'precio contado',
+    'contado',
+  ],
+  'price_tier_2': [
+    'precio tier 2',
+    'precio_tier_2',
+    'price tier 2',
+    'price_tier_2',
+    'tier 2',
+    'tier_2',
+    'precio mayorista x6',
+    'mayorista x6',
+    'precio credito',
+    'precio crédito',
+    'credito',
+    'crédito',
+    'precio deposito credito',
+    'precio depósito crédito',
+  ],
+  'price_tier_3': [
+    'precio tier 3',
+    'precio_tier_3',
+    'price tier 3',
+    'price_tier_3',
+    'tier 3',
+    'tier_3',
+    'precio detal',
+    'detal',
+    'precio minorista',
+    'minorista',
+    'precio cliente final',
+    'cliente final',
   ],
 };
 

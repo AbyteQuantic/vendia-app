@@ -1,6 +1,7 @@
 // Spec: specs/023-capacidades-opcionales-negocio/spec.md
+// Spec: specs/029-precios-multi-tier/spec.md
 //
-// Widget reutilizable: sección "¿Su negocio también…?" con hasta 3
+// Widget reutilizable: sección "¿Su negocio también…?" con
 // SwitchListTile para las capacidades opcionales del tenant.
 //
 // Usado en:
@@ -26,12 +27,27 @@ import '../utils/business_capability_map.dart';
 /// [offersServices] → ValueNotifier del toggle "cobra servicios".
 /// [sellsByWeight]  → ValueNotifier del toggle "vende a granel".
 /// [hasTables]      → ValueNotifier del toggle "atiende en mesas".
+/// [enablePriceTiers] (F029) → ValueNotifier del toggle "Manejo precios
+///                    diferentes para mayorista y minorista". Cuando es
+///                    true, el widget expone tres TextField para los
+///                    nombres de los tiers.
+/// [priceTier1NameCtrl] (F029) → controller del nombre del tier 1.
+/// [priceTier2NameCtrl] (F029) → controller del nombre del tier 2.
+/// [priceTier3NameCtrl] (F029) → controller del nombre del tier 3.
 class OptionalCapabilitiesSection extends StatelessWidget {
   final String? selectedType;
   final FeatureFlags flags;
   final ValueNotifier<bool> offersServices;
   final ValueNotifier<bool> sellsByWeight;
   final ValueNotifier<bool> hasTables;
+
+  // F029 — bound from the parent so business_profile_screen
+  // gathers the values for the PATCH payload without piping
+  // each TextField through Provider.
+  final ValueNotifier<bool>? enablePriceTiers;
+  final TextEditingController? priceTier1NameCtrl;
+  final TextEditingController? priceTier2NameCtrl;
+  final TextEditingController? priceTier3NameCtrl;
 
   const OptionalCapabilitiesSection({
     super.key,
@@ -40,6 +56,10 @@ class OptionalCapabilitiesSection extends StatelessWidget {
     required this.offersServices,
     required this.sellsByWeight,
     required this.hasTables,
+    this.enablePriceTiers,
+    this.priceTier1NameCtrl,
+    this.priceTier2NameCtrl,
+    this.priceTier3NameCtrl,
   });
 
   @override
@@ -47,7 +67,21 @@ class OptionalCapabilitiesSection extends StatelessWidget {
     if (selectedType == null) return const SizedBox.shrink();
 
     final toggleable = toggleableCapabilities(selectedType);
-    if (toggleable.isEmpty) return const SizedBox.shrink();
+    // F029: el toggle priceTiers solo se muestra cuando el parent
+    // proporcionó los controllers. En onboarding aún no lo cableamos,
+    // así que el set se queda como está. Cuando los controllers vienen,
+    // forzamos su inclusión aunque toggleableCapabilities ya lo trae —
+    // mantenemos la invariante "no se renderiza sin destino donde
+    // guardar los nombres".
+    final hasTierWiring = enablePriceTiers != null &&
+        priceTier1NameCtrl != null &&
+        priceTier2NameCtrl != null &&
+        priceTier3NameCtrl != null;
+    final visible = toggleable.where((c) {
+      if (c == OptionalCapability.priceTiers) return hasTierWiring;
+      return true;
+    }).toSet();
+    if (visible.isEmpty) return const SizedBox.shrink();
 
     return Container(
       key: const Key('optional_caps_section'),
@@ -79,7 +113,7 @@ class OptionalCapabilitiesSection extends StatelessWidget {
               border: Border.all(color: AppTheme.borderColor),
             ),
             child: Column(
-              children: _buildTiles(toggleable),
+              children: _buildTiles(visible),
             ),
           ),
         ],
@@ -93,6 +127,7 @@ class OptionalCapabilitiesSection extends StatelessWidget {
       OptionalCapability.services,
       OptionalCapability.fractionalUnits,
       OptionalCapability.tables,
+      OptionalCapability.priceTiers,
     ].where(toggleable.contains).toList();
 
     for (var i = 0; i < ordered.length; i++) {
@@ -122,6 +157,14 @@ class OptionalCapabilitiesSection extends StatelessWidget {
             title: 'Atiende clientes en mesas',
             subtitle: 'Ej: sala de espera, mesas de juego, comedor',
             notifier: hasTables,
+            showDivider: showDivider,
+          ));
+        case OptionalCapability.priceTiers:
+          tiles.add(_PriceTiersTile(
+            notifier: enablePriceTiers!,
+            tier1Ctrl: priceTier1NameCtrl!,
+            tier2Ctrl: priceTier2NameCtrl!,
+            tier3Ctrl: priceTier3NameCtrl!,
             showDivider: showDivider,
           ));
       }
@@ -181,6 +224,177 @@ class _CapabilityTile extends StatelessWidget {
           ),
         ),
         if (showDivider) const Divider(height: 1, indent: 16, endIndent: 16),
+      ],
+    );
+  }
+}
+
+// F029 — tile especializado: SwitchListTile + sub-form con 3 inputs
+// para renombrar los tiers. El sub-form vive bajo un AnimatedSize para
+// que el alto del widget cambie sin saltos visuales bruscos en pantallas
+// de 360dp.
+class _PriceTiersTile extends StatelessWidget {
+  final ValueNotifier<bool> notifier;
+  final TextEditingController tier1Ctrl;
+  final TextEditingController tier2Ctrl;
+  final TextEditingController tier3Ctrl;
+  final bool showDivider;
+
+  const _PriceTiersTile({
+    required this.notifier,
+    required this.tier1Ctrl,
+    required this.tier2Ctrl,
+    required this.tier3Ctrl,
+    required this.showDivider,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        ValueListenableBuilder<bool>(
+          valueListenable: notifier,
+          builder: (_, value, __) => Column(
+            children: [
+              SwitchListTile(
+                key: const Key('toggle_price_tiers'),
+                value: value,
+                onChanged: (v) => notifier.value = v,
+                activeThumbColor: AppTheme.primary,
+                contentPadding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                title: const Text(
+                  'Manejo precios diferentes para mayorista y minorista',
+                  style: TextStyle(
+                    fontSize: 17,
+                    fontWeight: FontWeight.w600,
+                    color: AppTheme.textPrimary,
+                  ),
+                ),
+                subtitle: Padding(
+                  padding: const EdgeInsets.only(top: 2),
+                  child: Text(
+                    'Ej: precio mayorista x12, mayorista x6 y detal',
+                    style: TextStyle(
+                      fontSize: 14,
+                      color: Colors.grey.shade600,
+                      height: 1.3,
+                    ),
+                  ),
+                ),
+              ),
+              AnimatedSize(
+                duration: const Duration(milliseconds: 180),
+                curve: Curves.easeOut,
+                alignment: Alignment.topCenter,
+                child: value
+                    ? Padding(
+                        key: const Key('price_tiers_subform'),
+                        padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Padding(
+                              padding: EdgeInsets.only(bottom: 8),
+                              child: Text(
+                                'Nombres de los tiers',
+                                style: TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w700,
+                                  color: AppTheme.textPrimary,
+                                ),
+                              ),
+                            ),
+                            _TierNameField(
+                              fieldKey:
+                                  const Key('price_tier_1_name'),
+                              label: 'Tier 1',
+                              hint: 'Ej: Depósito contado',
+                              controller: tier1Ctrl,
+                            ),
+                            const SizedBox(height: 10),
+                            _TierNameField(
+                              fieldKey:
+                                  const Key('price_tier_2_name'),
+                              label: 'Tier 2',
+                              hint: 'Ej: Depósito crédito',
+                              controller: tier2Ctrl,
+                            ),
+                            const SizedBox(height: 10),
+                            _TierNameField(
+                              fieldKey:
+                                  const Key('price_tier_3_name'),
+                              label: 'Tier 3',
+                              hint: 'Ej: Cliente final',
+                              controller: tier3Ctrl,
+                            ),
+                          ],
+                        ),
+                      )
+                    : const SizedBox.shrink(),
+              ),
+            ],
+          ),
+        ),
+        if (showDivider) const Divider(height: 1, indent: 16, endIndent: 16),
+      ],
+    );
+  }
+}
+
+class _TierNameField extends StatelessWidget {
+  final Key fieldKey;
+  final String label;
+  final String hint;
+  final TextEditingController controller;
+
+  const _TierNameField({
+    required this.fieldKey,
+    required this.label,
+    required this.hint,
+    required this.controller,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label,
+          style: const TextStyle(
+            fontSize: 14,
+            fontWeight: FontWeight.w600,
+            color: AppTheme.textSecondary,
+          ),
+        ),
+        const SizedBox(height: 4),
+        TextField(
+          key: fieldKey,
+          controller: controller,
+          maxLength: 50,
+          style: const TextStyle(fontSize: 17),
+          decoration: InputDecoration(
+            hintText: hint,
+            counterText: '',
+            isDense: true,
+            contentPadding:
+                const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: const BorderSide(color: AppTheme.borderColor),
+            ),
+            enabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: const BorderSide(color: AppTheme.borderColor),
+            ),
+            focusedBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide:
+                  const BorderSide(color: AppTheme.primary, width: 2),
+            ),
+          ),
+        ),
       ],
     );
   }

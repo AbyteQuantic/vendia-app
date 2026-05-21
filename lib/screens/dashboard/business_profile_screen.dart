@@ -1,5 +1,6 @@
 // Spec: specs/023-capacidades-opcionales-negocio/spec.md
 // Spec: specs/028-copy-fiar-credito-configurable/spec.md
+// Spec: specs/029-precios-multi-tier/spec.md
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:geolocator/geolocator.dart';
@@ -54,6 +55,20 @@ class _BusinessProfileScreenState extends State<BusinessProfileScreen> {
   // F028: vocabulario del cuaderno — 'fiar' (default) o 'credit'.
   String _creditLabelMode = 'fiar';
 
+  // F029: capacidad opcional "Manejo precios diferentes para mayorista
+  // y minorista" + los 3 nombres de tiers renombrables. Los defaults
+  // espejan tenant.go (DefaultsPriceTier*Name) para que un tenant
+  // pre-migración (sin el toggle ni los nombres en el GET) muestre los
+  // mismos labels que el backend va a aplicar cuando se prenda la
+  // capacidad.
+  late final ValueNotifier<bool> _enablePriceTiers = ValueNotifier(false);
+  final _priceTier1NameCtrl =
+      TextEditingController(text: 'Depósito contado');
+  final _priceTier2NameCtrl =
+      TextEditingController(text: 'Depósito crédito');
+  final _priceTier3NameCtrl =
+      TextEditingController(text: 'Cliente final');
+
   // 1:1 con la whitelist del backend (models.ValidBusinessTypes,
   // migración 020). Cada entry es (valor_snake_case, ícono, etiqueta).
   // Cualquier cambio en la columna de valor debe ir acompañado de una
@@ -96,6 +111,11 @@ class _BusinessProfileScreenState extends State<BusinessProfileScreen> {
     _offersServices.dispose();
     _sellsByWeight.dispose();
     _hasTables.dispose();
+    // F029: liberar los recursos de los tier names.
+    _enablePriceTiers.dispose();
+    _priceTier1NameCtrl.dispose();
+    _priceTier2NameCtrl.dispose();
+    _priceTier3NameCtrl.dispose();
     super.dispose();
   }
 
@@ -150,6 +170,19 @@ class _BusinessProfileScreenState extends State<BusinessProfileScreen> {
         // F028: leer el modo actual desde el perfil.
         final rawMode = data['credit_label_mode'] as String?;
         _creditLabelMode = (rawMode == 'credit') ? 'credit' : 'fiar';
+
+        // F029: hidratar el toggle + nombres de tiers desde el perfil.
+        // El backend siempre devuelve los 4 campos (con sus DEFAULTs si
+        // el tenant nunca los tocó), pero somos defensivos: si vienen
+        // null, mantenemos los defaults declarados en el initState.
+        _enablePriceTiers.value = data['enable_price_tiers'] == true ||
+            _featureFlags.enablePriceTiers;
+        final t1 = (data['price_tier_1_name'] as String?)?.trim();
+        if (t1 != null && t1.isNotEmpty) _priceTier1NameCtrl.text = t1;
+        final t2 = (data['price_tier_2_name'] as String?)?.trim();
+        if (t2 != null && t2.isNotEmpty) _priceTier2NameCtrl.text = t2;
+        final t3 = (data['price_tier_3_name'] as String?)?.trim();
+        if (t3 != null && t3.isNotEmpty) _priceTier3NameCtrl.text = t3;
 
         _loading = false;
       });
@@ -401,10 +434,24 @@ class _BusinessProfileScreenState extends State<BusinessProfileScreen> {
         if (_longitude != 0) 'longitude': _longitude,
         // F023: capacidades opcionales — se envían en config para que
         // el backend recalcule feature_flags con tipo OR toggles.
+        // F029: el toggle enable_price_tiers viaja en el mismo `config`
+        // para mantener la convención (un solo "bag" de toggles de
+        // negocio). Los nombres custom van al nivel raíz junto al resto
+        // de columnas del tenant (no son toggles).
         'config': {
           'has_tables': _hasTables.value,
           'offers_services': _offersServices.value,
           'sells_by_weight': _sellsByWeight.value,
+          'enable_price_tiers': _enablePriceTiers.value,
+          // Los nombres SÓLO se mandan cuando la capacidad está ON.
+          // Si está OFF y el dueño nunca los tocó, evitamos
+          // sobreescribir lo que ya tenga el backend con strings
+          // vacíos del controller.
+          if (_enablePriceTiers.value) ...{
+            'price_tier_1_name': _priceTier1NameCtrl.text.trim(),
+            'price_tier_2_name': _priceTier2NameCtrl.text.trim(),
+            'price_tier_3_name': _priceTier3NameCtrl.text.trim(),
+          },
         },
         // F028: vocabulario del cuaderno — persistido en tenant.
         'credit_label_mode': _creditLabelMode,
@@ -563,13 +610,20 @@ class _BusinessProfileScreenState extends State<BusinessProfileScreen> {
             const SizedBox(height: 12),
             _buildBusinessTypeRadioGrid(),
 
-            // F023: capacidades opcionales debajo del selector de tipo
+            // F023: capacidades opcionales debajo del selector de tipo.
+            // F029: pasamos el toggle de precios multi-tier + los 3
+            // controllers de nombre. La sub-sección se expande sola
+            // cuando se prende el switch.
             OptionalCapabilitiesSection(
               selectedType: _selectedType,
               flags: _featureFlags,
               offersServices: _offersServices,
               sellsByWeight: _sellsByWeight,
               hasTables: _hasTables,
+              enablePriceTiers: _enablePriceTiers,
+              priceTier1NameCtrl: _priceTier1NameCtrl,
+              priceTier2NameCtrl: _priceTier2NameCtrl,
+              priceTier3NameCtrl: _priceTier3NameCtrl,
             ),
 
             // F028: vocabulario del cuaderno ─────────────────────────
