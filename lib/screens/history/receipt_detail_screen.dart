@@ -1,3 +1,4 @@
+// Spec: specs/028-copy-fiar-credito-configurable/spec.md
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -5,6 +6,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../services/api_service.dart';
 import '../../services/auth_service.dart';
 import '../../theme/app_theme.dart';
+import '../../utils/credit_labels.dart';
 
 /// ReceiptDetailScreen — full read-only view of a single Sale.
 ///
@@ -134,7 +136,7 @@ class _ReceiptDetailScreenState extends State<ReceiptDetailScreen> {
         'cash' => 'Efectivo',
         'transfer' => 'Transferencia',
         'card' => 'Tarjeta',
-        'credit' => 'Fiado',
+        'credit' => CreditLabels.of(context).nounSingularCapitalized,
         _ => method ?? '—',
       };
 

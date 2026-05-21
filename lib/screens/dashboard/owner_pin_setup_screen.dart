@@ -1,3 +1,4 @@
+// Spec: specs/028-copy-fiar-credito-configurable/spec.md
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -5,6 +6,7 @@ import '../../services/api_service.dart';
 import '../../services/app_error.dart';
 import '../../services/auth_service.dart';
 import '../../theme/app_theme.dart';
+import '../../utils/credit_labels.dart';
 
 /// Owner-only screen to set (or replace) the 4-digit PIN that cashiers will
 /// enter to unlock restricted actions like creating a new fiado for an
@@ -90,11 +92,11 @@ class _OwnerPinSetupScreenState extends State<OwnerPinSetupScreen> {
                 color: AppTheme.primary.withValues(alpha: 0.08),
                 borderRadius: BorderRadius.circular(16),
               ),
-              child: const Text(
+              child: Text(
                 'Este PIN de 4 dígitos se lo pedirán a tus cajeros cuando quieran '
-                'hacer acciones sensibles, como fiar a un cliente nuevo o anular '
+                'hacer acciones sensibles, como ${CreditLabels.of(context).pinActionDescription} o anular '
                 'una venta antigua. No se lo digas a nadie que no sea de confianza.',
-                style: TextStyle(fontSize: 16, height: 1.4),
+                style: const TextStyle(fontSize: 16, height: 1.4),
               ),
             ),
             const SizedBox(height: 24),

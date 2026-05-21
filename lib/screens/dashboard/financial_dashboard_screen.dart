@@ -1,3 +1,4 @@
+// Spec: specs/028-copy-fiar-credito-configurable/spec.md
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
@@ -10,6 +11,7 @@ import '../../services/auth_service.dart';
 import '../../services/role_manager.dart';
 import '../../services/tax_settings_service.dart';
 import '../../theme/app_theme.dart';
+import '../../utils/credit_labels.dart';
 import '../../widgets/growth_radar_card.dart';
 import '../admin/tax_activation_wizard.dart';
 import '../history/receipt_detail_screen.dart';
@@ -255,7 +257,8 @@ class _FinancialDashboardScreenState extends State<FinancialDashboardScreen> {
                 .cast<Map>()
                 .map((m) => _BarRow(
                       label: _methodLabel(
-                          m['payment_method']?.toString() ?? ''),
+                          m['payment_method']?.toString() ?? '',
+                          creditMode: CreditLabels.of(context).mode),
                       total: (m['total'] as num?)?.toDouble() ?? 0,
                       count: (m['count'] as num?)?.toInt() ?? 0,
                       color: _methodColor(
@@ -514,7 +517,7 @@ class _SaleTile extends StatelessWidget {
                   Text(
                     '${employee.isEmpty ? "Sin asignar" : employee} · '
                     '$timeStr · '
-                    '${_methodLabel(method)} · '
+                    '${_methodLabel(method, creditMode: CreditLabels.of(context).mode)} · '
                     '${_channelLabel(source)}',
                     style: const TextStyle(
                         fontSize: 13, color: AppTheme.textSecondary),
@@ -564,13 +567,13 @@ Color _channelColor(String s) => switch (s) {
       _ => Colors.grey,
     };
 
-String _methodLabel(String m) => switch (m) {
+String _methodLabel(String m, {String creditMode = 'fiar'}) => switch (m) {
       'cash' => 'Efectivo',
       'transfer' => 'Transferencia',
       'card' => 'Tarjeta',
       'nequi' => 'Nequi',
       'daviplata' => 'Daviplata',
-      'credit' => 'Fiado',
+      'credit' => CreditLabels(creditMode).nounSingularCapitalized,
       'multi' => 'Pago Mixto',
       _ => m.isEmpty ? 'Otro' : m,
     };
@@ -652,7 +655,7 @@ class _ActiveFiltersBar extends StatelessWidget {
     final chips = <Widget>[];
     if ((employee ?? '').isNotEmpty) chips.add(_pill('👤 $employee'));
     if ((source ?? '').isNotEmpty) chips.add(_pill('📍 ${_channelLabel(source!)}'));
-    if ((method ?? '').isNotEmpty) chips.add(_pill('💳 ${_methodLabel(method!)}'));
+    if ((method ?? '').isNotEmpty) chips.add(_pill('💳 ${_methodLabel(method!, creditMode: CreditLabels.of(context).mode)}'));
     return Wrap(
       spacing: 6,
       runSpacing: 6,
@@ -813,7 +816,7 @@ class _CashFlowCards extends StatelessWidget {
       Row(children: [
         Expanded(
           child: _MoneyCard(
-            label: 'Fiado del período',
+            label: CreditLabels.of(context).periodLabel,
             amount: fiado,
             color: AppTheme.warning,
             icon: Icons.menu_book_rounded,
@@ -891,9 +894,9 @@ class _ReceivablePill extends StatelessWidget {
           const Icon(Icons.account_balance_wallet_rounded,
               color: AppTheme.warning, size: 22),
           const SizedBox(width: 10),
-          const Expanded(
-            child: Text('Total cuentas por cobrar (todos los fiados abiertos)',
-                style: TextStyle(
+          Expanded(
+            child: Text(CreditLabels.of(context).totalReceivablesLabel,
+                style: const TextStyle(
                     fontSize: 14, color: AppTheme.textSecondary)),
           ),
           Text(_formatMoney(amount),
@@ -1564,7 +1567,7 @@ class _FilterSheetState extends State<_FilterSheet> {
                   selected: _method == 'card',
                   onTap: () => setState(() => _method = 'card')),
               _ChipChoice(
-                  label: 'Fiado',
+                  label: CreditLabels.of(context).nounSingularCapitalized,
                   selected: _method == 'credit',
                   onTap: () => setState(() => _method = 'credit')),
             ],

@@ -137,6 +137,8 @@ class _LoginScreenState extends State<LoginScreen> {
       final featureFlags = data['feature_flags'] as Map<String, dynamic>?;
       final businessTypes =
           (data['business_types'] as List?)?.whereType<String>().toList();
+      // F028: capture credit_label_mode from login response.
+      final creditLabelMode = data['credit_label_mode'] as String?;
 
       // Backend ships the JWT under both `access_token` (canonical
       // since the RBAC fix) and `token` (legacy). Accept either so
@@ -170,6 +172,7 @@ class _LoginScreenState extends State<LoginScreen> {
           role: role,
           featureFlags: featureFlags,
           businessTypes: businessTypes,
+          creditLabelMode: creditLabelMode,
         );
       } else {
         await _auth.saveLegacySession(
@@ -179,6 +182,7 @@ class _LoginScreenState extends State<LoginScreen> {
           businessName: data['business_name'] as String? ?? '',
           featureFlags: featureFlags,
           businessTypes: businessTypes,
+          creditLabelMode: creditLabelMode,
         );
       }
 

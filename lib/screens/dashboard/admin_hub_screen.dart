@@ -1,8 +1,10 @@
+// Spec: specs/028-copy-fiar-credito-configurable/spec.md
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../../services/api_service.dart';
 import '../../services/auth_service.dart';
 import '../../theme/app_theme.dart';
+import '../../utils/credit_labels.dart';
 import '../auth/login_screen.dart';
 import 'business_profile_screen.dart';
 import 'branches_list_screen.dart';
@@ -250,7 +252,7 @@ class _AdminHubScreenState extends State<AdminHubScreen> {
             _SettingsTile(
               icon: Icons.menu_book_rounded,
               iconColor: const Color(0xFF6D28D9),
-              title: 'Configuración de Fiados',
+              title: CreditLabels.of(context).configTitle,
               subtitle: _enableFiados ? 'Cuaderno habilitado' : 'Cuaderno deshabilitado',
               trailing: Switch.adaptive(
                 value: _enableFiados,

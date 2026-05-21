@@ -23,6 +23,10 @@ class AuthService {
   // JSON so a single key covers the six-flag struct + the string array.
   static const _keyFeatureFlags = 'vendia_feature_flags';
   static const _keyBusinessTypes = 'vendia_business_types';
+  // F028: copy configurable fiar/crédito. Persisted alongside feature flags
+  // so the app can resolve labels offline without any extra round-trip.
+  // Default 'fiar' when the key is absent (legacy tenants, pre-F028).
+  static const _keyCreditLabelMode = 'vendia_credit_label_mode';
 
   final FlutterSecureStorage _storage;
 
@@ -56,6 +60,12 @@ class AuthService {
       key: _keyBusinessTypes,
       value: types is List ? jsonEncode(types) : null,
     );
+    // F028: persist credit_label_mode — default 'fiar' when absent.
+    final mode = source['credit_label_mode'];
+    await _storage.write(
+      key: _keyCreditLabelMode,
+      value: (mode == 'credit') ? 'credit' : 'fiar',
+    );
   }
 
   /// Save full session after login/register (new contract with refresh tokens).
@@ -85,6 +95,10 @@ class AuthService {
     await _storage.write(
         key: _keyLogoUrl, value: tenant['logo_url']?.toString() ?? '');
     await _saveFeatureFlags(tenant);
+    // Warm in-memory cache after persistence so CreditLabels.of() resolves
+    // synchronously from the first paint after login.
+    final mode = tenant['credit_label_mode'];
+    _creditLabelModeCache = (mode == 'credit') ? 'credit' : 'fiar';
   }
 
   /// Legacy save for backward compatibility (old format).
@@ -97,6 +111,7 @@ class AuthService {
     required String businessName,
     Map<String, dynamic>? featureFlags,
     List<String>? businessTypes,
+    String? creditLabelMode,
   }) async {
     await _storage.write(key: _keyAccessToken, value: token);
     await _storage.write(key: _keyTenantId, value: tenantId);
@@ -105,7 +120,9 @@ class AuthService {
     await _saveFeatureFlags({
       'feature_flags': featureFlags,
       'business_types': businessTypes,
+      'credit_label_mode': creditLabelMode,
     });
+    _creditLabelModeCache = (creditLabelMode == 'credit') ? 'credit' : 'fiar';
   }
 
   /// Save new token pair after refresh.
@@ -170,6 +187,7 @@ class AuthService {
     String role = '',
     Map<String, dynamic>? featureFlags,
     List<String>? businessTypes,
+    String? creditLabelMode,
   }) async {
     await _storage.write(key: _keyAccessToken, value: accessToken);
     await _storage.write(key: _keyRefreshToken, value: refreshToken);
@@ -182,7 +200,9 @@ class AuthService {
     await _saveFeatureFlags({
       'feature_flags': featureFlags,
       'business_types': businessTypes,
+      'credit_label_mode': creditLabelMode,
     });
+    _creditLabelModeCache = (creditLabelMode == 'credit') ? 'credit' : 'fiar';
   }
 
   /// Feature flags retrieved at last login. Missing keys default to
@@ -222,6 +242,32 @@ class AuthService {
   Future<String?> getBranchId() => _storage.read(key: _keyBranchId);
   Future<void> saveBranchId(String id) => _storage.write(key: _keyBranchId, value: id);
   Future<String?> getRole() => _storage.read(key: _keyRole);
+
+  // F028 — credit_label_mode ─────────────────────────────────────────────
+
+  /// In-memory cache so [CreditLabels.of(context)] can resolve labels
+  /// synchronously (no async gap between load and first paint).
+  /// Populated at login via [_saveFeatureFlags] → awaited in [saveSession].
+  /// Falls back to 'fiar' (pre-F028 retrocompat).
+  String _creditLabelModeCache = 'fiar';
+
+  /// Synchronous getter used by [CreditLabels.of].
+  String get creditLabelMode => _creditLabelModeCache;
+
+  /// Warm the in-memory cache from secure storage. Call once after
+  /// [AuthService] is instantiated (e.g. in app bootstrap or Provider).
+  Future<void> loadCreditLabelMode() async {
+    final raw = await _storage.read(key: _keyCreditLabelMode);
+    _creditLabelModeCache = (raw == 'credit') ? 'credit' : 'fiar';
+  }
+
+  /// Update the cache and persist immediately (called after a successful
+  /// PATCH /store/profile that changes credit_label_mode).
+  Future<void> updateCreditLabelMode(String mode) async {
+    final normalized = (mode == 'credit') ? 'credit' : 'fiar';
+    _creditLabelModeCache = normalized;
+    await _storage.write(key: _keyCreditLabelMode, value: normalized);
+  }
 
   /// Logout — clear all secure storage.
   Future<void> logout() => _storage.deleteAll();

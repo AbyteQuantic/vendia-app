@@ -28,6 +28,7 @@ import '../work_orders/work_orders_screen.dart';
 import '../pos/pos_screen.dart';
 import '../../database/sync/sales_sync.dart';
 import '../../widgets/sync_status_banner.dart';
+import '../../utils/credit_labels.dart';
 import 'admin_hub_screen.dart';
 import 'financial_dashboard_screen.dart';
 import 'product_insights_screen.dart';
@@ -364,12 +365,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
         _ => Icons.payments_rounded,
       };
 
-  String _payLabel(String method) => switch (method) {
+  String _payLabel(String method, BuildContext context) => switch (method) {
         'transfer' => 'Transferencia',
         'nequi' => 'Nequi',
         'daviplata' => 'Daviplata',
         'card' => 'Tarjeta',
-        'credit' => 'Fiado',
+        'credit' => CreditLabels.of(context).nounSingularCapitalized,
         _ => 'Efectivo',
       };
 
@@ -646,16 +647,16 @@ class _DashboardScreenState extends State<DashboardScreen> {
                               color: Colors.white, size: 24),
                         ),
                         const SizedBox(width: 14),
-                        const Expanded(
+                        Expanded(
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Text('Ajustes de mi Negocio',
+                              const Text('Ajustes de mi Negocio',
                                   style: TextStyle(fontSize: 17,
                                       fontWeight: FontWeight.bold,
                                       color: AppTheme.textPrimary)),
-                              Text('Mesas, Fiados, Empleados y Perfil',
-                                  style: TextStyle(fontSize: 14,
+                              Text(CreditLabels.of(context).hubNavDescription,
+                                  style: const TextStyle(fontSize: 14,
                                       color: AppTheme.textSecondary),
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis),
@@ -1218,7 +1219,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 const SizedBox(height: 2),
                 Text(
                   [
-                    _payLabel(method),
+                    _payLabel(method, context),
                     if (employeeName.isNotEmpty) employeeName,
                     _timeAgo(createdAt),
                   ].join(' · '),

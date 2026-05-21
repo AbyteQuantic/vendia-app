@@ -1,3 +1,4 @@
+// Spec: specs/028-copy-fiar-credito-configurable/spec.md
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:share_plus/share_plus.dart';
@@ -6,6 +7,7 @@ import '../../config/api_config.dart';
 import '../../services/api_service.dart';
 import '../../services/auth_service.dart';
 import '../../theme/app_theme.dart';
+import '../../utils/credit_labels.dart';
 import '../../widgets/receipt_image_picker.dart';
 
 /// "El Cuaderno" — Real accounts receivable from backend. Zero mocks.
@@ -203,7 +205,8 @@ class _CuadernoFiadosScreenState extends State<CuadernoFiadosScreen> {
                       Icon(Icons.menu_book_rounded, size: 56,
                           color: AppTheme.textSecondary.withValues(alpha: 0.3)),
                       const SizedBox(height: 12),
-                      const Text('Sin fiados', style: TextStyle(fontSize: 18,
+                      Text(CreditLabels.of(context).emptyRecordsLabel,
+                          style: const TextStyle(fontSize: 18,
                           color: AppTheme.textSecondary)),
                     ]))
                   : RefreshIndicator(
@@ -321,6 +324,7 @@ class _CuadernoFiadosScreenState extends State<CuadernoFiadosScreen> {
       tenantName: tenantName,
       senderName: senderName,
       fiadoUrl: url,
+      mode: mounted ? CreditLabels.of(context).mode : 'fiar',
     );
     final subject = 'Detalles de tu cuenta en $tenantName';
 
@@ -364,8 +368,9 @@ class _CuadernoFiadosScreenState extends State<CuadernoFiadosScreen> {
                 borderRadius: BorderRadius.circular(2),
               ),
             ),
-            const Text('Compartir Fiado',
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
+            Text(
+                'Compartir ${CreditLabels.of(context).nounSingularCapitalized}',
+                style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
             const SizedBox(height: 12),
             _ChannelTile(
               keyValue: 'resend_channel_whatsapp',
@@ -770,16 +775,20 @@ class _AccountTileTrailing extends StatelessWidget {
 /// Empty customer name falls back to plain "Hola"; empty
 /// tenant/sender are the caller's problem (they should swap in
 /// "nuestra tienda" / "el equipo" before invoking this helper).
+/// [mode] defaults to 'fiar' — callers in widget tests that don't provide
+/// the mode get the legacy copy unchanged (retrocompat AC-09).
 String buildFiadoShareBody({
   required String customerName,
   required String tenantName,
   required String senderName,
   required String fiadoUrl,
+  String mode = 'fiar',
 }) {
+  final labels = CreditLabels(mode);
   final trimmedName = customerName.trim();
   final greeting = trimmedName.isEmpty ? 'Hola' : 'Hola $trimmedName';
   return '$greeting,\n\n'
-      'Somos de $tenantName. Hemos registrado un fiado a tu nombre. '
+      '${labels.registeredAccountMsg(tenantName)}'
       'Para confirmarlo y ver los detalles, por favor abre el siguiente enlace:\n\n'
       '$fiadoUrl\n\n'
       'Si tienes alguna duda, puedes responder a este mensaje o contactarnos directamente.\n\n'
@@ -1057,7 +1066,7 @@ class _FiadoDetailScreenState extends State<_FiadoDetailScreen> {
                   backgroundColor: Colors.black.withValues(alpha: 0.08),
                   valueColor: const AlwaysStoppedAnimation(AppTheme.success))),
               const SizedBox(height: 6),
-              Text('Fiado: ${_fmt(total)} · Abonado: ${_fmt(paid)}',
+              Text('${CreditLabels.of(context).nounSingularCapitalized}: ${_fmt(total)} · Abonado: ${_fmt(paid)}',
                   style: const TextStyle(fontSize: 14, color: AppTheme.textSecondary)),
             ],
           ]),
@@ -1069,7 +1078,7 @@ class _FiadoDetailScreenState extends State<_FiadoDetailScreen> {
 
         // Debt entry
         _entry(Icons.shopping_cart_rounded, const Color(0xFFEA580C),
-            'Compra fiada', '+${_fmt(total)}', c['created_at'] as String? ?? ''),
+            'Compra ${CreditLabels.of(context).nounSingular}', '+${_fmt(total)}', c['created_at'] as String? ?? ''),
 
         // Payments
         for (final p in payments)
@@ -1176,9 +1185,9 @@ class _FiadoDetailScreenState extends State<_FiadoDetailScreen> {
               name: name,
             ),
             icon: const Icon(Icons.cancel_outlined, size: 20),
-            label: const Text('✖  Cancelar fiado y devolver al stock',
+            label: Text(CreditLabels.of(context).cancelActionLabel,
                 style:
-                    TextStyle(fontSize: 14, fontWeight: FontWeight.w700)),
+                    const TextStyle(fontSize: 14, fontWeight: FontWeight.w700)),
             style: OutlinedButton.styleFrom(
               foregroundColor: AppTheme.error,
               side: const BorderSide(color: AppTheme.error, width: 1.5),
@@ -1311,7 +1320,7 @@ class _FiadoDetailScreenState extends State<_FiadoDetailScreen> {
         const SizedBox(height: 6),
         // Gentle hint so cashiers know where to add to this debt from now on.
         Text(
-          'Para agregar una venta a esta cuenta, haga una venta normal y elija "Fiado" al cobrar.',
+          CreditLabels.of(context).addToAccountHint,
           textAlign: TextAlign.center,
           style: TextStyle(
               fontSize: 12,
@@ -1628,6 +1637,7 @@ class _FiadoDetailScreenState extends State<_FiadoDetailScreen> {
     required int balance,
     required String name,
   }) async {
+    final labels = CreditLabels.of(context);
     final reasonCtrl = TextEditingController();
     final confirmed = await showDialog<bool>(
       context: context,
@@ -1635,14 +1645,14 @@ class _FiadoDetailScreenState extends State<_FiadoDetailScreen> {
       builder: (ctx) => AlertDialog(
         shape:
             RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: const Row(
+        title: Row(
           children: [
-            Icon(Icons.cancel_outlined, color: AppTheme.error, size: 28),
-            SizedBox(width: 10),
+            const Icon(Icons.cancel_outlined, color: AppTheme.error, size: 28),
+            const SizedBox(width: 10),
             Expanded(
-              child: Text('Cancelar fiado',
+              child: Text(labels.cancelDialogButton,
                   style:
-                      TextStyle(fontSize: 20, fontWeight: FontWeight.w800)),
+                      const TextStyle(fontSize: 20, fontWeight: FontWeight.w800)),
             ),
           ],
         ),
@@ -1651,8 +1661,8 @@ class _FiadoDetailScreenState extends State<_FiadoDetailScreen> {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Text(
-              'El fiado de $name por ${_fmt(balance)} se anulará. Los '
-              'productos volverán a su inventario y la venta se descartará.',
+              '${labels.cancelDialogBody(name, _fmt(balance))} '
+              'Los productos volverán a su inventario y la venta se descartará.',
               style: const TextStyle(fontSize: 15, height: 1.4),
             ),
             const SizedBox(height: 14),
@@ -1710,11 +1720,12 @@ class _FiadoDetailScreenState extends State<_FiadoDetailScreen> {
       if (!mounted) return;
       HapticFeedback.mediumImpact();
       final restored = (res['items_restored'] as num?)?.toInt() ?? 0;
+      final labels = CreditLabels.of(context);
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
         content: Text(
           restored > 0
-              ? 'Fiado cancelado. $restored producto${restored == 1 ? '' : 's'} vuelto al stock.'
-              : 'Fiado cancelado.',
+              ? '${labels.cancelledMsg} $restored producto${restored == 1 ? '' : 's'} vuelto al stock.'
+              : labels.cancelledMsg,
           style: const TextStyle(fontSize: 15),
         ),
         backgroundColor: AppTheme.error,

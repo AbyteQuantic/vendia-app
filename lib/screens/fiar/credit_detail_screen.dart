@@ -1,7 +1,9 @@
+// Spec: specs/028-copy-fiar-credito-configurable/spec.md
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../../database/collections/local_customer.dart';
 import '../../theme/app_theme.dart';
+import '../../utils/credit_labels.dart';
 import '../../utils/format_cop.dart';
 import 'fiar_controller.dart';
 import 'widgets/payment_dialog.dart';
@@ -124,7 +126,7 @@ class _CreditDetailScreenState extends State<CreditDetailScreen> {
                       ),
                       const SizedBox(height: 8),
                       Text(
-                        'Total fiado: ${formatCOP(widget.customer.totalCredit)} · '
+                        '${CreditLabels.of(context).totalCreditLabel}: ${formatCOP(widget.customer.totalCredit)} · '
                         'Pagado: ${formatCOP(widget.customer.totalPaid)}',
                         style: const TextStyle(
                             fontSize: 18, color: AppTheme.textSecondary),
@@ -134,19 +136,19 @@ class _CreditDetailScreenState extends State<CreditDetailScreen> {
                 ),
 
                 const SizedBox(height: 24),
-                const Text('Historial de ventas fiadas',
-                    style: TextStyle(
+                Text(CreditLabels.of(context).historialLabel,
+                    style: const TextStyle(
                         fontSize: 22,
                         fontWeight: FontWeight.bold,
                         color: AppTheme.textPrimary)),
                 const SizedBox(height: 12),
 
                 if (credits.isEmpty)
-                  const Center(
+                  Center(
                     child: Padding(
-                      padding: EdgeInsets.only(top: 24),
-                      child: Text('Sin registros de fiado',
-                          style: TextStyle(
+                      padding: const EdgeInsets.only(top: 24),
+                      child: Text(CreditLabels.of(context).emptyRecordsLabel,
+                          style: const TextStyle(
                               fontSize: 18, color: AppTheme.textSecondary)),
                     ),
                   )
