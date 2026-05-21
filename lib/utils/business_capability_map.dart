@@ -1,4 +1,5 @@
 // Spec: specs/023-capacidades-opcionales-negocio/spec.md
+// Spec: specs/029-precios-multi-tier/spec.md
 //
 // Mapa tipo-de-negocio → capacidades implícitas.
 //
@@ -34,6 +35,14 @@ enum OptionalCapability {
   /// "atiende clientes en mesas"
   /// → enable_tables (sin KDS ni tips)
   tables,
+
+  /// "maneja precios diferentes para mayorista y minorista" (F029)
+  /// → enable_price_tiers
+  ///
+  /// Default OFF; no implícita en ningún tipo de negocio (incluso un
+  /// depósito puede no necesitarla). El toggle siempre aparece como
+  /// opción manual cuando la pantalla muestra capacidades opcionales.
+  priceTiers,
 }
 
 /// Retorna las [OptionalCapability] que el [businessType] YA concede

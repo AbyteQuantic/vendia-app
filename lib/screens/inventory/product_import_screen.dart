@@ -324,6 +324,26 @@ class _ProductImportScreenState extends State<ProductImportScreen> {
       final parsedPrice = ProductImportMapper.normalizePriceCOP(rawPrice);
       if (parsedPrice != null) result['price'] = parsedPrice;
 
+      // F029: si el CSV trajo precios de tier opcionales, normalizarlos
+      // con la misma heurística que el precio principal. Si quedan
+      // null (cadena vacía o no parseable) los quitamos del payload —
+      // así el backend NO los inserta como NULL en columnas que ya
+      // pudieran tener un valor previo.
+      for (final tierKey in const ['price_tier_1', 'price_tier_2', 'price_tier_3']) {
+        if (!result.containsKey(tierKey)) continue;
+        final rawTier = result[tierKey]?.toString() ?? '';
+        if (rawTier.isEmpty) {
+          result.remove(tierKey);
+          continue;
+        }
+        final parsedTier = ProductImportMapper.normalizePriceCOP(rawTier);
+        if (parsedTier != null) {
+          result[tierKey] = parsedTier;
+        } else {
+          result.remove(tierKey);
+        }
+      }
+
       // Normalize stock to int
       final rawStock = result['stock']?.toString() ?? '';
       if (rawStock.isNotEmpty) {

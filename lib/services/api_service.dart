@@ -508,6 +508,9 @@ class ApiService {
     }
   }
 
+  // Spec 029: createProduct / updateProduct aceptan opcionalmente
+  // `price_tier_1`, `price_tier_2`, `price_tier_3` (números > 0). El
+  // backend valida; este lado pasa el payload tal cual.
   Future<Map<String, dynamic>> createProduct(
       Map<String, dynamic> data) async {
     try {
@@ -1023,6 +1026,9 @@ class ApiService {
   // 5. SALES (POS)
   // ═══════════════════════════════════════════════════════════════════════════
 
+  // Spec 029: createSale acepta opcionalmente `price_tier`
+  // (uno de 'retail' | 'tier_1' | 'tier_2' | 'tier_3'). Default
+  // server-side: 'retail'.
   Future<Map<String, dynamic>> createSale(Map<String, dynamic> data) async {
     try {
       // Phase-6 isolation: the backend scopes stock decrement to

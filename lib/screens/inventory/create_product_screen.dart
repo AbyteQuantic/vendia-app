@@ -1,4 +1,5 @@
 // Spec: specs/018-nuevo-producto-fixes/spec.md
+// Spec: specs/029-precios-multi-tier/spec.md
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -70,6 +71,18 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
   Timer? _debounce;
   bool _searching = false;
 
+  // F029 — precios multi-tier. Cargamos los flags + nombres custom una
+  // sola vez en initState. Cuando enable_price_tiers está OFF los 3
+  // inputs no se renderizan (AC-01: cero UI nueva para el 95% de los
+  // tenders).
+  bool _enablePriceTiers = false;
+  String _tier1Name = 'Depósito contado';
+  String _tier2Name = 'Depósito crédito';
+  String _tier3Name = 'Cliente final';
+  final _priceTier1Ctrl = TextEditingController();
+  final _priceTier2Ctrl = TextEditingController();
+  final _priceTier3Ctrl = TextEditingController();
+
   static const _presentationOptions = [
     {'value': 'botella', 'label': 'Botella', 'icon': '🍾'},
     {'value': 'lata', 'label': 'Lata', 'icon': '🥫'},
@@ -98,6 +111,10 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
         _ensureNameFieldVisible();
       }
     });
+    // F029: cargar la capacidad enable_price_tiers + los nombres custom
+    // de los tiers. Fail-closed: si la red falla o el storage está
+    // corrupto, los inputs extra no aparecen (cero UI nueva por accidente).
+    _loadPriceTierConfig();
     // Pre-fill SKU if coming from scanner
     if (widget.initialSku != null && widget.initialSku!.isNotEmpty) {
       _skuCtrl.text = widget.initialSku!;
@@ -105,6 +122,51 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         _lookupBarcode(widget.initialSku!);
       });
+    }
+  }
+
+  // F029 — leemos los flags persistidos por AuthService + los nombres
+  // custom desde el endpoint del perfil del negocio. Hacemos el round-trip
+  // a la red solo cuando el flag está activado para no penalizar a los
+  // 95% de tenders que no usan la capacidad.
+  Future<void> _loadPriceTierConfig() async {
+    try {
+      final flags = await AuthService().getFeatureFlags();
+      if (!mounted) return;
+      if (!flags.enablePriceTiers) {
+        // OFF → nada más que hacer; los inputs quedan ocultos.
+        setState(() => _enablePriceTiers = false);
+        return;
+      }
+      // ON → vamos por los nombres custom. Tolerante a fallos: si el
+      // GET revienta, mantenemos los defaults (que son los mismos del
+      // backend, así que el label es consistente).
+      String t1 = _tier1Name;
+      String t2 = _tier2Name;
+      String t3 = _tier3Name;
+      try {
+        final profile =
+            await ApiService(AuthService()).fetchBusinessProfile();
+        final raw1 = (profile['price_tier_1_name'] as String?)?.trim();
+        final raw2 = (profile['price_tier_2_name'] as String?)?.trim();
+        final raw3 = (profile['price_tier_3_name'] as String?)?.trim();
+        if (raw1 != null && raw1.isNotEmpty) t1 = raw1;
+        if (raw2 != null && raw2.isNotEmpty) t2 = raw2;
+        if (raw3 != null && raw3.isNotEmpty) t3 = raw3;
+      } catch (_) {
+        // Fallback a defaults: el usuario sigue pudiendo guardar
+        // valores; los labels se ven en el idioma default.
+      }
+      if (!mounted) return;
+      setState(() {
+        _enablePriceTiers = true;
+        _tier1Name = t1;
+        _tier2Name = t2;
+        _tier3Name = t3;
+      });
+    } catch (_) {
+      // Cualquier error inesperado → fail-closed: la UI extra no aparece.
+      if (mounted) setState(() => _enablePriceTiers = false);
     }
   }
 
@@ -119,6 +181,9 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
     _quantityCtrl.dispose();
     _contentCtrl.dispose();
     _skuCtrl.dispose();
+    _priceTier1Ctrl.dispose();
+    _priceTier2Ctrl.dispose();
+    _priceTier3Ctrl.dispose();
     super.dispose();
   }
 
@@ -897,6 +962,22 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
 
       final api = ApiService(AuthService());
       final expiryIso = _expiryDate == null ? null : _isoDate(_expiryDate!);
+
+      // F029: armar el bloque opcional de tier prices. Solo se incluye
+      // si la capacidad está ON; cuando está OFF (95% de tenders) NO
+      // serializamos las claves para no tocar columnas del backend.
+      // Cada tier que esté vacío también se omite — el backend ya
+      // valida > 0 si llega un número.
+      final tierExtras = <String, dynamic>{};
+      if (_enablePriceTiers) {
+        final t1 = CurrencyUtils.parseToDouble(_priceTier1Ctrl.text);
+        final t2 = CurrencyUtils.parseToDouble(_priceTier2Ctrl.text);
+        final t3 = CurrencyUtils.parseToDouble(_priceTier3Ctrl.text);
+        if (t1 > 0) tierExtras['price_tier_1'] = t1;
+        if (t2 > 0) tierExtras['price_tier_2'] = t2;
+        if (t3 > 0) tierExtras['price_tier_3'] = t3;
+      }
+
       if (_pendingUuid != null) {
         // Product was already created by enhance — update it
         await api.updateProduct(id, {
@@ -910,6 +991,7 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
           'expiry_date': expiryIso ?? '',
           if (_pendingCatalogImageId != null)
             'catalog_image_id': _pendingCatalogImageId,
+          ...tierExtras,
         });
       } else {
         // Create new product
@@ -926,6 +1008,7 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
           if (expiryIso != null) 'expiry_date': expiryIso,
           if (_pendingCatalogImageId != null)
             'catalog_image_id': _pendingCatalogImageId,
+          ...tierExtras,
         });
       }
 
@@ -1739,6 +1822,17 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
                 ]),
 
                 // ═══════════════════════════════════════════════════════════
+                // F029 — CARD: Precios por tipo de cliente (tiers)
+                // ═══════════════════════════════════════════════════════════
+                // Solo renderiza cuando enable_price_tiers está ON. AC-01:
+                // tenants sin la capacidad ven la pantalla EXACTAMENTE
+                // como antes de F029.
+                if (_enablePriceTiers) ...[
+                  const SizedBox(height: 14),
+                  _card(children: _buildPriceTierFields()),
+                ],
+
+                // ═══════════════════════════════════════════════════════════
                 // Advanced options (collapsed by default)
                 // ═══════════════════════════════════════════════════════════
                 Theme(
@@ -1909,6 +2003,86 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
         fontWeight: FontWeight.w600,
         color: AppTheme.textPrimary,
       ),
+    );
+  }
+
+  // F029 — campos opcionales de precio por tier. Cada input usa el
+  // mismo `CurrencyInputFormatter` que el precio venta para que el
+  // formato sea consistente y los aproximes a $50 se aplique igual.
+  // Los labels vienen de los nombres custom del tenant (cargados en
+  // _loadPriceTierConfig).
+  List<Widget> _buildPriceTierFields() {
+    return [
+      const Row(
+        children: [
+          Icon(Icons.local_offer_rounded,
+              size: 22, color: AppTheme.primary),
+          SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              'Precios por tipo de cliente',
+              style: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.w700,
+                color: AppTheme.textPrimary,
+              ),
+            ),
+          ),
+        ],
+      ),
+      const SizedBox(height: 4),
+      Text(
+        'Opcional — déjelo en blanco para usar el precio venta por defecto.',
+        style: TextStyle(
+          fontSize: 14,
+          color: Colors.grey.shade600,
+        ),
+      ),
+      const SizedBox(height: 14),
+      _buildTierPriceInput(
+        keyName: 'product_price_tier_1',
+        label: _tier1Name,
+        controller: _priceTier1Ctrl,
+      ),
+      const SizedBox(height: 12),
+      _buildTierPriceInput(
+        keyName: 'product_price_tier_2',
+        label: _tier2Name,
+        controller: _priceTier2Ctrl,
+      ),
+      const SizedBox(height: 12),
+      _buildTierPriceInput(
+        keyName: 'product_price_tier_3',
+        label: _tier3Name,
+        controller: _priceTier3Ctrl,
+      ),
+    ];
+  }
+
+  Widget _buildTierPriceInput({
+    required String keyName,
+    required String label,
+    required TextEditingController controller,
+  }) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _fieldLabel(label),
+        const SizedBox(height: 6),
+        TextFormField(
+          key: Key(keyName),
+          controller: controller,
+          keyboardType: TextInputType.number,
+          style: const TextStyle(fontSize: 18),
+          textInputAction: TextInputAction.next,
+          inputFormatters: const [CurrencyInputFormatter()],
+          decoration: _inputDecoration(
+            hint: '\$0',
+            icon: Icons.attach_money_rounded,
+            iconColor: AppTheme.textSecondary,
+          ),
+        ),
+      ],
     );
   }
 
