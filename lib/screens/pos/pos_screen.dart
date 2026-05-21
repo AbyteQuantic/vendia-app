@@ -565,6 +565,170 @@ class _PosScreenBodyState extends State<_PosScreenBody> {
     );
   }
 
+  /// Diálogo numérico para que el tendero ESCRIBA la cantidad en lugar
+  /// de presionar [+] N veces. Aparece al tocar el número del medio
+  /// entre [-] [N] [+] en la tarjeta del producto. Confirmar con 0
+  /// quita el item del carrito (consistente con [-] cuando qty == 1).
+  ///
+  /// Visual: AlertDialog compacto centrado, jerarquía clara — título
+  /// chico con nombre del producto + chip de stock arriba, input
+  /// grande centrado en el medio, acciones abajo bien separadas. Los
+  /// elementos NO compiten por espacio: cada uno con su breathing
+  /// room y el input es el foco visual indiscutible.
+  void _promptQuantity(
+      CartController ctrl, Product product, int currentQty) {
+    HapticFeedback.lightImpact();
+    final ctl = TextEditingController(text: '$currentQty');
+    ctl.selection = TextSelection(baseOffset: 0, extentOffset: ctl.text.length);
+
+    void apply(String v) {
+      final qty = int.tryParse(v) ?? currentQty;
+      ctrl.setQuantity(product, qty);
+      Navigator.of(context).pop();
+    }
+
+    showDialog<void>(
+      context: context,
+      barrierDismissible: true,
+      builder: (ctx) {
+        return Dialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+          ),
+          insetPadding:
+              const EdgeInsets.symmetric(horizontal: 32, vertical: 24),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(20, 24, 20, 16),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                // Header: nombre del producto, max 2 líneas
+                Text(
+                  product.name,
+                  textAlign: TextAlign.center,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontSize: 17,
+                    fontWeight: FontWeight.w700,
+                    color: AppTheme.textPrimary,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                // Stock badge centrado — discreto pero leíble
+                if (product.stock > 0)
+                  Center(
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 10, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: AppTheme.success.withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Text(
+                        'Stock: ${product.stock}',
+                        style: const TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: AppTheme.success,
+                        ),
+                      ),
+                    ),
+                  ),
+                const SizedBox(height: 20),
+                // Label
+                const Text(
+                  'Cantidad a vender',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 14,
+                    color: AppTheme.textSecondary,
+                  ),
+                ),
+                const SizedBox(height: 10),
+                // Input grande y centrado — protagonista visual
+                TextField(
+                  controller: ctl,
+                  autofocus: true,
+                  keyboardType: TextInputType.number,
+                  inputFormatters: [
+                    FilteringTextInputFormatter.digitsOnly,
+                    LengthLimitingTextInputFormatter(6),
+                  ],
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                    fontSize: 36,
+                    fontWeight: FontWeight.bold,
+                    color: AppTheme.primary,
+                  ),
+                  decoration: InputDecoration(
+                    filled: true,
+                    fillColor: AppTheme.surfaceGrey,
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(14),
+                      borderSide: BorderSide.none,
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(14),
+                      borderSide: const BorderSide(
+                          color: AppTheme.primary, width: 2),
+                    ),
+                    contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 16, vertical: 14),
+                  ),
+                  onSubmitted: apply,
+                ),
+                const SizedBox(height: 20),
+                // Acciones: Cancelar como secundario, Confirmar como
+                // primario ancho parcial, separados con SizedBox.
+                Row(
+                  children: [
+                    Expanded(
+                      child: TextButton(
+                        onPressed: () => Navigator.of(ctx).pop(),
+                        style: TextButton.styleFrom(
+                          padding:
+                              const EdgeInsets.symmetric(vertical: 12),
+                          foregroundColor: AppTheme.textSecondary,
+                        ),
+                        child: const Text(
+                          'Cancelar',
+                          style: TextStyle(
+                              fontSize: 15, fontWeight: FontWeight.w600),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      flex: 2,
+                      child: FilledButton(
+                        onPressed: () => apply(ctl.text),
+                        style: FilledButton.styleFrom(
+                          backgroundColor: AppTheme.primary,
+                          padding:
+                              const EdgeInsets.symmetric(vertical: 14),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                        ),
+                        child: const Text(
+                          'Confirmar',
+                          style: TextStyle(
+                              fontSize: 15, fontWeight: FontWeight.w700),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
   // ── Context Sheet: "¿Para quién es esta cuenta?" ──────────────────────────
   void _showContextSheet(CartController ctrl) {
     HapticFeedback.mediumImpact();
@@ -2195,6 +2359,7 @@ class _PosScreenBodyState extends State<_PosScreenBody> {
                 HapticFeedback.lightImpact();
                 c.decrement(product);
               },
+              onEditQuantity: () => _promptQuantity(c, product, qty),
             );
           },
         );
@@ -2214,6 +2379,9 @@ class _ProductCard extends StatelessWidget {
   final VoidCallback onLongPress;
   final VoidCallback onIncrement;
   final VoidCallback onDecrement;
+  /// Tap en el número del medio entre [-] [N] [+] — abre un input para
+  /// que el tendero escriba 100 sin presionar [+] cien veces.
+  final VoidCallback onEditQuantity;
 
   const _ProductCard({
     required this.product,
@@ -2222,6 +2390,7 @@ class _ProductCard extends StatelessWidget {
     required this.onLongPress,
     required this.onIncrement,
     required this.onDecrement,
+    required this.onEditQuantity,
   });
 
   @override
@@ -2427,14 +2596,24 @@ class _ProductCard extends StatelessWidget {
                                     maintainSize: true,
                                     maintainAnimation: true,
                                     maintainState: true,
-                                    child: Padding(
-                                      padding: const EdgeInsets.symmetric(
-                                          horizontal: 8),
-                                      child: Text(
-                                        '$quantity',
-                                        style: const TextStyle(
-                                          fontSize: 17,
-                                          fontWeight: FontWeight.bold,
+                                    // Tap en el número abre input directo —
+                                    // imposible pedirle al tendero tocar [+]
+                                    // 100 veces cuando lleva 100 sacos de
+                                    // cemento. Reemplaza la cantidad por la
+                                    // que escriba (0 → quita del carrito).
+                                    child: InkWell(
+                                      onTap: inCart ? onEditQuantity : null,
+                                      borderRadius:
+                                          BorderRadius.circular(8),
+                                      child: Padding(
+                                        padding: const EdgeInsets.symmetric(
+                                            horizontal: 8, vertical: 4),
+                                        child: Text(
+                                          '$quantity',
+                                          style: const TextStyle(
+                                            fontSize: 17,
+                                            fontWeight: FontWeight.bold,
+                                          ),
                                         ),
                                       ),
                                     ),
