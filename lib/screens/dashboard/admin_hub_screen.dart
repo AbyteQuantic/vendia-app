@@ -16,6 +16,7 @@ import 'table_floor_plan_screen.dart';
 import 'employees_screen.dart';
 import '../../services/margin_service.dart';
 import 'catalog_virtual_screen.dart';
+import 'credit_settings_screen.dart';
 import 'panic_config_screen.dart';
 import 'owner_pin_setup_screen.dart';
 import '../admin/hardware_settings_screen.dart';
@@ -253,13 +254,24 @@ class _AdminHubScreenState extends State<AdminHubScreen> {
               icon: Icons.menu_book_rounded,
               iconColor: const Color(0xFF6D28D9),
               title: CreditLabels.of(context).configTitle,
+              // F035: la tile ahora abre una pantalla dedicada con TODO lo
+              // relacionado al cuaderno (toggle + vocabulario + futuras
+              // opciones). El Switch se queda como atajo rápido sin entrar.
               subtitle: _enableFiados ? 'Cuaderno habilitado' : 'Cuaderno deshabilitado',
               trailing: Switch.adaptive(
                 value: _enableFiados,
                 activeTrackColor: const Color(0xFF6D28D9),
                 onChanged: _configLoaded ? _toggleFiados : null,
               ),
-              onTap: () {},
+              onTap: () async {
+                await Navigator.of(context).push(
+                  MaterialPageRoute(
+                      builder: (_) => const CreditSettingsScreen()),
+                );
+                // Refresca al volver por si cambió enable_fiados desde la
+                // pantalla de detalle.
+                if (mounted) _loadConfig();
+              },
             ),
             _SettingsTile(
               icon: Icons.trending_up_rounded,
