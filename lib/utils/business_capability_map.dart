@@ -1,5 +1,6 @@
 // Spec: specs/023-capacidades-opcionales-negocio/spec.md
 // Spec: specs/029-precios-multi-tier/spec.md
+// Spec: specs/030-administracion-clientes-no-tienda/spec.md
 //
 // Mapa tipo-de-negocio → capacidades implícitas.
 //
@@ -43,6 +44,17 @@ enum OptionalCapability {
   /// depósito puede no necesitarla). El toggle siempre aparece como
   /// opción manual cuando la pantalla muestra capacidades opcionales.
   priceTiers,
+
+  /// "quiere saber quién le compra" (F030)
+  /// → enable_customer_management
+  ///
+  /// Default OFF; no implícita en ningún tipo de negocio — la decide el
+  /// dueño, no el tipo (decisión D4 del plan 030). El toggle siempre
+  /// aparece como opción manual cuando la pantalla muestra capacidades
+  /// opcionales. Cuando está ON: el checkout muestra un tile "Cliente",
+  /// el menú principal muestra "Mis clientes" y toda venta puede
+  /// asociarse a un cliente.
+  customerManagement,
 }
 
 /// Retorna las [OptionalCapability] que el [businessType] YA concede

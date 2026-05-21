@@ -290,6 +290,12 @@ class FeatureFlags {
   /// "Tipo de precio" en Confirmar Venta.
   final bool enablePriceTiers;
 
+  /// F030: gestión de clientes identificados.
+  /// Cuando es `true` el checkout muestra un tile "Cliente", el menú
+  /// principal muestra "Mis clientes" y toda venta puede asociarse a
+  /// un cliente. Espejo del backend `tenants.enable_customer_management`.
+  final bool enableCustomerManagement;
+
   const FeatureFlags({
     this.enableTables = false,
     this.enableKDS = false,
@@ -298,6 +304,7 @@ class FeatureFlags {
     this.enableCustomBilling = false,
     this.enableFractionalUnits = false,
     this.enablePriceTiers = false,
+    this.enableCustomerManagement = false,
   });
 
   factory FeatureFlags.fromJson(Map<String, dynamic> json) => FeatureFlags(
@@ -310,5 +317,8 @@ class FeatureFlags {
         // F029 — default false para tenants pre-migración: la UI fail-closed
         // (no aparecen inputs ni selector) hasta que el dueño lo prenda.
         enablePriceTiers: json['enable_price_tiers'] == true,
+        // F030 — default false: tenants pre-migración no ven la
+        // funcionalidad de clientes hasta que el dueño la prenda (AC-07).
+        enableCustomerManagement: json['enable_customer_management'] == true,
       );
 }

@@ -25,6 +25,7 @@ import '../online_store/promo_management_screen.dart';
 import '../purchases/purchase_orders_screen.dart';
 import '../recipes/recipe_step1_screen.dart';
 import '../work_orders/work_orders_screen.dart';
+import '../customers/customers_list_screen.dart';
 import '../pos/pos_screen.dart';
 import '../../database/sync/sales_sync.dart';
 import '../../widgets/sync_status_banner.dart';
@@ -96,6 +97,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
   bool _isStoreOpen = false;
   bool _loadingStoreStatus = false;
 
+  // F030: capacidad "Gestión de clientes". Gatea la entrada "Mis
+  // clientes" del menú principal — default OFF, fail-closed: si el
+  // feature flag no está cargado la entrada no aparece (AC-05/AC-07).
+  bool _customerManagementEnabled = false;
+
   @override
   void initState() {
     super.initState();
@@ -104,6 +110,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     _loadActivePromosCount();
     _loadLowStockCount();
     _loadStoreStatus();
+    _loadCustomerManagementFlag();
 
     _salesSub = _db.watchSalesLazy().listen((_) => _debouncedLoad());
 
@@ -175,6 +182,22 @@ class _DashboardScreenState extends State<DashboardScreen> {
       }
     } catch (_) {
       // Offline / not configured — keep the default "closed" state.
+    }
+  }
+
+  /// F030: lee el feature flag `enable_customer_management` desde los
+  /// flags persistidos por AuthService (offline-safe). Fail-closed:
+  /// cualquier error deja la entrada "Mis clientes" oculta.
+  Future<void> _loadCustomerManagementFlag() async {
+    try {
+      final flags = await AuthService().getFeatureFlags();
+      if (mounted) {
+        setState(() {
+          _customerManagementEnabled = flags.enableCustomerManagement;
+        });
+      }
+    } catch (_) {
+      // Offline / sin flags — la entrada se mantiene oculta.
     }
   }
 
@@ -799,6 +822,68 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     ),
                   ),
                 ),
+
+                // ── Mis Clientes Card (F030) ───────────────────────
+                // Solo visible cuando la capacidad
+                // enable_customer_management está ON — un store típico
+                // no la ve y el menú queda limpio (AC-05/AC-07).
+                if (_customerManagementEnabled)
+                  SliverToBoxAdapter(
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(18, 12, 18, 0),
+                      child: _GlassCard(
+                        onTap: () {
+                          HapticFeedback.lightImpact();
+                          Navigator.of(context).push(MaterialPageRoute(
+                            builder: (_) => const CustomersListScreen(),
+                          ));
+                        },
+                        child: Row(
+                          children: [
+                            Container(
+                              width: 48,
+                              height: 48,
+                              decoration: BoxDecoration(
+                                gradient: const LinearGradient(
+                                  colors: [
+                                    Color(0xFF1A2FA0),
+                                    Color(0xFF3D5AFE),
+                                  ],
+                                ),
+                                borderRadius: BorderRadius.circular(14),
+                              ),
+                              child: const Icon(Icons.people_outline,
+                                  color: Colors.white, size: 24),
+                            ),
+                            const SizedBox(width: 14),
+                            const Expanded(
+                              child: Column(
+                                crossAxisAlignment:
+                                    CrossAxisAlignment.start,
+                                children: [
+                                  Text('Mis Clientes',
+                                      style: TextStyle(
+                                          fontSize: 17,
+                                          fontWeight: FontWeight.bold,
+                                          color: AppTheme.textPrimary)),
+                                  Text(
+                                      'Quién le compra: historial y '
+                                      'total gastado',
+                                      style: TextStyle(
+                                          fontSize: 14,
+                                          color: AppTheme.textSecondary),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis),
+                                ],
+                              ),
+                            ),
+                            const Icon(Icons.chevron_right_rounded,
+                                color: Color(0xFF1A2FA0), size: 24),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
 
                 // ── Suppliers Card ─────────────────────────────────
                 SliverToBoxAdapter(

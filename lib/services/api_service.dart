@@ -1168,6 +1168,55 @@ class ApiService {
     }
   }
 
+  // F030 — administración de clientes y ventas.
+  //
+  // [listCustomers] alimenta la pantalla "Mis clientes": lista paginada
+  // con búsqueda por nombre/teléfono. Cada item incluye los agregados
+  // (`total_spent`, `purchase_count`, `last_purchase_at`) calculados
+  // server-side con JOIN a `sales`.
+  //
+  // Devuelve el cuerpo crudo `{ data: [...], meta: {...} }` para que la
+  // pantalla pueda leer tanto la lista como la paginación.
+
+  /// Lista clientes del tenant con sus agregados de compra.
+  ///
+  /// [query]  → texto de búsqueda por nombre o teléfono (param `q`).
+  /// [limit]  → tamaño de página (default 50, el backend topa en 200).
+  /// [offset] → desplazamiento para paginación.
+  Future<Map<String, dynamic>> listCustomers({
+    String? query,
+    int limit = 50,
+    int offset = 0,
+  }) async {
+    try {
+      final params = <String, dynamic>{
+        'limit': limit,
+        'offset': offset,
+      };
+      final q = query?.trim();
+      if (q != null && q.isNotEmpty) params['q'] = q;
+      final response =
+          await _dio.get('/api/v1/customers', queryParameters: params);
+      return response.data as Map<String, dynamic>;
+    } on DioException catch (e) {
+      throw AppError.fromDioException(e);
+    }
+  }
+
+  /// Historial de compras de un cliente: registro base + summary
+  /// (gastado, compras, primera/última visita) + lista de ventas.
+  ///
+  /// Devuelve el contenido de la clave `data` de
+  /// GET /api/v1/customers/:id/history.
+  Future<Map<String, dynamic>> getCustomerHistory(String id) async {
+    try {
+      final response = await _dio.get('/api/v1/customers/$id/history');
+      return _extractData(response);
+    } on DioException catch (e) {
+      throw AppError.fromDioException(e);
+    }
+  }
+
   // ═══════════════════════════════════════════════════════════════════════════
   // 7. CREDITS (El Fiar)
   // ═══════════════════════════════════════════════════════════════════════════

@@ -1,5 +1,6 @@
 // Spec: specs/028-copy-fiar-credito-configurable/spec.md
 // Spec: specs/029-precios-multi-tier/spec.md
+// Spec: specs/030-administracion-clientes-no-tienda/spec.md
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -8,6 +9,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../database/database_service.dart';
 import '../../database/collections/local_payment_method.dart';
 import '../../models/cart_item.dart';
+import '../customers/customer_selector_sheet.dart';
 import '../../services/active_fiado_service.dart';
 import '../../services/api_service.dart';
 import '../../services/app_error.dart';
@@ -143,6 +145,11 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   // Cuando enable_price_tiers está OFF coincide siempre con widget.total.
   double _currentTotal = 0;
 
+  // F030 — capacidad enable_customer_management. Default OFF
+  // (fail-closed): tenants sin la capacidad ven la pantalla idéntica a
+  // hoy (AC-07). Cuando es ON renderizamos un tile "Cliente" al inicio.
+  bool _enableCustomerManagement = false;
+
   static const _denominations = [2000, 5000, 10000, 20000, 50000, 100000];
 
   // F029: usamos `_currentTotal` (refrescado en cada build con el tier
@@ -212,6 +219,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     _currentTotal = widget.total; // F029: refrescado en build()
     _loadFiadoFlag();
     _loadPriceTierConfig();
+    _loadCustomerManagementFlag();
     if (widget.forceFiadoFlow) {
       // Defer until the first frame so the Scaffold + AppBar are mounted
       // and the handshake bottom sheet can attach to a real BuildContext.
@@ -320,6 +328,20 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   // context.watch<CartController>(); no exponemos un helper aparte para
   // mantener el grafo de dependencias mínimo.
 
+  // F030 — leemos enable_customer_management desde los feature flags
+  // persistidos por AuthService (offline-safe). Fail-closed: cualquier
+  // error deja _enableCustomerManagement=false → cero UI nueva (AC-07).
+  Future<void> _loadCustomerManagementFlag() async {
+    try {
+      final flags = await AuthService().getFeatureFlags();
+      if (!mounted) return;
+      setState(() =>
+          _enableCustomerManagement = flags.enableCustomerManagement);
+    } catch (_) {
+      if (mounted) setState(() => _enableCustomerManagement = false);
+    }
+  }
+
   String _formatCOP(int amount) {
     if (amount == 0) return '\$0';
     final negative = amount < 0;
@@ -415,6 +437,15 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
               child: ListView(
                 padding: const EdgeInsets.symmetric(horizontal: 24),
                 children: [
+                  // ── F030: tile "Cliente" — solo cuando
+                  //    enable_customer_management está ON. Aparece al
+                  //    inicio (antes del selector de tier y del resumen)
+                  //    para que el cajero asocie el cliente primero.
+                  if (_enableCustomerManagement && cartCtrl != null) ...[
+                    _buildCustomerTile(cartCtrl),
+                    const SizedBox(height: 16),
+                  ],
+
                   // ── F029: selector "Tipo de precio" — solo cuando
                   //    enable_price_tiers está ON. Aparece ANTES del
                   //    resumen para que el cajero elija primero.
@@ -788,6 +819,104 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         ),
       ),
     );
+  }
+
+  // F030 — tile "Cliente". Muestra el cliente asociado a la venta
+  // (avatar circular + nombre/teléfono) o "Sin cliente" cuando es
+  // anónima. Tocarlo abre el selector reutilizable; el cliente elegido
+  // se guarda en CartController.selectedCustomer y su `customer_id`
+  // viaja con la venta. El selectedCustomer vive en el controller para
+  // que el payload de createSale lo lea de una sola fuente.
+  Widget _buildCustomerTile(CartController ctrl) {
+    final customer = ctrl.selectedCustomer;
+    final hasCustomer = customer != null;
+    return InkWell(
+      key: const Key('checkout_customer_tile'),
+      borderRadius: BorderRadius.circular(20),
+      onTap: () => _openCustomerSelector(ctrl),
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+        decoration: BoxDecoration(
+          color: AppTheme.surfaceGrey,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: AppTheme.borderColor),
+        ),
+        child: Row(
+          children: [
+            CircleAvatar(
+              radius: 24,
+              backgroundColor: hasCustomer
+                  ? AppTheme.primary.withValues(alpha: 0.14)
+                  : const Color(0xFFE5E0DA),
+              child: Icon(
+                hasCustomer
+                    ? Icons.person_rounded
+                    : Icons.person_outline_rounded,
+                color: hasCustomer ? AppTheme.primary : Colors.grey.shade600,
+                size: 26,
+              ),
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Cliente',
+                    style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                        color: AppTheme.textSecondary),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    hasCustomer ? customer.name : 'Sin cliente',
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w700,
+                      color: hasCustomer
+                          ? AppTheme.textPrimary
+                          : Colors.grey.shade600,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  if (hasCustomer && customer.phone.isNotEmpty)
+                    Text(
+                      customer.phone,
+                      style: const TextStyle(
+                          fontSize: 14, color: AppTheme.textSecondary),
+                    ),
+                ],
+              ),
+            ),
+            if (hasCustomer)
+              IconButton(
+                key: const Key('checkout_customer_clear'),
+                tooltip: 'Quitar cliente',
+                icon: Icon(Icons.close_rounded,
+                    color: Colors.grey.shade600, size: 22),
+                onPressed: () {
+                  HapticFeedback.lightImpact();
+                  ctrl.setCustomer(null);
+                },
+              )
+            else
+              const Icon(Icons.chevron_right_rounded,
+                  color: AppTheme.primary, size: 26),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// Abre el selector de cliente y guarda la elección en el controller.
+  Future<void> _openCustomerSelector(CartController ctrl) async {
+    HapticFeedback.lightImpact();
+    final picked = await showCustomerSelectorSheet(context);
+    if (picked != null) {
+      ctrl.setCustomer(picked);
+    }
   }
 
   // F029 — selector "Tipo de precio". Vertical radio para que los
