@@ -1744,6 +1744,172 @@ class ApiService {
   }
 
   // ═══════════════════════════════════════════════════════════════════════════
+  // 11b. BROADCAST PROMOTIONS — Difusión de promociones (F033)
+  // Contrato: specs/033-difusion-promociones/plan.md §4.
+  // ═══════════════════════════════════════════════════════════════════════════
+  //
+  // Módulo "Promociones" (F033): central de campañas para avisarles a
+  // los clientes por WhatsApp / link público. Endpoints privados bajo
+  // JWT; el detalle de la promo pública (sin JWT) lo sirve admin-web.
+  //
+  // NOTA — la sección 11 (legacy combo-promos, migraciones 018-019)
+  // también usa `/api/v1/promotions`. El backend de F033 resuelve la
+  // convivencia de rutas (auditoría T-01); estos métodos siguen el
+  // contrato del plan §4 tal cual.
+
+  /// Lista las promociones de difusión del tenant.
+  ///
+  /// [filter] → `active` | `expired` | `draft` (opcional).
+  /// Devuelve el cuerpo crudo `{ data: [...], meta: {...} }`.
+  Future<Map<String, dynamic>> listBroadcastPromotions({
+    String? filter,
+    int limit = 100,
+    int offset = 0,
+  }) async {
+    try {
+      final params = <String, dynamic>{'limit': limit, 'offset': offset};
+      if (filter != null && filter.isNotEmpty) params['filter'] = filter;
+      final response = await _dio.get('/api/v1/promotions',
+          queryParameters: params);
+      return response.data as Map<String, dynamic>;
+    } on DioException catch (e) {
+      throw AppError.fromDioException(e);
+    }
+  }
+
+  /// Crea una promoción de difusión. El backend asigna el
+  /// `public_token`. Devuelve la promoción creada (clave `data`).
+  Future<Map<String, dynamic>> createBroadcastPromotion(
+      Map<String, dynamic> data) async {
+    try {
+      final response = await _dio.post('/api/v1/promotions', data: data);
+      return _extractData(response);
+    } on DioException catch (e) {
+      throw AppError.fromDioException(e);
+    }
+  }
+
+  /// Detalle completo de una promoción (items + métricas).
+  Future<Map<String, dynamic>> getBroadcastPromotion(String id) async {
+    try {
+      final response = await _dio.get('/api/v1/promotions/$id');
+      return _extractData(response);
+    } on DioException catch (e) {
+      throw AppError.fromDioException(e);
+    }
+  }
+
+  /// Edita una promoción que aún no fue enviada. Devuelve la promoción
+  /// resultante.
+  Future<Map<String, dynamic>> updateBroadcastPromotion(
+      String id, Map<String, dynamic> data) async {
+    try {
+      final response =
+          await _dio.patch('/api/v1/promotions/$id', data: data);
+      return _extractData(response);
+    } on DioException catch (e) {
+      throw AppError.fromDioException(e);
+    }
+  }
+
+  /// Elimina una promoción (cascada items + deliveries).
+  Future<void> deleteBroadcastPromotion(String id) async {
+    try {
+      await _dio.delete('/api/v1/promotions/$id');
+    } on DioException catch (e) {
+      throw AppError.fromDioException(e);
+    }
+  }
+
+  /// Resuelve la audiencia segmentada de una promoción.
+  ///
+  /// [filter] → `frequent` | `vip` | `dormant` | `recent` | `all` |
+  /// `manual`. Cuando es `manual` se envían los [customerIds] elegidos
+  /// a mano. Devuelve el cuerpo crudo `{ data: [...], meta: {count} }`.
+  Future<Map<String, dynamic>> fetchPromotionAudience(
+    String promotionId, {
+    required String filter,
+    List<String>? customerIds,
+  }) async {
+    try {
+      final body = <String, dynamic>{'filter': filter};
+      if (customerIds != null && customerIds.isNotEmpty) {
+        body['customer_ids'] = customerIds;
+      }
+      final response = await _dio.post(
+          '/api/v1/promotions/$promotionId/audience',
+          data: body);
+      return response.data as Map<String, dynamic>;
+    } on DioException catch (e) {
+      throw AppError.fromDioException(e);
+    }
+  }
+
+  /// Crea los registros de delivery (estado `queued`) para una promo y
+  /// devuelve la cola lista para enviar.
+  ///
+  /// [channel] → `whatsapp` | `link` | `qr` | `manual`. El backend
+  /// deduplica por `(promo, cliente, canal)` y pre-genera el mensaje
+  /// personalizado de cada delivery.
+  Future<Map<String, dynamic>> createPromotionDeliveries(
+    String promotionId, {
+    required List<String> customerIds,
+    required String channel,
+  }) async {
+    try {
+      final response = await _dio.post(
+        '/api/v1/promotions/$promotionId/deliveries',
+        data: {'customer_ids': customerIds, 'channel': channel},
+      );
+      return response.data as Map<String, dynamic>;
+    } on DioException catch (e) {
+      throw AppError.fromDioException(e);
+    }
+  }
+
+  /// Marca el estado de un delivery después de que el dueño tocó
+  /// "enviar" / "saltar" en la cola de WhatsApp.
+  ///
+  /// [status] → `sent` | `skipped`.
+  Future<Map<String, dynamic>> updatePromotionDelivery(
+    String promotionId,
+    String deliveryId, {
+    required String status,
+  }) async {
+    try {
+      final response = await _dio.patch(
+        '/api/v1/promotions/$promotionId/deliveries/$deliveryId',
+        data: {'status': status},
+      );
+      return _extractData(response);
+    } on DioException catch (e) {
+      throw AppError.fromDioException(e);
+    }
+  }
+
+  /// Sube una foto/banner para una promoción de difusión y devuelve el
+  /// `image_url` resultante.
+  ///
+  /// Cross-platform: lee los BYTES de la imagen (no la ruta de archivo)
+  /// — funciona en Flutter web igual que en móvil. Reusa el mismo
+  /// pipeline de normalización de imágenes que el logo / la foto de
+  /// producto ([imageMultipart]).
+  Future<Map<String, dynamic>> uploadPromotionImage(XFile image) async {
+    try {
+      final formData = FormData.fromMap({
+        'image': await imageMultipart(image, prefix: 'promo'),
+      });
+      final response = await _dio.post(
+        '/api/v1/promotions/upload-image',
+        data: formData,
+      );
+      return _extractData(response);
+    } on DioException catch (e) {
+      throw AppError.fromDioException(e);
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
   // 12. PURCHASE ORDERS — Órdenes de compra (Feature 002)
   // Contrato: specs/002-ordenes-compra/plan.md §4.
   // ═══════════════════════════════════════════════════════════════════════════
