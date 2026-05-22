@@ -69,6 +69,10 @@ class _BusinessProfileScreenState extends State<BusinessProfileScreen> {
   // pre-migración no ve el módulo hasta que lo prenda.
   late final ValueNotifier<bool> _enableQuotes = ValueNotifier(false);
 
+  // F033: capacidad opcional "Promociones". Default OFF — un tenant
+  // pre-migración no ve el módulo hasta que lo prenda.
+  late final ValueNotifier<bool> _enablePromotions = ValueNotifier(false);
+
   final _priceTier1NameCtrl =
       TextEditingController(text: 'Depósito contado');
   final _priceTier2NameCtrl =
@@ -124,6 +128,8 @@ class _BusinessProfileScreenState extends State<BusinessProfileScreen> {
     _enableCustomerManagement.dispose();
     // F031: liberar el toggle de cotizaciones.
     _enableQuotes.dispose();
+    // F033: liberar el toggle de promociones.
+    _enablePromotions.dispose();
     _priceTier1NameCtrl.dispose();
     _priceTier2NameCtrl.dispose();
     _priceTier3NameCtrl.dispose();
@@ -206,6 +212,11 @@ class _BusinessProfileScreenState extends State<BusinessProfileScreen> {
         // defensivo que customer management.
         _enableQuotes.value = data['enable_quotes'] == true ||
             _featureFlags.enableQuotes;
+
+        // F033: hidratar el toggle de promociones — mismo patrón
+        // defensivo.
+        _enablePromotions.value = data['enable_promotions'] == true ||
+            _featureFlags.enablePromotions;
 
         _loading = false;
       });
@@ -480,6 +491,8 @@ class _BusinessProfileScreenState extends State<BusinessProfileScreen> {
           'enable_customer_management': _enableCustomerManagement.value,
           // F031: el toggle de cotizaciones viaja en el mismo `config`.
           'enable_quotes': _enableQuotes.value,
+          // F033: el toggle de promociones viaja en el mismo `config`.
+          'enable_promotions': _enablePromotions.value,
         },
         // F035: credit_label_mode lo persiste CreditSettingsScreen aparte.
       };
@@ -649,6 +662,8 @@ class _BusinessProfileScreenState extends State<BusinessProfileScreen> {
               enableCustomerManagement: _enableCustomerManagement,
               // F031: toggle "Cotizaciones".
               enableQuotes: _enableQuotes,
+              // F033: toggle "Promociones".
+              enablePromotions: _enablePromotions,
             ),
 
             // F035: el selector de vocabulario se movió a la pantalla

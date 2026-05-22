@@ -2,6 +2,7 @@
 // Spec: specs/029-precios-multi-tier/spec.md
 // Spec: specs/030-administracion-clientes-no-tienda/spec.md
 // Spec: specs/031-cotizaciones/spec.md
+// Spec: specs/033-difusion-promociones/spec.md
 //
 // Widget reutilizable: sección "¿Su negocio también…?" con
 // SwitchListTile para las capacidades opcionales del tenant.
@@ -64,6 +65,10 @@ class OptionalCapabilitiesSection extends StatelessWidget {
   // ValueNotifier; si es null el toggle no se renderiza.
   final ValueNotifier<bool>? enableQuotes;
 
+  // F033 — toggle "Promociones". Misma invariante: el padre cablea el
+  // ValueNotifier; si es null el toggle no se renderiza.
+  final ValueNotifier<bool>? enablePromotions;
+
   const OptionalCapabilitiesSection({
     super.key,
     required this.selectedType,
@@ -77,6 +82,7 @@ class OptionalCapabilitiesSection extends StatelessWidget {
     this.priceTier3NameCtrl,
     this.enableCustomerManagement,
     this.enableQuotes,
+    this.enablePromotions,
   });
 
   @override
@@ -100,10 +106,14 @@ class OptionalCapabilitiesSection extends StatelessWidget {
     // F031: el toggle quotes solo se renderiza cuando el padre cableó
     // su ValueNotifier — misma invariante.
     final hasQuotesWiring = enableQuotes != null;
+    // F033: el toggle promotions solo se renderiza cuando el padre
+    // cableó su ValueNotifier — misma invariante.
+    final hasPromotionsWiring = enablePromotions != null;
     final visible = toggleable.where((c) {
       if (c == OptionalCapability.priceTiers) return hasTierWiring;
       if (c == OptionalCapability.customerManagement) return hasCustomerWiring;
       if (c == OptionalCapability.quotes) return hasQuotesWiring;
+      if (c == OptionalCapability.promotions) return hasPromotionsWiring;
       return true;
     }).toSet();
     if (visible.isEmpty) return const SizedBox.shrink();
@@ -155,6 +165,7 @@ class OptionalCapabilitiesSection extends StatelessWidget {
       OptionalCapability.priceTiers,
       OptionalCapability.customerManagement,
       OptionalCapability.quotes,
+      OptionalCapability.promotions,
     ].where(toggleable.contains).toList();
 
     for (var i = 0; i < ordered.length; i++) {
@@ -210,6 +221,15 @@ class OptionalCapabilitiesSection extends StatelessWidget {
             subtitle: 'Arme propuestas de precio para sus clientes '
                 'antes de la venta',
             notifier: enableQuotes!,
+            showDivider: showDivider,
+          ));
+        case OptionalCapability.promotions:
+          tiles.add(_CapabilityTile(
+            tileKey: const Key('toggle_promotions'),
+            title: 'Promociones',
+            subtitle: 'Avísele a sus clientes por WhatsApp cuando '
+                'tenga ofertas o productos nuevos',
+            notifier: enablePromotions!,
             showDivider: showDivider,
           ));
       }

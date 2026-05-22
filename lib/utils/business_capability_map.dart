@@ -2,6 +2,7 @@
 // Spec: specs/029-precios-multi-tier/spec.md
 // Spec: specs/030-administracion-clientes-no-tienda/spec.md
 // Spec: specs/031-cotizaciones/spec.md
+// Spec: specs/033-difusion-promociones/spec.md
 //
 // Mapa tipo-de-negocio → capacidades implícitas.
 //
@@ -65,6 +66,15 @@ enum OptionalCapability {
   /// de contado no). El toggle siempre aparece como opción manual.
   /// Cuando está ON: el menú principal muestra "Cotizaciones".
   quotes,
+
+  /// "quiere avisarle promociones a sus clientes" (F033)
+  /// → enable_promotions
+  ///
+  /// Default OFF; no implícita en ningún tipo de negocio — la decide el
+  /// dueño. El toggle siempre aparece como opción manual. Cuando está
+  /// ON: el menú principal muestra "Promociones" y el dueño puede armar
+  /// campañas de difusión y enviarlas por WhatsApp / link público.
+  promotions,
 }
 
 /// Retorna las [OptionalCapability] que el [businessType] YA concede

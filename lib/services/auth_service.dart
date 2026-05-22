@@ -302,6 +302,12 @@ class FeatureFlags {
   /// `tenants.enable_quotes`. Default OFF.
   final bool enableQuotes;
 
+  /// F033: módulo de difusión de promociones.
+  /// Cuando es `true` el menú principal muestra "Promociones" y el
+  /// dueño puede armar campañas y enviarlas por WhatsApp / link. Espejo
+  /// del backend `tenants.enable_promotions`. Default OFF.
+  final bool enablePromotions;
+
   const FeatureFlags({
     this.enableTables = false,
     this.enableKDS = false,
@@ -312,6 +318,7 @@ class FeatureFlags {
     this.enablePriceTiers = false,
     this.enableCustomerManagement = false,
     this.enableQuotes = false,
+    this.enablePromotions = false,
   });
 
   factory FeatureFlags.fromJson(Map<String, dynamic> json) => FeatureFlags(
@@ -330,5 +337,8 @@ class FeatureFlags {
         // F031 — default false: la app es idéntica a hoy hasta que el
         // dueño prenda la capacidad de cotizaciones (AC-13).
         enableQuotes: json['enable_quotes'] == true,
+        // F033 — default false: con la capacidad OFF no aparece UI nueva
+        // (AC-11).
+        enablePromotions: json['enable_promotions'] == true,
       );
 }

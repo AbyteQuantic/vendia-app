@@ -27,6 +27,7 @@ import '../recipes/recipe_step1_screen.dart';
 import '../work_orders/work_orders_screen.dart';
 import '../customers/customers_list_screen.dart';
 import '../quotes/quotes_list_screen.dart';
+import '../promotions/promotions_list_screen.dart';
 import '../pos/pos_screen.dart';
 import '../../database/sync/sales_sync.dart';
 import '../../widgets/sync_status_banner.dart';
@@ -107,6 +108,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
   // del menú principal — default OFF, fail-closed igual que F030
   // (AC-13: con la capacidad OFF la app es idéntica a hoy).
   bool _quotesEnabled = false;
+
+  // F033: capacidad "Promociones". Gatea la entrada "Promociones" del
+  // menú principal — default OFF, fail-closed igual que F030/F031
+  // (AC-11: con la capacidad OFF la app es idéntica a hoy).
+  bool _promotionsEnabled = false;
 
   @override
   void initState() {
@@ -202,6 +208,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
         setState(() {
           _customerManagementEnabled = flags.enableCustomerManagement;
           _quotesEnabled = flags.enableQuotes;
+          _promotionsEnabled = flags.enablePromotions;
         });
       }
     } catch (_) {
@@ -951,6 +958,70 @@ class _DashboardScreenState extends State<DashboardScreen> {
                             ),
                             const Icon(Icons.chevron_right_rounded,
                                 color: Color(0xFF1A2FA0), size: 24),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+
+                // ── Promociones Card (F033) ────────────────────────
+                // Solo visible cuando la capacidad enable_promotions
+                // está ON — un store que no difunde promos no la ve y
+                // el menú queda limpio (AC-11).
+                if (_promotionsEnabled)
+                  SliverToBoxAdapter(
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(18, 12, 18, 0),
+                      child: _GlassCard(
+                        onTap: () {
+                          HapticFeedback.lightImpact();
+                          Navigator.of(context).push(MaterialPageRoute(
+                            builder: (_) => const PromotionsListScreen(),
+                          ));
+                        },
+                        child: Row(
+                          children: [
+                            Container(
+                              width: 48,
+                              height: 48,
+                              decoration: BoxDecoration(
+                                gradient: const LinearGradient(
+                                  colors: [
+                                    Color(0xFFD97706),
+                                    Color(0xFFF59E0B),
+                                  ],
+                                ),
+                                borderRadius: BorderRadius.circular(14),
+                              ),
+                              child: const Icon(
+                                  Icons.campaign_rounded,
+                                  color: Colors.white,
+                                  size: 24),
+                            ),
+                            const SizedBox(width: 14),
+                            const Expanded(
+                              child: Column(
+                                crossAxisAlignment:
+                                    CrossAxisAlignment.start,
+                                children: [
+                                  Text('Promociones',
+                                      style: TextStyle(
+                                          fontSize: 17,
+                                          fontWeight: FontWeight.bold,
+                                          color: AppTheme.textPrimary)),
+                                  Text(
+                                      'Avísele a sus clientes cuando '
+                                      'tenga ofertas',
+                                      style: TextStyle(
+                                          fontSize: 14,
+                                          color: AppTheme.textSecondary),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis),
+                                ],
+                              ),
+                            ),
+                            const Icon(Icons.chevron_right_rounded,
+                                color: Color(0xFFD97706), size: 24),
                           ],
                         ),
                       ),
