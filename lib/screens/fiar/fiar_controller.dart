@@ -66,11 +66,13 @@ class FiarController extends ChangeNotifier {
   Future<LocalCustomer> createCustomer({
     required String name,
     required String phone,
+    String email = '',
   }) async {
     final customer = LocalCustomer()
       ..uuid = generateId()
       ..name = name
       ..phone = phone
+      ..email = email
       ..totalCredit = 0
       ..totalPaid = 0
       ..createdAt = DateTime.now()
