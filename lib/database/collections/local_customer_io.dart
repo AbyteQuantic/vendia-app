@@ -11,6 +11,12 @@ class LocalCustomer {
 
   late String name;
   late String phone;
+
+  /// Email del cliente — opcional (F032). Cadena vacía cuando no se
+  /// registró. Se usa para precargar el destinatario al enviar
+  /// documentos por el canal Email (`mailto:`).
+  String email = '';
+
   late double totalCredit;
   late double totalPaid;
   late DateTime createdAt;
@@ -23,6 +29,7 @@ class LocalCustomer {
         'uuid': uuid,
         'name': name,
         'phone': phone,
+        'email': email,
         'total_credit': totalCredit,
         'total_paid': totalPaid,
         'created_at': createdAt.toIso8601String(),
@@ -34,6 +41,7 @@ class LocalCustomer {
       ..uuid = json['uuid'] as String? ?? ''
       ..name = json['name'] as String
       ..phone = json['phone'] as String? ?? ''
+      ..email = json['email'] as String? ?? ''
       ..totalCredit = (json['total_credit'] as num? ?? 0).toDouble()
       ..totalPaid = (json['total_paid'] as num? ?? 0).toDouble()
       ..createdAt = json['created_at'] != null

@@ -1,16 +1,21 @@
 // Spec: specs/031-cotizaciones/spec.md
+//       specs/032-email-saliente/spec.md  (canal Email — F032)
 //
 // Bottom-sheet "Enviar cotización" (F031 — AC-06).
 //
 // Ofrece los canales de envío de una cotización ya guardada:
 //   - WhatsApp  → abre wa.me con un mensaje precargado + link público.
+//   - Email     → abre el cliente de email del dispositivo vía mailto:
+//                 con asunto y cuerpo precargados (F032).
 //   - Copiar link → copia el URL público al portapapeles.
 //   - Compartir → Share API nativo (share_plus).
 //   - Imprimir / Guardar como PDF → abre el link público en el
 //     navegador; la página dispara `window.print()` (vista print-ready).
 //   - Ver QR → muestra el QR del link para que el cliente lo escanee.
 //
-// NOTA: el canal Email NO está aquí — es F032 (requiere infra SMTP).
+// El canal Email NO usa infra SMTP: abre el correo del dispositivo
+// (Gmail/Apple Mail) con el mensaje precargado — el dueño manda desde
+// su propia cuenta (F032, mismo patrón que `wa.me`).
 //
 // El sheet no llama al backend: recibe la [Quote] ya enviada y el host
 // público; arma los enlaces y los abre. Quien lo invoca es responsable
@@ -26,6 +31,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../models/quote.dart';
 import '../theme/app_theme.dart';
+import '../utils/email_launcher.dart';
 import 'qr_code_dialog.dart';
 
 /// Abre la bottom-sheet de envío de la cotización [quote].
@@ -37,12 +43,19 @@ Future<void> showSendQuoteSheet(
   BuildContext context, {
   required Quote quote,
   required String publicHost,
+  String tenantName = '',
+  String customerEmail = '',
 }) {
   return showModalBottomSheet<void>(
     context: context,
     isScrollControlled: true,
     backgroundColor: Colors.transparent,
-    builder: (_) => SendQuoteSheet(quote: quote, publicHost: publicHost),
+    builder: (_) => SendQuoteSheet(
+      quote: quote,
+      publicHost: publicHost,
+      tenantName: tenantName,
+      customerEmail: customerEmail,
+    ),
   );
 }
 
@@ -50,10 +63,21 @@ class SendQuoteSheet extends StatelessWidget {
   final Quote quote;
   final String publicHost;
 
+  /// Nombre del negocio — usado en el asunto/cuerpo del email. Si va
+  /// vacío se usa un texto genérico.
+  final String tenantName;
+
+  /// Email del cliente (F030). Vacío cuando el cliente no tiene email
+  /// registrado — el botón Email igual aparece y abre el correo con el
+  /// campo "Para" en blanco (F032 AC-07).
+  final String customerEmail;
+
   const SendQuoteSheet({
     super.key,
     required this.quote,
     required this.publicHost,
+    this.tenantName = '',
+    this.customerEmail = '',
   });
 
   /// URL público de la cotización. Vacío si falta el token.
@@ -73,6 +97,32 @@ class SendQuoteSheet extends StatelessWidget {
     final ok = await launchUrl(uri, mode: LaunchMode.externalApplication);
     if (!ok && context.mounted) {
       _snack(context, 'No se pudo abrir WhatsApp');
+    }
+  }
+
+  Future<void> _openEmail(BuildContext context) async {
+    HapticFeedback.lightImpact();
+    final business = tenantName.trim().isNotEmpty
+        ? tenantName.trim()
+        : 'tu negocio';
+    final subject = EmailLauncher.subjectForQuote(
+      folio: quote.folio,
+      tenantName: business,
+    );
+    final body = EmailLauncher.quoteBody(
+      tenantName: business,
+      customerName: quote.customerName,
+      folio: quote.folio.isNotEmpty ? quote.folio : 'la cotización',
+      publicLink: _url,
+    );
+    final ok = await EmailLauncher.open(
+      to: customerEmail,
+      subject: subject,
+      body: body,
+    );
+    if (!ok && context.mounted) {
+      _snack(context,
+          'No se pudo abrir el cliente de email. El mensaje fue copiado.');
     }
   }
 
@@ -179,6 +229,14 @@ class SendQuoteSheet extends StatelessWidget {
                 label: 'WhatsApp',
                 subtitle: 'Mensaje listo con el enlace',
                 onTap: () => _openWhatsApp(context),
+              ),
+              _ChannelButton(
+                buttonKey: const Key('send_quote_email'),
+                icon: Icons.email_outlined,
+                color: const Color(0xFF2563EB),
+                label: 'Email',
+                subtitle: 'Abre su correo con el mensaje listo',
+                onTap: () => _openEmail(context),
               ),
               _ChannelButton(
                 buttonKey: const Key('send_quote_copy'),

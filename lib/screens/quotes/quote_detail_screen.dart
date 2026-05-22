@@ -1,4 +1,5 @@
 // Spec: specs/031-cotizaciones/spec.md
+//       specs/032-email-saliente/spec.md  (pasa tenantName al canal Email)
 //
 // Pantalla "Detalle de cotización" (F031 — AC-09).
 //
@@ -53,6 +54,7 @@ class QuoteDetailScreen extends StatefulWidget {
 
 class _QuoteDetailScreenState extends State<QuoteDetailScreen> {
   late final ApiService _api;
+  late final AuthService _auth;
 
   Quote? _quote;
   bool _loading = true;
@@ -63,13 +65,32 @@ class _QuoteDetailScreenState extends State<QuoteDetailScreen> {
   /// cotización en la bottom-sheet de envío.
   String _publicHost = 'https://tienda.vendia.store';
 
+  /// Nombre del negocio — usado por el canal Email (F032) para el
+  /// asunto y cuerpo del correo. Se carga del almacenamiento local.
+  String _tenantName = '';
+
   @override
   void initState() {
     super.initState();
-    _api = widget.apiOverride ?? ApiService(AuthService());
+    _auth = AuthService();
+    _api = widget.apiOverride ?? ApiService(_auth);
     _quote = widget.initialQuote;
     _load();
     _loadPublicHost();
+    _loadTenantName();
+  }
+
+  /// Carga el nombre del negocio para precargar el email (F032).
+  /// Falla en silencio — el sheet usa un texto genérico si queda vacío.
+  Future<void> _loadTenantName() async {
+    try {
+      final name = await _auth.getBusinessName();
+      if (name != null && name.trim().isNotEmpty && mounted) {
+        setState(() => _tenantName = name.trim());
+      }
+    } catch (_) {
+      // Mantener vacío.
+    }
   }
 
   Future<void> _load() async {
@@ -136,6 +157,7 @@ class _QuoteDetailScreenState extends State<QuoteDetailScreen> {
         context,
         quote: updated,
         publicHost: _publicHost,
+        tenantName: _tenantName,
       );
     } catch (e) {
       if (!mounted) return;
@@ -151,6 +173,7 @@ class _QuoteDetailScreenState extends State<QuoteDetailScreen> {
       context,
       quote: quote,
       publicHost: _publicHost,
+      tenantName: _tenantName,
     );
   }
 

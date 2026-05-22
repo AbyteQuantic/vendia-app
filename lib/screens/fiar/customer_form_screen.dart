@@ -1,6 +1,8 @@
+// Spec: specs/032-email-saliente/spec.md  (campo Email opcional — F032)
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../../theme/app_theme.dart';
+import '../../utils/email_launcher.dart';
 import 'fiar_controller.dart';
 
 class CustomerFormScreen extends StatefulWidget {
@@ -16,12 +18,14 @@ class _CustomerFormScreenState extends State<CustomerFormScreen> {
   final _formKey = GlobalKey<FormState>();
   final _nameCtrl = TextEditingController();
   final _phoneCtrl = TextEditingController();
+  final _emailCtrl = TextEditingController();
   bool _saving = false;
 
   @override
   void dispose() {
     _nameCtrl.dispose();
     _phoneCtrl.dispose();
+    _emailCtrl.dispose();
     super.dispose();
   }
 
@@ -37,6 +41,7 @@ class _CustomerFormScreenState extends State<CustomerFormScreen> {
     final customer = await widget.ctrl.createCustomer(
       name: _nameCtrl.text.trim(),
       phone: _phoneCtrl.text.trim(),
+      email: _emailCtrl.text.trim(),
     );
 
     if (!mounted) return;
@@ -134,8 +139,7 @@ class _CustomerFormScreenState extends State<CustomerFormScreen> {
                     keyboardType: TextInputType.phone,
                     style: const TextStyle(fontSize: 20, letterSpacing: 1.5),
                     inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                    textInputAction: TextInputAction.done,
-                    onFieldSubmitted: (_) => _save(),
+                    textInputAction: TextInputAction.next,
                     decoration: InputDecoration(
                       hintText: 'Ej: 310 000 0000',
                       hintStyle: TextStyle(
@@ -149,6 +153,39 @@ class _CustomerFormScreenState extends State<CustomerFormScreen> {
                     validator: (v) {
                       if (v == null || v.isEmpty) return 'Ingrese el teléfono';
                       if (v.length < 7) return 'Número muy corto';
+                      return null;
+                    },
+                  ),
+                  const SizedBox(height: 28),
+                  const Text('Email (opcional)',
+                      style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w600,
+                          color: AppTheme.textPrimary)),
+                  const SizedBox(height: 10),
+                  TextFormField(
+                    key: const Key('customer_email_field'),
+                    controller: _emailCtrl,
+                    keyboardType: TextInputType.emailAddress,
+                    autocorrect: false,
+                    style: const TextStyle(fontSize: 20),
+                    textInputAction: TextInputAction.done,
+                    onFieldSubmitted: (_) => _save(),
+                    decoration: InputDecoration(
+                      hintText: 'Ej: cliente@correo.com',
+                      hintStyle: TextStyle(
+                        color: Colors.grey.shade400,
+                        fontWeight: FontWeight.w400,
+                        fontStyle: FontStyle.italic,
+                      ),
+                      prefixIcon: const Icon(Icons.email_outlined,
+                          color: AppTheme.primary, size: 26),
+                    ),
+                    validator: (v) {
+                      // Vacío es válido — el email es opcional (F032).
+                      if (!EmailLauncher.isValidEmail(v)) {
+                        return 'Correo inválido';
+                      }
                       return null;
                     },
                   ),
