@@ -14,6 +14,10 @@
       "destination": "https://vendia-admin.vercel.app/admin/c/:token"
     },
     {
+      "source": "/p/:token",
+      "destination": "https://vendia-admin.vercel.app/admin/p/:token"
+    },
+    {
       "source": "/(.*)",
       "destination": "/index.html"
     }
