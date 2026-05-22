@@ -123,3 +123,57 @@ Set<OptionalCapability> toggleableCapabilities(String? businessType) {
         impliedCapabilities(businessType),
       );
 }
+
+/// F036 — capacidades que se pre-activan al elegir un [businessType].
+///
+/// ESPEJO del mapa `DefaultCapabilitiesForType` del backend
+/// (internal/services/business_capabilities.go). El backend es la
+/// fuente de verdad: aplica estos defaults al registrar el tenant. El
+/// cliente solo usa este mapa para PRE-MARCAR el checklist del paso 2
+/// del wizard de onboarding.
+///
+/// El mapa NO es un candado: cualquier tipo puede activar cualquier
+/// capacidad luego desde "Capacidades del negocio" (spec §4.2).
+///
+/// Mapa (spec §4.2):
+///   tienda_barrio / minimercado          → ninguna (solo core)
+///   restaurante / comidas_rapidas        → recetas* + mesas + servicios
+///   bar                                  → mesas + servicios
+///   deposito_construccion                → cotizaciones + precios + clientes
+///   manufactura / reparacion_muebles     → cotizaciones + clientes
+///   emprendimiento_general               → clientes
+///
+/// (*) "recetas" no es una [OptionalCapability] toggleable — se activa
+/// vía el `business_type` (capa byType del Dashboard), así que no
+/// aparece en este set, que solo contiene capacidades con toggle.
+Set<OptionalCapability> defaultCapabilitiesForType(String? businessType) {
+  switch (businessType) {
+    case 'restaurante':
+    case 'comidas_rapidas':
+      return const {
+        OptionalCapability.tables,
+        OptionalCapability.services,
+      };
+    case 'bar':
+      return const {
+        OptionalCapability.tables,
+        OptionalCapability.services,
+      };
+    case 'deposito_construccion':
+      return const {
+        OptionalCapability.quotes,
+        OptionalCapability.priceTiers,
+        OptionalCapability.customerManagement,
+      };
+    case 'manufactura':
+    case 'reparacion_muebles':
+      return const {
+        OptionalCapability.quotes,
+        OptionalCapability.customerManagement,
+      };
+    case 'emprendimiento_general':
+      return const {OptionalCapability.customerManagement};
+    default: // tienda_barrio, minimercado, null
+      return const {};
+  }
+}
