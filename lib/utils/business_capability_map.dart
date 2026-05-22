@@ -1,6 +1,7 @@
 // Spec: specs/023-capacidades-opcionales-negocio/spec.md
 // Spec: specs/029-precios-multi-tier/spec.md
 // Spec: specs/030-administracion-clientes-no-tienda/spec.md
+// Spec: specs/031-cotizaciones/spec.md
 //
 // Mapa tipo-de-negocio → capacidades implícitas.
 //
@@ -55,6 +56,15 @@ enum OptionalCapability {
   /// el menú principal muestra "Mis clientes" y toda venta puede
   /// asociarse a un cliente.
   customerManagement,
+
+  /// "le piden cotizaciones antes de comprar" (F031)
+  /// → enable_quotes
+  ///
+  /// Default OFF; no implícita en ningún tipo de negocio — la decide el
+  /// dueño (ferretería, taller, repostería por encargo la usan; tiendas
+  /// de contado no). El toggle siempre aparece como opción manual.
+  /// Cuando está ON: el menú principal muestra "Cotizaciones".
+  quotes,
 }
 
 /// Retorna las [OptionalCapability] que el [businessType] YA concede

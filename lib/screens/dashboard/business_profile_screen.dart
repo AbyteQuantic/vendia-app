@@ -65,6 +65,10 @@ class _BusinessProfileScreenState extends State<BusinessProfileScreen> {
   late final ValueNotifier<bool> _enableCustomerManagement =
       ValueNotifier(false);
 
+  // F031: capacidad opcional "Cotizaciones". Default OFF — un tenant
+  // pre-migración no ve el módulo hasta que lo prenda.
+  late final ValueNotifier<bool> _enableQuotes = ValueNotifier(false);
+
   final _priceTier1NameCtrl =
       TextEditingController(text: 'Depósito contado');
   final _priceTier2NameCtrl =
@@ -118,6 +122,8 @@ class _BusinessProfileScreenState extends State<BusinessProfileScreen> {
     _enablePriceTiers.dispose();
     // F030: liberar el toggle de gestión de clientes.
     _enableCustomerManagement.dispose();
+    // F031: liberar el toggle de cotizaciones.
+    _enableQuotes.dispose();
     _priceTier1NameCtrl.dispose();
     _priceTier2NameCtrl.dispose();
     _priceTier3NameCtrl.dispose();
@@ -195,6 +201,11 @@ class _BusinessProfileScreenState extends State<BusinessProfileScreen> {
         _enableCustomerManagement.value =
             data['enable_customer_management'] == true ||
                 _featureFlags.enableCustomerManagement;
+
+        // F031: hidratar el toggle de cotizaciones — mismo patrón
+        // defensivo que customer management.
+        _enableQuotes.value = data['enable_quotes'] == true ||
+            _featureFlags.enableQuotes;
 
         _loading = false;
       });
@@ -467,6 +478,8 @@ class _BusinessProfileScreenState extends State<BusinessProfileScreen> {
           // F030: el toggle de gestión de clientes viaja en el mismo
           // `config` (un solo bag de toggles de negocio).
           'enable_customer_management': _enableCustomerManagement.value,
+          // F031: el toggle de cotizaciones viaja en el mismo `config`.
+          'enable_quotes': _enableQuotes.value,
         },
         // F035: credit_label_mode lo persiste CreditSettingsScreen aparte.
       };
@@ -634,6 +647,8 @@ class _BusinessProfileScreenState extends State<BusinessProfileScreen> {
               priceTier3NameCtrl: _priceTier3NameCtrl,
               // F030: toggle "Gestión de clientes".
               enableCustomerManagement: _enableCustomerManagement,
+              // F031: toggle "Cotizaciones".
+              enableQuotes: _enableQuotes,
             ),
 
             // F035: el selector de vocabulario se movió a la pantalla
