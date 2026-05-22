@@ -1,0 +1,21 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "rewrites": [
+    {
+      "source": "/admin",
+      "destination": "https://vendia-admin.vercel.app/admin"
+    },
+    {
+      "source": "/admin/:path*",
+      "destination": "https://vendia-admin.vercel.app/admin/:path*"
+    },
+    {
+      "source": "/c/:token",
+      "destination": "https://vendia-admin.vercel.app/admin/c/:token"
+    },
+    {
+      "source": "/(.*)",
+      "destination": "/index.html"
+    }
+  ]
+}
