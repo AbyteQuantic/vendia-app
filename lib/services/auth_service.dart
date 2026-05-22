@@ -296,6 +296,12 @@ class FeatureFlags {
   /// un cliente. Espejo del backend `tenants.enable_customer_management`.
   final bool enableCustomerManagement;
 
+  /// F031: módulo de cotizaciones.
+  /// Cuando es `true` el menú principal muestra "Cotizaciones" y el
+  /// dueño puede armar/enviar/convertir cotizaciones. Espejo del backend
+  /// `tenants.enable_quotes`. Default OFF.
+  final bool enableQuotes;
+
   const FeatureFlags({
     this.enableTables = false,
     this.enableKDS = false,
@@ -305,6 +311,7 @@ class FeatureFlags {
     this.enableFractionalUnits = false,
     this.enablePriceTiers = false,
     this.enableCustomerManagement = false,
+    this.enableQuotes = false,
   });
 
   factory FeatureFlags.fromJson(Map<String, dynamic> json) => FeatureFlags(
@@ -320,5 +327,8 @@ class FeatureFlags {
         // F030 — default false: tenants pre-migración no ven la
         // funcionalidad de clientes hasta que el dueño la prenda (AC-07).
         enableCustomerManagement: json['enable_customer_management'] == true,
+        // F031 — default false: la app es idéntica a hoy hasta que el
+        // dueño prenda la capacidad de cotizaciones (AC-13).
+        enableQuotes: json['enable_quotes'] == true,
       );
 }

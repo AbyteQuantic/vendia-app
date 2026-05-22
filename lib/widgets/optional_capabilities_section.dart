@@ -1,6 +1,7 @@
 // Spec: specs/023-capacidades-opcionales-negocio/spec.md
 // Spec: specs/029-precios-multi-tier/spec.md
 // Spec: specs/030-administracion-clientes-no-tienda/spec.md
+// Spec: specs/031-cotizaciones/spec.md
 //
 // Widget reutilizable: sección "¿Su negocio también…?" con
 // SwitchListTile para las capacidades opcionales del tenant.
@@ -59,6 +60,10 @@ class OptionalCapabilitiesSection extends StatelessWidget {
   // toggle no se muestra.
   final ValueNotifier<bool>? enableCustomerManagement;
 
+  // F031 — toggle "Cotizaciones". Misma invariante: el padre cablea el
+  // ValueNotifier; si es null el toggle no se renderiza.
+  final ValueNotifier<bool>? enableQuotes;
+
   const OptionalCapabilitiesSection({
     super.key,
     required this.selectedType,
@@ -71,6 +76,7 @@ class OptionalCapabilitiesSection extends StatelessWidget {
     this.priceTier2NameCtrl,
     this.priceTier3NameCtrl,
     this.enableCustomerManagement,
+    this.enableQuotes,
   });
 
   @override
@@ -91,9 +97,13 @@ class OptionalCapabilitiesSection extends StatelessWidget {
     // F030: el toggle customerManagement solo se renderiza cuando el
     // padre cableó su ValueNotifier — misma invariante que priceTiers.
     final hasCustomerWiring = enableCustomerManagement != null;
+    // F031: el toggle quotes solo se renderiza cuando el padre cableó
+    // su ValueNotifier — misma invariante.
+    final hasQuotesWiring = enableQuotes != null;
     final visible = toggleable.where((c) {
       if (c == OptionalCapability.priceTiers) return hasTierWiring;
       if (c == OptionalCapability.customerManagement) return hasCustomerWiring;
+      if (c == OptionalCapability.quotes) return hasQuotesWiring;
       return true;
     }).toSet();
     if (visible.isEmpty) return const SizedBox.shrink();
@@ -144,6 +154,7 @@ class OptionalCapabilitiesSection extends StatelessWidget {
       OptionalCapability.tables,
       OptionalCapability.priceTiers,
       OptionalCapability.customerManagement,
+      OptionalCapability.quotes,
     ].where(toggleable.contains).toList();
 
     for (var i = 0; i < ordered.length; i++) {
@@ -190,6 +201,15 @@ class OptionalCapabilitiesSection extends StatelessWidget {
             subtitle: 'Sepa quién le compra: registre clientes y vea '
                 'su historial de compras',
             notifier: enableCustomerManagement!,
+            showDivider: showDivider,
+          ));
+        case OptionalCapability.quotes:
+          tiles.add(_CapabilityTile(
+            tileKey: const Key('toggle_quotes'),
+            title: 'Cotizaciones',
+            subtitle: 'Arme propuestas de precio para sus clientes '
+                'antes de la venta',
+            notifier: enableQuotes!,
             showDivider: showDivider,
           ));
       }

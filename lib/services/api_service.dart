@@ -1218,6 +1218,119 @@ class ApiService {
   }
 
   // ═══════════════════════════════════════════════════════════════════════════
+  // 7b. QUOTES (Cotizaciones — F031)
+  // ═══════════════════════════════════════════════════════════════════════════
+  //
+  // CRUD + acciones del módulo de cotizaciones. Contrato en
+  // specs/031-cotizaciones/plan.md §4. Endpoints privados bajo JWT.
+
+  /// Lista cotizaciones del tenant con filtros opcionales.
+  ///
+  /// [status] → filtro por estado (wire de QuoteStatus, ej. 'enviada').
+  /// [query]  → texto de búsqueda por folio o nombre de cliente.
+  ///
+  /// Devuelve el cuerpo crudo `{ data: [...], meta: {...} }`.
+  Future<Map<String, dynamic>> listQuotes({
+    String? status,
+    String? query,
+    int limit = 50,
+    int offset = 0,
+  }) async {
+    try {
+      final params = <String, dynamic>{
+        'limit': limit,
+        'offset': offset,
+      };
+      if (status != null && status.isNotEmpty) params['status'] = status;
+      final q = query?.trim();
+      if (q != null && q.isNotEmpty) params['q'] = q;
+      final response =
+          await _dio.get('/api/v1/quotes', queryParameters: params);
+      return response.data as Map<String, dynamic>;
+    } on DioException catch (e) {
+      throw AppError.fromDioException(e);
+    }
+  }
+
+  /// Crea una cotización en estado `borrador`. El backend asigna el
+  /// folio secuencial y calcula los totales. Devuelve la cotización
+  /// creada (clave `data`).
+  Future<Map<String, dynamic>> createQuote(
+      Map<String, dynamic> data) async {
+    try {
+      final response = await _dio.post('/api/v1/quotes', data: data);
+      return _extractData(response);
+    } on DioException catch (e) {
+      throw AppError.fromDioException(e);
+    }
+  }
+
+  /// Detalle completo de una cotización (items + cliente).
+  Future<Map<String, dynamic>> getQuote(String id) async {
+    try {
+      final response = await _dio.get('/api/v1/quotes/$id');
+      return _extractData(response);
+    } on DioException catch (e) {
+      throw AppError.fromDioException(e);
+    }
+  }
+
+  /// Edita una cotización. Si está en `borrador` se sobrescribe; si
+  /// está `enviada` el backend crea la V2 y marca la v1 `reemplazada`.
+  /// Devuelve la cotización resultante (la V2 cuando aplica).
+  Future<Map<String, dynamic>> updateQuote(
+      String id, Map<String, dynamic> data) async {
+    try {
+      final response = await _dio.patch('/api/v1/quotes/$id', data: data);
+      return _extractData(response);
+    } on DioException catch (e) {
+      throw AppError.fromDioException(e);
+    }
+  }
+
+  /// Marca una cotización `borrador` como `enviada` y le asigna
+  /// `sent_at`. No envía nada por sí mismo — el cliente arma el
+  /// link/mensaje con el `public_token` del response.
+  Future<Map<String, dynamic>> sendQuote(String id) async {
+    try {
+      final response = await _dio.post('/api/v1/quotes/$id/send');
+      return _extractData(response);
+    } on DioException catch (e) {
+      throw AppError.fromDioException(e);
+    }
+  }
+
+  /// Convierte una cotización `aprobada` en venta: crea la venta con
+  /// los mismos items, descuenta inventario y devuelve `sale_id`. La
+  /// cotización pasa a `convertida`.
+  Future<Map<String, dynamic>> convertQuote(String id) async {
+    try {
+      final response = await _dio.post('/api/v1/quotes/$id/convert');
+      return _extractData(response);
+    } on DioException catch (e) {
+      throw AppError.fromDioException(e);
+    }
+  }
+
+  /// Marca manualmente el estado de una cotización (aprobación verbal).
+  /// [status] es el wire de QuoteStatus — `aprobada` o `rechazada`.
+  Future<Map<String, dynamic>> markQuoteStatus(
+    String id,
+    String status, {
+    String? note,
+  }) async {
+    try {
+      final body = <String, dynamic>{'status': status};
+      if (note != null && note.isNotEmpty) body['note'] = note;
+      final response =
+          await _dio.post('/api/v1/quotes/$id/mark-status', data: body);
+      return _extractData(response);
+    } on DioException catch (e) {
+      throw AppError.fromDioException(e);
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
   // 7. CREDITS (El Fiar)
   // ═══════════════════════════════════════════════════════════════════════════
 
