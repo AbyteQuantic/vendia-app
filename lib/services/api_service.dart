@@ -1769,7 +1769,7 @@ class ApiService {
     try {
       final params = <String, dynamic>{'limit': limit, 'offset': offset};
       if (filter != null && filter.isNotEmpty) params['filter'] = filter;
-      final response = await _dio.get('/api/v1/promotions',
+      final response = await _dio.get('/api/v1/broadcast-promotions',
           queryParameters: params);
       return response.data as Map<String, dynamic>;
     } on DioException catch (e) {
@@ -1782,7 +1782,8 @@ class ApiService {
   Future<Map<String, dynamic>> createBroadcastPromotion(
       Map<String, dynamic> data) async {
     try {
-      final response = await _dio.post('/api/v1/promotions', data: data);
+      final response =
+          await _dio.post('/api/v1/broadcast-promotions', data: data);
       return _extractData(response);
     } on DioException catch (e) {
       throw AppError.fromDioException(e);
@@ -1792,7 +1793,7 @@ class ApiService {
   /// Detalle completo de una promoción (items + métricas).
   Future<Map<String, dynamic>> getBroadcastPromotion(String id) async {
     try {
-      final response = await _dio.get('/api/v1/promotions/$id');
+      final response = await _dio.get('/api/v1/broadcast-promotions/$id');
       return _extractData(response);
     } on DioException catch (e) {
       throw AppError.fromDioException(e);
@@ -1805,7 +1806,7 @@ class ApiService {
       String id, Map<String, dynamic> data) async {
     try {
       final response =
-          await _dio.patch('/api/v1/promotions/$id', data: data);
+          await _dio.patch('/api/v1/broadcast-promotions/$id', data: data);
       return _extractData(response);
     } on DioException catch (e) {
       throw AppError.fromDioException(e);
@@ -1815,7 +1816,7 @@ class ApiService {
   /// Elimina una promoción (cascada items + deliveries).
   Future<void> deleteBroadcastPromotion(String id) async {
     try {
-      await _dio.delete('/api/v1/promotions/$id');
+      await _dio.delete('/api/v1/broadcast-promotions/$id');
     } on DioException catch (e) {
       throw AppError.fromDioException(e);
     }
@@ -1837,7 +1838,7 @@ class ApiService {
         body['customer_ids'] = customerIds;
       }
       final response = await _dio.post(
-          '/api/v1/promotions/$promotionId/audience',
+          '/api/v1/broadcast-promotions/$promotionId/audience',
           data: body);
       return response.data as Map<String, dynamic>;
     } on DioException catch (e) {
@@ -1858,7 +1859,7 @@ class ApiService {
   }) async {
     try {
       final response = await _dio.post(
-        '/api/v1/promotions/$promotionId/deliveries',
+        '/api/v1/broadcast-promotions/$promotionId/deliveries',
         data: {'customer_ids': customerIds, 'channel': channel},
       );
       return response.data as Map<String, dynamic>;
@@ -1878,7 +1879,7 @@ class ApiService {
   }) async {
     try {
       final response = await _dio.patch(
-        '/api/v1/promotions/$promotionId/deliveries/$deliveryId',
+        '/api/v1/broadcast-promotions/$promotionId/deliveries/$deliveryId',
         data: {'status': status},
       );
       return _extractData(response);
@@ -1900,7 +1901,7 @@ class ApiService {
         'image': await imageMultipart(image, prefix: 'promo'),
       });
       final response = await _dio.post(
-        '/api/v1/promotions/upload-image',
+        '/api/v1/broadcast-promotions/upload-image',
         data: formData,
       );
       return _extractData(response);
