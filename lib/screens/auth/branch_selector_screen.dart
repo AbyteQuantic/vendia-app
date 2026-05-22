@@ -6,7 +6,7 @@ import '../../services/api_service.dart';
 import '../../services/auth_service.dart';
 import '../../services/role_manager.dart';
 import '../../theme/app_theme.dart';
-import '../dashboard/dashboard_screen.dart';
+import '../onboarding/post_login_gate.dart';
 
 /// Workspace info passed from login response.
 class WorkspaceInfo {
@@ -119,7 +119,8 @@ class _WorkspaceSelectorScreenState extends State<WorkspaceSelectorScreen> {
 
       Navigator.of(context).pushReplacement(
         PageRouteBuilder(
-          pageBuilder: (_, animation, __) => DashboardScreen(
+          // F036: PostLoginGate decide entre wizard y Dashboard.
+          pageBuilder: (_, animation, __) => PostLoginGate(
             ownerName: widget.userName,
             businessName: ws.tenantName,
           ),

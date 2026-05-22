@@ -9,7 +9,7 @@ import '../../services/auth_service.dart';
 import '../../services/role_manager.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/turnstile_captcha.dart';
-import '../dashboard/dashboard_screen.dart';
+import '../onboarding/post_login_gate.dart';
 import '../onboarding/onboarding_stepper.dart';
 import 'branch_selector_screen.dart'; // exports WorkspaceInfo + WorkspaceSelectorScreen
 
@@ -139,6 +139,12 @@ class _LoginScreenState extends State<LoginScreen> {
           (data['business_types'] as List?)?.whereType<String>().toList();
       // F028: capture credit_label_mode from login response.
       final creditLabelMode = data['credit_label_mode'] as String?;
+      // F036: capture onboarding_completed when the backend ships it.
+      // Null when the deploy is pre-F036 — AuthService then keeps any
+      // previously-stored value (and defaults to true).
+      final onboardingCompleted = data.containsKey('onboarding_completed')
+          ? data['onboarding_completed'] == true
+          : null;
 
       // Backend ships the JWT under both `access_token` (canonical
       // since the RBAC fix) and `token` (legacy). Accept either so
@@ -173,6 +179,7 @@ class _LoginScreenState extends State<LoginScreen> {
           featureFlags: featureFlags,
           businessTypes: businessTypes,
           creditLabelMode: creditLabelMode,
+          onboardingCompleted: onboardingCompleted,
         );
       } else {
         await _auth.saveLegacySession(
@@ -183,6 +190,7 @@ class _LoginScreenState extends State<LoginScreen> {
           featureFlags: featureFlags,
           businessTypes: businessTypes,
           creditLabelMode: creditLabelMode,
+          onboardingCompleted: onboardingCompleted,
         );
       }
 
@@ -196,7 +204,9 @@ class _LoginScreenState extends State<LoginScreen> {
 
       Navigator.of(context).pushReplacement(
         PageRouteBuilder(
-          pageBuilder: (_, animation, __) => DashboardScreen(
+          // F036: PostLoginGate decide entre el wizard de onboarding
+          // (primer ingreso) y el Dashboard.
+          pageBuilder: (_, animation, __) => PostLoginGate(
             ownerName: data['owner_name'] as String? ?? '',
             businessName: data['business_name'] as String? ?? '',
           ),

@@ -10,8 +10,6 @@ import '../../services/api_service.dart';
 import '../../services/auth_service.dart';
 import '../../services/image_normalizer.dart';
 import '../../theme/app_theme.dart';
-import '../../utils/business_capability_map.dart';
-import '../../widgets/optional_capabilities_section.dart';
 
 /// Perfil del Negocio — Gerontodiseño: textos grandes, alto contraste,
 /// cero fricción. Fetch real al backend, sin datos hardcodeados.
@@ -42,43 +40,10 @@ class _BusinessProfileScreenState extends State<BusinessProfileScreen> {
   // el contrato del wire.
   String? _selectedType;
 
-  // F023: capacidades opcionales — ValueNotifiers para que
-  // OptionalCapabilitiesSection se reconstruya sin setState global.
-  // El estado inicial se deriva de _featureFlags después del fetch.
-  FeatureFlags _featureFlags = const FeatureFlags();
-  late final ValueNotifier<bool> _offersServices = ValueNotifier(false);
-  late final ValueNotifier<bool> _sellsByWeight = ValueNotifier(false);
-  late final ValueNotifier<bool> _hasTables = ValueNotifier(false);
-
-  // F035: el modo de vocabulario vive ahora en CreditSettingsScreen.
-
-  // F029: capacidad opcional "Manejo precios diferentes para mayorista
-  // y minorista" + los 3 nombres de tiers renombrables. Los defaults
-  // espejan tenant.go (DefaultsPriceTier*Name) para que un tenant
-  // pre-migración (sin el toggle ni los nombres en el GET) muestre los
-  // mismos labels que el backend va a aplicar cuando se prenda la
-  // capacidad.
-  late final ValueNotifier<bool> _enablePriceTiers = ValueNotifier(false);
-
-  // F030: capacidad opcional "Gestión de clientes". Default OFF — un
-  // tenant pre-migración no ve la funcionalidad hasta que la prenda.
-  late final ValueNotifier<bool> _enableCustomerManagement =
-      ValueNotifier(false);
-
-  // F031: capacidad opcional "Cotizaciones". Default OFF — un tenant
-  // pre-migración no ve el módulo hasta que lo prenda.
-  late final ValueNotifier<bool> _enableQuotes = ValueNotifier(false);
-
-  // F033: capacidad opcional "Promociones". Default OFF — un tenant
-  // pre-migración no ve el módulo hasta que lo prenda.
-  late final ValueNotifier<bool> _enablePromotions = ValueNotifier(false);
-
-  final _priceTier1NameCtrl =
-      TextEditingController(text: 'Depósito contado');
-  final _priceTier2NameCtrl =
-      TextEditingController(text: 'Depósito crédito');
-  final _priceTier3NameCtrl =
-      TextEditingController(text: 'Cliente final');
+  // F036: las capacidades opcionales (F023/F029/F030/F031/F033) se
+  // movieron a la pantalla dedicada "Capacidades del negocio"
+  // (business_capabilities_screen.dart). El perfil del negocio queda
+  // solo con los DATOS del negocio: nombre, NIT, logo, tipo, dirección.
 
   // 1:1 con la whitelist del backend (models.ValidBusinessTypes,
   // migración 020). Cada entry es (valor_snake_case, ícono, etiqueta).
@@ -119,20 +84,6 @@ class _BusinessProfileScreenState extends State<BusinessProfileScreen> {
     _nameCtrl.dispose();
     _nitCtrl.dispose();
     _addressCtrl.dispose();
-    _offersServices.dispose();
-    _sellsByWeight.dispose();
-    _hasTables.dispose();
-    // F029: liberar los recursos de los tier names.
-    _enablePriceTiers.dispose();
-    // F030: liberar el toggle de gestión de clientes.
-    _enableCustomerManagement.dispose();
-    // F031: liberar el toggle de cotizaciones.
-    _enableQuotes.dispose();
-    // F033: liberar el toggle de promociones.
-    _enablePromotions.dispose();
-    _priceTier1NameCtrl.dispose();
-    _priceTier2NameCtrl.dispose();
-    _priceTier3NameCtrl.dispose();
     super.dispose();
   }
 
@@ -168,55 +119,8 @@ class _BusinessProfileScreenState extends State<BusinessProfileScreen> {
           _selectedType = _legacyTypeRemap[initial] ?? initial;
         }
 
-        // F023: derivar estado de los toggles desde feature_flags.
-        // Un toggle está ON si su flag está activo Y el tipo no lo implica.
-        // Spec: "un toggle está ON si su flag está activo y el tipo no lo implica"
-        final rawFlags = data['feature_flags'];
-        if (rawFlags is Map<String, dynamic>) {
-          _featureFlags = FeatureFlags.fromJson(rawFlags);
-        }
-        final currentType = _selectedType;
-        final implied = impliedCapabilities(currentType);
-        _offersServices.value = _featureFlags.enableServices &&
-            !implied.contains(OptionalCapability.services);
-        _sellsByWeight.value = _featureFlags.enableFractionalUnits &&
-            !implied.contains(OptionalCapability.fractionalUnits);
-        _hasTables.value = _featureFlags.enableTables &&
-            !implied.contains(OptionalCapability.tables);
-
-        // F035: el modo de vocabulario lo gestiona CreditSettingsScreen,
-        // ya no se carga ni se persiste desde esta pantalla.
-
-        // F029: hidratar el toggle + nombres de tiers desde el perfil.
-        // El backend siempre devuelve los 4 campos (con sus DEFAULTs si
-        // el tenant nunca los tocó), pero somos defensivos: si vienen
-        // null, mantenemos los defaults declarados en el initState.
-        _enablePriceTiers.value = data['enable_price_tiers'] == true ||
-            _featureFlags.enablePriceTiers;
-        final t1 = (data['price_tier_1_name'] as String?)?.trim();
-        if (t1 != null && t1.isNotEmpty) _priceTier1NameCtrl.text = t1;
-        final t2 = (data['price_tier_2_name'] as String?)?.trim();
-        if (t2 != null && t2.isNotEmpty) _priceTier2NameCtrl.text = t2;
-        final t3 = (data['price_tier_3_name'] as String?)?.trim();
-        if (t3 != null && t3.isNotEmpty) _priceTier3NameCtrl.text = t3;
-
-        // F030: hidratar el toggle de gestión de clientes. El backend
-        // expone `enable_customer_management` en el perfil; somos
-        // defensivos y también miramos el feature_flag para tenants
-        // donde el campo aún no esté presente en el GET del perfil.
-        _enableCustomerManagement.value =
-            data['enable_customer_management'] == true ||
-                _featureFlags.enableCustomerManagement;
-
-        // F031: hidratar el toggle de cotizaciones — mismo patrón
-        // defensivo que customer management.
-        _enableQuotes.value = data['enable_quotes'] == true ||
-            _featureFlags.enableQuotes;
-
-        // F033: hidratar el toggle de promociones — mismo patrón
-        // defensivo.
-        _enablePromotions.value = data['enable_promotions'] == true ||
-            _featureFlags.enablePromotions;
+        // F036: las capacidades opcionales ya no se hidratan acá — se
+        // gestionan en "Capacidades del negocio".
 
         _loading = false;
       });
@@ -457,6 +361,9 @@ class _BusinessProfileScreenState extends State<BusinessProfileScreen> {
     HapticFeedback.mediumImpact();
 
     try {
+      // F036: el perfil persiste SOLO los datos del negocio. Las
+      // capacidades opcionales se guardan desde "Capacidades del
+      // negocio"; el cuaderno desde CreditSettingsScreen (F035).
       final updates = <String, dynamic>{
         'business_name': _nameCtrl.text.trim(),
         'nit': _nitCtrl.text.trim(),
@@ -466,35 +373,6 @@ class _BusinessProfileScreenState extends State<BusinessProfileScreen> {
         'address': _addressCtrl.text.trim(),
         if (_latitude != 0) 'latitude': _latitude,
         if (_longitude != 0) 'longitude': _longitude,
-        // F023: capacidades opcionales — se envían en config para que
-        // el backend recalcule feature_flags con tipo OR toggles.
-        // F029: el toggle enable_price_tiers viaja en el mismo `config`
-        // para mantener la convención (un solo "bag" de toggles de
-        // negocio). Los nombres custom van al nivel raíz junto al resto
-        // de columnas del tenant (no son toggles).
-        'config': {
-          'has_tables': _hasTables.value,
-          'offers_services': _offersServices.value,
-          'sells_by_weight': _sellsByWeight.value,
-          'enable_price_tiers': _enablePriceTiers.value,
-          // Los nombres SÓLO se mandan cuando la capacidad está ON.
-          // Si está OFF y el dueño nunca los tocó, evitamos
-          // sobreescribir lo que ya tenga el backend con strings
-          // vacíos del controller.
-          if (_enablePriceTiers.value) ...{
-            'price_tier_1_name': _priceTier1NameCtrl.text.trim(),
-            'price_tier_2_name': _priceTier2NameCtrl.text.trim(),
-            'price_tier_3_name': _priceTier3NameCtrl.text.trim(),
-          },
-          // F030: el toggle de gestión de clientes viaja en el mismo
-          // `config` (un solo bag de toggles de negocio).
-          'enable_customer_management': _enableCustomerManagement.value,
-          // F031: el toggle de cotizaciones viaja en el mismo `config`.
-          'enable_quotes': _enableQuotes.value,
-          // F033: el toggle de promociones viaja en el mismo `config`.
-          'enable_promotions': _enablePromotions.value,
-        },
-        // F035: credit_label_mode lo persiste CreditSettingsScreen aparte.
       };
 
       await _api.updateBusinessProfile(updates);
@@ -644,32 +522,11 @@ class _BusinessProfileScreenState extends State<BusinessProfileScreen> {
             const SizedBox(height: 12),
             _buildBusinessTypeRadioGrid(),
 
-            // F023: capacidades opcionales debajo del selector de tipo.
-            // F029: pasamos el toggle de precios multi-tier + los 3
-            // controllers de nombre. La sub-sección se expande sola
-            // cuando se prende el switch.
-            OptionalCapabilitiesSection(
-              selectedType: _selectedType,
-              flags: _featureFlags,
-              offersServices: _offersServices,
-              sellsByWeight: _sellsByWeight,
-              hasTables: _hasTables,
-              enablePriceTiers: _enablePriceTiers,
-              priceTier1NameCtrl: _priceTier1NameCtrl,
-              priceTier2NameCtrl: _priceTier2NameCtrl,
-              priceTier3NameCtrl: _priceTier3NameCtrl,
-              // F030: toggle "Gestión de clientes".
-              enableCustomerManagement: _enableCustomerManagement,
-              // F031: toggle "Cotizaciones".
-              enableQuotes: _enableQuotes,
-              // F033: toggle "Promociones".
-              enablePromotions: _enablePromotions,
-            ),
-
-            // F035: el selector de vocabulario se movió a la pantalla
-            // dedicada CreditSettingsScreen (accesible desde Mi Negocio
-            // → tile del cuaderno de créditos). Mantener TODO lo del
-            // cuaderno agrupado mejora hallabilidad para el tendero.
+            // F036: las capacidades opcionales se gestionan ahora en la
+            // pantalla "Capacidades del negocio" (Mi Negocio →
+            // Capacidades del negocio). El cuaderno de créditos vive en
+            // CreditSettingsScreen (F035). Este perfil queda solo con
+            // los DATOS del negocio.
 
             const SizedBox(height: 40),
           ],
@@ -703,20 +560,9 @@ class _BusinessProfileScreenState extends State<BusinessProfileScreen> {
             key: Key('profile_btype_$value'),
             onTap: () {
               HapticFeedback.lightImpact();
-              setState(() {
-                _selectedType = value;
-                // F023: limpiar toggles que el nuevo tipo ya implica
-                final implied = impliedCapabilities(value);
-                if (implied.contains(OptionalCapability.services)) {
-                  _offersServices.value = false;
-                }
-                if (implied.contains(OptionalCapability.fractionalUnits)) {
-                  _sellsByWeight.value = false;
-                }
-                if (implied.contains(OptionalCapability.tables)) {
-                  _hasTables.value = false;
-                }
-              });
+              // F036: el tipo solo se elige acá; las capacidades que
+              // implica se gestionan en "Capacidades del negocio".
+              setState(() => _selectedType = value);
             },
             child: AnimatedContainer(
               duration: const Duration(milliseconds: 180),

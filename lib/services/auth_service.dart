@@ -27,6 +27,11 @@ class AuthService {
   // so the app can resolve labels offline without any extra round-trip.
   // Default 'fiar' when the key is absent (legacy tenants, pre-F028).
   static const _keyCreditLabelMode = 'vendia_credit_label_mode';
+  // F036: flag de onboarding. Persistido para decidir post-login si se
+  // muestra el wizard de configuración inicial. Default 'true' cuando la
+  // clave está ausente — un tenant que ya viene usando la app (o cuya
+  // sesión es pre-F036) NO debe ver el wizard.
+  static const _keyOnboardingCompleted = 'vendia_onboarding_completed';
 
   final FlutterSecureStorage _storage;
 
@@ -66,6 +71,15 @@ class AuthService {
       key: _keyCreditLabelMode,
       value: (mode == 'credit') ? 'credit' : 'fiar',
     );
+    // F036: persist onboarding_completed. Only write when the source
+    // actually carries the field — a login response without it (legacy
+    // backend pre-F036) must NOT overwrite a previously-stored value.
+    if (source.containsKey('onboarding_completed')) {
+      await _storage.write(
+        key: _keyOnboardingCompleted,
+        value: (source['onboarding_completed'] == true) ? 'true' : 'false',
+      );
+    }
   }
 
   /// Save full session after login/register (new contract with refresh tokens).
@@ -112,6 +126,7 @@ class AuthService {
     Map<String, dynamic>? featureFlags,
     List<String>? businessTypes,
     String? creditLabelMode,
+    bool? onboardingCompleted,
   }) async {
     await _storage.write(key: _keyAccessToken, value: token);
     await _storage.write(key: _keyTenantId, value: tenantId);
@@ -121,6 +136,10 @@ class AuthService {
       'feature_flags': featureFlags,
       'business_types': businessTypes,
       'credit_label_mode': creditLabelMode,
+      // F036: solo se incluye la clave si el caller pasó el valor —
+      // _saveFeatureFlags omite la escritura si la clave está ausente.
+      if (onboardingCompleted != null)
+        'onboarding_completed': onboardingCompleted,
     });
     _creditLabelModeCache = (creditLabelMode == 'credit') ? 'credit' : 'fiar';
   }
@@ -188,6 +207,7 @@ class AuthService {
     Map<String, dynamic>? featureFlags,
     List<String>? businessTypes,
     String? creditLabelMode,
+    bool? onboardingCompleted,
   }) async {
     await _storage.write(key: _keyAccessToken, value: accessToken);
     await _storage.write(key: _keyRefreshToken, value: refreshToken);
@@ -201,6 +221,9 @@ class AuthService {
       'feature_flags': featureFlags,
       'business_types': businessTypes,
       'credit_label_mode': creditLabelMode,
+      // F036: ver nota en saveLegacySession.
+      if (onboardingCompleted != null)
+        'onboarding_completed': onboardingCompleted,
     });
     _creditLabelModeCache = (creditLabelMode == 'credit') ? 'credit' : 'fiar';
   }
@@ -237,6 +260,27 @@ class AuthService {
     }
     return const [];
   }
+
+  /// F036: ¿completó el dueño el onboarding inicial?
+  ///
+  /// Default `true` cuando la clave está ausente — un tenant cuya sesión
+  /// es pre-F036, o que ya venía usando la app, NO debe ver el wizard.
+  /// Solo un registro nuevo (que recibe `onboarding_completed=false` del
+  /// backend) lo verá.
+  Future<bool> getOnboardingCompleted() async {
+    final raw = await _storage.read(key: _keyOnboardingCompleted);
+    if (raw == null) return true;
+    return raw != 'false';
+  }
+
+  /// F036: marca el onboarding como completado y persiste de inmediato.
+  /// Se llama tras el PATCH /store/profile exitoso del wizard (al
+  /// terminar o saltar).
+  Future<void> updateOnboardingCompleted(bool completed) =>
+      _storage.write(
+        key: _keyOnboardingCompleted,
+        value: completed ? 'true' : 'false',
+      );
 
   Future<String?> getUserId() => _storage.read(key: _keyUserId);
   Future<String?> getBranchId() => _storage.read(key: _keyBranchId);

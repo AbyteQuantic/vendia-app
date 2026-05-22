@@ -7,7 +7,7 @@ import '../../services/auth_service.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/turnstile_captcha.dart';
 import '../auth/login_screen.dart';
-import '../dashboard/dashboard_screen.dart';
+import 'post_login_gate.dart';
 import 'onboarding_stepper_controller.dart';
 import 'steps/step_owner.dart';
 import 'steps/step_business.dart';
@@ -143,7 +143,9 @@ class _OnboardingStepperState extends State<OnboardingStepper> {
   void _finishOnboarding() {
     Navigator.of(context).pushAndRemoveUntil(
       PageRouteBuilder(
-        pageBuilder: (_, animation, __) => DashboardScreen(
+        // F036: PostLoginGate muestra el wizard de onboarding al
+        // tenant recién registrado (onboarding_completed=false).
+        pageBuilder: (_, animation, __) => PostLoginGate(
           ownerName: '${_ctrl.ownerName} ${_ctrl.ownerLastName}'.trim(),
           businessName: _ctrl.businessName,
         ),

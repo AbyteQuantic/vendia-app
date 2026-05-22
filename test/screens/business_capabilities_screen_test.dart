@@ -1,0 +1,125 @@
+// Spec: specs/036-dashboard-adaptativo-onboarding/spec.md
+//
+// T-26 — widget test de BusinessCapabilitiesScreen:
+//   - lista todas las capacidades opcionales con toggle + descripción.
+//   - cualquier tipo de negocio puede activar cualquier capacidad.
+//   - cambiar un toggle + guardar dispara el PATCH correcto.
+
+import 'package:flutter/material.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:flutter_test/flutter_test.dart';
+
+import 'package:vendia_pos/screens/dashboard/business_capabilities_screen.dart';
+import 'package:vendia_pos/services/api_service.dart';
+import 'package:vendia_pos/services/auth_service.dart';
+
+/// Fake ApiService — controla el GET del perfil y captura el PATCH.
+class _FakeApi extends ApiService {
+  _FakeApi({this.profile}) : super(AuthService());
+
+  final Map<String, dynamic>? profile;
+  Map<String, dynamic>? lastPatch;
+
+  @override
+  Future<Map<String, dynamic>> fetchBusinessProfile() async {
+    return profile ?? <String, dynamic>{'business_types': ['tienda_barrio']};
+  }
+
+  @override
+  Future<Map<String, dynamic>> updateBusinessProfile(
+      Map<String, dynamic> data) async {
+    lastPatch = data;
+    return data;
+  }
+}
+
+Widget _wrap(Widget child) => MaterialApp(home: child);
+
+void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+
+  setUpAll(() {
+    dotenv.testLoad(fileInput: 'API_BASE_URL=http://localhost:8080');
+  });
+
+  group('BusinessCapabilitiesScreen', () {
+    testWidgets('lista todas las capacidades opcionales con toggle',
+        (tester) async {
+      // Viewport alto para que la ListView monte todas las tarjetas.
+      tester.view.physicalSize = const Size(400, 2400);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+
+      final api = _FakeApi();
+      await tester.pumpWidget(
+          _wrap(BusinessCapabilitiesScreen(apiOverride: api)));
+      await tester.pumpAndSettle();
+
+      // Las 7 capacidades opcionales tienen su toggle.
+      expect(find.byKey(const Key('cap_toggle_services')), findsOneWidget);
+      expect(find.byKey(const Key('cap_toggle_fractional_units')),
+          findsOneWidget);
+      expect(find.byKey(const Key('cap_toggle_tables')), findsOneWidget);
+      expect(find.byKey(const Key('cap_toggle_price_tiers')), findsOneWidget);
+      expect(find.byKey(const Key('cap_toggle_customer_management')),
+          findsOneWidget);
+      expect(find.byKey(const Key('cap_toggle_quotes')), findsOneWidget);
+      expect(find.byKey(const Key('cap_toggle_promotions')), findsOneWidget);
+    });
+
+    testWidgets('una tienda_barrio también puede activar "Mesas" (AC-06)',
+        (tester) async {
+      // El tipo solo define el default; la pantalla expone todo.
+      final api = _FakeApi(profile: {
+        'business_types': ['tienda_barrio'],
+      });
+      await tester.pumpWidget(
+          _wrap(BusinessCapabilitiesScreen(apiOverride: api)));
+      await tester.pumpAndSettle();
+
+      // "Mesas" está más abajo en la lista — basta scrollear a ella.
+      await tester.scrollUntilVisible(
+          find.byKey(const Key('cap_toggle_tables')), 200);
+      expect(find.byKey(const Key('cap_toggle_tables')), findsOneWidget);
+    });
+
+    testWidgets('refleja el estado inicial desde el perfil', (tester) async {
+      final api = _FakeApi(profile: {
+        'business_types': ['tienda_barrio'],
+        'enable_customer_management': true,
+      });
+      await tester.pumpWidget(
+          _wrap(BusinessCapabilitiesScreen(apiOverride: api)));
+      await tester.pumpAndSettle();
+
+      await tester.scrollUntilVisible(
+          find.byKey(const Key('cap_toggle_customer_management')), 200);
+      final sw = tester.widget<SwitchListTile>(
+          find.byKey(const Key('cap_toggle_customer_management')));
+      expect(sw.value, isTrue);
+    });
+
+    testWidgets('cambiar un toggle + guardar dispara el PATCH', (tester) async {
+      final api = _FakeApi(profile: {
+        'business_types': ['tienda_barrio'],
+      });
+      await tester.pumpWidget(
+          _wrap(BusinessCapabilitiesScreen(apiOverride: api)));
+      await tester.pumpAndSettle();
+
+      // Prender "Gestión de clientes".
+      await tester.scrollUntilVisible(
+          find.byKey(const Key('cap_toggle_customer_management')), 200);
+      await tester.tap(find.byKey(const Key('cap_toggle_customer_management')));
+      await tester.pumpAndSettle();
+
+      // Guardar.
+      await tester.tap(find.byKey(const Key('cap_save_button')));
+      await tester.pumpAndSettle();
+
+      expect(api.lastPatch, isNotNull);
+      final config = api.lastPatch!['config'] as Map<String, dynamic>;
+      expect(config['enable_customer_management'], isTrue);
+    });
+  });
+}

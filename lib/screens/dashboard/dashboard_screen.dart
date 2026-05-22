@@ -16,23 +16,13 @@ import '../../widgets/profile_photo_avatar.dart';
 import '../../widgets/profile_photo_picker.dart';
 import '../../widgets/trial_bar.dart';
 import '../auth/login_screen.dart';
-import '../admin/suppliers_screen.dart';
 import '../inventory/add_merchandise_screen.dart';
-import '../inventory/inventory_report_screen.dart';
-import '../inventory/ingredients_screen.dart';
 import '../inventory/reorder_screen.dart';
-import '../online_store/promo_management_screen.dart';
-import '../purchases/purchase_orders_screen.dart';
-import '../recipes/recipe_step1_screen.dart';
-import '../work_orders/work_orders_screen.dart';
-import '../customers/customers_list_screen.dart';
-import '../quotes/quotes_list_screen.dart';
-import '../promotions/promotions_list_screen.dart';
 import '../pos/pos_screen.dart';
 import '../../database/sync/sales_sync.dart';
 import '../../widgets/sync_status_banner.dart';
+import '../../widgets/dashboard_module_grid.dart';
 import '../../utils/credit_labels.dart';
-import 'admin_hub_screen.dart';
 import 'financial_dashboard_screen.dart';
 import 'product_insights_screen.dart';
 
@@ -85,10 +75,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
     totalToday: 0, txCount: 0, topProduct: '—', prodCount: 0, recentSales: [],
   );
 
-  // Marketing Hub badge. Loaded lazily from the backend; failures
-  // degrade silently (keep 0) so the dashboard still renders offline.
-  int _activePromosCount = 0;
-
   // Low-stock alert count for the reorder suggestion badge.
   int _lowStockCount = 0;
 
@@ -99,27 +85,19 @@ class _DashboardScreenState extends State<DashboardScreen> {
   bool _isStoreOpen = false;
   bool _loadingStoreStatus = false;
 
-  // F030: capacidad "Gestión de clientes". Gatea la entrada "Mis
-  // clientes" del menú principal — default OFF, fail-closed: si el
-  // feature flag no está cargado la entrada no aparece (AC-05/AC-07).
-  bool _customerManagementEnabled = false;
-
-  // F031: capacidad "Cotizaciones". Gatea la entrada "Cotizaciones"
-  // del menú principal — default OFF, fail-closed igual que F030
-  // (AC-13: con la capacidad OFF la app es idéntica a hoy).
-  bool _quotesEnabled = false;
-
-  // F033: capacidad "Promociones". Gatea la entrada "Promociones" del
-  // menú principal — default OFF, fail-closed igual que F030/F031
-  // (AC-11: con la capacidad OFF la app es idéntica a hoy).
-  bool _promotionsEnabled = false;
+  // F036: Dashboard adaptativo. El grid de módulos se construye a
+  // partir del registro declarativo (dashboard_modules.dart) filtrado
+  // por el tipo de negocio + los feature flags del tenant. Se cargan
+  // en initState desde AuthService (offline-safe). Mientras no carguen,
+  // el grid se construye con defaults (solo core visible).
+  String? _businessType;
+  FeatureFlags _featureFlags = const FeatureFlags();
 
   @override
   void initState() {
     super.initState();
     _loadData();
     _syncFromServer();
-    _loadActivePromosCount();
     _loadLowStockCount();
     _loadStoreStatus();
     _loadCapabilityFlags();
@@ -148,7 +126,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
         if (!mounted) return;
         _loadData();
         _syncFromServer();
-        _loadActivePromosCount();
         _loadLowStockCount();
         _loadStoreStatus();
       });
@@ -197,22 +174,23 @@ class _DashboardScreenState extends State<DashboardScreen> {
     }
   }
 
-  /// F030 + F031: lee los feature flags `enable_customer_management` y
-  /// `enable_quotes` desde los flags persistidos por AuthService
-  /// (offline-safe). Fail-closed: cualquier error deja las entradas
-  /// "Mis clientes" / "Cotizaciones" ocultas.
+  /// F036: carga el tipo de negocio + los feature flags persistidos
+  /// por AuthService (offline-safe). Alimentan el grid adaptativo de
+  /// módulos. Fail-closed: cualquier error deja el grid con solo los
+  /// módulos core visibles.
   Future<void> _loadCapabilityFlags() async {
     try {
-      final flags = await AuthService().getFeatureFlags();
+      final auth = AuthService();
+      final flags = await auth.getFeatureFlags();
+      final type = await auth.getBusinessType();
       if (mounted) {
         setState(() {
-          _customerManagementEnabled = flags.enableCustomerManagement;
-          _quotesEnabled = flags.enableQuotes;
-          _promotionsEnabled = flags.enablePromotions;
+          _featureFlags = flags;
+          _businessType = (type != null && type.isNotEmpty) ? type : null;
         });
       }
     } catch (_) {
-      // Offline / sin flags — las entradas se mantienen ocultas.
+      // Offline / sin flags — el grid se queda con solo los core.
     }
   }
 
@@ -236,23 +214,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
       }
     } finally {
       if (mounted) setState(() => _loadingStoreStatus = false);
-    }
-  }
-
-  /// Best-effort fetch of active promotions for the Marketing Hub badge.
-  /// Non-blocking: any failure (offline, 401, backend not configured)
-  /// keeps the count at 0 and the badge hidden.
-  Future<void> _loadActivePromosCount() async {
-    try {
-      final api = ApiService(AuthService());
-      final promos = await api.fetchPromotions();
-      final active = promos.where((p) {
-        final v = p['active'] ?? p['is_active'] ?? p['enabled'];
-        return v is bool ? v : true;
-      }).length;
-      if (mounted) setState(() => _activePromosCount = active);
-    } catch (_) {
-      // Offline / not configured — keep badge hidden.
     }
   }
 
@@ -656,80 +617,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   ),
                 ),
 
-              // ── Quick Actions ───────────────────────────────────
-              SliverToBoxAdapter(
-                child: !context
-                        .watch<RoleManager>()
-                        .canManageBusinessSettings
-                    ? const SizedBox.shrink()
-                    : Padding(
-                  padding: const EdgeInsets.fromLTRB(18, 8, 18, 0),
-                  child: _GlassCard(
-                    onTap: () {
-                      HapticFeedback.lightImpact();
-                      Navigator.of(context).push(MaterialPageRoute(
-                        builder: (_) => const AdminHubScreen(),
-                      ));
-                    },
-                    child: Row(
-                      children: [
-                        Container(
-                          width: 48, height: 48,
-                          decoration: BoxDecoration(
-                            gradient: const LinearGradient(
-                              colors: [Color(0xFF1E3A8A), Color(0xFF3B82F6)],
-                            ),
-                            borderRadius: BorderRadius.circular(14),
-                          ),
-                          child: const Icon(Icons.settings_rounded,
-                              color: Colors.white, size: 24),
-                        ),
-                        const SizedBox(width: 14),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              const Text('Ajustes de mi Negocio',
-                                  style: TextStyle(fontSize: 17,
-                                      fontWeight: FontWeight.bold,
-                                      color: AppTheme.textPrimary)),
-                              Text(CreditLabels.of(context).hubNavDescription,
-                                  style: const TextStyle(fontSize: 14,
-                                      color: AppTheme.textSecondary),
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis),
-                            ],
-                          ),
-                        ),
-                        const Icon(Icons.chevron_right_rounded,
-                            color: Color(0xFF3B82F6), size: 24),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-
-                // ── Marketing Hub Card ──────────────────────────────
-                // Full-width entry point for the SaaS Phase 1 marketing
-                // module (combos, AI banners, online catalog share).
-                // Mirrors the "Ajustes de mi Negocio" card styling so
-                // the dashboard reads as a coherent stack of hubs.
-                SliverToBoxAdapter(
-                  child: Padding(
-                    padding: const EdgeInsets.fromLTRB(18, 12, 18, 0),
-                    child: _MarketingHubCard(
-                      activePromos: _activePromosCount,
-                      onTap: () async {
-                        HapticFeedback.lightImpact();
-                        await Navigator.of(context).push(MaterialPageRoute(
-                          builder: (_) => const PromoManagementScreen(),
-                        ));
-                        _loadActivePromosCount();
-                      },
-                    ),
-                  ),
-                ),
-
                 // ── Low Stock Alert ────────────────────────────────
                 if (_lowStockCount > 0)
                   SliverToBoxAdapter(
@@ -789,511 +676,16 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     ),
                   ),
 
-                // ── Inventory Report Card ──────────────────────────
+                // ── F036: Grid adaptativo de módulos ────────────────
+                // Reemplaza el antiguo stack imperativo de tarjetas
+                // (Reporte, Clientes, Cotizaciones, Promociones,
+                // Proveedores, Insumos, Recetas, Órdenes, Trabajos).
+                // Las 4 categorías se construyen filtrando el registro
+                // `dashboardModules` por el tipo de negocio + flags.
                 SliverToBoxAdapter(
-                  child: Padding(
-                    padding: const EdgeInsets.fromLTRB(18, 12, 18, 0),
-                    child: _GlassCard(
-                      onTap: () {
-                        HapticFeedback.lightImpact();
-                        Navigator.of(context).push(MaterialPageRoute(
-                          builder: (_) => const InventoryReportScreen(),
-                        ));
-                      },
-                      child: Row(
-                        children: [
-                          Container(
-                            width: 48, height: 48,
-                            decoration: BoxDecoration(
-                              gradient: const LinearGradient(
-                                colors: [Color(0xFF059669), Color(0xFF34D399)],
-                              ),
-                              borderRadius: BorderRadius.circular(14),
-                            ),
-                            child: const Icon(Icons.assessment_rounded,
-                                color: Colors.white, size: 24),
-                          ),
-                          const SizedBox(width: 14),
-                          const Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text('Reporte de Inventario',
-                                    style: TextStyle(fontSize: 17,
-                                        fontWeight: FontWeight.bold,
-                                        color: AppTheme.textPrimary)),
-                                Text('Kardex, entradas, salidas y stock',
-                                    style: TextStyle(fontSize: 14,
-                                        color: AppTheme.textSecondary),
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis),
-                              ],
-                            ),
-                          ),
-                          const Icon(Icons.chevron_right_rounded,
-                              color: Color(0xFF059669), size: 24),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-
-                // ── Mis Clientes Card (F030) ───────────────────────
-                // Solo visible cuando la capacidad
-                // enable_customer_management está ON — un store típico
-                // no la ve y el menú queda limpio (AC-05/AC-07).
-                if (_customerManagementEnabled)
-                  SliverToBoxAdapter(
-                    child: Padding(
-                      padding: const EdgeInsets.fromLTRB(18, 12, 18, 0),
-                      child: _GlassCard(
-                        onTap: () {
-                          HapticFeedback.lightImpact();
-                          Navigator.of(context).push(MaterialPageRoute(
-                            builder: (_) => const CustomersListScreen(),
-                          ));
-                        },
-                        child: Row(
-                          children: [
-                            Container(
-                              width: 48,
-                              height: 48,
-                              decoration: BoxDecoration(
-                                gradient: const LinearGradient(
-                                  colors: [
-                                    Color(0xFF1A2FA0),
-                                    Color(0xFF3D5AFE),
-                                  ],
-                                ),
-                                borderRadius: BorderRadius.circular(14),
-                              ),
-                              child: const Icon(Icons.people_outline,
-                                  color: Colors.white, size: 24),
-                            ),
-                            const SizedBox(width: 14),
-                            const Expanded(
-                              child: Column(
-                                crossAxisAlignment:
-                                    CrossAxisAlignment.start,
-                                children: [
-                                  Text('Mis Clientes',
-                                      style: TextStyle(
-                                          fontSize: 17,
-                                          fontWeight: FontWeight.bold,
-                                          color: AppTheme.textPrimary)),
-                                  Text(
-                                      'Quién le compra: historial y '
-                                      'total gastado',
-                                      style: TextStyle(
-                                          fontSize: 14,
-                                          color: AppTheme.textSecondary),
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis),
-                                ],
-                              ),
-                            ),
-                            const Icon(Icons.chevron_right_rounded,
-                                color: Color(0xFF1A2FA0), size: 24),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ),
-
-                // ── Cotizaciones Card (F031) ───────────────────────
-                // Solo visible cuando la capacidad enable_quotes está
-                // ON — un store de contado no la ve y el menú queda
-                // limpio (AC-13).
-                if (_quotesEnabled)
-                  SliverToBoxAdapter(
-                    child: Padding(
-                      padding: const EdgeInsets.fromLTRB(18, 12, 18, 0),
-                      child: _GlassCard(
-                        onTap: () {
-                          HapticFeedback.lightImpact();
-                          Navigator.of(context).push(MaterialPageRoute(
-                            builder: (_) => const QuotesListScreen(),
-                          ));
-                        },
-                        child: Row(
-                          children: [
-                            Container(
-                              width: 48,
-                              height: 48,
-                              decoration: BoxDecoration(
-                                gradient: const LinearGradient(
-                                  colors: [
-                                    Color(0xFF1A2FA0),
-                                    Color(0xFF3D5AFE),
-                                  ],
-                                ),
-                                borderRadius: BorderRadius.circular(14),
-                              ),
-                              child: const Icon(
-                                  Icons.description_outlined,
-                                  color: Colors.white,
-                                  size: 24),
-                            ),
-                            const SizedBox(width: 14),
-                            const Expanded(
-                              child: Column(
-                                crossAxisAlignment:
-                                    CrossAxisAlignment.start,
-                                children: [
-                                  Text('Cotizaciones',
-                                      style: TextStyle(
-                                          fontSize: 17,
-                                          fontWeight: FontWeight.bold,
-                                          color: AppTheme.textPrimary)),
-                                  Text(
-                                      'Arme y envíe propuestas de '
-                                      'precio a sus clientes',
-                                      style: TextStyle(
-                                          fontSize: 14,
-                                          color: AppTheme.textSecondary),
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis),
-                                ],
-                              ),
-                            ),
-                            const Icon(Icons.chevron_right_rounded,
-                                color: Color(0xFF1A2FA0), size: 24),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ),
-
-                // ── Promociones Card (F033) ────────────────────────
-                // Solo visible cuando la capacidad enable_promotions
-                // está ON — un store que no difunde promos no la ve y
-                // el menú queda limpio (AC-11).
-                if (_promotionsEnabled)
-                  SliverToBoxAdapter(
-                    child: Padding(
-                      padding: const EdgeInsets.fromLTRB(18, 12, 18, 0),
-                      child: _GlassCard(
-                        onTap: () {
-                          HapticFeedback.lightImpact();
-                          Navigator.of(context).push(MaterialPageRoute(
-                            builder: (_) => const PromotionsListScreen(),
-                          ));
-                        },
-                        child: Row(
-                          children: [
-                            Container(
-                              width: 48,
-                              height: 48,
-                              decoration: BoxDecoration(
-                                gradient: const LinearGradient(
-                                  colors: [
-                                    Color(0xFFD97706),
-                                    Color(0xFFF59E0B),
-                                  ],
-                                ),
-                                borderRadius: BorderRadius.circular(14),
-                              ),
-                              child: const Icon(
-                                  Icons.campaign_rounded,
-                                  color: Colors.white,
-                                  size: 24),
-                            ),
-                            const SizedBox(width: 14),
-                            const Expanded(
-                              child: Column(
-                                crossAxisAlignment:
-                                    CrossAxisAlignment.start,
-                                children: [
-                                  Text('Promociones',
-                                      style: TextStyle(
-                                          fontSize: 17,
-                                          fontWeight: FontWeight.bold,
-                                          color: AppTheme.textPrimary)),
-                                  Text(
-                                      'Avísele a sus clientes cuando '
-                                      'tenga ofertas',
-                                      style: TextStyle(
-                                          fontSize: 14,
-                                          color: AppTheme.textSecondary),
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis),
-                                ],
-                              ),
-                            ),
-                            const Icon(Icons.chevron_right_rounded,
-                                color: Color(0xFFD97706), size: 24),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ),
-
-                // ── Suppliers Card ─────────────────────────────────
-                SliverToBoxAdapter(
-                  child: Padding(
-                    padding: const EdgeInsets.fromLTRB(18, 12, 18, 0),
-                    child: _GlassCard(
-                      onTap: () {
-                        HapticFeedback.lightImpact();
-                        Navigator.of(context).push(MaterialPageRoute(
-                          builder: (_) => const SuppliersScreen(),
-                        ));
-                      },
-                      child: Row(
-                        children: [
-                          Container(
-                            width: 48, height: 48,
-                            decoration: BoxDecoration(
-                              gradient: const LinearGradient(
-                                colors: [Color(0xFF764BA2), Color(0xFF667EEA)],
-                              ),
-                              borderRadius: BorderRadius.circular(14),
-                            ),
-                            child: const Icon(Icons.local_shipping_rounded,
-                                color: Colors.white, size: 24),
-                          ),
-                          const SizedBox(width: 14),
-                          const Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text('Mis Proveedores',
-                                    style: TextStyle(fontSize: 17,
-                                        fontWeight: FontWeight.bold,
-                                        color: AppTheme.textPrimary)),
-                                Text('Pedidos por WhatsApp, llamada o SMS',
-                                    style: TextStyle(fontSize: 14,
-                                        color: AppTheme.textSecondary),
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis),
-                              ],
-                            ),
-                          ),
-                          const Icon(Icons.chevron_right_rounded,
-                              color: Color(0xFF764BA2), size: 24),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-
-                // ── Insumos Card (Feature 001) ─────────────────────
-                // Materia prima del negocio: arroz, pollo, aceite. Su
-                // stock alimenta el costeo de las recetas.
-                SliverToBoxAdapter(
-                  child: Padding(
-                    padding: const EdgeInsets.fromLTRB(18, 12, 18, 0),
-                    child: _GlassCard(
-                      onTap: () {
-                        HapticFeedback.lightImpact();
-                        Navigator.of(context).push(MaterialPageRoute(
-                          builder: (_) => const IngredientsScreen(),
-                        ));
-                      },
-                      child: Row(
-                        children: [
-                          Container(
-                            width: 48,
-                            height: 48,
-                            decoration: BoxDecoration(
-                              gradient: const LinearGradient(
-                                colors: [Color(0xFFD97706), Color(0xFFF59E0B)],
-                              ),
-                              borderRadius: BorderRadius.circular(14),
-                            ),
-                            child: const Icon(Icons.kitchen_rounded,
-                                color: Colors.white, size: 24),
-                          ),
-                          const SizedBox(width: 14),
-                          const Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text('Mis Insumos',
-                                    style: TextStyle(
-                                        fontSize: 17,
-                                        fontWeight: FontWeight.bold,
-                                        color: AppTheme.textPrimary)),
-                                Text('Materia prima: stock, mínimos y costo',
-                                    style: TextStyle(
-                                        fontSize: 14,
-                                        color: AppTheme.textSecondary),
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis),
-                              ],
-                            ),
-                          ),
-                          const Icon(Icons.chevron_right_rounded,
-                              color: Color(0xFFD97706), size: 24),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-
-                // ── Recetas Card (Feature 001) ─────────────────────
-                // Wizard para armar un plato vendible con sus insumos
-                // y ver costo, utilidad y margen.
-                SliverToBoxAdapter(
-                  child: Padding(
-                    padding: const EdgeInsets.fromLTRB(18, 12, 18, 0),
-                    child: _GlassCard(
-                      onTap: () {
-                        HapticFeedback.lightImpact();
-                        Navigator.of(context).push(MaterialPageRoute(
-                          builder: (_) => const RecipeStep1Screen(),
-                        ));
-                      },
-                      child: Row(
-                        children: [
-                          Container(
-                            width: 48,
-                            height: 48,
-                            decoration: BoxDecoration(
-                              gradient: const LinearGradient(
-                                colors: [Color(0xFFEE5A24), Color(0xFFFF6B6B)],
-                              ),
-                              borderRadius: BorderRadius.circular(14),
-                            ),
-                            child: const Icon(Icons.restaurant_menu_rounded,
-                                color: Colors.white, size: 24),
-                          ),
-                          const SizedBox(width: 14),
-                          const Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text('Recetas y Platos',
-                                    style: TextStyle(
-                                        fontSize: 17,
-                                        fontWeight: FontWeight.bold,
-                                        color: AppTheme.textPrimary)),
-                                Text('Arme un plato y vea su costo y ganancia',
-                                    style: TextStyle(
-                                        fontSize: 14,
-                                        color: AppTheme.textSecondary),
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis),
-                              ],
-                            ),
-                          ),
-                          const Icon(Icons.chevron_right_rounded,
-                              color: Color(0xFFEE5A24), size: 24),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-
-                // ── Órdenes de Compra Card (Feature 002) ───────────
-                // Arme un pedido a un proveedor y al recibirlo el stock
-                // entra solo, vía kardex (spec 002).
-                SliverToBoxAdapter(
-                  child: Padding(
-                    padding: const EdgeInsets.fromLTRB(18, 12, 18, 0),
-                    child: _GlassCard(
-                      onTap: () {
-                        HapticFeedback.lightImpact();
-                        Navigator.of(context).push(MaterialPageRoute(
-                          builder: (_) => const PurchaseOrdersScreen(),
-                        ));
-                      },
-                      child: Row(
-                        children: [
-                          Container(
-                            width: 48,
-                            height: 48,
-                            decoration: BoxDecoration(
-                              gradient: const LinearGradient(
-                                colors: [Color(0xFF0D9668), Color(0xFF34D399)],
-                              ),
-                              borderRadius: BorderRadius.circular(14),
-                            ),
-                            child: const Icon(Icons.shopping_cart_rounded,
-                                color: Colors.white, size: 24),
-                          ),
-                          const SizedBox(width: 14),
-                          const Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text('Órdenes de Compra',
-                                    style: TextStyle(
-                                        fontSize: 17,
-                                        fontWeight: FontWeight.bold,
-                                        color: AppTheme.textPrimary)),
-                                Text('Pida a proveedores y reciba el stock',
-                                    style: TextStyle(
-                                        fontSize: 14,
-                                        color: AppTheme.textSecondary),
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis),
-                              ],
-                            ),
-                          ),
-                          const Icon(Icons.chevron_right_rounded,
-                              color: Color(0xFF0D9668), size: 24),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-
-                // ── Trabajos de Muebles Card (Feature 003) ─────────
-                // Cotice un mueble con materiales y mano de obra, siga
-                // el trabajo hasta entregarlo y descuente materiales al
-                // terminarlo (spec 003).
-                SliverToBoxAdapter(
-                  child: Padding(
-                    padding: const EdgeInsets.fromLTRB(18, 12, 18, 0),
-                    child: _GlassCard(
-                      onTap: () {
-                        HapticFeedback.lightImpact();
-                        Navigator.of(context).push(MaterialPageRoute(
-                          builder: (_) => const WorkOrdersScreen(),
-                        ));
-                      },
-                      child: Row(
-                        children: [
-                          Container(
-                            width: 48,
-                            height: 48,
-                            decoration: BoxDecoration(
-                              gradient: const LinearGradient(
-                                colors: [
-                                  AppTheme.primary,
-                                  AppTheme.primaryLight,
-                                ],
-                              ),
-                              borderRadius: BorderRadius.circular(14),
-                            ),
-                            child: const Icon(Icons.handyman_rounded,
-                                color: Colors.white, size: 24),
-                          ),
-                          const SizedBox(width: 14),
-                          const Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text('Trabajos de Muebles',
-                                    style: TextStyle(
-                                        fontSize: 17,
-                                        fontWeight: FontWeight.bold,
-                                        color: AppTheme.textPrimary)),
-                                Text('Cotice, fabrique y repare por encargo',
-                                    style: TextStyle(
-                                        fontSize: 14,
-                                        color: AppTheme.textSecondary),
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis),
-                              ],
-                            ),
-                          ),
-                          const Icon(Icons.chevron_right_rounded,
-                              color: AppTheme.primary, size: 24),
-                        ],
-                      ),
-                    ),
+                  child: DashboardModuleGrid(
+                    businessType: _businessType,
+                    flags: _featureFlags,
                   ),
                 ),
 
@@ -1756,127 +1148,6 @@ class _GlassCard extends StatelessWidget {
     );
   }
 }
-
-// ═══════════════════════════════════════════════════════════════════════════════
-// MARKETING HUB CARD
-// ═══════════════════════════════════════════════════════════════════════════════
-
-/// Full-width entry point for the SaaS Phase 1 marketing module.
-///
-/// Styled to mirror the "Ajustes de mi Negocio" card (same padding,
-/// radius, chevron, subtitle hierarchy) but tinted in the accent
-/// purple so it reads as a distinct, higher-energy hub over a neutral
-/// settings row. Badge surfaces the count of active promotions when
-/// the backend is reachable; stays hidden when count is 0.
-class _MarketingHubCard extends StatelessWidget {
-  final int activePromos;
-  final VoidCallback onTap;
-
-  const _MarketingHubCard({
-    required this.activePromos,
-    required this.onTap,
-  });
-
-  // Accent purple — intentionally different from AppTheme.primary so
-  // this hub stands apart from the settings card above it.
-  static const Color _accent = Color(0xFF7C3AED);
-
-  @override
-  Widget build(BuildContext context) {
-    final badgeLabel = activePromos == 1
-        ? '1 promo activa'
-        : '$activePromos promos activas';
-
-    return Semantics(
-      button: true,
-      label: 'Catálogo y Promos. $badgeLabel',
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          key: const Key('btn_marketing_hub'),
-          borderRadius: BorderRadius.circular(20),
-          onTap: onTap,
-          child: Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: _accent.withValues(alpha: 0.08),
-              borderRadius: BorderRadius.circular(20),
-              border: Border.all(color: _accent.withValues(alpha: 0.18)),
-            ),
-            child: Row(
-              children: [
-                Container(
-                  width: 48,
-                  height: 48,
-                  decoration: BoxDecoration(
-                    color: _accent.withValues(alpha: 0.15),
-                    borderRadius: BorderRadius.circular(14),
-                  ),
-                  child: const Icon(Icons.campaign_rounded,
-                      color: _accent, size: 26),
-                ),
-                const SizedBox(width: 14),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      // Title + badge in a Wrap so the badge breaks
-                      // to a second line on 360dp instead of squeezing
-                      // the title into "Catálogo ..." with ellipsis.
-                      Wrap(
-                        spacing: 8,
-                        runSpacing: 4,
-                        crossAxisAlignment: WrapCrossAlignment.center,
-                        children: [
-                          const Text(
-                            '📢 Catálogo y Promos',
-                            style: TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.bold,
-                              color: AppTheme.textPrimary,
-                            ),
-                          ),
-                          if (activePromos > 0)
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                  horizontal: 10, vertical: 3),
-                              decoration: BoxDecoration(
-                                color: _accent,
-                                borderRadius: BorderRadius.circular(10),
-                              ),
-                              child: Text(
-                                badgeLabel,
-                                style: const TextStyle(
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.w700,
-                                  color: Colors.white,
-                                ),
-                              ),
-                            ),
-                        ],
-                      ),
-                      const SizedBox(height: 4),
-                      const Text(
-                        'Cree combos, banners con IA y comparta su tienda online.',
-                        style: TextStyle(
-                          fontSize: 16,
-                          color: AppTheme.textSecondary,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                const Icon(Icons.chevron_right_rounded,
-                    color: _accent, size: 26),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
 /// Account menu button on the dashboard header. Opens a bottom sheet
 /// with the user's identity + workspace and a "Cerrar sesión" action.
 /// Visible to every role — owners had logout inside Configuración,

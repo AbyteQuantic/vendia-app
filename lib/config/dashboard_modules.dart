@@ -1,0 +1,313 @@
+// Spec: specs/036-dashboard-adaptativo-onboarding/spec.md
+//
+// Registro declarativo de los módulos del Dashboard — una sola fuente
+// de verdad. El Dashboard (dashboard_screen.dart) se construye iterando
+// `dashboardModules` y filtrando con `visibleModulesFor(...)`.
+//
+// Cada módulo declara:
+//   - categoría     → en cuál de las 4 secciones se agrupa
+//   - capa          → core / byType / optional (regla de visibilidad)
+//   - destino       → builder de la pantalla a la que navega
+//
+// Capas de visibilidad (spec §4.1):
+//   core     → visible para todos los negocios.
+//   byType   → visible si `business_type` está en `businessTypes`.
+//   optional → visible si la `capability` correspondiente está ON.
+//
+// Para sumar un módulo nuevo: agregar una entrada acá. El Dashboard,
+// los tests de cobertura (AC-10) y el filtrado lo recogen solos.
+
+import 'package:flutter/material.dart';
+
+import '../services/auth_service.dart';
+import '../theme/app_theme.dart';
+import '../utils/business_capability_map.dart';
+import '../screens/admin/suppliers_screen.dart';
+import '../screens/customers/customers_list_screen.dart';
+import '../screens/dashboard/admin_hub_screen.dart';
+import '../screens/history/sales_history_screen.dart';
+import '../screens/inventory/add_merchandise_screen.dart';
+import '../screens/inventory/ingredients_screen.dart';
+import '../screens/inventory/inventory_report_screen.dart';
+import '../screens/online_store/promo_management_screen.dart';
+import '../screens/pos/pos_screen.dart';
+import '../screens/promotions/promotions_list_screen.dart';
+import '../screens/purchases/purchase_orders_screen.dart';
+import '../screens/quotes/quotes_list_screen.dart';
+import '../screens/recipes/recipe_step1_screen.dart';
+import '../screens/work_orders/work_orders_screen.dart';
+
+/// Las 4 categorías con encabezado del Dashboard (spec §4.1).
+enum ModuleCategory { vender, inventario, clientes, miNegocio }
+
+/// Capa de visibilidad de un módulo.
+enum ModuleLayer {
+  /// Visible para todos los negocios.
+  core,
+
+  /// Visible solo si `business_type` está en `businessTypes`.
+  byType,
+
+  /// Visible solo si la `capability` (feature flag) está ON.
+  optional,
+}
+
+/// Encabezado en español de cada categoría.
+extension ModuleCategoryLabel on ModuleCategory {
+  String get label => switch (this) {
+        ModuleCategory.vender => 'VENDER',
+        ModuleCategory.inventario => 'INVENTARIO',
+        ModuleCategory.clientes => 'CLIENTES',
+        ModuleCategory.miNegocio => 'MI NEGOCIO',
+      };
+}
+
+/// Un módulo del Dashboard. Inmutable — el registro es `const`.
+class DashboardModule {
+  /// Identificador estable (usado en tests y como Key del widget).
+  final String id;
+
+  /// Título visible en la tarjeta.
+  final String title;
+
+  /// Subtítulo / descripción corta.
+  final String subtitle;
+
+  /// Ícono de la tarjeta.
+  final IconData icon;
+
+  /// Color de acento de la tarjeta.
+  final Color color;
+
+  /// Categoría con encabezado donde se agrupa.
+  final ModuleCategory category;
+
+  /// Capa de visibilidad.
+  final ModuleLayer layer;
+
+  /// Builder de la pantalla destino.
+  final Widget Function() destination;
+
+  /// Para [ModuleLayer.byType]: tipos de negocio que activan el módulo.
+  /// Vacío para core/optional.
+  final List<String> businessTypes;
+
+  /// Para [ModuleLayer.optional]: capacidad que gatea el módulo.
+  /// `null` para core/byType.
+  final OptionalCapability? capability;
+
+  const DashboardModule({
+    required this.id,
+    required this.title,
+    required this.subtitle,
+    required this.icon,
+    required this.color,
+    required this.category,
+    required this.layer,
+    required this.destination,
+    this.businessTypes = const [],
+    this.capability,
+  });
+}
+
+// Tipos de negocio que "cocinan" un plato a partir de insumos —
+// activan Recetas, Insumos y Órdenes de compra.
+const _cookingTypes = ['restaurante', 'comidas_rapidas'];
+
+// Tipos que fabrican / reparan muebles.
+const _furnitureTypes = ['manufactura', 'reparacion_muebles'];
+
+/// Registro central de todos los módulos del Dashboard.
+const List<DashboardModule> dashboardModules = [
+  // ── VENDER ───────────────────────────────────────────────────────
+  DashboardModule(
+    id: 'registrar_venta',
+    title: 'Registrar venta',
+    subtitle: 'Cobre rápido y registre el pago',
+    icon: Icons.point_of_sale_rounded,
+    color: AppTheme.primary,
+    category: ModuleCategory.vender,
+    layer: ModuleLayer.core,
+    destination: PosScreen.new,
+  ),
+  DashboardModule(
+    id: 'historial',
+    title: 'Historial de ventas',
+    subtitle: 'Vea todas las ventas registradas',
+    icon: Icons.receipt_long_rounded,
+    color: Color(0xFF3B82F6),
+    category: ModuleCategory.vender,
+    layer: ModuleLayer.core,
+    destination: SalesHistoryScreen.new,
+  ),
+  DashboardModule(
+    id: 'cotizaciones',
+    title: 'Cotizaciones',
+    subtitle: 'Arme y envíe propuestas de precio',
+    icon: Icons.description_outlined,
+    color: Color(0xFF1A2FA0),
+    category: ModuleCategory.vender,
+    layer: ModuleLayer.optional,
+    capability: OptionalCapability.quotes,
+    destination: QuotesListScreen.new,
+  ),
+
+  // ── INVENTARIO ───────────────────────────────────────────────────
+  DashboardModule(
+    id: 'productos',
+    title: 'Productos',
+    subtitle: 'Agregue mercancía, edite precios y stock',
+    icon: Icons.inventory_2_rounded,
+    color: Color(0xFF6366F1),
+    category: ModuleCategory.inventario,
+    layer: ModuleLayer.core,
+    destination: AddMerchandiseScreen.new,
+  ),
+  DashboardModule(
+    id: 'reporte_inventario',
+    title: 'Reporte de Inventario',
+    subtitle: 'Kardex, entradas, salidas y stock',
+    icon: Icons.assessment_rounded,
+    color: Color(0xFF059669),
+    category: ModuleCategory.inventario,
+    layer: ModuleLayer.core,
+    destination: InventoryReportScreen.new,
+  ),
+  DashboardModule(
+    id: 'proveedores',
+    title: 'Mis Proveedores',
+    subtitle: 'Pedidos por WhatsApp, llamada o SMS',
+    icon: Icons.local_shipping_rounded,
+    color: Color(0xFF764BA2),
+    category: ModuleCategory.inventario,
+    layer: ModuleLayer.core,
+    destination: SuppliersScreen.new,
+  ),
+  DashboardModule(
+    id: 'insumos',
+    title: 'Mis Insumos',
+    subtitle: 'Materia prima: stock, mínimos y costo',
+    icon: Icons.kitchen_rounded,
+    color: Color(0xFFD97706),
+    category: ModuleCategory.inventario,
+    layer: ModuleLayer.byType,
+    businessTypes: _cookingTypes,
+    destination: IngredientsScreen.new,
+  ),
+  DashboardModule(
+    id: 'recetas',
+    title: 'Recetas y Platos',
+    subtitle: 'Arme un plato y vea su costo y ganancia',
+    icon: Icons.restaurant_menu_rounded,
+    color: Color(0xFFEE5A24),
+    category: ModuleCategory.inventario,
+    layer: ModuleLayer.byType,
+    businessTypes: _cookingTypes,
+    destination: RecipeStep1Screen.new,
+  ),
+  DashboardModule(
+    id: 'ordenes_compra',
+    title: 'Órdenes de Compra',
+    subtitle: 'Pida a proveedores y reciba el stock',
+    icon: Icons.shopping_cart_rounded,
+    color: Color(0xFF0D9668),
+    category: ModuleCategory.inventario,
+    layer: ModuleLayer.byType,
+    businessTypes: _cookingTypes,
+    destination: PurchaseOrdersScreen.new,
+  ),
+  DashboardModule(
+    id: 'trabajos_muebles',
+    title: 'Trabajos de Muebles',
+    subtitle: 'Cotice, fabrique y repare por encargo',
+    icon: Icons.handyman_rounded,
+    color: AppTheme.primary,
+    category: ModuleCategory.inventario,
+    layer: ModuleLayer.byType,
+    businessTypes: _furnitureTypes,
+    destination: WorkOrdersScreen.new,
+  ),
+
+  // ── CLIENTES ─────────────────────────────────────────────────────
+  DashboardModule(
+    id: 'mis_clientes',
+    title: 'Mis Clientes',
+    subtitle: 'Quién le compra: historial y total gastado',
+    icon: Icons.people_outline,
+    color: Color(0xFF1A2FA0),
+    category: ModuleCategory.clientes,
+    layer: ModuleLayer.optional,
+    capability: OptionalCapability.customerManagement,
+    destination: CustomersListScreen.new,
+  ),
+  DashboardModule(
+    id: 'promociones',
+    title: 'Promociones',
+    subtitle: 'Avísele a sus clientes cuando tenga ofertas',
+    icon: Icons.campaign_rounded,
+    color: Color(0xFFD97706),
+    category: ModuleCategory.clientes,
+    layer: ModuleLayer.optional,
+    capability: OptionalCapability.promotions,
+    destination: PromotionsListScreen.new,
+  ),
+
+  // ── MI NEGOCIO ───────────────────────────────────────────────────
+  DashboardModule(
+    id: 'marketing_hub',
+    title: 'Marketing y Combos',
+    subtitle: 'Combos, banners con IA y catálogo en línea',
+    icon: Icons.auto_awesome_rounded,
+    color: Color(0xFF7C3AED),
+    category: ModuleCategory.miNegocio,
+    layer: ModuleLayer.core,
+    destination: PromoManagementScreen.new,
+  ),
+  DashboardModule(
+    id: 'configuracion',
+    title: 'Ajustes de mi Negocio',
+    subtitle: 'Perfil, capacidades, empleados y dispositivos',
+    icon: Icons.settings_rounded,
+    color: Color(0xFF1E3A8A),
+    category: ModuleCategory.miNegocio,
+    layer: ModuleLayer.core,
+    destination: AdminHubScreen.new,
+  ),
+];
+
+/// Filtra el registro según el [businessType] y los [flags] del tenant.
+///
+/// Reglas (spec §4.1):
+///   - core     → siempre incluido.
+///   - byType   → incluido si `businessType` está en `module.businessTypes`.
+///   - optional → incluido si la `capability` correspondiente está ON.
+List<DashboardModule> visibleModulesFor(
+  String? businessType,
+  FeatureFlags flags,
+) {
+  return dashboardModules.where((m) {
+    switch (m.layer) {
+      case ModuleLayer.core:
+        return true;
+      case ModuleLayer.byType:
+        return businessType != null &&
+            m.businessTypes.contains(businessType);
+      case ModuleLayer.optional:
+        return _capabilityEnabled(m.capability, flags);
+    }
+  }).toList();
+}
+
+/// Mapea una [OptionalCapability] al flag correspondiente de [FeatureFlags].
+bool _capabilityEnabled(OptionalCapability? cap, FeatureFlags flags) {
+  return switch (cap) {
+    OptionalCapability.services => flags.enableServices,
+    OptionalCapability.fractionalUnits => flags.enableFractionalUnits,
+    OptionalCapability.tables => flags.enableTables,
+    OptionalCapability.priceTiers => flags.enablePriceTiers,
+    OptionalCapability.customerManagement => flags.enableCustomerManagement,
+    OptionalCapability.quotes => flags.enableQuotes,
+    OptionalCapability.promotions => flags.enablePromotions,
+    null => false,
+  };
+}

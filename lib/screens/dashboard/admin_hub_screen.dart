@@ -7,6 +7,7 @@ import '../../theme/app_theme.dart';
 import '../../utils/credit_labels.dart';
 import '../auth/login_screen.dart';
 import 'business_profile_screen.dart';
+import 'business_capabilities_screen.dart';
 import 'branches_list_screen.dart';
 import 'payment_methods_screen.dart';
 import 'payment_quick_setup_screen.dart';
@@ -234,6 +235,18 @@ class _AdminHubScreenState extends State<AdminHubScreen> {
               subtitle: 'Nombre, NIT, logo y tipo de catálogo',
               onTap: () => Navigator.of(context).push(
                 MaterialPageRoute(builder: (_) => const BusinessProfileScreen()),
+              ),
+            ),
+            // F036: pantalla única de capacidades opcionales — reemplaza
+            // los toggles dispersos que vivían en "Perfil del Negocio".
+            _SettingsTile(
+              icon: Icons.tune_rounded,
+              iconColor: const Color(0xFF7C3AED),
+              title: 'Capacidades del negocio',
+              subtitle: 'Active mesas, clientes, cotizaciones y más',
+              onTap: () => Navigator.of(context).push(
+                MaterialPageRoute(
+                    builder: (_) => const BusinessCapabilitiesScreen()),
               ),
             ),
 

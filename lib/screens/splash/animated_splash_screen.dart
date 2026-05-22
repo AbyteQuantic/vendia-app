@@ -5,7 +5,7 @@ import 'package:rive/rive.dart' hide LinearGradient;
 import '../../services/auth_service.dart';
 import '../../theme/app_theme.dart';
 import '../auth/login_screen.dart';
-import '../dashboard/dashboard_screen.dart';
+import '../onboarding/post_login_gate.dart';
 
 /// Splash screen animado con Rive (o fallback Flutter mientras no haya .riv).
 ///
@@ -142,7 +142,8 @@ class _AnimatedSplashScreenState extends State<AnimatedSplashScreen>
   }) {
     final route = hasSession
         ? PageRouteBuilder(
-            pageBuilder: (_, animation, __) => DashboardScreen(
+            // F036: PostLoginGate decide entre wizard y Dashboard.
+            pageBuilder: (_, animation, __) => PostLoginGate(
               ownerName: ownerName,
               businessName: businessName,
             ),
