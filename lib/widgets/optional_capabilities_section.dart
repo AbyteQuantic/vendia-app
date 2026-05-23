@@ -233,9 +233,12 @@ class OptionalCapabilitiesSection extends StatelessWidget {
             showDivider: showDivider,
           ));
         case OptionalCapability.marketingHub:
-          // F037: Marketing Hub se activa desde "Capacidades del
-          // negocio" / reel del Dashboard, no desde esta sección de
-          // negocio. No agregamos tile acá.
+        case OptionalCapability.recipes:
+        case OptionalCapability.supplies:
+        case OptionalCapability.furnitureJobs:
+        case OptionalCapability.purchaseOrders:
+          // F037: estas capacidades se activan desde "Capacidades del
+          // negocio" / reel del Dashboard, no desde esta sección.
           break;
       }
     }

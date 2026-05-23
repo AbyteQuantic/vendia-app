@@ -94,7 +94,25 @@ void main() {
       expect(find.text('Análisis de Ganancias'), findsOneWidget);
     });
 
-    testWidgets('reparacion_muebles ve Trabajos de Muebles', (tester) async {
+    testWidgets('F037: activar enableFurnitureJobs hace aparecer Trabajos de Muebles',
+        (tester) async {
+      // F037 migra trabajos_muebles de byType (rígido por tipo) a
+      // optional (capacidad propia). El tenant con `reparacion_muebles`
+      // ya no lo ve automáticamente; el backfill backend prendió la
+      // capacidad para tenants con datos legacy en `work_orders`. Acá
+      // simulamos un tenant que ya tiene la capacidad ON.
+      await tester.pumpWidget(_wrap(
+        const DashboardModuleGrid(
+          businessType: 'reparacion_muebles',
+          flags: FeatureFlags(enableFurnitureJobs: true),
+        ),
+      ));
+
+      expect(find.text('Trabajos de Muebles'), findsOneWidget);
+    });
+
+    testWidgets('F037: sin enableFurnitureJobs, reparacion_muebles NO ve Trabajos',
+        (tester) async {
       await tester.pumpWidget(_wrap(
         const DashboardModuleGrid(
           businessType: 'reparacion_muebles',
@@ -102,7 +120,7 @@ void main() {
         ),
       ));
 
-      expect(find.text('Trabajos de Muebles'), findsOneWidget);
+      expect(find.text('Trabajos de Muebles'), findsNothing);
     });
 
     testWidgets('una capacidad ON hace aparecer su módulo', (tester) async {
