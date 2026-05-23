@@ -168,6 +168,9 @@ void main() {
     });
 
     test('con TODAS las opcionales ON devuelve vacío (AC-07)', () {
+      // Lista completa de capacidades opcionales — debe incluir las
+      // 4 nuevas de F037 (recipes/supplies/furnitureJobs/purchaseOrders)
+      // que migraron de byType a optional con backfill.
       const flags = FeatureFlags(
         enableServices: true,
         enableFractionalUnits: true,
@@ -177,6 +180,10 @@ void main() {
         enableQuotes: true,
         enablePromotions: true,
         enableMarketingHub: true,
+        enableRecipes: true,
+        enableSupplies: true,
+        enableFurnitureJobs: true,
+        enablePurchaseOrders: true,
       );
       final unactivated = unactivatedOptionalModules(flags);
       expect(unactivated, isEmpty);
