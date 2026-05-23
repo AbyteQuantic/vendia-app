@@ -38,17 +38,43 @@ void main() {
       expect(ids, isNot(contains('mis_clientes')));
     });
 
-    test('reparacion_muebles ve core + Trabajos de Muebles (byType)', () {
+    test(
+        'F037: reparacion_muebles SIN enableFurnitureJobs NO ve Trabajos de Muebles',
+        () {
+      // F037 migró "trabajos_muebles" de byType a optional con
+      // capacidad propia (enableFurnitureJobs). El tipo de negocio ya
+      // no lo activa solo; el backfill backend prende la flag para
+      // tenants con datos en `work_orders`. Sin la flag y sin datos
+      // el módulo NO aparece.
       final ids = visibleModulesFor('reparacion_muebles', const FeatureFlags())
           .map((m) => m.id)
           .toSet();
+      expect(ids, isNot(contains('trabajos_muebles')));
+    });
+
+    test('F037: con enableFurnitureJobs=true → Trabajos de Muebles aparece',
+        () {
+      final ids = visibleModulesFor(
+        'reparacion_muebles',
+        const FeatureFlags(enableFurnitureJobs: true),
+      ).map((m) => m.id).toSet();
       expect(ids, contains('trabajos_muebles'));
     });
 
-    test('restaurante ve Recetas (byType) sin activar nada', () {
+    test('F037: restaurante SIN enableRecipes NO ve Recetas', () {
+      // Idem: "recetas" migró a optional con enableRecipes (backfill
+      // prende la flag para tenants con filas en `recipes`).
       final ids = visibleModulesFor('restaurante', const FeatureFlags())
           .map((m) => m.id)
           .toSet();
+      expect(ids, isNot(contains('recetas')));
+    });
+
+    test('F037: con enableRecipes=true → Recetas aparece', () {
+      final ids = visibleModulesFor(
+        'restaurante',
+        const FeatureFlags(enableRecipes: true),
+      ).map((m) => m.id).toSet();
       expect(ids, contains('recetas'));
     });
 
