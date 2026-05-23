@@ -352,6 +352,12 @@ class FeatureFlags {
   /// del backend `tenants.enable_promotions`. Default OFF.
   final bool enablePromotions;
 
+  /// F037: Marketing Hub — combos, banners IA y catálogo en línea.
+  /// Antes era core (F036); F037 lo migra a opt-in para dejar el
+  /// Dashboard inicial ultra-simple. Espejo de
+  /// `tenants.enable_marketing_hub`. Default OFF.
+  final bool enableMarketingHub;
+
   const FeatureFlags({
     this.enableTables = false,
     this.enableKDS = false,
@@ -363,6 +369,7 @@ class FeatureFlags {
     this.enableCustomerManagement = false,
     this.enableQuotes = false,
     this.enablePromotions = false,
+    this.enableMarketingHub = false,
   });
 
   factory FeatureFlags.fromJson(Map<String, dynamic> json) => FeatureFlags(
@@ -384,5 +391,8 @@ class FeatureFlags {
         // F033 — default false: con la capacidad OFF no aparece UI nueva
         // (AC-11).
         enablePromotions: json['enable_promotions'] == true,
+        // F037 — default false: con la capacidad OFF Marketing Hub queda
+        // como opción descubrible en el reel del Dashboard.
+        enableMarketingHub: json['enable_marketing_hub'] == true,
       );
 }

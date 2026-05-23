@@ -3,6 +3,7 @@
 // Spec: specs/030-administracion-clientes-no-tienda/spec.md
 // Spec: specs/031-cotizaciones/spec.md
 // Spec: specs/033-difusion-promociones/spec.md
+// Spec: specs/037-reel-capacidades-dashboard/spec.md
 //
 // Mapa tipo-de-negocio → capacidades implícitas.
 //
@@ -75,6 +76,15 @@ enum OptionalCapability {
   /// ON: el menú principal muestra "Promociones" y el dueño puede armar
   /// campañas de difusión y enviarlas por WhatsApp / link público.
   promotions,
+
+  /// "Marketing Hub" — combos + banners IA + catálogo en línea (F037).
+  /// → enable_marketing_hub
+  ///
+  /// Default OFF; antes era core (F036) y migra a opt-in con F037 para
+  /// dejar el Dashboard inicial ultra-simple. El toggle siempre aparece
+  /// como opción manual. Cuando está ON: aparece "Marketing y Combos"
+  /// en categoría MI NEGOCIO del Dashboard.
+  marketingHub,
 }
 
 /// Retorna las [OptionalCapability] que el [businessType] YA concede
