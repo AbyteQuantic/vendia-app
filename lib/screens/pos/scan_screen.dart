@@ -16,9 +16,32 @@ class ScanScreen extends StatefulWidget {
 }
 
 class _ScanScreenState extends State<ScanScreen> {
+  // Formatos típicos de productos de retail/inventario.
+  // ⚠️ EN WEB es obligatorio especificarlos — el motor wasm de
+  // `mobile_scanner` no detecta nada si la lista queda vacía. En móvil
+  // la lista funciona como filtro (acelera al evitar parsear formatos
+  // que no usamos, ej. PDF417/AZTEC).
+  static const _retailFormats = <BarcodeFormat>[
+    BarcodeFormat.ean13, // tiendas de barrio CO — el más común
+    BarcodeFormat.ean8,
+    BarcodeFormat.upcA,
+    BarcodeFormat.upcE,
+    BarcodeFormat.code128, // ferreterías / distribuidoras
+    BarcodeFormat.code39,
+    BarcodeFormat.code93,
+    BarcodeFormat.itf, // cajas mayoristas
+    BarcodeFormat.codabar,
+    BarcodeFormat.qrCode, // QR genérico (ej. tiendas con SKU propio)
+  ];
+
+  // `back` apunta al producto en móvil. En web el navegador la traduce
+  // a la cámara disponible (en desktop suele ser la única; el usuario
+  // elige al dar permiso). `noDuplicates` evita re-procesar el mismo
+  // código en bucles cuando el frame es estable.
   final MobileScannerController _scannerCtrl = MobileScannerController(
-    detectionSpeed: DetectionSpeed.normal,
+    detectionSpeed: DetectionSpeed.noDuplicates,
     facing: CameraFacing.back,
+    formats: _retailFormats,
   );
 
   bool _processing = false;
