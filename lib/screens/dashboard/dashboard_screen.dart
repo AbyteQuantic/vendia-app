@@ -21,7 +21,9 @@ import '../inventory/reorder_screen.dart';
 import '../pos/pos_screen.dart';
 import '../../database/sync/sales_sync.dart';
 import '../../widgets/sync_status_banner.dart';
+import '../../widgets/capabilities_reel.dart';
 import '../../widgets/dashboard_module_grid.dart';
+import '../../config/dashboard_modules.dart';
 import '../../utils/credit_labels.dart';
 import 'financial_dashboard_screen.dart';
 import 'product_insights_screen.dart';
@@ -675,6 +677,19 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       ),
                     ),
                   ),
+
+                // ── F037: Reel de capacidades ────────────────────────
+                // Carousel horizontal con las capacidades opcionales
+                // que el dueño aún NO activó. Se oculta cuando la
+                // lista está vacía (AC-07). Tocar una card abre
+                // `BusinessCapabilitiesScreen` con el toggle resaltado.
+                SliverToBoxAdapter(
+                  child: CapabilitiesReel(
+                    key: const Key('dashboard_capabilities_reel'),
+                    modules: unactivatedOptionalModules(_featureFlags),
+                    onReturned: _loadCapabilityFlags,
+                  ),
+                ),
 
                 // ── F036: Grid adaptativo de módulos ────────────────
                 // Reemplaza el antiguo stack imperativo de tarjetas

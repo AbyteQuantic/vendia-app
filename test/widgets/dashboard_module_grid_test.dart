@@ -1,11 +1,12 @@
 // Spec: specs/036-dashboard-adaptativo-onboarding/spec.md
+// Spec: specs/037-reel-capacidades-dashboard/spec.md
 //
-// T-24 — widget test del grid adaptativo del Dashboard:
-//   - renderea las 4 categorías con encabezado.
+// T-27 — widget test del grid adaptativo del Dashboard:
 //   - "Registrar venta" presente y destacado al inicio de VENDER.
+//   - "Análisis de Ganancias" presente como core (F037).
 //   - una tienda_barrio NO muestra Recetas / Mesas / Trabajos /
-//     Cotizaciones / Promociones / Clientes (AC-03).
-//   - probado a 360dp de ancho (Gerontodiseño, AC-09).
+//     Cotizaciones / Promociones / Clientes / Marketing Hub (AC-03).
+//   - probado a 360dp de ancho (Gerontodiseño, AC-12).
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -15,7 +16,7 @@ import 'package:vendia_pos/widgets/dashboard_module_grid.dart';
 Widget _wrap(Widget child) => MaterialApp(
       home: Scaffold(
         body: MediaQuery(
-          data: const MediaQueryData(size: Size(360, 800)),
+          data: const MediaQueryData(size: Size(360, 1200)),
           child: SingleChildScrollView(child: child),
         ),
       ),
@@ -23,7 +24,8 @@ Widget _wrap(Widget child) => MaterialApp(
 
 void main() {
   group('DashboardModuleGrid', () {
-    testWidgets('renderea las 4 categorías con encabezado', (tester) async {
+    testWidgets('renderea las categorías con módulos visibles',
+        (tester) async {
       await tester.pumpWidget(_wrap(
         const DashboardModuleGrid(
           businessType: 'reparacion_muebles',
@@ -56,7 +58,21 @@ void main() {
           findsOneWidget);
     });
 
-    testWidgets('tienda_barrio NO ve módulos especializados (AC-03)',
+    testWidgets('F037: "Análisis de Ganancias" presente como core',
+        (tester) async {
+      await tester.pumpWidget(_wrap(
+        const DashboardModuleGrid(
+          businessType: 'tienda_barrio',
+          flags: FeatureFlags(),
+        ),
+      ));
+
+      expect(find.text('Análisis de Ganancias'), findsOneWidget);
+      expect(find.byKey(const Key('dashboard_module_analisis_ganancias')),
+          findsOneWidget);
+    });
+
+    testWidgets('tienda_barrio sin flags NO ve módulos especializados',
         (tester) async {
       await tester.pumpWidget(_wrap(
         const DashboardModuleGrid(
@@ -70,9 +86,12 @@ void main() {
       expect(find.text('Cotizaciones'), findsNothing);
       expect(find.text('Promociones'), findsNothing);
       expect(find.text('Mis Clientes'), findsNothing);
+      // F037: Marketing Hub ya no es core, queda oculto sin la cap.
+      expect(find.text('Marketing y Combos'), findsNothing);
       // Pero sí ve los módulos core.
       expect(find.text('Productos'), findsOneWidget);
       expect(find.text('Historial de ventas'), findsOneWidget);
+      expect(find.text('Análisis de Ganancias'), findsOneWidget);
     });
 
     testWidgets('reparacion_muebles ve Trabajos de Muebles', (tester) async {
@@ -97,6 +116,18 @@ void main() {
       expect(find.text('Mis Clientes'), findsOneWidget);
     });
 
+    testWidgets('F037: activar enableMarketingHub hace aparecer el módulo',
+        (tester) async {
+      await tester.pumpWidget(_wrap(
+        const DashboardModuleGrid(
+          businessType: 'tienda_barrio',
+          flags: FeatureFlags(enableMarketingHub: true),
+        ),
+      ));
+
+      expect(find.text('Marketing y Combos'), findsOneWidget);
+    });
+
     testWidgets('no hay overflow a 360dp', (tester) async {
       await tester.pumpWidget(_wrap(
         const DashboardModuleGrid(
@@ -105,6 +136,7 @@ void main() {
             enableQuotes: true,
             enablePromotions: true,
             enableCustomerManagement: true,
+            enableMarketingHub: true,
           ),
         ),
       ));

@@ -1,4 +1,5 @@
 // Spec: specs/036-dashboard-adaptativo-onboarding/spec.md
+// Spec: specs/037-reel-capacidades-dashboard/spec.md
 //
 // "Capacidades del negocio" — pantalla única que reúne TODAS las
 // capacidades opcionales del tenant en un solo lugar (spec §4.3).
@@ -9,6 +10,11 @@
 // CUALQUIER tipo de negocio — incluida "Mesas" para una tienda_barrio.
 // El `business_type` solo define el default pre-activado en el
 // onboarding, NUNCA restringe lo que se puede activar acá.
+//
+// F037: la pantalla acepta `highlightCapability` para resaltar el tile
+// correspondiente con un pulso visual cuando el dueño llega desde una
+// card del reel del Dashboard — guía el ojo del tendero 50+ al toggle
+// exacto que quería activar.
 //
 // El cuaderno de créditos (F035) NO se duplica: esta pantalla enlaza
 // a CreditSettingsScreen.
@@ -101,13 +107,31 @@ const List<_CapabilityInfo> _capabilities = [
     icon: Icons.campaign_rounded,
     color: Color(0xFFD97706),
   ),
+  // F037: Marketing Hub deja de ser core y se vuelve toggle.
+  _CapabilityInfo(
+    capability: OptionalCapability.marketingHub,
+    toggleKey: 'cap_toggle_marketing_hub',
+    title: 'Marketing y Combos',
+    description: 'Combos, banners con IA y catálogo en línea',
+    icon: Icons.auto_awesome_rounded,
+    color: Color(0xFF7C3AED),
+  ),
 ];
 
 class BusinessCapabilitiesScreen extends StatefulWidget {
   /// Inyección de [ApiService] para tests. En producción se crea uno.
   final ApiService? apiOverride;
 
-  const BusinessCapabilitiesScreen({super.key, this.apiOverride});
+  /// F037: capacidad a resaltar con un pulso visual al entrar. La pasa
+  /// el reel del Dashboard para guiar el ojo del tendero al toggle que
+  /// quería activar. Sin valor → sin animación.
+  final OptionalCapability? highlightCapability;
+
+  const BusinessCapabilitiesScreen({
+    super.key,
+    this.apiOverride,
+    this.highlightCapability,
+  });
 
   @override
   State<BusinessCapabilitiesScreen> createState() =>
@@ -115,7 +139,8 @@ class BusinessCapabilitiesScreen extends StatefulWidget {
 }
 
 class _BusinessCapabilitiesScreenState
-    extends State<BusinessCapabilitiesScreen> {
+    extends State<BusinessCapabilitiesScreen>
+    with SingleTickerProviderStateMixin {
   late final ApiService _api;
   bool _loading = true;
   bool _saving = false;
@@ -125,11 +150,49 @@ class _BusinessCapabilitiesScreenState
     for (final c in OptionalCapability.values) c: false,
   };
 
+  /// F037: controlador del pulso (escala + tinte) del tile resaltado.
+  AnimationController? _pulseCtrl;
+  Animation<double>? _scaleAnim;
+  Animation<double>? _tintAnim;
+
   @override
   void initState() {
     super.initState();
     _api = widget.apiOverride ?? ApiService(AuthService());
+    if (widget.highlightCapability != null) {
+      _pulseCtrl = AnimationController(
+        vsync: this,
+        // ~1s por pulso × 2 pulsos = ~2s total (AC-05).
+        duration: const Duration(milliseconds: 1000),
+      );
+      _scaleAnim = TweenSequence<double>([
+        TweenSequenceItem(
+            tween: Tween(begin: 1.0, end: 1.1)
+                .chain(CurveTween(curve: Curves.easeOut)),
+            weight: 50),
+        TweenSequenceItem(
+            tween: Tween(begin: 1.1, end: 1.0)
+                .chain(CurveTween(curve: Curves.easeIn)),
+            weight: 50),
+      ]).animate(_pulseCtrl!);
+      _tintAnim = TweenSequence<double>([
+        TweenSequenceItem(
+            tween: Tween(begin: 0.0, end: 1.0)
+                .chain(CurveTween(curve: Curves.easeOut)),
+            weight: 50),
+        TweenSequenceItem(
+            tween: Tween(begin: 1.0, end: 0.0)
+                .chain(CurveTween(curve: Curves.easeIn)),
+            weight: 50),
+      ]).animate(_pulseCtrl!);
+    }
     _load();
+  }
+
+  @override
+  void dispose() {
+    _pulseCtrl?.dispose();
+    super.dispose();
   }
 
   Future<void> _load() async {
@@ -160,14 +223,36 @@ class _BusinessCapabilitiesScreenState
               data['enable_quotes'] == true || flags.enableQuotes;
           _enabled[OptionalCapability.promotions] =
               data['enable_promotions'] == true || flags.enablePromotions;
+          _enabled[OptionalCapability.marketingHub] =
+              data['enable_marketing_hub'] == true || flags.enableMarketingHub;
           _loading = false;
         });
+        _maybeStartPulse();
       }
     } catch (_) {
       // Offline / error — quedamos con todo OFF; el dueño puede
       // reintentar guardando, que vuelve a leer al cerrar.
-      if (mounted) setState(() => _loading = false);
+      if (mounted) {
+        setState(() => _loading = false);
+        _maybeStartPulse();
+      }
     }
+  }
+
+  /// F037: dispara el pulso del tile resaltado tras el primer paint.
+  /// Se invoca al terminar `_load` (con o sin éxito) para que el pulso
+  /// ocurra cuando el dueño ve la pantalla, no antes.
+  void _maybeStartPulse() {
+    if (!mounted || _pulseCtrl == null) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || _pulseCtrl == null) return;
+      _pulseCtrl!
+        ..reset()
+        ..forward().then((_) {
+          if (!mounted || _pulseCtrl == null) return;
+          _pulseCtrl!.forward(from: 0.0);
+        });
+    });
   }
 
   Future<void> _save() async {
@@ -186,6 +271,8 @@ class _BusinessCapabilitiesScreenState
               _enabled[OptionalCapability.customerManagement],
           'enable_quotes': _enabled[OptionalCapability.quotes],
           'enable_promotions': _enabled[OptionalCapability.promotions],
+          'enable_marketing_hub':
+              _enabled[OptionalCapability.marketingHub],
         },
       };
       await _api.updateBusinessProfile(updates);
@@ -252,6 +339,9 @@ class _BusinessCapabilitiesScreenState
             value: _enabled[info.capability] ?? false,
             onChanged: (v) =>
                 setState(() => _enabled[info.capability] = v),
+            highlight: widget.highlightCapability == info.capability,
+            scaleAnim: _scaleAnim,
+            tintAnim: _tintAnim,
           ),
           const SizedBox(height: 10),
         ],
@@ -295,20 +385,31 @@ class _BusinessCapabilitiesScreenState
 }
 
 /// Tarjeta de una capacidad con su toggle.
+///
+/// Cuando [highlight] es `true` y vienen [scaleAnim] + [tintAnim], la
+/// tarjeta pulsa con escala 1.0→1.1→1.0 y un tinte de color sutil del
+/// color de la capacidad durante ~2 segundos. Guía visual del reel
+/// (F037 AC-05).
 class _CapabilityCard extends StatelessWidget {
   final _CapabilityInfo info;
   final bool value;
   final ValueChanged<bool> onChanged;
+  final bool highlight;
+  final Animation<double>? scaleAnim;
+  final Animation<double>? tintAnim;
 
   const _CapabilityCard({
     required this.info,
     required this.value,
     required this.onChanged,
+    this.highlight = false,
+    this.scaleAnim,
+    this.tintAnim,
   });
 
   @override
   Widget build(BuildContext context) {
-    return Container(
+    final tile = Container(
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(18),
@@ -350,6 +451,39 @@ class _CapabilityCard extends StatelessWidget {
           ),
         ),
       ),
+    );
+
+    if (!highlight || scaleAnim == null || tintAnim == null) {
+      return tile;
+    }
+
+    return AnimatedBuilder(
+      animation: scaleAnim!,
+      builder: (context, child) {
+        final tintIntensity = tintAnim!.value.clamp(0.0, 1.0);
+        return Transform.scale(
+          scale: scaleAnim!.value,
+          child: Container(
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(18),
+              color: info.color
+                  .withValues(alpha: 0.18 * tintIntensity),
+              boxShadow: tintIntensity > 0
+                  ? [
+                      BoxShadow(
+                        color: info.color
+                            .withValues(alpha: 0.32 * tintIntensity),
+                        blurRadius: 18 * tintIntensity,
+                        spreadRadius: 2 * tintIntensity,
+                      ),
+                    ]
+                  : null,
+            ),
+            child: child,
+          ),
+        );
+      },
+      child: tile,
     );
   }
 }

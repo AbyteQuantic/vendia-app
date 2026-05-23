@@ -232,6 +232,11 @@ class OptionalCapabilitiesSection extends StatelessWidget {
             notifier: enablePromotions!,
             showDivider: showDivider,
           ));
+        case OptionalCapability.marketingHub:
+          // F037: Marketing Hub se activa desde "Capacidades del
+          // negocio" / reel del Dashboard, no desde esta sección de
+          // negocio. No agregamos tile acá.
+          break;
       }
     }
 

@@ -1,4 +1,5 @@
 // Spec: specs/036-dashboard-adaptativo-onboarding/spec.md
+// Spec: specs/037-reel-capacidades-dashboard/spec.md
 //
 // Registro declarativo de los módulos del Dashboard — una sola fuente
 // de verdad. El Dashboard (dashboard_screen.dart) se construye iterando
@@ -14,6 +15,18 @@
 //   byType   → visible si `business_type` está en `businessTypes`.
 //   optional → visible si la `capability` correspondiente está ON.
 //
+// F037 cambió la filosofía de F036:
+//   - Default ultra-simple: SOLO 5 cores arrancan visibles para todos:
+//     registrar_venta, historial, analisis_ganancias, productos,
+//     configuracion. (Reporte de inventario y proveedores quedan también
+//     como core porque son útiles a cualquier tipo de negocio.)
+//   - Marketing Hub deja de ser core y se vuelve opt-in via
+//     `enable_marketing_hub`.
+//   - Cotizaciones / Clientes / Promociones siguen siendo opt-in.
+//   - Recetas / Insumos / Trabajos / Órdenes siguen siendo byType
+//     (mientras el backend no exponga una capacidad propia para cada
+//     uno — ver decisión en el reporte de cierre de F037).
+//
 // Para sumar un módulo nuevo: agregar una entrada acá. El Dashboard,
 // los tests de cobertura (AC-10) y el filtrado lo recogen solos.
 
@@ -25,6 +38,7 @@ import '../utils/business_capability_map.dart';
 import '../screens/admin/suppliers_screen.dart';
 import '../screens/customers/customers_list_screen.dart';
 import '../screens/dashboard/admin_hub_screen.dart';
+import '../screens/dashboard/financial_dashboard_screen.dart';
 import '../screens/history/sales_history_screen.dart';
 import '../screens/inventory/add_merchandise_screen.dart';
 import '../screens/inventory/ingredients_screen.dart';
@@ -140,6 +154,19 @@ const List<DashboardModule> dashboardModules = [
     layer: ModuleLayer.core,
     destination: SalesHistoryScreen.new,
   ),
+  // F037: "Análisis de Ganancias" se promociona a core en VENDER.
+  // Antes vivía suelto como un botón del Dashboard; ahora es una card
+  // permanente para que el dueño revise utilidad sin cazarla.
+  DashboardModule(
+    id: 'analisis_ganancias',
+    title: 'Análisis de Ganancias',
+    subtitle: 'Utilidad, márgenes e ingresos por método',
+    icon: Icons.bar_chart_rounded,
+    color: Color(0xFF059669),
+    category: ModuleCategory.vender,
+    layer: ModuleLayer.core,
+    destination: FinancialDashboardScreen.new,
+  ),
   DashboardModule(
     id: 'cotizaciones',
     title: 'Cotizaciones',
@@ -253,6 +280,10 @@ const List<DashboardModule> dashboardModules = [
   ),
 
   // ── MI NEGOCIO ───────────────────────────────────────────────────
+  // F037: Marketing Hub deja de ser core. Aparece en el reel como
+  // capacidad descubrible y solo se renderiza acá si
+  // `enable_marketing_hub` está ON (backfill lo prende para tenants
+  // que ya usaban combos/banners).
   DashboardModule(
     id: 'marketing_hub',
     title: 'Marketing y Combos',
@@ -260,7 +291,8 @@ const List<DashboardModule> dashboardModules = [
     icon: Icons.auto_awesome_rounded,
     color: Color(0xFF7C3AED),
     category: ModuleCategory.miNegocio,
-    layer: ModuleLayer.core,
+    layer: ModuleLayer.optional,
+    capability: OptionalCapability.marketingHub,
     destination: PromoManagementScreen.new,
   ),
   DashboardModule(
@@ -293,13 +325,31 @@ List<DashboardModule> visibleModulesFor(
         return businessType != null &&
             m.businessTypes.contains(businessType);
       case ModuleLayer.optional:
-        return _capabilityEnabled(m.capability, flags);
+        return capabilityEnabled(m.capability, flags);
     }
   }).toList();
 }
 
+/// Capacidades opcionales DEL REGISTRO (módulos con `layer == optional`)
+/// que aún NO están activas en los [flags] del tenant.
+///
+/// El reel del Dashboard (F037) renderea una card por cada uno de éstos
+/// para que el dueño los descubra y los active de un toque. Si la lista
+/// queda vacía el reel se oculta (AC-07).
+List<DashboardModule> unactivatedOptionalModules(FeatureFlags flags) {
+  return dashboardModules
+      .where((m) =>
+          m.layer == ModuleLayer.optional &&
+          m.capability != null &&
+          !capabilityEnabled(m.capability, flags))
+      .toList();
+}
+
 /// Mapea una [OptionalCapability] al flag correspondiente de [FeatureFlags].
-bool _capabilityEnabled(OptionalCapability? cap, FeatureFlags flags) {
+///
+/// Expuesto (no privado) porque el reel del Dashboard (F037) lo usa para
+/// filtrar las cards a renderear sin duplicar la lógica.
+bool capabilityEnabled(OptionalCapability? cap, FeatureFlags flags) {
   return switch (cap) {
     OptionalCapability.services => flags.enableServices,
     OptionalCapability.fractionalUnits => flags.enableFractionalUnits,
@@ -308,6 +358,7 @@ bool _capabilityEnabled(OptionalCapability? cap, FeatureFlags flags) {
     OptionalCapability.customerManagement => flags.enableCustomerManagement,
     OptionalCapability.quotes => flags.enableQuotes,
     OptionalCapability.promotions => flags.enablePromotions,
+    OptionalCapability.marketingHub => flags.enableMarketingHub,
     null => false,
   };
 }
