@@ -38,7 +38,12 @@ class _BusinessProfileScreenState extends State<BusinessProfileScreen> {
   // una sola categoría para evitar combinaciones ambiguas de feature
   // flags. Se persiste como lista de 1 en el payload para no romper
   // el contrato del wire.
-  String? _selectedType;
+  // Multi-select: un tenant puede declarar una o varias categorías
+  // (ej. tienda de barrio + comidas rápidas). El header del Dashboard
+  // las muestra todas; este form permite marcar/desmarcar cualquiera.
+  // El backend acepta el array y la unión de las capacidades implícitas
+  // (impliedCapabilities) se calcula sobre todos los tipos en el cliente.
+  final Set<String> _selectedTypes = <String>{};
 
   // F036: las capacidades opcionales (F023/F029/F030/F031/F033) se
   // movieron a la pantalla dedicada "Capacidades del negocio"
@@ -101,22 +106,27 @@ class _BusinessProfileScreenState extends State<BusinessProfileScreen> {
             ? data['logo_url']
             : null;
 
-        // Pick the first valid type out of the backend payload. The
-        // column is still an array so the server can keep a history
-        // of changes, but the UI shows a single choice — we promote
-        // whatever is in position 0 (falling back to the scalar
-        // `business_type` field for pre-migration-020 tenants) and
-        // remap deprecated values to their canonical equivalents.
-        String? initial;
+        // Hidratar TODAS las categorías del array — el modelo soporta
+        // multi-select y antes el UI solo mostraba la primera (bug
+        // reportado: el header listaba 3 pero el form mostraba 1, y
+        // guardar borraba las demás). Remapea legacy values al pasar.
+        _selectedTypes.clear();
         final types = data['business_types'];
-        if (types is List && types.isNotEmpty && types.first is String) {
-          initial = types.first as String;
-        } else if (data['business_type'] is String &&
-            (data['business_type'] as String).isNotEmpty) {
-          initial = data['business_type'] as String;
+        if (types is List) {
+          for (final raw in types) {
+            if (raw is String && raw.isNotEmpty) {
+              final canonical = _legacyTypeRemap[raw] ?? raw;
+              _selectedTypes.add(canonical);
+            }
+          }
         }
-        if (initial != null) {
-          _selectedType = _legacyTypeRemap[initial] ?? initial;
+        // Fallback al campo escalar `business_type` para tenants
+        // pre-migración 020.
+        if (_selectedTypes.isEmpty &&
+            data['business_type'] is String &&
+            (data['business_type'] as String).isNotEmpty) {
+          final raw = data['business_type'] as String;
+          _selectedTypes.add(_legacyTypeRemap[raw] ?? raw);
         }
 
         // F036: las capacidades opcionales ya no se hidratan acá — se
@@ -225,11 +235,14 @@ class _BusinessProfileScreenState extends State<BusinessProfileScreen> {
 
   Future<void> _generateLogoWithAI() async {
     final name = _nameCtrl.text.trim();
-    final selected = _selectedType;
+    // Pasamos a la IA la PRIMERA categoría elegida (la principal). Si
+    // el dueño selecciona varias, la primera es la más representativa
+    // (suele ser la que más vende). Sin selección no podemos generar.
+    final selected = _selectedTypes.isNotEmpty ? _selectedTypes.first : null;
 
     if (name.isEmpty || selected == null) {
       _showSnack(
-        'Por favor, escriba el nombre y seleccione el tipo de negocio para que la IA sepa qué dibujar.',
+        'Por favor, escriba el nombre y seleccione al menos una categoría de negocio para que la IA sepa qué dibujar.',
         isError: true,
       );
       return;
@@ -351,8 +364,8 @@ class _BusinessProfileScreenState extends State<BusinessProfileScreen> {
 
   Future<void> _saveProfile() async {
     if (!_formKey.currentState!.validate()) return;
-    if (_selectedType == null) {
-      _showSnack('Seleccione la categoría principal de su negocio',
+    if (_selectedTypes.isEmpty) {
+      _showSnack('Seleccione al menos una categoría de negocio',
           isError: true);
       return;
     }
@@ -367,9 +380,9 @@ class _BusinessProfileScreenState extends State<BusinessProfileScreen> {
       final updates = <String, dynamic>{
         'business_name': _nameCtrl.text.trim(),
         'nit': _nitCtrl.text.trim(),
-        // Array de 1 para mantener el contrato del endpoint aunque la
-        // UX sea single-select.
-        'business_types': [_selectedType],
+        // Multi-select: enviamos el array completo de categorías
+        // marcadas por el dueño. Backend ya acepta multi-tipo.
+        'business_types': _selectedTypes.toList(),
         'address': _addressCtrl.text.trim(),
         if (_latitude != 0) 'latitude': _latitude,
         if (_longitude != 0) 'longitude': _longitude,
@@ -517,10 +530,23 @@ class _BusinessProfileScreenState extends State<BusinessProfileScreen> {
             ),
             const SizedBox(height: 24),
 
-            // ── Categoría principal (Selección ÚNICA) ─────────────
-            _buildLabel('Seleccione la categoría principal de su negocio'),
-            const SizedBox(height: 12),
-            _buildBusinessTypeRadioGrid(),
+            // ── Categorías del negocio (MULTI-SELECT) ─────────────
+            _buildLabel(
+                'Seleccione una o varias categorías de su negocio'),
+            const SizedBox(height: 4),
+            const Padding(
+              padding: EdgeInsets.only(left: 4, bottom: 8),
+              child: Text(
+                'Toque para marcar o desmarcar. Puede combinar varias '
+                '(ej. tienda + comidas rápidas).',
+                style: TextStyle(
+                  fontSize: 13,
+                  color: AppTheme.textSecondary,
+                  height: 1.3,
+                ),
+              ),
+            ),
+            _buildBusinessTypeGrid(),
 
             // F036: las capacidades opcionales se gestionan ahora en la
             // pantalla "Capacidades del negocio" (Mi Negocio →
@@ -535,11 +561,10 @@ class _BusinessProfileScreenState extends State<BusinessProfileScreen> {
     );
   }
 
-  Widget _buildBusinessTypeRadioGrid() {
-    // Single-select grid mapped 1:1 to models.ValidBusinessTypes.
-    // We use a GridView instead of Wrap so every card is the same
-    // size (the Wrap variant produced a jagged layout as labels
-    // scaled with Gerontodiseño font sizes).
+  Widget _buildBusinessTypeGrid() {
+    // Multi-select grid mapped 1:1 to models.ValidBusinessTypes.
+    // GridView en lugar de Wrap para que las cards mantengan el
+    // mismo tamaño bajo Gerontodiseño. Tap alterna selección.
     return GridView.count(
       crossAxisCount: 2,
       crossAxisSpacing: 10,
@@ -551,7 +576,7 @@ class _BusinessProfileScreenState extends State<BusinessProfileScreen> {
         final value = t.$1;
         final icon = t.$2;
         final label = t.$3;
-        final selected = _selectedType == value;
+        final selected = _selectedTypes.contains(value);
         return Semantics(
           button: true,
           selected: selected,
@@ -560,9 +585,13 @@ class _BusinessProfileScreenState extends State<BusinessProfileScreen> {
             key: Key('profile_btype_$value'),
             onTap: () {
               HapticFeedback.lightImpact();
-              // F036: el tipo solo se elige acá; las capacidades que
-              // implica se gestionan en "Capacidades del negocio".
-              setState(() => _selectedType = value);
+              setState(() {
+                if (selected) {
+                  _selectedTypes.remove(value);
+                } else {
+                  _selectedTypes.add(value);
+                }
+              });
             },
             child: AnimatedContainer(
               duration: const Duration(milliseconds: 180),
@@ -581,14 +610,16 @@ class _BusinessProfileScreenState extends State<BusinessProfileScreen> {
               ),
               child: Row(
                 children: [
-                  // Radio indicator — filled dot inside outlined
-                  // circle when selected.
+                  // Checkbox indicator — multi-select. Cuadrado con tilde
+                  // cuando está marcado; cuadrado vacío con borde cuando
+                  // no. Visual consistente con que se pueden marcar
+                  // varios.
                   Container(
                     width: 22,
                     height: 22,
                     decoration: BoxDecoration(
-                      color: Colors.white,
-                      shape: BoxShape.circle,
+                      color: selected ? AppTheme.primary : Colors.white,
+                      borderRadius: BorderRadius.circular(6),
                       border: Border.all(
                         color: selected
                             ? AppTheme.primary
@@ -597,12 +628,10 @@ class _BusinessProfileScreenState extends State<BusinessProfileScreen> {
                       ),
                     ),
                     child: selected
-                        ? const Center(
-                            child: Icon(
-                              Icons.circle,
-                              size: 10,
-                              color: AppTheme.primary,
-                            ),
+                        ? const Icon(
+                            Icons.check_rounded,
+                            size: 16,
+                            color: Colors.white,
                           )
                         : null,
                   ),
