@@ -124,12 +124,9 @@ class DashboardModule {
   });
 }
 
-// Tipos de negocio que "cocinan" un plato a partir de insumos —
-// activan Recetas, Insumos y Órdenes de compra.
-const _cookingTypes = ['restaurante', 'comidas_rapidas'];
-
-// Tipos que fabrican / reparan muebles.
-const _furnitureTypes = ['manufactura', 'reparacion_muebles'];
+// F037: Insumos/Recetas/Órdenes/Trabajos migraron de byType a opcional;
+// las listas de tipos por defecto se eliminaron — la activación corre
+// por capacidades + backfill backend para tenants con data legacy.
 
 /// Registro central de todos los módulos del Dashboard.
 const List<DashboardModule> dashboardModules = [
@@ -210,6 +207,11 @@ const List<DashboardModule> dashboardModules = [
     layer: ModuleLayer.core,
     destination: SuppliersScreen.new,
   ),
+  // F037 — los 4 módulos siguientes migraron de byType a optional.
+  // El backend agregó columnas dedicadas (enable_recipes / enable_supplies
+  // / enable_furniture_jobs / enable_purchase_orders) + backfill para
+  // tenants que ya tenían datos en cada tabla legacy. Cualquier negocio
+  // (no solo cooking/furniture) puede activarlos desde el reel.
   DashboardModule(
     id: 'insumos',
     title: 'Mis Insumos',
@@ -217,8 +219,8 @@ const List<DashboardModule> dashboardModules = [
     icon: Icons.kitchen_rounded,
     color: Color(0xFFD97706),
     category: ModuleCategory.inventario,
-    layer: ModuleLayer.byType,
-    businessTypes: _cookingTypes,
+    layer: ModuleLayer.optional,
+    capability: OptionalCapability.supplies,
     destination: IngredientsScreen.new,
   ),
   DashboardModule(
@@ -228,8 +230,8 @@ const List<DashboardModule> dashboardModules = [
     icon: Icons.restaurant_menu_rounded,
     color: Color(0xFFEE5A24),
     category: ModuleCategory.inventario,
-    layer: ModuleLayer.byType,
-    businessTypes: _cookingTypes,
+    layer: ModuleLayer.optional,
+    capability: OptionalCapability.recipes,
     destination: RecipeStep1Screen.new,
   ),
   DashboardModule(
@@ -239,8 +241,8 @@ const List<DashboardModule> dashboardModules = [
     icon: Icons.shopping_cart_rounded,
     color: Color(0xFF0D9668),
     category: ModuleCategory.inventario,
-    layer: ModuleLayer.byType,
-    businessTypes: _cookingTypes,
+    layer: ModuleLayer.optional,
+    capability: OptionalCapability.purchaseOrders,
     destination: PurchaseOrdersScreen.new,
   ),
   DashboardModule(
@@ -250,8 +252,8 @@ const List<DashboardModule> dashboardModules = [
     icon: Icons.handyman_rounded,
     color: AppTheme.primary,
     category: ModuleCategory.inventario,
-    layer: ModuleLayer.byType,
-    businessTypes: _furnitureTypes,
+    layer: ModuleLayer.optional,
+    capability: OptionalCapability.furnitureJobs,
     destination: WorkOrdersScreen.new,
   ),
 
@@ -359,6 +361,11 @@ bool capabilityEnabled(OptionalCapability? cap, FeatureFlags flags) {
     OptionalCapability.quotes => flags.enableQuotes,
     OptionalCapability.promotions => flags.enablePromotions,
     OptionalCapability.marketingHub => flags.enableMarketingHub,
+    // F037: módulos byType → opcional con backfill.
+    OptionalCapability.recipes => flags.enableRecipes,
+    OptionalCapability.supplies => flags.enableSupplies,
+    OptionalCapability.furnitureJobs => flags.enableFurnitureJobs,
+    OptionalCapability.purchaseOrders => flags.enablePurchaseOrders,
     null => false,
   };
 }

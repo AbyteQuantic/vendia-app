@@ -358,6 +358,30 @@ class FeatureFlags {
   /// `tenants.enable_marketing_hub`. Default OFF.
   final bool enableMarketingHub;
 
+  /// F037: recetas para fabricar productos terminados.
+  /// Antes era byType (cooking); F037 lo migra a opt-in. Tenants con
+  /// recetas preexistentes quedaron en true por el backfill. Espejo
+  /// de `tenants.enable_recipes`. Default OFF.
+  final bool enableRecipes;
+
+  /// F037: insumos / materia prima.
+  /// Antes era byType (cooking); F037 lo migra a opt-in. Backfill activa
+  /// para tenants con filas en `ingredients`. Espejo de
+  /// `tenants.enable_supplies`. Default OFF.
+  final bool enableSupplies;
+
+  /// F037: trabajos de muebles / por encargo.
+  /// Antes era byType (furniture); F037 lo migra a opt-in. Backfill
+  /// activa para tenants con filas en `work_orders`. Espejo de
+  /// `tenants.enable_furniture_jobs`. Default OFF.
+  final bool enableFurnitureJobs;
+
+  /// F037: órdenes de compra a proveedores.
+  /// Antes era byType (cooking); F037 lo migra a opt-in. Backfill activa
+  /// para tenants con filas en `purchase_orders`. Espejo de
+  /// `tenants.enable_purchase_orders`. Default OFF.
+  final bool enablePurchaseOrders;
+
   const FeatureFlags({
     this.enableTables = false,
     this.enableKDS = false,
@@ -370,6 +394,10 @@ class FeatureFlags {
     this.enableQuotes = false,
     this.enablePromotions = false,
     this.enableMarketingHub = false,
+    this.enableRecipes = false,
+    this.enableSupplies = false,
+    this.enableFurnitureJobs = false,
+    this.enablePurchaseOrders = false,
   });
 
   factory FeatureFlags.fromJson(Map<String, dynamic> json) => FeatureFlags(
@@ -394,5 +422,11 @@ class FeatureFlags {
         // F037 — default false: con la capacidad OFF Marketing Hub queda
         // como opción descubrible en el reel del Dashboard.
         enableMarketingHub: json['enable_marketing_hub'] == true,
+        // F037 — default false; backfill las prende para tenants con
+        // datos legacy en cada módulo (Art. X, idempotente).
+        enableRecipes: json['enable_recipes'] == true,
+        enableSupplies: json['enable_supplies'] == true,
+        enableFurnitureJobs: json['enable_furniture_jobs'] == true,
+        enablePurchaseOrders: json['enable_purchase_orders'] == true,
       );
 }

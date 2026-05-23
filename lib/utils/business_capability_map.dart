@@ -85,6 +85,37 @@ enum OptionalCapability {
   /// como opción manual. Cuando está ON: aparece "Marketing y Combos"
   /// en categoría MI NEGOCIO del Dashboard.
   marketingHub,
+
+  /// "Maneja recetas para fabricar productos terminados" (F037).
+  /// → enable_recipes
+  ///
+  /// Default OFF; migra de byType (cooking) a opt-in para que cualquier
+  /// negocio que cocine/ensamble pueda activarla desde el reel. Tenants
+  /// con recetas preexistentes ya quedaron en true por el backfill F037.
+  recipes,
+
+  /// "Maneja insumos / materia prima" (F037).
+  /// → enable_supplies
+  ///
+  /// Default OFF; migra de byType (cooking) a opt-in. Tenants con
+  /// insumos preexistentes (tabla `ingredients`) ya quedaron en true
+  /// por el backfill F037.
+  supplies,
+
+  /// "Realiza trabajos a la medida / por encargo" (F037).
+  /// → enable_furniture_jobs
+  ///
+  /// Default OFF; migra de byType (furniture) a opt-in. Tenants con
+  /// trabajos preexistentes (tabla `work_orders`) ya quedaron en true
+  /// por el backfill F037.
+  furnitureJobs,
+
+  /// "Genera órdenes de compra a proveedores" (F037).
+  /// → enable_purchase_orders
+  ///
+  /// Default OFF; migra de byType (cooking) a opt-in. Tenants con
+  /// órdenes preexistentes ya quedaron en true por el backfill F037.
+  purchaseOrders,
 }
 
 /// Retorna las [OptionalCapability] que el [businessType] YA concede

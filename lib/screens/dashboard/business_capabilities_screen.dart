@@ -116,6 +116,40 @@ const List<_CapabilityInfo> _capabilities = [
     icon: Icons.auto_awesome_rounded,
     color: Color(0xFF7C3AED),
   ),
+  // F037: módulos que migraron de byType (rígido por tipo) a opt-in
+  // para que CUALQUIER negocio pueda activarlos desde el reel/lista.
+  _CapabilityInfo(
+    capability: OptionalCapability.recipes,
+    toggleKey: 'cap_toggle_recipes',
+    title: 'Recetas y Platos',
+    description: 'Arme un plato y vea su costo y ganancia',
+    icon: Icons.restaurant_menu_rounded,
+    color: Color(0xFFEE5A24),
+  ),
+  _CapabilityInfo(
+    capability: OptionalCapability.supplies,
+    toggleKey: 'cap_toggle_supplies',
+    title: 'Mis Insumos',
+    description: 'Materia prima: stock, mínimos y costo',
+    icon: Icons.kitchen_rounded,
+    color: Color(0xFFD97706),
+  ),
+  _CapabilityInfo(
+    capability: OptionalCapability.furnitureJobs,
+    toggleKey: 'cap_toggle_furniture_jobs',
+    title: 'Trabajos de Muebles',
+    description: 'Cotice, fabrique y repare por encargo',
+    icon: Icons.handyman_rounded,
+    color: Color(0xFF1E40AF),
+  ),
+  _CapabilityInfo(
+    capability: OptionalCapability.purchaseOrders,
+    toggleKey: 'cap_toggle_purchase_orders',
+    title: 'Órdenes de Compra',
+    description: 'Pida a proveedores y reciba el stock',
+    icon: Icons.shopping_cart_rounded,
+    color: Color(0xFF0D9668),
+  ),
 ];
 
 class BusinessCapabilitiesScreen extends StatefulWidget {
@@ -225,6 +259,18 @@ class _BusinessCapabilitiesScreenState
               data['enable_promotions'] == true || flags.enablePromotions;
           _enabled[OptionalCapability.marketingHub] =
               data['enable_marketing_hub'] == true || flags.enableMarketingHub;
+          // F037: módulos que migraron de byType a opcional con
+          // backfill para tenants que ya tenían data legacy.
+          _enabled[OptionalCapability.recipes] =
+              data['enable_recipes'] == true || flags.enableRecipes;
+          _enabled[OptionalCapability.supplies] =
+              data['enable_supplies'] == true || flags.enableSupplies;
+          _enabled[OptionalCapability.furnitureJobs] =
+              data['enable_furniture_jobs'] == true ||
+                  flags.enableFurnitureJobs;
+          _enabled[OptionalCapability.purchaseOrders] =
+              data['enable_purchase_orders'] == true ||
+                  flags.enablePurchaseOrders;
           _loading = false;
         });
         _maybeStartPulse();
@@ -273,6 +319,13 @@ class _BusinessCapabilitiesScreenState
           'enable_promotions': _enabled[OptionalCapability.promotions],
           'enable_marketing_hub':
               _enabled[OptionalCapability.marketingHub],
+          // F037: módulos que migraron de byType a opcional.
+          'enable_recipes': _enabled[OptionalCapability.recipes],
+          'enable_supplies': _enabled[OptionalCapability.supplies],
+          'enable_furniture_jobs':
+              _enabled[OptionalCapability.furnitureJobs],
+          'enable_purchase_orders':
+              _enabled[OptionalCapability.purchaseOrders],
         },
       };
       await _api.updateBusinessProfile(updates);
