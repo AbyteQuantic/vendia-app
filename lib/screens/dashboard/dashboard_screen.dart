@@ -25,6 +25,7 @@ import '../../widgets/capabilities_reel.dart';
 import '../../widgets/dashboard_module_grid.dart';
 import '../../config/dashboard_modules.dart';
 import '../../utils/credit_labels.dart';
+import 'business_profile_screen.dart';
 import 'financial_dashboard_screen.dart';
 import 'product_insights_screen.dart';
 
@@ -93,6 +94,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
   // en initState desde AuthService (offline-safe). Mientras no carguen,
   // el grid se construye con defaults (solo core visible).
   String? _businessType;
+  // Lista completa de tipos seleccionados — un tenant puede declarar
+  // múltiples categorías (ej. tienda_barrio + restaurante). El header
+  // las muestra como chip(s) clickeable(s).
+  List<String> _businessTypes = const [];
   FeatureFlags _featureFlags = const FeatureFlags();
 
   @override
@@ -185,10 +190,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
       final auth = AuthService();
       final flags = await auth.getFeatureFlags();
       final type = await auth.getBusinessType();
+      final types = await auth.getBusinessTypes();
       if (mounted) {
         setState(() {
           _featureFlags = flags;
           _businessType = (type != null && type.isNotEmpty) ? type : null;
+          _businessTypes = types;
         });
       }
     } catch (_) {
@@ -442,11 +449,20 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   topPadding: topPad,
                   ownerName: widget.ownerName,
                   businessName: widget.businessName,
+                  businessTypes: _businessTypes,
                   branchName: context.watch<BranchProvider>().currentBranch?.name,
                   isStoreOpen: _isStoreOpen,
                   loadingStoreStatus: _loadingStoreStatus,
                   onToggleStore: _toggleStoreStatus,
                   onLogout: _onLogout,
+                  onEditBusinessTypes: () async {
+                    HapticFeedback.lightImpact();
+                    await Navigator.of(context).push(
+                      MaterialPageRoute(
+                          builder: (_) => const BusinessProfileScreen()),
+                    );
+                    if (mounted) _loadCapabilityFlags();
+                  },
                   todayLabel: _todayLabel(),
                 ),
               ),
@@ -898,24 +914,53 @@ class _HeroHeaderDelegate extends SliverPersistentHeaderDelegate {
   final double topPadding;
   final String ownerName;
   final String businessName;
+  /// Tipos de negocio seleccionados por el dueño (uno o varios). El
+  /// header los muestra como chip(s) clickeables debajo del nombre del
+  /// negocio, antes del badge de sucursal. Vacío = no se muestra nada.
+  final List<String> businessTypes;
   final String? branchName;
   final bool isStoreOpen;
   final bool loadingStoreStatus;
   final ValueChanged<bool> onToggleStore;
   final Future<void> Function() onLogout;
+  /// Callback al tocar el chip de categoría — abre la pantalla donde
+  /// el dueño puede cambiar o agregar tipos de negocio.
+  final VoidCallback onEditBusinessTypes;
   final String todayLabel;
 
   _HeroHeaderDelegate({
     required this.topPadding,
     required this.ownerName,
     required this.businessName,
+    this.businessTypes = const [],
     this.branchName,
     required this.isStoreOpen,
     required this.loadingStoreStatus,
     required this.onToggleStore,
     required this.onLogout,
+    required this.onEditBusinessTypes,
     required this.todayLabel,
   });
+
+  // Mapa label legible — espejo del grid de selección en
+  // business_profile_screen.dart. Mantener sincronizados.
+  static const _typeLabels = <String, String>{
+    'tienda_barrio': 'Tienda de Barrio',
+    'minimercado': 'Minimercado',
+    'deposito_construccion': 'Depósito / Ferretería',
+    'restaurante': 'Restaurante',
+    'comidas_rapidas': 'Comidas Rápidas',
+    'bar': 'Bar / Discoteca',
+    'manufactura': 'Manufactura',
+    'reparacion_muebles': 'Reparación / Servicios',
+    'emprendimiento_general': 'Emprendimiento',
+    // Legacy → mismo mapeo que _legacyTypeRemap en business_profile_screen.
+    'muebles': 'Reparación / Servicios',
+    'reparacion': 'Reparación / Servicios',
+    'miscelanea': 'Emprendimiento',
+  };
+
+  String _labelFor(String type) => _typeLabels[type] ?? type;
 
   static const _heroGradient = LinearGradient(
     begin: Alignment.topLeft,
@@ -1008,6 +1053,61 @@ class _HeroHeaderDelegate extends SliverPersistentHeaderDelegate {
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
                                 ),
+                                // Chip(s) de categoría(s) del negocio.
+                                // Acceso directo: tap → BusinessProfileScreen
+                                // donde el dueño elige/agrega categorías.
+                                if (businessTypes.isNotEmpty)
+                                  Padding(
+                                    padding: const EdgeInsets.only(top: 4),
+                                    child: InkWell(
+                                      borderRadius: BorderRadius.circular(20),
+                                      onTap: onEditBusinessTypes,
+                                      child: Container(
+                                        padding: const EdgeInsets.symmetric(
+                                            horizontal: 10, vertical: 4),
+                                        decoration: BoxDecoration(
+                                          color: Colors.white
+                                              .withValues(alpha: 0.18),
+                                          borderRadius:
+                                              BorderRadius.circular(20),
+                                          border: Border.all(
+                                            color: Colors.white
+                                                .withValues(alpha: 0.25),
+                                          ),
+                                        ),
+                                        child: Row(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            Icon(Icons.storefront_rounded,
+                                                size: 12,
+                                                color: Colors.white
+                                                    .withValues(alpha: 0.9)),
+                                            const SizedBox(width: 4),
+                                            Flexible(
+                                              child: Text(
+                                                businessTypes
+                                                    .map(_labelFor)
+                                                    .join(' · '),
+                                                style: const TextStyle(
+                                                  fontSize: 11,
+                                                  color: Colors.white,
+                                                  fontWeight: FontWeight.w600,
+                                                  height: 1.2,
+                                                ),
+                                                maxLines: 1,
+                                                overflow: TextOverflow.ellipsis,
+                                              ),
+                                            ),
+                                            const SizedBox(width: 4),
+                                            Icon(Icons.edit_rounded,
+                                                size: 11,
+                                                color: Colors.white
+                                                    .withValues(alpha: 0.7)),
+                                          ],
+                                        ),
+                                      ),
+                                    ),
+                                  ),
                                 Builder(
                                   builder: (ctx) {
                                     final bp = ctx.watch<BranchProvider>();
@@ -1116,7 +1216,16 @@ class _HeroHeaderDelegate extends SliverPersistentHeaderDelegate {
       o.ownerName != ownerName ||
       o.businessName != businessName ||
       o.branchName != branchName ||
-      o.todayLabel != todayLabel;
+      o.todayLabel != todayLabel ||
+      !_listEquals(o.businessTypes, businessTypes);
+
+  static bool _listEquals(List<String> a, List<String> b) {
+    if (a.length != b.length) return false;
+    for (var i = 0; i < a.length; i++) {
+      if (a[i] != b[i]) return false;
+    }
+    return true;
+  }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
