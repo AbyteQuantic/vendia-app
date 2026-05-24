@@ -119,11 +119,11 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
               ),
               const SizedBox(height: 18),
               const Text(
-                'Tu negocio arranca con lo esencial: vender, '
+                'Su negocio arranca con lo esencial: vender, '
                 'inventario y ganancias.\n\n'
-                'Arriba en tu Dashboard vas a ver un carrusel '
-                'con todas las opciones extra disponibles — '
-                'activá las que necesites cuando quieras.',
+                'Arriba en el panel verá un carrusel con todas '
+                'las opciones extra disponibles — actívelas '
+                'cuando las necesite.',
                 textAlign: TextAlign.center,
                 style: TextStyle(
                   fontSize: 17,
