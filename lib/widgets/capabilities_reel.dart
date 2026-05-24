@@ -188,7 +188,7 @@ class _CapabilitiesReelState extends State<CapabilitiesReel> {
               const Padding(
                 padding: EdgeInsets.only(left: 4, bottom: 12),
                 child: Text(
-                  '✨ Descubrí más opciones para tu negocio',
+                  '✨ Descubre más opciones para tu negocio',
                   style: TextStyle(
                     fontSize: 18,
                     fontWeight: FontWeight.w800,

@@ -155,6 +155,46 @@ Para cualquier PR que toca `lib/screens/**` o `lib/widgets/**`, adjunta al
 PR description **dos capturas mínimo**: una en 360dp y otra en 411dp.
 La descripción del PR sin captura visual es razón suficiente para devolver.
 
+## 11. Español neutral y profesional — NUNCA voseo ni regionalismos
+
+**Regla:** todo copy visible al usuario va en **español neutral**, tono
+formal/profesional, **modo USTED** o impersonal. Prohibido el voseo
+rioplatense, las contracciones informales y los regionalismos.
+
+| ❌ NO usar | ✅ Usar |
+|-----------|---------|
+| `Descubrí más opciones` | `Descubre más opciones` |
+| `Activá las que necesites` | `Active las que necesite` |
+| `Tocá para enviar` | `Toque para enviar` |
+| `Mirá tus ventas` | `Vea sus ventas` |
+| `Vas a ver un carrusel` | `Verá un carrusel` |
+| `Sumate a Pro` | `Únase a Pro` |
+| `Cuándo tenés inventario bajo` | `Cuando tenga inventario bajo` |
+| `Ingresá tu PIN` | `Ingrese su PIN` |
+| `Acordate de cobrar` | `Recuerde cobrar` |
+| `chévere`, `bacano`, `che`, `joya`, `posta` | (eliminar — son regionalismos) |
+
+**Por qué:** el target es Colombia (formal por defecto) + LatAm general.
+El voseo argentino se lee como extranjero o poco profesional para el
+tendero colombiano 50+. El modo USTED + tono impersonal sirven a todos
+los dialectos sin sonar familiar de más.
+
+**Cómo verificar antes de mergear:**
+
+```bash
+# Sweep rápido de voseo en copy nuevo:
+grep -rnE "(tocá|mirá|sumá|activá|ingresá|escribí|hacé|andá|sentí|guardá|elegí|escogé|empezá|recordá|usá|probá|cerrá|abrí|comprá|vendé|pagá|cobrá|enviá|mandá|llamá|ajustá|configurá|apretá|cliqueá|recibí|añadí|descubrí|preguntale|escribile|prendelo)" lib/
+```
+
+Si retorna cualquier match en código nuevo, traducir a USTED antes de
+mergear. Las viejas se van limpiando incrementalmente — al tocar una
+pantalla, normalizar su copy de paso.
+
+**Acentos diacríticos**: ojo con palabras como `Descubrí` (puede ser
+imperativo voseo *o* pretérito en 1ª persona). En copy de UI casi
+siempre es imperativo — usar el patrón USTED. Si fuera pretérito
+legítimo, revisar contexto.
+
 ---
 
 ## Validación automática

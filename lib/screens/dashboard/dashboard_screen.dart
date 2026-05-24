@@ -972,8 +972,11 @@ class _HeroHeaderDelegate extends SliverPersistentHeaderDelegate {
   // estado/fecha, la barra del trial (F009). 226 = 170 base + ~56 de
   // la barra; cuando el tenant es Pro la barra es `SizedBox.shrink`
   // y el espacio extra queda como aire — sin overflow a 360dp.
-  static const double _expandedBody = 226;
-  static const double _collapsedBody = 52;
+  // _collapsedBody = 60 reserva el avatar de 40dp + 8 padding superior
+  // + 16 padding inferior (estándar Material). Antes era 52, lo que
+  // dejaba el contenido pegado al borde redondeado inferior.
+  static const double _expandedBody = 234;
+  static const double _collapsedBody = 60;
 
   @override
   double get maxExtent => topPadding + _expandedBody;
@@ -1009,7 +1012,13 @@ class _HeroHeaderDelegate extends SliverPersistentHeaderDelegate {
               : null,
         ),
         child: Padding(
-          padding: EdgeInsets.fromLTRB(20, topPadding + 6, 8, 8),
+          // Padding interno consistente expandido↔colapsado. Antes el
+          // bottom era 8dp y el contenido quedaba pegado al borde
+          // redondeado del gradiente al colapsar el header. Material 3
+          // recomienda 16dp como mínimo para card content insets — eso
+          // garantiza aire visual entre el avatar y el borde aunque el
+          // header se compacte por el scroll.
+          padding: EdgeInsets.fromLTRB(20, topPadding + 8, 12, 16),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisAlignment: MainAxisAlignment.center,
