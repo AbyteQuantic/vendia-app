@@ -156,11 +156,6 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
                                   Colors.white.withValues(alpha: 0.92),
                             ),
                           ),
-                          const SizedBox(height: 18),
-                          // Dots decorativos — anclan visualmente sin
-                          // pretender ser navegables (es una sola
-                          // pantalla, no un wizard).
-                          const _DecorativeDots(),
                         ],
                       ),
                     ),
@@ -254,37 +249,6 @@ class _HeroIconBubble extends StatelessWidget {
           style: TextStyle(fontSize: 96, height: 1.0),
         ),
       ),
-    );
-  }
-}
-
-/// 3 puntitos decorativos centrados, estilo carrusel de onboarding.
-/// No son interactivos — solo refuerzan visualmente el patrón de
-/// "bienvenida" sin convertir esto en un wizard.
-class _DecorativeDots extends StatelessWidget {
-  const _DecorativeDots();
-
-  @override
-  Widget build(BuildContext context) {
-    Widget dot({required bool active}) => Container(
-          margin: const EdgeInsets.symmetric(horizontal: 3),
-          width: active ? 22 : 7,
-          height: 7,
-          decoration: BoxDecoration(
-            color: active
-                ? Colors.white
-                : Colors.white.withValues(alpha: 0.45),
-            borderRadius: BorderRadius.circular(4),
-          ),
-        );
-
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        dot(active: false),
-        dot(active: true),
-        dot(active: false),
-      ],
     );
   }
 }

@@ -41,7 +41,7 @@ void main() {
         const CapabilitiesReel(modules: []),
       ));
       // No header, no cards.
-      expect(find.textContaining('Descubrí'), findsNothing);
+      expect(find.textContaining('Descubre'), findsNothing);
       expect(find.byKey(const Key('capabilities_reel_pageview')),
           findsNothing);
     });
@@ -57,7 +57,7 @@ void main() {
       ));
       await tester.pump();
 
-      expect(find.textContaining('Descubrí'), findsOneWidget);
+      expect(find.textContaining('Descubre'), findsOneWidget);
       expect(find.byKey(const Key('capabilities_reel_pageview')),
           findsOneWidget);
       // El primer módulo opcional del registro queda visible en el
