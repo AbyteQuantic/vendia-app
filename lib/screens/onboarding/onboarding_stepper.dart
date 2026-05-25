@@ -244,9 +244,8 @@ class _OnboardingStepperState extends State<OnboardingStepper> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppTheme.background,
-      body: SafeArea(
-        child: Consumer<OnboardingStepperController>(
-          builder: (ctx, ctrl, _) {
+      body: Consumer<OnboardingStepperController>(
+        builder: (ctx, ctrl, _) {
             final step = ctrl.currentStep;
             final (stepLabel, stepTitle) = _stepTitles[step];
             // Last step (índice 5 = "Sus empleados") dispara el
@@ -258,86 +257,144 @@ class _OnboardingStepperState extends State<OnboardingStepper> {
 
             return Column(
               children: [
-                // ── Header ────────────────────────────────────────────────
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(24, 20, 24, 0),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      // Logo + cerrar
-                      Row(
+                // ── Header modernizado — gradient azul brand con
+                // border-radius inferior, textos blancos. Mismo lenguaje
+                // visual del Welcome / Login / Dashboard header.
+                Container(
+                  decoration: const BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                      colors: [
+                        Color(0xFF1E3A8A),
+                        Color(0xFF3B82F6),
+                        Color(0xFF6366F1),
+                      ],
+                      stops: [0.0, 0.55, 1.0],
+                    ),
+                    borderRadius: BorderRadius.only(
+                      bottomLeft: Radius.circular(24),
+                      bottomRight: Radius.circular(24),
+                    ),
+                  ),
+                  child: SafeArea(
+                    bottom: false,
+                    child: Padding(
+                      padding:
+                          const EdgeInsets.fromLTRB(20, 14, 16, 20),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Container(
-                            width: 44,
-                            height: 44,
-                            decoration: BoxDecoration(
-                              color: AppTheme.primary,
-                              borderRadius: BorderRadius.circular(20),
-                            ),
-                            child: const Icon(Icons.point_of_sale_rounded,
-                                color: Colors.white, size: 24),
-                          ),
-                          const SizedBox(width: 12),
-                          const Expanded(
-                            child: Text(
-                              'VendIA',
-                              style: TextStyle(
-                                fontSize: 22,
-                                fontWeight: FontWeight.bold,
-                                color: AppTheme.primary,
+                          // Logo (circle blanco) + "VendIA" + "Ya tengo cuenta"
+                          Row(
+                            children: [
+                              Container(
+                                width: 44,
+                                height: 44,
+                                decoration: BoxDecoration(
+                                  color: Colors.white,
+                                  shape: BoxShape.circle,
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: const Color(0xFF1E3A8A)
+                                          .withValues(alpha: 0.25),
+                                      blurRadius: 10,
+                                      offset: const Offset(0, 4),
+                                    ),
+                                  ],
+                                ),
+                                child: const Center(
+                                  child: Text('🏪',
+                                      style: TextStyle(
+                                          fontSize: 22, height: 1.0)),
+                                ),
                               ),
-                            ),
+                              const SizedBox(width: 12),
+                              const Expanded(
+                                child: Text(
+                                  'VendIA',
+                                  style: TextStyle(
+                                    fontSize: 22,
+                                    fontWeight: FontWeight.w800,
+                                    color: Colors.white,
+                                    letterSpacing: 0.3,
+                                  ),
+                                ),
+                              ),
+                              TextButton(
+                                onPressed: () => Navigator.of(context)
+                                    .pushReplacement(MaterialPageRoute(
+                                        builder: (_) =>
+                                            const LoginScreen())),
+                                style: TextButton.styleFrom(
+                                  foregroundColor: Colors.white,
+                                ),
+                                child: Text(
+                                  'Ya tengo cuenta',
+                                  style: TextStyle(
+                                    color: Colors.white
+                                        .withValues(alpha: 0.92),
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ),
+                            ],
                           ),
-                          TextButton(
-                            onPressed: () => Navigator.of(context)
-                                .pushReplacement(MaterialPageRoute(
-                                    builder: (_) => const LoginScreen())),
-                            child: const Text('Ya tengo cuenta',
-                                style: TextStyle(
-                                    color: AppTheme.textSecondary,
-                                    fontSize: 18)),
+                          const SizedBox(height: 18),
+
+                          // Barra de progreso (5 segmentos)
+                          Row(
+                            children: List.generate(
+                                OnboardingStepperController.totalSteps,
+                                (i) {
+                              final active = i <= step;
+                              return Expanded(
+                                child: Container(
+                                  height: 6,
+                                  margin: EdgeInsets.only(
+                                      right: i <
+                                              OnboardingStepperController
+                                                      .totalSteps -
+                                                  1
+                                          ? 6
+                                          : 0),
+                                  decoration: BoxDecoration(
+                                    color: active
+                                        ? Colors.white
+                                        : Colors.white
+                                            .withValues(alpha: 0.3),
+                                    borderRadius:
+                                        BorderRadius.circular(3),
+                                  ),
+                                ),
+                              );
+                            }),
                           ),
+                          const SizedBox(height: 16),
+
+                          // Etiqueta de paso + título — en blanco
+                          Text(stepLabel,
+                              style: TextStyle(
+                                  fontSize: 14,
+                                  color: Colors.white
+                                      .withValues(alpha: 0.85),
+                                  fontWeight: FontWeight.w600,
+                                  letterSpacing: 0.3)),
+                          const SizedBox(height: 4),
+                          Text(stepTitle,
+                              style: const TextStyle(
+                                  fontSize: 24,
+                                  fontWeight: FontWeight.w800,
+                                  color: Colors.white,
+                                  height: 1.2)),
                         ],
                       ),
-                      const SizedBox(height: 20),
-
-                      // Barra de progreso (5 segmentos)
-                      Row(
-                        children: List.generate(OnboardingStepperController.totalSteps, (i) {
-                          final active = i <= step;
-                          return Expanded(
-                            child: Container(
-                              height: 6,
-                              margin: EdgeInsets.only(right: i < OnboardingStepperController.totalSteps - 1 ? 6 : 0),
-                              decoration: BoxDecoration(
-                                color: active
-                                    ? AppTheme.primary
-                                    : AppTheme.borderColor,
-                                borderRadius: BorderRadius.circular(3),
-                              ),
-                            ),
-                          );
-                        }),
-                      ),
-                      const SizedBox(height: 16),
-
-                      // Etiqueta de paso + título
-                      Text(stepLabel,
-                          style: const TextStyle(
-                              fontSize: 18,
-                              color: AppTheme.textSecondary,
-                              fontWeight: FontWeight.w500)),
-                      const SizedBox(height: 4),
-                      Text(stepTitle,
-                          style: const TextStyle(
-                              fontSize: 26,
-                              fontWeight: FontWeight.bold,
-                              color: AppTheme.textPrimary)),
-                    ],
+                    ),
                   ),
                 ),
 
-                const SizedBox(height: 20),
+                const SizedBox(height: 16),
 
                 // ── Páginas ────────────────────────────────────────────────
                 Expanded(
@@ -463,7 +520,6 @@ class _OnboardingStepperState extends State<OnboardingStepper> {
               ],
             );
           },
-        ),
       ),
     );
   }
