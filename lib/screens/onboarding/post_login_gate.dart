@@ -8,15 +8,20 @@
 //   onboarding_completed == true   → DashboardScreen
 //
 // Centraliza el check para que login / splash / branch-selector no
-// tengan que duplicar la lógica. Lee el flag cacheado por AuthService
-// (offline-safe) — default `true`, así un tenant existente nunca ve la
-// welcome (AC-10).
+// tengan que duplicar la lógica.
+//
+// Source of truth: el backend (`GET /store/profile.onboarding_completed`).
+// El endpoint `/login` NO devuelve este flag — solo `/store/profile` lo
+// hace —, así que un re-login no refresca el cache local. Por eso este
+// gate fetchea cada vez al backend y usa el cache de AuthService solo
+// como fallback offline.
 //
 // F037 reemplazó el wizard de 3 pasos (`OnboardingWizardScreen`) por
 // una pantalla única de bienvenida (`WelcomeScreen`).
 
 import 'package:flutter/material.dart';
 
+import '../../services/api_service.dart';
 import '../../services/auth_service.dart';
 import '../../theme/app_theme.dart';
 import '../dashboard/dashboard_screen.dart';
@@ -49,13 +54,35 @@ class _PostLoginGateState extends State<PostLoginGate> {
   Future<void> _resolve() async {
     final auth = AuthService();
     bool completed = true;
+
+    // 1) Source of truth = backend. Lo consultamos cada vez que se
+    //    monta el gate (post-login, post-splash, post-branch-select)
+    //    para no quedar atrapados en un cache que no se invalida
+    //    por logout (el endpoint /login no devuelve este flag, así
+    //    que reloguear no refresca el cache local — esta consulta sí).
     try {
-      completed = await auth.getOnboardingCompleted();
+      final api = ApiService(auth);
+      final profile = await api.fetchBusinessProfile();
+      if (profile.containsKey('onboarding_completed')) {
+        completed = profile['onboarding_completed'] == true;
+        // Sincronizar cache local para que offline siga funcionando.
+        await auth.updateOnboardingCompleted(completed);
+      } else {
+        // El backend no expuso el flag (versión vieja del backend);
+        // caemos al cache.
+        completed = await auth.getOnboardingCompleted();
+      }
     } catch (_) {
-      // Fail-open: ante cualquier error mostramos el Dashboard, nunca
-      // atrapamos al dueño en la welcome por una lectura fallida.
-      completed = true;
+      // 2) Offline o error de red — caemos al cache. Fail-open: ante
+      //    cualquier error mostramos el Dashboard, nunca atrapamos
+      //    al dueño en la welcome por una lectura fallida.
+      try {
+        completed = await auth.getOnboardingCompleted();
+      } catch (_) {
+        completed = true;
+      }
     }
+
     if (!mounted) return;
     setState(() {
       _onboardingCompleted = completed;
