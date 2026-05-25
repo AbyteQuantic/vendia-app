@@ -1,9 +1,13 @@
 // Spec: specs/037-reel-capacidades-dashboard/spec.md
 //
-// T-29 — widget test de WelcomeScreen:
-//   - rendea logo + título + botón "Empezar".
-//   - tap dispara PATCH onboarding_completed=true.
-//   - tras el PATCH se invoca el callback onCompleted.
+// Widget tests del WelcomeScreen — tour educativo de 6 pasos
+// post-login:
+//   - Step 1 muestra logo + título + botón "Siguiente".
+//   - El botón "Saltar" dispara PATCH onboarding_completed=true.
+//   - El step 5 menciona el carrusel del Dashboard (educa al dueño
+//     sobre el mecanismo de descubrimiento de capacidades).
+//   - Al llegar al último paso el botón muestra "Empezar" y al
+//     tocarlo dispara PATCH + onCompleted.
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -40,6 +44,14 @@ void _mockSecureStorage() {
 
 Widget _wrap(Widget child) => MaterialApp(home: child);
 
+/// Avanza el PageView del tour [steps] veces tocando "Siguiente".
+Future<void> _advanceSteps(WidgetTester tester, int steps) async {
+  for (var i = 0; i < steps; i++) {
+    await tester.tap(find.byKey(const Key('welcome_start_button')));
+    await tester.pumpAndSettle();
+  }
+}
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
@@ -49,8 +61,8 @@ void main() {
 
   setUp(_mockSecureStorage);
 
-  group('WelcomeScreen', () {
-    testWidgets('rendea logo, título y botón Empezar', (tester) async {
+  group('WelcomeScreen — tour educativo', () {
+    testWidgets('paso 1: logo + título + botón Siguiente', (tester) async {
       await tester.pumpWidget(_wrap(WelcomeScreen(
         apiOverride: _FakeApi(),
       )));
@@ -59,11 +71,13 @@ void main() {
       expect(find.byKey(const Key('welcome_logo')), findsOneWidget);
       expect(find.text('¡Bienvenido a VendIA!'), findsOneWidget);
       expect(find.byKey(const Key('welcome_start_button')), findsOneWidget);
-      expect(find.text('Empezar'), findsOneWidget);
+      // En el primer paso el botón principal dice "Siguiente"
+      // (los pasos intermedios mantienen el copy).
+      expect(find.text('Siguiente'), findsOneWidget);
     });
 
-    testWidgets('tap Empezar dispara PATCH onboarding_completed=true '
-        'y llama onCompleted', (tester) async {
+    testWidgets('botón Saltar dispara PATCH y onCompleted',
+        (tester) async {
       final api = _FakeApi();
       var completed = false;
 
@@ -73,8 +87,8 @@ void main() {
       )));
       await tester.pump();
 
-      await tester.tap(find.byKey(const Key('welcome_start_button')));
-      // Esperamos el await del API + el await del secure-storage write.
+      // El botón Saltar está disponible en cualquier paso menos el último.
+      await tester.tap(find.text('Saltar'));
       await tester.pumpAndSettle();
 
       expect(api.lastPatch, isNotNull);
@@ -82,15 +96,47 @@ void main() {
       expect(completed, isTrue);
     });
 
-    testWidgets('texto explicativo menciona el carrusel de opciones',
+    testWidgets('paso 5 (Descubrir más) menciona el carrusel',
         (tester) async {
       await tester.pumpWidget(_wrap(WelcomeScreen(
         apiOverride: _FakeApi(),
       )));
       await tester.pump();
 
-      // El copy debe educar al dueño sobre el reel del Dashboard.
+      // Avanzar 4 pasos para llegar al de "Descubrir más opciones"
+      // (índice 4, posición 5/6).
+      await _advanceSteps(tester, 4);
+
+      expect(find.text('Descubrir más opciones'), findsOneWidget);
       expect(find.textContaining('carrusel'), findsOneWidget);
+    });
+
+    testWidgets('último paso muestra "Empezar" y dispara PATCH al tocarlo',
+        (tester) async {
+      final api = _FakeApi();
+      var completed = false;
+
+      await tester.pumpWidget(_wrap(WelcomeScreen(
+        apiOverride: api,
+        onCompleted: () => completed = true,
+      )));
+      await tester.pump();
+
+      // 5 toques de "Siguiente" para llegar al step 6 (índice 5).
+      await _advanceSteps(tester, 5);
+
+      // Ya no hay botón Saltar en el último paso.
+      expect(find.text('Saltar'), findsNothing);
+      expect(find.text('Empezar'), findsOneWidget);
+      expect(find.text('¡Todo listo!'), findsOneWidget);
+
+      // Tap final.
+      await tester.tap(find.byKey(const Key('welcome_start_button')));
+      await tester.pumpAndSettle();
+
+      expect(api.lastPatch, isNotNull);
+      expect(api.lastPatch!['onboarding_completed'], isTrue);
+      expect(completed, isTrue);
     });
   });
 }

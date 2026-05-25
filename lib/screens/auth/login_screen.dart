@@ -343,24 +343,15 @@ class _LoginScreenState extends State<LoginScreen> {
                       children: [
                         const SizedBox(height: 24),
 
-                        // ── Hero — emoji 🏪 en círculo con gradient ────
-                        // Mismo lenguaje visual del Welcome (un poco más
-                        // chico aquí porque hay un form debajo).
+                        // ── Hero — logo oficial de VendIA en circle ────
+                        // Mismo container blanco con sombra que el Welcome
+                        // pero más chico (110dp) porque hay form abajo.
                         Container(
                           width: 110,
                           height: 110,
                           decoration: BoxDecoration(
                             shape: BoxShape.circle,
-                            gradient: const RadialGradient(
-                              center: Alignment(-0.3, -0.4),
-                              radius: 1.0,
-                              colors: [
-                                Color(0xFFE0E7FF),
-                                Color(0xFFA5B4FC),
-                                Color(0xFF6366F1),
-                              ],
-                              stops: [0.0, 0.5, 1.0],
-                            ),
+                            color: Colors.white,
                             boxShadow: [
                               BoxShadow(
                                 color: const Color(0xFF1E3A8A)
@@ -375,10 +366,11 @@ class _LoginScreenState extends State<LoginScreen> {
                               ),
                             ],
                           ),
-                          child: const Center(
-                            child: Text(
-                              '🏪',
-                              style: TextStyle(fontSize: 60, height: 1.0),
+                          padding: const EdgeInsets.all(10),
+                          child: ClipOval(
+                            child: Image.asset(
+                              'assets/images/vendia_icon_1024.png',
+                              fit: BoxFit.contain,
                             ),
                           ),
                         ),
