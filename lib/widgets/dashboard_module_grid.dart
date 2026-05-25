@@ -189,62 +189,102 @@ class _ModuleCard extends StatelessWidget {
     return Semantics(
       button: true,
       label: module.title,
-      child: GestureDetector(
-        key: Key('dashboard_module_${module.id}'),
-        onTap: () => _navigate(context, module),
-        child: Container(
-          width: double.infinity,
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(18),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.04),
-                blurRadius: 8,
-                offset: const Offset(0, 2),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          key: Key('dashboard_module_${module.id}'),
+          borderRadius: BorderRadius.circular(20),
+          onTap: () => _navigate(context, module),
+          child: Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(
+                color: module.color.withValues(alpha: 0.10),
+                width: 1,
               ),
-            ],
-          ),
-          child: Row(
-            children: [
-              Container(
-                width: 48,
-                height: 48,
-                decoration: BoxDecoration(
-                  color: module.color.withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(14),
+              boxShadow: [
+                // Sombra teñida con el color del módulo — da profundidad
+                // y refuerza la identidad de cada categoría sin saturar.
+                BoxShadow(
+                  color: module.color.withValues(alpha: 0.10),
+                  blurRadius: 18,
+                  offset: const Offset(0, 6),
                 ),
-                child: Icon(module.icon, color: module.color, size: 24),
-              ),
-              const SizedBox(width: 14),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      module.title,
-                      style: const TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                        color: AppTheme.textPrimary,
-                      ),
-                    ),
-                    Text(
-                      module.subtitle,
-                      style: const TextStyle(
-                        fontSize: 14,
-                        color: AppTheme.textSecondary,
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ],
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.025),
+                  blurRadius: 4,
+                  offset: const Offset(0, 1),
                 ),
-              ),
-              Icon(Icons.chevron_right_rounded,
-                  color: module.color, size: 24),
-            ],
+              ],
+            ),
+            child: Row(
+              children: [
+                // Ícono dentro de un container con gradient diagonal
+                // del color del módulo — más vivo que el flat color
+                // y consistente con el hero del Welcome modernizado.
+                Container(
+                  width: 52,
+                  height: 52,
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                      colors: [
+                        module.color.withValues(alpha: 0.18),
+                        module.color.withValues(alpha: 0.32),
+                      ],
+                    ),
+                    borderRadius: BorderRadius.circular(16),
+                    boxShadow: [
+                      BoxShadow(
+                        color: module.color.withValues(alpha: 0.25),
+                        blurRadius: 8,
+                        offset: const Offset(0, 3),
+                      ),
+                    ],
+                  ),
+                  child: Icon(module.icon, color: module.color, size: 26),
+                ),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        module.title,
+                        style: const TextStyle(
+                          fontSize: 17,
+                          fontWeight: FontWeight.w700,
+                          color: AppTheme.textPrimary,
+                          height: 1.2,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        module.subtitle,
+                        style: const TextStyle(
+                          fontSize: 13,
+                          color: AppTheme.textSecondary,
+                          height: 1.3,
+                        ),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
+                  ),
+                ),
+                // Chevron más sutil — el color del módulo solo en hover
+                // visual de la sombra. El gris suave no compite con el
+                // ícono coloreado.
+                Icon(Icons.chevron_right_rounded,
+                    color: Colors.grey.shade400, size: 22),
+              ],
+            ),
           ),
         ),
       ),
