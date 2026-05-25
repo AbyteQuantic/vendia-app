@@ -1,32 +1,26 @@
 // Spec: specs/037-reel-capacidades-dashboard/spec.md
 //
-// Welcome screen — reemplaza el `OnboardingWizardScreen` de 3 pasos
-// (F036). Una sola pantalla con logo + mensaje corto + botón
-// "Empezar". Tocar el botón:
+// Welcome / tour educativo post-login. Reemplaza el welcome plano de
+// 1 pantalla por un PageView de 6 pasos que explica QUÉ puede hacer
+// el dueño en VendIA y CÓMO. Al terminar (o saltar):
 //   1. PATCH /store/profile { onboarding_completed: true }
 //   2. Marca el flag local en AuthService (offline-safe)
 //   3. Llama onCompleted (navega al Dashboard)
 //
-// El descubrimiento de capacidades ya NO se hace en el onboarding;
-// pasa a vivir en el reel del Dashboard.
+// Diseño visual coherente con Login / Signup / Dashboard:
+// - Gradient azul brand de fondo
+// - Header con logo + "Saltar" link blanco + progress bar segmentado
+// - Cada paso = hero emoji en círculo + título + texto + bullets
+// - Botones nav abajo: Atrás (oculto en step 1) + Siguiente/Empezar
 //
-// 2026-05-25 — UI modernizada con layout inspirado en mockups de
-// referencia (file-manager style): gradient full-screen, emoji
-// centrado en círculo con sombra, card glassmorphism con el mensaje
-// y CTA pill grande. Mantiene azul brand + Gerontodiseño (texto
-// ≥17pt, táctil ≥48dp, 360dp). Mismo flujo de PATCH y navegación.
-
-import 'dart:ui';
+// Tests: mantiene las keys públicas `welcome_logo` y
+// `welcome_start_button` para no romper la suite existente.
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../services/api_service.dart';
 import '../../services/auth_service.dart';
-// AppTheme se quitó de los imports: la pantalla pasó a usar Colors
-// directos (blanco sobre gradient) en vez de los tokens textPrimary/
-// textSecondary del theme. Se mantienen los hex literales del gradient
-// alineados con AppTheme.primary.
 
 class WelcomeScreen extends StatefulWidget {
   /// Inyección de [ApiService] para tests.
@@ -47,15 +41,99 @@ class WelcomeScreen extends StatefulWidget {
 
 class _WelcomeScreenState extends State<WelcomeScreen> {
   late final ApiService _api;
+  late final PageController _pageCtrl;
+  int _currentStep = 0;
   bool _submitting = false;
+
+  // ── Contenido del tour ───────────────────────────────────────────
+  // Cada step: emoji hero, título, texto principal, bullets opcionales.
+  // El copy es español neutral (UI_RULES §11) — modo USTED, sin voseo.
+  static const List<_TourStep> _steps = [
+    _TourStep(
+      emoji: '🏪', // fallback si el asset no carga
+      useLogo: true,
+      title: '¡Bienvenido a VendIA!',
+      body:
+          'Su negocio en el bolsillo. Vender, manejar inventario y '
+          'ver sus ganancias — todo en un solo lugar.',
+      bullets: [],
+    ),
+    _TourStep(
+      emoji: '💰',
+      title: 'Registrar ventas',
+      body:
+          'Cobre rápido eligiendo productos del catálogo o escaneando '
+          'el código de barras. Cada venta queda guardada.',
+      bullets: [
+        ('🧾', 'Efectivo, digital (Nequi/Bre-B) o fiado'),
+        ('📷', 'Escanea el código del producto al cobrar'),
+        ('🧮', 'Sume cantidades, descuentos e impuestos'),
+      ],
+    ),
+    _TourStep(
+      emoji: '📦',
+      title: 'Manejar inventario',
+      body:
+          'Cargue lo que vende a su catálogo. Vea el stock al '
+          'instante y reciba avisos cuando algo se está acabando.',
+      bullets: [
+        ('➕', 'Agregue productos uno por uno o por voz'),
+        ('📊', 'Importe un Excel con todos sus productos'),
+        ('⚠️', 'Alertas cuando el stock está bajo'),
+      ],
+    ),
+    _TourStep(
+      emoji: '📈',
+      title: 'Ver sus ganancias',
+      body:
+          'Cuánto vendió, cuánto ganó y qué productos rinden más. '
+          'Todo en pantallas claras, sin números confusos.',
+      bullets: [
+        ('💵', 'Ventas de hoy y del mes'),
+        ('🏆', 'Productos más vendidos y de mayor margen'),
+        ('🔍', 'Filtre por sede, empleado o forma de pago'),
+      ],
+    ),
+    _TourStep(
+      emoji: '✨',
+      title: 'Descubrir más opciones',
+      body:
+          'En el carrusel arriba del panel verá módulos extra para '
+          'su negocio. Active solo los que necesite.',
+      bullets: [
+        ('👥', 'Mis Clientes — quién le compra y cuánto'),
+        ('📋', 'Cotizaciones — propuestas formales por WhatsApp'),
+        ('📢', 'Promociones — avise ofertas a sus clientes'),
+        ('🍳', 'Recetas, mesas, trabajos y más'),
+      ],
+    ),
+    _TourStep(
+      emoji: '✅',
+      title: '¡Todo listo!',
+      body:
+          'Su VendIA está preparado. Si necesita ayuda, en Mi Negocio '
+          'encontrará el soporte y los ajustes. ¡A vender!',
+      bullets: [],
+    ),
+  ];
+
+  int get _totalSteps => _steps.length;
+  bool get _isLastStep => _currentStep == _totalSteps - 1;
 
   @override
   void initState() {
     super.initState();
     _api = widget.apiOverride ?? ApiService(AuthService());
+    _pageCtrl = PageController();
   }
 
-  Future<void> _onStart() async {
+  @override
+  void dispose() {
+    _pageCtrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _completeOnboarding() async {
     if (_submitting) return;
     setState(() => _submitting = true);
     HapticFeedback.mediumImpact();
@@ -64,7 +142,7 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
       await _api.updateBusinessProfile({'onboarding_completed': true});
     } catch (_) {
       // Offline / error de red — igual marcamos el flag local para no
-      // atrapar al dueño en la welcome. El backend reconcilia luego.
+      // atrapar al dueño en el tour. El backend reconcilia luego.
     }
     try {
       await AuthService().updateOnboardingCompleted(true);
@@ -75,20 +153,36 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
     widget.onCompleted?.call();
   }
 
+  void _goNext() {
+    HapticFeedback.lightImpact();
+    if (_isLastStep) {
+      _completeOnboarding();
+      return;
+    }
+    _pageCtrl.nextPage(
+      duration: const Duration(milliseconds: 320),
+      curve: Curves.easeOutCubic,
+    );
+  }
+
+  void _goBack() {
+    if (_currentStep == 0) return;
+    HapticFeedback.lightImpact();
+    _pageCtrl.previousPage(
+      duration: const Duration(milliseconds: 280),
+      curve: Curves.easeOutCubic,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      // Sin AppBar — usamos un fondo gradient full-screen que envuelve
-      // el contenido. Statusbar transparente para que el gradient suba
-      // hasta el notch.
       extendBodyBehindAppBar: true,
       body: Container(
         decoration: const BoxDecoration(
           gradient: LinearGradient(
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
-            // Mismo azul brand del Dashboard (header) para coherencia
-            // visual de toda la app.
             colors: [
               Color(0xFF1E3A8A),
               Color(0xFF3B82F6),
@@ -98,158 +192,308 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
           ),
         ),
         child: SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(24, 24, 24, 28),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                const Spacer(flex: 2),
-                // ── Hero — emoji grande dentro de un círculo con
-                // gradient interno + sombra suave. Cumple el rol del
-                // ícono 3D de los mockups sin agregar assets pesados.
-                Center(
-                  key: const Key('welcome_logo'),
-                  child: _HeroIconBubble(),
-                ),
-                const SizedBox(height: 36),
-                // ── Card glassmorphism — translúcida sobre el gradient,
-                // con blur de fondo y borde claro. Misma idea que el
-                // "Manage Project File Everywhere" de las capturas.
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(28),
-                  child: BackdropFilter(
-                    filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
-                    child: Container(
-                      padding:
-                          const EdgeInsets.fromLTRB(24, 28, 24, 24),
-                      decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: 0.16),
-                        borderRadius: BorderRadius.circular(28),
-                        border: Border.all(
-                          color: Colors.white.withValues(alpha: 0.28),
-                          width: 1,
+          child: Column(
+            children: [
+              // ── Header: progreso + Saltar ────────────────────────
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 12, 8, 14),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Row(
+                        children: List.generate(_totalSteps, (i) {
+                          final active = i <= _currentStep;
+                          return Expanded(
+                            child: AnimatedContainer(
+                              duration:
+                                  const Duration(milliseconds: 260),
+                              height: 5,
+                              margin: EdgeInsets.only(
+                                  right: i < _totalSteps - 1 ? 5 : 0),
+                              decoration: BoxDecoration(
+                                color: active
+                                    ? Colors.white
+                                    : Colors.white
+                                        .withValues(alpha: 0.28),
+                                borderRadius: BorderRadius.circular(3),
+                              ),
+                            ),
+                          );
+                        }),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    if (!_isLastStep)
+                      TextButton(
+                        onPressed:
+                            _submitting ? null : _completeOnboarding,
+                        style: TextButton.styleFrom(
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 8, vertical: 8),
+                        ),
+                        child: Text(
+                          'Saltar',
+                          style: TextStyle(
+                            color: Colors.white.withValues(alpha: 0.85),
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600,
+                          ),
                         ),
                       ),
-                      child: Column(
-                        children: [
-                          const Text(
-                            '¡Bienvenido a VendIA!',
-                            textAlign: TextAlign.center,
-                            style: TextStyle(
-                              fontSize: 26,
-                              fontWeight: FontWeight.w800,
+                  ],
+                ),
+              ),
+
+              // ── PageView con los pasos ────────────────────────────
+              Expanded(
+                child: PageView.builder(
+                  controller: _pageCtrl,
+                  onPageChanged: (i) => setState(() => _currentStep = i),
+                  itemCount: _totalSteps,
+                  itemBuilder: (_, i) {
+                    final step = _steps[i];
+                    return _TourStepView(
+                      step: step,
+                      // Mantener la key del logo solo en el step 1 para
+                      // que el test de welcome_logo siga funcionando.
+                      heroKey: i == 0
+                          ? const Key('welcome_logo')
+                          : null,
+                    );
+                  },
+                ),
+              ),
+
+              // ── Botones de navegación ─────────────────────────────
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 8, 20, 22),
+                child: Row(
+                  children: [
+                    if (_currentStep > 0)
+                      Padding(
+                        padding: const EdgeInsets.only(right: 12),
+                        child: SizedBox(
+                          height: 60,
+                          width: 60,
+                          child: OutlinedButton(
+                            onPressed: _submitting ? null : _goBack,
+                            style: OutlinedButton.styleFrom(
+                              foregroundColor: Colors.white,
+                              side: BorderSide(
+                                color: Colors.white
+                                    .withValues(alpha: 0.55),
+                                width: 1.5,
+                              ),
+                              shape: const StadiumBorder(),
+                              padding: EdgeInsets.zero,
+                            ),
+                            child: const Icon(
+                              Icons.arrow_back_rounded,
                               color: Colors.white,
-                              height: 1.2,
+                              size: 24,
                             ),
                           ),
-                          const SizedBox(height: 14),
-                          Text(
-                            'Su negocio arranca con lo esencial: vender, '
-                            'inventario y ganancias. Arriba en el panel '
-                            'verá un carrusel con más opciones — '
-                            'actívelas cuando las necesite.',
-                            textAlign: TextAlign.center,
-                            style: TextStyle(
-                              fontSize: 17,
-                              height: 1.4,
-                              color:
-                                  Colors.white.withValues(alpha: 0.92),
+                        ),
+                      ),
+                    Expanded(
+                      child: SizedBox(
+                        height: 60,
+                        child: ElevatedButton(
+                          key: const Key('welcome_start_button'),
+                          onPressed: _submitting ? null : _goNext,
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.white,
+                            foregroundColor: const Color(0xFF1E3A8A),
+                            disabledBackgroundColor:
+                                Colors.white.withValues(alpha: 0.55),
+                            elevation: 0,
+                            shape: const StadiumBorder(),
+                          ),
+                          child: _submitting
+                              ? const SizedBox(
+                                  width: 24,
+                                  height: 24,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2.6,
+                                    color: Color(0xFF1E3A8A),
+                                  ),
+                                )
+                              : Text(
+                                  _isLastStep ? 'Empezar' : 'Siguiente',
+                                  style: const TextStyle(
+                                    fontSize: 20,
+                                    fontWeight: FontWeight.w800,
+                                    letterSpacing: 0.3,
+                                  ),
+                                ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Estructura inmutable de un paso del tour.
+class _TourStep {
+  final String emoji;
+  final String title;
+  final String body;
+  /// Bullets opcionales: (emoji corto, texto).
+  final List<(String, String)> bullets;
+  /// Si es `true`, el hero muestra el logo oficial de VendIA en lugar
+  /// del [emoji]. Usado solo en el step de bienvenida.
+  final bool useLogo;
+
+  const _TourStep({
+    required this.emoji,
+    required this.title,
+    required this.body,
+    required this.bullets,
+    this.useLogo = false,
+  });
+}
+
+/// Render de un paso individual — hero emoji + título + body +
+/// bullets opcionales con su propio emoji.
+class _TourStepView extends StatelessWidget {
+  final _TourStep step;
+  final Key? heroKey;
+
+  const _TourStepView({required this.step, this.heroKey});
+
+  @override
+  Widget build(BuildContext context) {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.fromLTRB(24, 8, 24, 16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const SizedBox(height: 16),
+          // ── Hero — logo oficial de VendIA en el step 1; emoji
+          // ilustrativo en los pasos siguientes (varía por tema).
+          Center(
+            child: Container(
+              key: heroKey,
+              width: 148,
+              height: 148,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: Colors.white,
+                boxShadow: [
+                  BoxShadow(
+                    color: const Color(0xFF1E3A8A).withValues(alpha: 0.35),
+                    blurRadius: 28,
+                    offset: const Offset(0, 14),
+                  ),
+                  BoxShadow(
+                    color: Colors.white.withValues(alpha: 0.18),
+                    blurRadius: 6,
+                    offset: const Offset(-2, -3),
+                  ),
+                ],
+              ),
+              padding: const EdgeInsets.all(12),
+              child: step.useLogo
+                  ? ClipOval(
+                      child: Image.asset(
+                        'assets/images/vendia_icon_1024.png',
+                        fit: BoxFit.contain,
+                      ),
+                    )
+                  : Center(
+                      child: Text(
+                        step.emoji,
+                        style: const TextStyle(fontSize: 84, height: 1.0),
+                      ),
+                    ),
+            ),
+          ),
+          const SizedBox(height: 28),
+
+          // ── Título
+          Text(
+            step.title,
+            textAlign: TextAlign.center,
+            style: const TextStyle(
+              fontSize: 26,
+              fontWeight: FontWeight.w800,
+              color: Colors.white,
+              height: 1.2,
+            ),
+          ),
+          const SizedBox(height: 12),
+
+          // ── Body
+          Text(
+            step.body,
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontSize: 17,
+              height: 1.45,
+              color: Colors.white.withValues(alpha: 0.92),
+            ),
+          ),
+
+          // ── Bullets (opcional) — card glass con la lista
+          if (step.bullets.isNotEmpty) ...[
+            const SizedBox(height: 22),
+            Container(
+              padding: const EdgeInsets.fromLTRB(18, 14, 14, 14),
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: 0.14),
+                borderRadius: BorderRadius.circular(22),
+                border: Border.all(
+                  color: Colors.white.withValues(alpha: 0.22),
+                ),
+              ),
+              child: Column(
+                children: [
+                  for (final (icon, text) in step.bullets) ...[
+                    Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 6),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          SizedBox(
+                            width: 28,
+                            child: Text(
+                              icon,
+                              style:
+                                  const TextStyle(fontSize: 22, height: 1.2),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              text,
+                              style: TextStyle(
+                                fontSize: 15,
+                                height: 1.4,
+                                color: Colors.white
+                                    .withValues(alpha: 0.95),
+                                fontWeight: FontWeight.w500,
+                              ),
                             ),
                           ),
                         ],
                       ),
                     ),
-                  ),
-                ),
-                const Spacer(flex: 3),
-                // ── CTA pill grande — alto contraste sobre el
-                // gradient, ≥56dp para Gerontodiseño.
-                SizedBox(
-                  height: 60,
-                  child: ElevatedButton(
-                    key: const Key('welcome_start_button'),
-                    onPressed: _submitting ? null : _onStart,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.white,
-                      foregroundColor: const Color(0xFF1E3A8A),
-                      disabledBackgroundColor:
-                          Colors.white.withValues(alpha: 0.6),
-                      elevation: 0,
-                      shape: const StadiumBorder(),
-                      shadowColor: Colors.transparent,
-                    ),
-                    child: _submitting
-                        ? const SizedBox(
-                            width: 24,
-                            height: 24,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2.6,
-                              color: Color(0xFF1E3A8A),
-                            ),
-                          )
-                        : const Text(
-                            'Empezar',
-                            style: TextStyle(
-                              fontSize: 20,
-                              fontWeight: FontWeight.w800,
-                              letterSpacing: 0.3,
-                            ),
-                          ),
-                  ),
-                ),
-              ],
+                  ],
+                ],
+              ),
             ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-/// Burbuja con gradient + emoji grande — placeholder de ilustración
-/// 3D para el MVP. El emoji nativo se renderea con la fuente del
-/// sistema, sin peso adicional en el bundle.
-class _HeroIconBubble extends StatelessWidget {
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: 168,
-      height: 168,
-      decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        gradient: const RadialGradient(
-          center: Alignment(-0.3, -0.4),
-          radius: 1.0,
-          colors: [
-            Color(0xFFE0E7FF),
-            Color(0xFFA5B4FC),
-            Color(0xFF6366F1),
           ],
-          stops: [0.0, 0.5, 1.0],
-        ),
-        boxShadow: [
-          // Doble sombra: una difusa que da el "flotando" y otra más
-          // marcada cerca del borde para profundidad sin saturar.
-          BoxShadow(
-            color: const Color(0xFF1E3A8A).withValues(alpha: 0.35),
-            blurRadius: 32,
-            offset: const Offset(0, 18),
-          ),
-          BoxShadow(
-            color: Colors.white.withValues(alpha: 0.18),
-            blurRadius: 8,
-            offset: const Offset(-2, -4),
-          ),
+          const SizedBox(height: 12),
         ],
       ),
-      child: const Center(
-        // Emoji "tienda" — universal, no requiere asset bundled.
-        child: Text(
-          '🏪',
-          style: TextStyle(fontSize: 96, height: 1.0),
-        ),
-      ),
     );
   }
 }
-

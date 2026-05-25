@@ -303,10 +303,12 @@ class _OnboardingStepperState extends State<OnboardingStepper> {
                                     ),
                                   ],
                                 ),
-                                child: const Center(
-                                  child: Text('🏪',
-                                      style: TextStyle(
-                                          fontSize: 22, height: 1.0)),
+                                padding: const EdgeInsets.all(4),
+                                child: ClipOval(
+                                  child: Image.asset(
+                                    'assets/images/vendia_icon_1024.png',
+                                    fit: BoxFit.contain,
+                                  ),
                                 ),
                               ),
                               const SizedBox(width: 12),
