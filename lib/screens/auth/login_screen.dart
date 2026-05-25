@@ -314,83 +314,124 @@ class _LoginScreenState extends State<LoginScreen> {
       // resizeToAvoidBottomInset keeps the layout stable when the keyboard opens
       resizeToAvoidBottomInset: true,
       body: Container(
+        // Mismo gradient azul brand del Welcome modernizado — coherencia
+        // visual de toda la app desde el primer paint.
         decoration: const BoxDecoration(
           gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
             colors: [
-              Color(0xFFFFFBF7),
-              Color(0xFFF0F2F8),
+              Color(0xFF1E3A8A),
+              Color(0xFF3B82F6),
+              Color(0xFF6366F1),
             ],
+            stops: [0.0, 0.55, 1.0],
           ),
         ),
         child: SafeArea(
           child: LayoutBuilder(
             builder: (context, constraints) {
               return SingleChildScrollView(
-                padding: const EdgeInsets.symmetric(horizontal: 28),
+                padding: const EdgeInsets.symmetric(horizontal: 24),
                 child: ConstrainedBox(
                   constraints: BoxConstraints(
                     minHeight: constraints.maxHeight,
                   ),
                   child: IntrinsicHeight(
                     child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
+                      crossAxisAlignment: CrossAxisAlignment.center,
                       children: [
-                        const SizedBox(height: 32),
+                        const SizedBox(height: 24),
 
-                        // ── Logo ──────────────────────────────────────────
+                        // ── Hero — emoji 🏪 en círculo con gradient ────
+                        // Mismo lenguaje visual del Welcome (un poco más
+                        // chico aquí porque hay un form debajo).
                         Container(
-                          width: 72,
-                          height: 72,
+                          width: 110,
+                          height: 110,
                           decoration: BoxDecoration(
-                            gradient: const LinearGradient(
-                              begin: Alignment.topLeft,
-                              end: Alignment.bottomRight,
-                              colors: [Color(0xFF667EEA), Color(0xFF1A2FA0)],
+                            shape: BoxShape.circle,
+                            gradient: const RadialGradient(
+                              center: Alignment(-0.3, -0.4),
+                              radius: 1.0,
+                              colors: [
+                                Color(0xFFE0E7FF),
+                                Color(0xFFA5B4FC),
+                                Color(0xFF6366F1),
+                              ],
+                              stops: [0.0, 0.5, 1.0],
                             ),
-                            borderRadius: BorderRadius.circular(22),
                             boxShadow: [
                               BoxShadow(
-                                color: AppTheme.primary.withValues(alpha: 0.2),
-                                blurRadius: 12,
-                                offset: const Offset(0, 4),
+                                color: const Color(0xFF1E3A8A)
+                                    .withValues(alpha: 0.35),
+                                blurRadius: 24,
+                                offset: const Offset(0, 12),
+                              ),
+                              BoxShadow(
+                                color: Colors.white.withValues(alpha: 0.15),
+                                blurRadius: 6,
+                                offset: const Offset(-2, -3),
                               ),
                             ],
                           ),
-                          child: const Icon(Icons.point_of_sale_rounded,
-                              color: Colors.white, size: 38),
+                          child: const Center(
+                            child: Text(
+                              '🏪',
+                              style: TextStyle(fontSize: 60, height: 1.0),
+                            ),
+                          ),
                         ),
-                        const SizedBox(height: 20),
+                        const SizedBox(height: 18),
 
                         // ── Título ────────────────────────────────────────
                         const Text(
                           'Bienvenido\nde nuevo',
+                          textAlign: TextAlign.center,
                           style: TextStyle(
-                            fontSize: 36,
-                            fontWeight: FontWeight.w900,
-                            color: AppTheme.textPrimary,
-                            letterSpacing: -1.0,
-                            height: 1.1,
+                            fontSize: 30,
+                            fontWeight: FontWeight.w800,
+                            color: Colors.white,
+                            letterSpacing: -0.5,
+                            height: 1.15,
                           ),
                         ),
-                        const SizedBox(height: 8),
+                        const SizedBox(height: 6),
 
-                        const Text(
+                        Text(
                           'Ingrese su número y clave para entrar.',
+                          textAlign: TextAlign.center,
                           style: TextStyle(
-                            fontSize: 17,
-                            color: Color(0xFF666666),
-                            height: 1.5,
+                            fontSize: 16,
+                            color: Colors.white.withValues(alpha: 0.85),
+                            height: 1.4,
                           ),
                         ),
 
                         // Flexible space: pushes form toward center on tall screens
                         const Spacer(flex: 1),
-                        const SizedBox(height: 16),
+                        const SizedBox(height: 20),
 
-                        // ── Form ──────────────────────────────────────────
-                        Form(
+                        // ── Form en card blanca prominente ────────────────
+                        // Card blanca (no glass) para legibilidad: los
+                        // TextFields necesitan alto contraste cuando el
+                        // dueño está tipeando.
+                        Container(
+                          padding:
+                              const EdgeInsets.fromLTRB(20, 24, 20, 22),
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(24),
+                            boxShadow: [
+                              BoxShadow(
+                                color: const Color(0xFF1E3A8A)
+                                    .withValues(alpha: 0.25),
+                                blurRadius: 28,
+                                offset: const Offset(0, 12),
+                              ),
+                            ],
+                          ),
+                          child: Form(
                           key: _formKey,
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
@@ -542,6 +583,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                 ),
                             ],
                           ),
+                          ),
                         ),
 
                         // Flexible space: pushes button to bottom on tall screens
@@ -570,63 +612,48 @@ class _LoginScreenState extends State<LoginScreen> {
                         ),
                         const SizedBox(height: 12),
 
-                        // ── Login Button (always visible) ─────────────────
-                        Container(
+                        // ── Login Button — pill blanco con texto azul ──
+                        // Mismo lenguaje que el CTA del Welcome
+                        // modernizado: blanco sobre el gradient azul.
+                        SizedBox(
                           key: const Key('btn_login'),
                           width: double.infinity,
-                          height: 64,
-                          decoration: BoxDecoration(
-                            gradient: LinearGradient(
-                              begin: Alignment.topLeft,
-                              end: Alignment.bottomRight,
-                              colors: _captchaActive
-                                  ? [
-                                      const Color(0xFF9CA3AF),
-                                      const Color(0xFFB0B7C3),
-                                    ]
-                                  : [
-                                      const Color(0xFF1A2FA0),
-                                      const Color(0xFF2541B2),
-                                    ],
+                          height: 62,
+                          child: ElevatedButton(
+                            onPressed: (_isLoading || _captchaActive)
+                                ? null
+                                : _handleLogin,
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.white,
+                              foregroundColor: const Color(0xFF1E3A8A),
+                              disabledBackgroundColor:
+                                  Colors.white.withValues(alpha: 0.55),
+                              disabledForegroundColor:
+                                  const Color(0xFF1E3A8A)
+                                      .withValues(alpha: 0.5),
+                              elevation: 0,
+                              shape: const StadiumBorder(),
+                              shadowColor: Colors.transparent,
                             ),
-                            borderRadius: BorderRadius.circular(20),
-                            boxShadow: [
-                              BoxShadow(
-                                color: Colors.black.withValues(alpha: 0.15),
-                                blurRadius: 16,
-                                offset: const Offset(0, 6),
-                              ),
-                            ],
-                          ),
-                          child: Material(
-                            color: Colors.transparent,
-                            child: InkWell(
-                              borderRadius: BorderRadius.circular(20),
-                              onTap: (_isLoading || _captchaActive)
-                                  ? null
-                                  : _handleLogin,
-                              child: Center(
-                                child: _isLoading
-                                    ? const SizedBox(
-                                        height: 24,
-                                        width: 24,
-                                        child: CircularProgressIndicator(
-                                            color: Colors.white,
-                                            strokeWidth: 2.5),
-                                      )
-                                    : const Text(
-                                        'Entrar a mi negocio',
-                                        style: TextStyle(
-                                          fontSize: 22,
-                                          fontWeight: FontWeight.w600,
-                                          color: Colors.white,
-                                        ),
-                                      ),
-                              ),
-                            ),
+                            child: _isLoading
+                                ? const SizedBox(
+                                    height: 24,
+                                    width: 24,
+                                    child: CircularProgressIndicator(
+                                        color: Color(0xFF1E3A8A),
+                                        strokeWidth: 2.6),
+                                  )
+                                : const Text(
+                                    'Entrar a mi negocio',
+                                    style: TextStyle(
+                                      fontSize: 20,
+                                      fontWeight: FontWeight.w800,
+                                      letterSpacing: 0.3,
+                                    ),
+                                  ),
                           ),
                         ),
-                        const SizedBox(height: 16),
+                        const SizedBox(height: 14),
 
                         // ── Register link ─────────────────────────────────
                         Center(
@@ -642,23 +669,22 @@ class _LoginScreenState extends State<LoginScreen> {
                             style: TextButton.styleFrom(
                               minimumSize: const Size(60, 60),
                             ),
-                            child: const Text.rich(
+                            child: Text.rich(
                               TextSpan(
                                 text: '¿Es su primera vez? ',
                                 style: TextStyle(
-                                  color: Color(0xFF666666),
-                                  fontSize: 18,
+                                  color:
+                                      Colors.white.withValues(alpha: 0.85),
+                                  fontSize: 17,
                                 ),
-                                children: [
+                                children: const [
                                   TextSpan(
                                     text: 'Registre su negocio',
                                     style: TextStyle(
-                                      color: AppTheme.primary,
-                                      fontWeight: FontWeight.bold,
+                                      color: Colors.white,
+                                      fontWeight: FontWeight.w800,
                                       decoration: TextDecoration.underline,
-                                      decorationStyle:
-                                          TextDecorationStyle.dotted,
-                                      decorationColor: AppTheme.primary,
+                                      decorationColor: Colors.white,
                                     ),
                                   ),
                                 ],
