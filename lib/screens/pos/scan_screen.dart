@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
@@ -6,6 +7,7 @@ import '../../services/api_service.dart';
 import '../../services/app_error.dart';
 import '../../services/auth_service.dart';
 import '../../theme/app_theme.dart';
+import '../../widgets/html5_qrcode_scanner.dart';
 import '../inventory/create_product_screen.dart';
 
 class ScanScreen extends StatefulWidget {
@@ -386,6 +388,19 @@ class _ScanScreenState extends State<ScanScreen> {
     Navigator.of(context).pop(barcode);
   }
 
+  /// Wrapper sobre `_onDetect` para el path web (html5-qrcode) que
+  /// solo recibe un string del código, no un `BarcodeCapture`.
+  Future<void> _onDetectedFromWeb(String code) async {
+    if (_processing) return;
+    if (code == _lastScannedCode) return;
+    setState(() {
+      _processing = true;
+      _lastScannedCode = code;
+    });
+    HapticFeedback.lightImpact();
+    await _lookupProduct(code);
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -394,10 +409,19 @@ class _ScanScreenState extends State<ScanScreen> {
         label: 'Pantalla de escáner de código de barras',
         child: Stack(
           children: [
-            MobileScanner(
-              controller: _scannerCtrl,
-              onDetect: _onDetect,
-            ),
+            // En web usamos html5-qrcode (JS, motor probado en iOS
+            // Safari). En móvil usamos mobile_scanner v7 nativo.
+            // El path móvil mantiene exactamente el comportamiento
+            // que ya funciona en producción.
+            if (kIsWeb)
+              Html5QrcodeScannerWidget(
+                onDetected: _onDetectedFromWeb,
+              )
+            else
+              MobileScanner(
+                controller: _scannerCtrl,
+                onDetect: _onDetect,
+              ),
 
             // Overlay with guide frame
             _ScanOverlay(isProcessing: _processing),
