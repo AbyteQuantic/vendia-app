@@ -40,7 +40,7 @@ dependencies:
   connectivity_plus: ^6.0.0
 
   # Escáner de código de barras (cámara nativa)
-  mobile_scanner: ^5.2.3
+  mobile_scanner: ^7.2.0
 
   # Captura de fotos (facturas, productos)
   image_picker: ^1.1.2
