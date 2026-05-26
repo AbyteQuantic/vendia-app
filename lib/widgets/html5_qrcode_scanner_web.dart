@@ -1,11 +1,11 @@
 // Spec: hotfix scanner web — sustituye mobile_scanner en web por
 // `html5-qrcode` (JS, CDN cargado en web/index.html). Solo se importa
-// cuando `kIsWeb` — la lib JS no existe en móvil.
+// cuando hay `dart:js_interop` (browser).
 //
-// Razón: mobile_scanner ^7 con motor zxing-wasm sigue fallando en
-// Safari iOS para muchos códigos retail. `html5-qrcode` (Google ZXing
-// JS port mantenido por mebjas) es la lib más probada en producción
-// para escaneo desde el browser y Safari iOS lo soporta correctamente.
+// Usamos la clase `Html5Qrcode` (low-level, sin UI) en lugar de
+// `Html5QrcodeScanner` (con UI propia + botón Request Permission).
+// El low-level toma la cámara directo con `.start()` y deja que el
+// caller dibuje su propio overlay (corners, texto, etc).
 
 import 'dart:js_interop';
 import 'dart:ui_web' as ui_web;
@@ -13,27 +13,35 @@ import 'dart:ui_web' as ui_web;
 import 'package:flutter/widgets.dart';
 import 'package:web/web.dart' as web;
 
-/// Bindings JS mínimos para `Html5QrcodeScanner` (lib global cargada
-/// desde el CDN en `web/index.html`).
-@JS('Html5QrcodeScanner')
-extension type _Html5QrcodeScanner._(JSObject _) implements JSObject {
-  external _Html5QrcodeScanner(
-      String elementId, JSObject config, bool verbose);
+/// Bindings JS mínimos para `Html5Qrcode` (lib global cargada desde
+/// el CDN en `web/index.html`). NOTA: la clase es `Html5Qrcode` —
+/// sin "Scanner" al final. La variante "Scanner" tiene UI propia.
+@JS('Html5Qrcode')
+extension type _Html5Qrcode._(JSObject _) implements JSObject {
+  external _Html5Qrcode(String elementId);
 
-  external void render(JSFunction onSuccess, JSFunction onError);
+  /// Inicia la cámara. `cameraConfig` puede ser string deviceId o
+  /// `{facingMode: 'environment'}` object. Devuelve una Promise.
+  external JSPromise<JSAny?> start(
+    JSAny cameraConfig,
+    JSObject scanConfig,
+    JSFunction onScanSuccess,
+    JSFunction? onScanFailure,
+  );
 
-  external JSPromise<JSAny?> clear();
+  /// Detiene la cámara. Idempotente.
+  external JSPromise<JSAny?> stop();
+
+  /// Libera recursos del DOM. Llamar tras stop().
+  external void clear();
 }
 
-/// Widget que muestra el lector `html5-qrcode` y emite el código
-/// detectado vía [onDetected]. Cubre el caso web (kIsWeb) — móvil
-/// no usa este widget, ahí sigue mobile_scanner.
 class Html5QrcodeScannerWidget extends StatefulWidget {
-  /// Callback con el valor crudo del barcode/QR cuando se detecta.
+  /// Callback con el código detectado.
   final void Function(String code) onDetected;
 
-  /// Lista opcional de formatos. Si no se pasa, html5-qrcode acepta
-  /// todos (el filtrado se hace al matchear contra el catálogo).
+  /// Formatos opcionales (string como 'EAN_13', 'CODE_128', etc).
+  /// Si null, html5-qrcode acepta todos.
   final List<String>? formats;
 
   const Html5QrcodeScannerWidget({
@@ -49,27 +57,21 @@ class Html5QrcodeScannerWidget extends StatefulWidget {
 
 class _Html5QrcodeScannerWidgetState
     extends State<Html5QrcodeScannerWidget> {
-  // ID único del <div> que html5-qrcode controla. Cada instancia del
-  // widget debe tener uno distinto para evitar colisiones si por
-  // alguna razón se montan dos a la vez (no debería pasar, pero
-  // estamos a salvo).
   late final String _hostId =
-      'h5q-scanner-${DateTime.now().microsecondsSinceEpoch}';
+      'h5q-${DateTime.now().microsecondsSinceEpoch}';
 
-  _Html5QrcodeScanner? _scanner;
-  bool _registered = false;
+  _Html5Qrcode? _scanner;
+  bool _started = false;
 
   @override
   void initState() {
     super.initState();
     _registerViewFactory();
-    // Espera al próximo frame para que el div esté en el DOM antes
-    // de inicializar el scanner JS.
+    // Espera al post-frame para que el <div> exista en DOM.
     WidgetsBinding.instance.addPostFrameCallback((_) => _start());
   }
 
   void _registerViewFactory() {
-    if (_registered) return;
     // ignore: undefined_prefixed_name
     ui_web.platformViewRegistry.registerViewFactory(
       _hostId,
@@ -77,59 +79,83 @@ class _Html5QrcodeScannerWidgetState
         final div = web.HTMLDivElement()
           ..id = _hostId
           ..style.width = '100%'
-          ..style.height = '100%';
+          ..style.height = '100%'
+          // El video que html5-qrcode injecta es 100% width por default;
+          // forzamos object-fit: cover para que llene el área sin
+          // bandas negras (UX igual que mobile_scanner).
+          ..style.backgroundColor = 'black';
         return div;
       },
     );
-    _registered = true;
   }
 
   void _start() {
     try {
-      // Config recomendada por la lib para retail/QR:
-      //   fps: 10   → balance entre detección y CPU
-      //   qrbox: 250 → área central de detección
-      //   aspectRatio: 1.333 (4:3) → marcos típicos de tienda
-      final config = {
+      final scanner = _Html5Qrcode(_hostId);
+      _scanner = scanner;
+
+      // facingMode 'environment' = cámara trasera en móvil.
+      final cameraConfig = {'facingMode': 'environment'}.jsify()!;
+
+      // qrbox: área central donde se hace el scan. fps: frames por
+      // segundo (10 = balance CPU/detección). disableFlip: false
+      // permite leer códigos al revés.
+      final scanConfig = {
         'fps': 10,
         'qrbox': {'width': 250, 'height': 250},
-        'aspectRatio': 1.333,
-        // Permitir cámara trasera por default en móvil.
-        'videoConstraints': {
-          'facingMode': 'environment',
-        },
+        'aspectRatio': 1.7777778, // 16:9 — se ajusta al video real
         if (widget.formats != null) 'formatsToSupport': widget.formats,
       }.jsify() as JSObject;
 
-      final scanner = _Html5QrcodeScanner(_hostId, config, false);
-      _scanner = scanner;
+      void onSuccess(JSString code, JSAny? _) {
+        widget.onDetected(code.toDart);
+      }
 
-      // Callbacks: success(code, result) — fire de inmediato.
-      // failure(err) — silencioso (es ruido normal cuando no hay match).
-      scanner.render(
-        (JSString code, JSAny? _) {
-          widget.onDetected(code.toDart);
-        }.toJS,
-        (JSString _) {
-          // Silencioso — html5-qrcode invoca onError en cada frame que
-          // no encuentra nada. Inundaría logs si lo propagamos.
-        }.toJS,
+      // onFailure se invoca en CADA frame sin match — ruido normal,
+      // pasamos un noop. NO puede ser null, html5-qrcode lo invoca.
+      void onFailure(JSString _) {}
+
+      final promise = scanner.start(
+        cameraConfig,
+        scanConfig,
+        onSuccess.toJS,
+        onFailure.toJS,
       );
-    } catch (_) {
-      // Si Html5QrcodeScanner no está en window (script no cargó o
-      // bloqueado), no podemos hacer mucho — el caller verá un div
-      // vacío. En producción esto no debería pasar; el script se
-      // carga sincrónicamente desde el <head>.
+
+      // `.start()` devuelve Promise — esperamos para capturar errores
+      // (denial de permisos, no hay cámara, etc) y poder loggear.
+      promise.toDart.then((_) {
+        _started = true;
+      }).catchError((Object err) {
+        // Falló — typicamente NotAllowedError (permiso denegado) o
+        // NotFoundError (sin cámara). Por ahora silencioso; el área
+        // queda negra y el dueño ve que no hay video.
+        debugPrint('html5-qrcode start failed: $err');
+        return null;
+      });
+    } catch (e) {
+      // Lib no cargada o JS exception sincrónica.
+      debugPrint('html5-qrcode init failed: $e');
     }
   }
 
   @override
   void dispose() {
-    // Para Html5QrcodeScanner, .clear() devuelve una Promise — la
-    // disparamos pero no esperamos (estamos en dispose).
-    try {
-      _scanner?.clear();
-    } catch (_) {}
+    final scanner = _scanner;
+    if (scanner != null && _started) {
+      // stop() es Promise; llamamos clear() después en el .then.
+      // Si falla, igual liberamos refs.
+      scanner.stop().toDart.then((_) {
+        try {
+          scanner.clear();
+        } catch (_) {}
+      }).catchError((Object _) {
+        try {
+          scanner.clear();
+        } catch (_) {}
+        return null;
+      });
+    }
     _scanner = null;
     super.dispose();
   }
