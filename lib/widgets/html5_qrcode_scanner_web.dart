@@ -8,9 +8,10 @@
 // caller dibuje su propio overlay (corners, texto, etc).
 
 import 'dart:js_interop';
+import 'dart:js_interop_unsafe';
 import 'dart:ui_web' as ui_web;
 
-import 'package:flutter/widgets.dart';
+import 'package:flutter/material.dart';
 import 'package:web/web.dart' as web;
 
 /// Bindings JS mínimos para `Html5Qrcode` (lib global cargada desde
@@ -62,6 +63,9 @@ class _Html5QrcodeScannerWidgetState
 
   _Html5Qrcode? _scanner;
   bool _started = false;
+  // Mensaje visible para el dueño cuando el scanner web falla.
+  // Null = todo OK. String = mostrar overlay con el problema.
+  String? _errorMessage;
 
   @override
   void initState() {
@@ -90,6 +94,19 @@ class _Html5QrcodeScannerWidgetState
   }
 
   void _start() {
+    // 0) Verificación dura: ¿la lib JS Html5Qrcode existe en window?
+    // dart:js_interop_unsafe da hasProperty sobre JSObject.
+    final hasLib = (web.window as JSObject)
+        .hasProperty('Html5Qrcode'.toJS)
+        .toDart;
+    if (!hasLib) {
+      _showError(
+        'No se pudo cargar el lector. Verifique su conexión a '
+        'internet y reintente.',
+      );
+      return;
+    }
+
     try {
       final scanner = _Html5Qrcode(_hostId);
       _scanner = scanner;
@@ -98,8 +115,7 @@ class _Html5QrcodeScannerWidgetState
       final cameraConfig = {'facingMode': 'environment'}.jsify()!;
 
       // qrbox: área central donde se hace el scan. fps: frames por
-      // segundo (10 = balance CPU/detección). disableFlip: false
-      // permite leer códigos al revés.
+      // segundo (10 = balance CPU/detección).
       final scanConfig = {
         'fps': 10,
         'qrbox': {'width': 250, 'height': 250},
@@ -111,8 +127,6 @@ class _Html5QrcodeScannerWidgetState
         widget.onDetected(code.toDart);
       }
 
-      // onFailure se invoca en CADA frame sin match — ruido normal,
-      // pasamos un noop. NO puede ser null, html5-qrcode lo invoca.
       void onFailure(JSString _) {}
 
       final promise = scanner.start(
@@ -122,21 +136,43 @@ class _Html5QrcodeScannerWidgetState
         onFailure.toJS,
       );
 
-      // `.start()` devuelve Promise — esperamos para capturar errores
-      // (denial de permisos, no hay cámara, etc) y poder loggear.
       promise.toDart.then((_) {
         _started = true;
       }).catchError((Object err) {
-        // Falló — typicamente NotAllowedError (permiso denegado) o
-        // NotFoundError (sin cámara). Por ahora silencioso; el área
-        // queda negra y el dueño ve que no hay video.
-        debugPrint('html5-qrcode start failed: $err');
+        // Errores típicos:
+        //   NotAllowedError → el usuario rechazó el permiso
+        //   NotFoundError → no hay cámara en el dispositivo
+        //   NotReadableError → la cámara está en uso por otra app
+        //   OverconstrainedError → no se cumple facingMode
+        final msg = err.toString();
+        debugPrint('html5-qrcode start failed: $msg');
+        if (msg.contains('NotAllowedError') ||
+            msg.contains('Permission')) {
+          _showError(
+            'Cámara bloqueada. Toque la dirección en su navegador → '
+            'Configuración del sitio → Permitir cámara, y reintente.',
+          );
+        } else if (msg.contains('NotFoundError')) {
+          _showError('No se encontró cámara en este dispositivo.');
+        } else if (msg.contains('NotReadableError')) {
+          _showError(
+            'La cámara está en uso por otra aplicación. Ciérrela y '
+            'reintente.',
+          );
+        } else {
+          _showError('No se pudo iniciar la cámara: $msg');
+        }
         return null;
       });
     } catch (e) {
-      // Lib no cargada o JS exception sincrónica.
       debugPrint('html5-qrcode init failed: $e');
+      _showError('No se pudo iniciar el lector: $e');
     }
+  }
+
+  void _showError(String message) {
+    if (!mounted) return;
+    setState(() => _errorMessage = message);
   }
 
   @override
@@ -162,6 +198,39 @@ class _Html5QrcodeScannerWidgetState
 
   @override
   Widget build(BuildContext context) {
-    return HtmlElementView(viewType: _hostId);
+    final err = _errorMessage;
+    return Stack(
+      children: [
+        HtmlElementView(viewType: _hostId),
+        // Overlay visible solo cuando algo falla — el dueño SIEMPRE
+        // sabe qué pasa en vez de quedar mirando una pantalla negra.
+        if (err != null)
+          Positioned.fill(
+            child: Container(
+              color: Colors.black87,
+              padding: const EdgeInsets.symmetric(horizontal: 32),
+              child: Center(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.no_photography_rounded,
+                        color: Colors.white, size: 56),
+                    const SizedBox(height: 16),
+                    Text(
+                      err,
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 17,
+                        height: 1.4,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+      ],
+    );
   }
 }
