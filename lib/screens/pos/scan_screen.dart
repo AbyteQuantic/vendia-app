@@ -16,32 +16,37 @@ class ScanScreen extends StatefulWidget {
 }
 
 class _ScanScreenState extends State<ScanScreen> {
-  // Formatos típicos de productos de retail/inventario.
+  // Formatos típicos de productos retail Colombia.
   // ⚠️ EN WEB es obligatorio especificarlos — el motor wasm de
-  // `mobile_scanner` no detecta nada si la lista queda vacía. En móvil
-  // la lista funciona como filtro (acelera al evitar parsear formatos
-  // que no usamos, ej. PDF417/AZTEC).
+  // `mobile_scanner` no detecta nada si la lista queda vacía.
+  //
+  // Lista deliberadamente corta y enfocada: muchos formatos confunden
+  // al ZXing WASM en web, que parsea cada frame contra cada formato
+  // y a veces salta al "menos probable" en condiciones de baja luz /
+  // baja resolución, sin emitir el match al callback. Con la lista
+  // mínima retail-CO el detector se enfoca y emite consistentemente.
   static const _retailFormats = <BarcodeFormat>[
-    BarcodeFormat.ean13, // tiendas de barrio CO — el más común
+    BarcodeFormat.ean13, // tiendas / minimercados — el más común
     BarcodeFormat.ean8,
     BarcodeFormat.upcA,
-    BarcodeFormat.upcE,
     BarcodeFormat.code128, // ferreterías / distribuidoras
-    BarcodeFormat.code39,
-    BarcodeFormat.code93,
-    BarcodeFormat.itf, // cajas mayoristas
-    BarcodeFormat.codabar,
-    BarcodeFormat.qrCode, // QR genérico (ej. tiendas con SKU propio)
+    BarcodeFormat.qrCode, // SKUs propios en QR
   ];
 
-  // `back` apunta al producto en móvil. En web el navegador la traduce
-  // a la cámara disponible (en desktop suele ser la única; el usuario
-  // elige al dar permiso). `noDuplicates` evita re-procesar el mismo
-  // código en bucles cuando el frame es estable.
+  // `back` apunta al producto en móvil. En web el navegador lo traduce
+  // a la cámara disponible.
+  //
+  // `DetectionSpeed.normal` (en lugar de `noDuplicates`): en mobile_scanner
+  // ^5.2.3 el modo `noDuplicates` tiene un bug conocido en el motor wasm
+  // web — bajo ciertas condiciones nunca emite el primer detect porque
+  // su filtro interno asume duplicado erróneamente. El dedup nuestro
+  // (variable `_lastScannedCode` en `_onDetect`) ya cubre el caso, así
+  // que delegar el dedup al package es redundante y arriesgado en web.
   final MobileScannerController _scannerCtrl = MobileScannerController(
-    detectionSpeed: DetectionSpeed.noDuplicates,
+    detectionSpeed: DetectionSpeed.normal,
     facing: CameraFacing.back,
     formats: _retailFormats,
+    returnImage: false,
   );
 
   bool _processing = false;
