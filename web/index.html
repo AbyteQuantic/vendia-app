@@ -35,10 +35,12 @@
   <title>VendIA</title>
   <link rel="manifest" href="manifest.json">
 
-  <!-- html5-qrcode (CDN) — lector de códigos battle-tested en iOS Safari.
-       mobile_scanner ^7 con zxing-wasm aún tiene issues con cámaras de
-       iOS Safari en condiciones reales. Esta lib resuelve el caso web. -->
-  <script src="https://cdn.jsdelivr.net/npm/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+  <!-- html5-qrcode — lector de códigos battle-tested en iOS Safari.
+       Self-hosted desde el dominio (no CDN) para evitar bloqueos por
+       anti-tracking de Safari iOS y aumentar la confiabilidad del
+       deploy (el script no depende de un tercero). El archivo lo
+       copia flutter build web desde `web/` a `build/web/`. -->
+  <script src="html5-qrcode.min.js"></script>
 </head>
 <body>
   <!--
