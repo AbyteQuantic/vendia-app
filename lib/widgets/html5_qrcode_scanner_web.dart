@@ -156,12 +156,38 @@ class _Html5QrcodeScannerWidgetState
       final scanner = _Html5Qrcode(_hostId);
       _scanner = scanner;
 
-      final cameraConfig = {'facingMode': 'environment'}.jsify()!;
+      // Pedir alta resolución a la cámara: ZXing JS necesita pixels
+      // suficientes para decodificar barras finas de retail (EAN-13).
+      // En iOS Safari, sin estos constraints la cámara da 640x480 que
+      // queda al límite y muchos códigos no se reconocen.
+      final cameraConfig = {
+        'facingMode': 'environment',
+        'width': {'ideal': 1920, 'min': 1280},
+        'height': {'ideal': 1080, 'min': 720},
+      }.jsify()!;
+
+      // formatosToSupport: enum entero de Html5QrcodeSupportedFormats:
+      //   0=QR_CODE, 2=CODABAR, 3=CODE_39, 5=CODE_128, 8=ITF,
+      //   9=EAN_13, 10=EAN_8, 14=UPC_A, 15=UPC_E
+      // Pasar la lista explícita acelera la decodificación (menos
+      // formatos = más fps efectivos por frame).
+      const retailFormatsInt = [9, 10, 14, 15, 5, 3, 8, 0];
+
       final scanConfig = {
-        'fps': 10,
-        'qrbox': {'width': 260, 'height': 260},
+        // 15 fps → mejor reactividad. ZXing usa el siguiente frame
+        // libre, no satura.
+        'fps': 15,
+        // qrbox más grande: 320x320 cubre códigos de tamaño normal
+        // de retail sin obligar al dueño a acercarse demasiado.
+        'qrbox': {'width': 320, 'height': 320},
         'aspectRatio': 1.7777778,
-        if (widget.formats != null) 'formatsToSupport': widget.formats,
+        'disableFlip': false,
+        // BarcodeDetector nativo del browser cuando está disponible
+        // (iOS Safari 17+, Chrome). Es ~10x más rápido que ZXing JS.
+        // Si no está disponible, html5-qrcode cae al ZXing JS bundled
+        // automáticamente.
+        'useBarCodeDetectorIfSupported': true,
+        'formatsToSupport': widget.formats ?? retailFormatsInt,
       }.jsify() as JSObject;
 
       void onSuccess(JSString code, JSAny? _) {
