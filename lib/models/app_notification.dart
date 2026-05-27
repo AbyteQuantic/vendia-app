@@ -1,3 +1,4 @@
+// Spec: specs/F38-notifications-deeplink/spec.md
 import 'package:flutter/material.dart';
 
 import '../theme/app_theme.dart';
@@ -5,18 +6,34 @@ import '../theme/app_theme.dart';
 /// Semantic category for a notification.
 ///
 /// The backend persists a free-form `type` string on each row
-/// (`online_order`, `fiado_accepted`, `fiado_cancelled`, `info`, …).
-/// The activity feed only cares about three buckets, each bound to
-/// its own color + icon language so the cashier can scan the list
-/// at a glance without reading the text.
+/// (`online_order`, `fiado_accepted`, `fiado_cancelled`,
+/// `partial_payment`, `waiter_call`, `info`, …). The activity
+/// feed buckets them into kinds, each bound to its own color +
+/// icon language so the cashier can scan the list at a glance
+/// without reading the text.
+///
+/// New kinds added in F38:
+///   - [tableCall]      — Mesa llamando al mesero
+///   - [partialPayment] — Cliente registró abono por confirmar
 enum NotificationKind {
   /// Web orders flowing in from the public catalog. Routed to the
-  /// KDS detail on tap.
+  /// online orders screen on tap.
   webOrder,
 
   /// Fiado lifecycle events: handshake accepted, canceled, paid,
   /// debt added. Routed to the Cuaderno on tap.
   fiado,
+
+  /// A bar/restaurant table is calling the waiter
+  /// (`POST /api/v1/public/table-sessions/:token/call-waiter`).
+  /// Routed to the Mesas screen — the cashier opens the specific
+  /// table from the live list.
+  tableCall,
+
+  /// A customer at a live table sent an abono (transfer + receipt
+  /// or cash pending scan). Pending confirmation by the tendero.
+  /// Routed to the Mesas screen with an instructional snackbar.
+  partialPayment,
 
   /// Everything else: inventory alerts, generic system messages,
   /// `info` and unknown `type` values. Non-routable by default.
@@ -27,7 +44,7 @@ enum NotificationKind {
 ///
 /// Intentionally kept as a value object so the categorization logic
 /// is pure and unit-testable ([fromApi]). The backend contract is
-/// `{id, type, title, body, is_read, created_at}`.
+/// `{id, type, title, body, is_read, created_at, data}`.
 @immutable
 class AppNotification {
   const AppNotification({
@@ -40,6 +57,8 @@ class AppNotification {
     required this.rawType,
     this.orderId,
     this.fiadoId,
+    this.paymentId,
+    this.tableLabel,
   });
 
   final String id;
@@ -59,11 +78,16 @@ class AppNotification {
   final String rawType;
 
   /// Optional deep-link identifiers extracted from the server
-  /// payload. The backend stores them on a nested `data` map
-  /// (see `online_orders.go::CreateNotification`) but older rows
-  /// may not have them — `null` is a valid state.
+  /// `data` JSON payload. The backend populates them per kind:
+  ///   - webOrder       → orderId
+  ///   - fiado*         → fiadoId
+  ///   - tableCall      → orderId + tableLabel
+  ///   - partialPayment → orderId + paymentId + tableLabel
+  /// Older rows (pre-F38) won't have them — `null` is valid.
   final String? orderId;
   final String? fiadoId;
+  final String? paymentId;
+  final String? tableLabel;
 
   /// Bucketize a backend `type` string into a UI kind. Exposed as
   /// a pure function so widget tests can assert the mapping table
@@ -75,6 +99,12 @@ class AppNotification {
     }
     if (t.startsWith('fiado') || t == 'debt' || t == 'payment') {
       return NotificationKind.fiado;
+    }
+    if (t == 'waiter_call' || t == 'mesa_llamada') {
+      return NotificationKind.tableCall;
+    }
+    if (t == 'partial_payment' || t == 'abono_pendiente') {
+      return NotificationKind.partialPayment;
     }
     return NotificationKind.system;
   }
@@ -88,14 +118,19 @@ class AppNotification {
     if (id.isEmpty && title.isEmpty) return null;
 
     // `data` is an optional nested bag the backend uses for deep
-    // links (order_id / fiado_id). Treat it as opaque: if the
-    // shape isn't a Map we silently drop it rather than crashing.
+    // links (order_id / fiado_id / payment_id / table_label).
+    // Treat it as opaque: if the shape isn't a Map we silently
+    // drop it rather than crashing.
     String? orderId;
     String? fiadoId;
+    String? paymentId;
+    String? tableLabel;
     final data = raw['data'];
     if (data is Map) {
       orderId = data['order_id']?.toString() ?? data['order_uuid']?.toString();
       fiadoId = data['fiado_id']?.toString() ?? data['fiado_token']?.toString();
+      paymentId = data['payment_id']?.toString();
+      tableLabel = data['table_label']?.toString();
     }
 
     return AppNotification(
@@ -106,10 +141,15 @@ class AppNotification {
       isRead: raw['is_read'] == true,
       createdAt: _parseDate(raw['created_at']),
       rawType: raw['type']?.toString() ?? '',
-      orderId: orderId,
-      fiadoId: fiadoId,
+      orderId: _emptyToNull(orderId),
+      fiadoId: _emptyToNull(fiadoId),
+      paymentId: _emptyToNull(paymentId),
+      tableLabel: _emptyToNull(tableLabel),
     );
   }
+
+  static String? _emptyToNull(String? v) =>
+      (v == null || v.isEmpty) ? null : v;
 
   static DateTime? _parseDate(dynamic v) {
     if (v is String && v.isNotEmpty) return DateTime.tryParse(v);
@@ -146,6 +186,18 @@ class NotificationVisual {
           icon: Icons.menu_book_rounded,
           color: Color(0xFF6D28D9), // purple-700
           sectionLabel: 'Fiado',
+        );
+      case NotificationKind.tableCall:
+        return const NotificationVisual(
+          icon: Icons.notifications_active_rounded,
+          color: Color(0xFFEA580C), // orange-600 — urgencia de servicio
+          sectionLabel: 'Mesa',
+        );
+      case NotificationKind.partialPayment:
+        return const NotificationVisual(
+          icon: Icons.payments_rounded,
+          color: Color(0xFF0891B2), // cyan-600 — dinero/transferencia
+          sectionLabel: 'Abono',
         );
       case NotificationKind.system:
         return const NotificationVisual(

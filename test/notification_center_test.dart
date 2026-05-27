@@ -28,6 +28,22 @@ void main() {
       expect(AppNotification.kindFromType('future_event_v2'),
           NotificationKind.system);
     });
+
+    // F38: new kinds for table events. The Spanish aliases keep
+    // the contract resilient if backend localizes types later.
+    test('maps waiter_call / mesa_llamada -> tableCall', () {
+      expect(AppNotification.kindFromType('waiter_call'),
+          NotificationKind.tableCall);
+      expect(AppNotification.kindFromType('mesa_llamada'),
+          NotificationKind.tableCall);
+    });
+
+    test('maps partial_payment / abono_pendiente -> partialPayment', () {
+      expect(AppNotification.kindFromType('partial_payment'),
+          NotificationKind.partialPayment);
+      expect(AppNotification.kindFromType('abono_pendiente'),
+          NotificationKind.partialPayment);
+    });
   });
 
   group('AppNotification.fromApi', () {
@@ -59,6 +75,50 @@ void main() {
       expect(n, isNotNull);
       expect(n!.orderId, isNull);
       expect(n.fiadoId, isNull);
+    });
+
+    // F38: deep-link payload for partial_payment carries
+    // payment_id + table_label alongside the order_id. The model
+    // surfaces them so _handleTap can drive the snackbar copy.
+    test('extracts payment_id and table_label for partial_payment', () {
+      final n = AppNotification.fromApi({
+        'id': 'n3',
+        'title': 'Cliente envió un abono',
+        'type': 'partial_payment',
+        'data': {
+          'order_id': 'order-7',
+          'payment_id': 'pay-99',
+          'table_label': 'Mesa 4',
+        },
+      });
+      expect(n, isNotNull);
+      expect(n!.kind, NotificationKind.partialPayment);
+      expect(n.orderId, 'order-7');
+      expect(n.paymentId, 'pay-99');
+      expect(n.tableLabel, 'Mesa 4');
+    });
+
+    test('extracts order_id and table_label for waiter_call', () {
+      final n = AppNotification.fromApi({
+        'id': 'n4',
+        'title': 'Mesa llamando al mesero',
+        'type': 'waiter_call',
+        'data': {'order_id': 'order-8', 'table_label': 'Barra 1'},
+      });
+      expect(n, isNotNull);
+      expect(n!.kind, NotificationKind.tableCall);
+      expect(n.orderId, 'order-8');
+      expect(n.tableLabel, 'Barra 1');
+    });
+
+    test('empty string ids are normalized to null', () {
+      final n = AppNotification.fromApi({
+        'id': 'n5',
+        'title': 't',
+        'data': {'order_id': '', 'payment_id': ''},
+      });
+      expect(n!.orderId, isNull);
+      expect(n.paymentId, isNull);
     });
   });
 

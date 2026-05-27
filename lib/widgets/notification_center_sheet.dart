@@ -1,9 +1,11 @@
+// Spec: specs/F38-notifications-deeplink/spec.md
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../models/app_notification.dart';
 import '../screens/online_orders/online_orders_screen.dart';
 import '../screens/pos/cuaderno_fiados_screen.dart';
+import '../screens/tables/tables_screen.dart';
 import '../theme/app_theme.dart';
 
 /// Bottom-sheet "Activity Feed" that replaces the legacy flat list.
@@ -317,16 +319,57 @@ class _NotificationTile extends StatelessWidget {
     // The sheet is a route — closing it first keeps the navigation
     // stack shallow (otherwise the KDS would sit on top of the
     // bottom sheet and back-nav would feel laggy).
-    Navigator.of(context).pop();
+    final navigator = Navigator.of(context);
+    final messenger = ScaffoldMessenger.of(context);
+    navigator.pop();
     switch (notification.kind) {
       case NotificationKind.webOrder:
-        Navigator.of(context).push(
+        navigator.push(
           MaterialPageRoute(builder: (_) => const OnlineOrdersScreen()),
         );
         break;
       case NotificationKind.fiado:
-        Navigator.of(context).push(
+        navigator.push(
           MaterialPageRoute(builder: (_) => const CuadernoFiadosScreen()),
+        );
+        break;
+      case NotificationKind.tableCall:
+        // Open Mesas; the cashier picks the specific table from
+        // the live list. The notification body already names it
+        // ("Mesa 4 necesita atención") so the cognitive jump is
+        // minimal — F38b will navigate straight to the detail
+        // once the table-by-orderId lookup ships.
+        navigator.push(
+          MaterialPageRoute(builder: (_) => const TablesScreen()),
+        );
+        if (notification.tableLabel != null) {
+          messenger.showSnackBar(
+            SnackBar(
+              content: Text(
+                '${notification.tableLabel} está llamando',
+                style: const TextStyle(fontSize: 16),
+              ),
+              backgroundColor: const Color(0xFFEA580C),
+              duration: const Duration(seconds: 4),
+            ),
+          );
+        }
+        break;
+      case NotificationKind.partialPayment:
+        navigator.push(
+          MaterialPageRoute(builder: (_) => const TablesScreen()),
+        );
+        messenger.showSnackBar(
+          SnackBar(
+            content: Text(
+              notification.tableLabel != null
+                  ? 'Abra ${notification.tableLabel} para confirmar el abono'
+                  : 'Abra la mesa para confirmar el abono',
+              style: const TextStyle(fontSize: 16),
+            ),
+            backgroundColor: const Color(0xFF0891B2),
+            duration: const Duration(seconds: 5),
+          ),
         );
         break;
       case NotificationKind.system:
