@@ -61,6 +61,16 @@ class _Html5QrcodeScannerWidgetState
   _Html5Qrcode? _scanner;
   bool _started = false;
   web.HTMLDivElement? _hostDiv;
+  // Controles inyectados FUERA del host div (en document.body) para
+  // que la librería html5-qrcode no los limpie cuando arranca —
+  // antes vivían dentro de `_hostDiv` y la lib los tapaba con el
+  // video, dejando al tendero sin forma de cancelar el escaneo.
+  web.HTMLDivElement? _backBtnDiv;
+  web.HTMLDivElement? _cancelBtnDiv;
+  // Style tag inyectado en <head> para forzar fullscreen del <video>
+  // que monta html5-qrcode (por defecto respeta aspect ratio de la
+  // cámara → en iPhone vertical deja la mitad inferior negra).
+  web.HTMLStyleElement? _styleElement;
   String? _errorMessage;
 
   @override
@@ -87,38 +97,29 @@ class _Html5QrcodeScannerWidgetState
     web.document.body!.append(div);
     _hostDiv = div;
 
-    // Botón back HTML (porque el back del Scaffold queda debajo del
-    // wrapper en z-index). Posicionado arriba-izquierda con SafeArea
-    // emulado (padding 12 + 12).
-    final btn = web.HTMLDivElement()
-      ..innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" '
-              'viewBox="0 0 24 24" width="28" height="28" '
-              'fill="white"><path d="M20 11H7.83l5.59-5.59L12 4l-8 '
-              '8 8 8 1.41-1.41L7.83 13H20v-2z"/></svg>'
-          .toJS
-      ..style.position = 'absolute'
-      ..style.top = 'calc(env(safe-area-inset-top, 0px) + 12px)'
-      ..style.left = '12px'
-      ..style.width = '48px'
-      ..style.height = '48px'
-      ..style.display = 'flex'
-      ..style.alignItems = 'center'
-      ..style.justifyContent = 'center'
-      ..style.backgroundColor = 'rgba(0,0,0,0.45)'
-      ..style.borderRadius = '24px'
-      ..style.cursor = 'pointer'
-      ..style.zIndex = '1';
-    btn.onclick = ((web.MouseEvent _) {
-      if (widget.onBack != null) {
-        widget.onBack!();
-      } else if (mounted) {
-        Navigator.of(context).pop();
-      }
-    }).toJS;
-    div.append(btn);
+    // Fuerza al <video> que html5-qrcode monta dentro de _hostDiv a
+    // llenar TODA la pantalla con object-fit:cover. Sin esto el
+    // video respeta su aspect-ratio (4:3 típico) y en iPhone vertical
+    // (~9:19.5) deja la mitad inferior negra — el tendero ve una
+    // ventanita arriba en vez de la cámara fullscreen.
+    final style = web.HTMLStyleElement()
+      ..textContent = '#$_hostId video{'
+          'width:100vw !important;'
+          'height:100vh !important;'
+          'object-fit:cover !important;'
+          'position:absolute !important;'
+          'top:0 !important;'
+          'left:0 !important;}'
+          '#$_hostId > div{'
+          'width:100% !important;'
+          'height:100% !important;}';
+    web.document.head!.append(style);
+    _styleElement = style;
 
-    // Corners + texto guía. Inyectados como HTML estático para no
-    // depender del Flutter canvas.
+    // Corners + texto guía. Inyectados dentro del host (la lib
+    // html5-qrcode los respeta porque no son children directos del
+    // video). Los CONTROLES (back + Cancelar) van fuera del host,
+    // en document.body, para que la lib no pueda taparlos.
     final guide = web.HTMLDivElement()
       ..innerHTML = '''
 <div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;pointer-events:none">
@@ -129,7 +130,7 @@ class _Html5QrcodeScannerWidgetState
     <div style="position:absolute;bottom:0;right:0;width:36px;height:36px;border-bottom:4px solid white;border-right:4px solid white;border-bottom-right-radius:4px"></div>
   </div>
 </div>
-<div style="position:absolute;left:0;right:0;bottom:calc(env(safe-area-inset-bottom, 0px) + 48px);text-align:center;color:white;font-size:17px;font-weight:600;padding:0 24px;pointer-events:none;text-shadow:0 1px 3px rgba(0,0,0,0.6)">
+<div style="position:absolute;left:0;right:0;bottom:calc(env(safe-area-inset-bottom, 0px) + 120px);text-align:center;color:white;font-size:17px;font-weight:600;padding:0 24px;pointer-events:none;text-shadow:0 1px 3px rgba(0,0,0,0.6)">
   Apunte la cámara al código de barras del producto
 </div>
 '''
@@ -139,6 +140,69 @@ class _Html5QrcodeScannerWidgetState
       ..style.pointerEvents = 'none'
       ..style.zIndex = '2';
     div.append(guide);
+
+    _injectControls();
+  }
+
+  /// Botones de regresar/cancelar. Se appenden a `document.body`
+  /// (NO al host div) con z-index `9999999` — encima del wrapper
+  /// (`999999`) — para que sigan visibles aunque la librería
+  /// html5-qrcode pinte el video tapando el host.
+  void _injectControls() {
+    // Back arrow arriba-izquierda (atajo rápido).
+    final backBtn = web.HTMLDivElement()
+      ..innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" '
+              'viewBox="0 0 24 24" width="28" height="28" '
+              'fill="white"><path d="M20 11H7.83l5.59-5.59L12 4l-8 '
+              '8 8 8 1.41-1.41L7.83 13H20v-2z"/></svg>'
+          .toJS
+      ..style.position = 'fixed'
+      ..style.top = 'calc(env(safe-area-inset-top, 0px) + 12px)'
+      ..style.left = '12px'
+      ..style.width = '52px'
+      ..style.height = '52px'
+      ..style.display = 'flex'
+      ..style.alignItems = 'center'
+      ..style.justifyContent = 'center'
+      ..style.backgroundColor = 'rgba(0,0,0,0.65)'
+      ..style.borderRadius = '26px'
+      ..style.cursor = 'pointer'
+      ..style.zIndex = '9999999';
+    backBtn.onclick = ((web.MouseEvent _) => _handleBack()).toJS;
+    web.document.body!.append(backBtn);
+    _backBtnDiv = backBtn;
+
+    // Botón CANCELAR grande abajo — el tendero 50+ necesita un
+    // control evidente, no solo un icono pequeño arriba.
+    final cancelBtn = web.HTMLDivElement()
+      ..innerHTML = '<span style="color:white;font-size:20px;'
+              'font-weight:700;letter-spacing:0.3px">Cancelar</span>'
+          .toJS
+      ..style.position = 'fixed'
+      ..style.left = '20px'
+      ..style.right = '20px'
+      ..style.bottom = 'calc(env(safe-area-inset-bottom, 0px) + 24px)'
+      ..style.height = '64px'
+      ..style.display = 'flex'
+      ..style.alignItems = 'center'
+      ..style.justifyContent = 'center'
+      ..style.backgroundColor = 'rgba(0,0,0,0.85)'
+      ..style.border = '2px solid white'
+      ..style.borderRadius = '16px'
+      ..style.cursor = 'pointer'
+      ..style.zIndex = '9999999'
+      ..style.boxShadow = '0 4px 12px rgba(0,0,0,0.4)';
+    cancelBtn.onclick = ((web.MouseEvent _) => _handleBack()).toJS;
+    web.document.body!.append(cancelBtn);
+    _cancelBtnDiv = cancelBtn;
+  }
+
+  void _handleBack() {
+    if (widget.onBack != null) {
+      widget.onBack!();
+    } else if (mounted) {
+      Navigator.of(context).pop();
+    }
   }
 
   void _start() {
@@ -156,37 +220,16 @@ class _Html5QrcodeScannerWidgetState
       final scanner = _Html5Qrcode(_hostId);
       _scanner = scanner;
 
-      // cameraIdOrConfig: la API de html5-qrcode requiere
-      // EXACTAMENTE 1 key cuando se pasa como objeto (solo el
-      // selector de cámara). La resolución va en scanConfig.
-      // videoConstraints.
+      // Config minimalista — el ejemplo canónico de la doc de
+      // html5-qrcode. Tras múltiples intentos con opciones avanzadas
+      // (formats, videoConstraints HD, useBarCodeDetectorIfSupported),
+      // alguna combinación rompe el scan. Volvemos al baseline para
+      // confirmar primero que la decodificación funciona; después
+      // optimizamos si hace falta.
       final cameraConfig = {'facingMode': 'environment'}.jsify()!;
-
-      // formatosToSupport: enum entero de Html5QrcodeSupportedFormats:
-      //   0=QR_CODE, 2=CODABAR, 3=CODE_39, 5=CODE_128, 8=ITF,
-      //   9=EAN_13, 10=EAN_8, 14=UPC_A, 15=UPC_E
-      // Pasar la lista explícita acelera la decodificación.
-      const retailFormatsInt = [9, 10, 14, 15, 5, 3, 8, 0];
-
       final scanConfig = {
-        'fps': 15,
-        'qrbox': {'width': 320, 'height': 320},
-        'aspectRatio': 1.7777778,
-        'disableFlip': false,
-        // BarcodeDetector nativo del browser cuando está disponible
-        // (iOS Safari 17+, Chrome). Es ~10x más rápido que ZXing JS.
-        'useBarCodeDetectorIfSupported': true,
-        'formatsToSupport': widget.formats ?? retailFormatsInt,
-        // videoConstraints: extras pasados a getUserMedia. Pedimos
-        // alta resolución para que el motor (nativo o ZXing) tenga
-        // pixels suficientes para decodificar barras finas de EAN-13.
-        // iOS Safari por default da 640x480 que queda al límite y
-        // muchos códigos no se reconocen.
-        'videoConstraints': {
-          'facingMode': 'environment',
-          'width': {'ideal': 1920, 'min': 1280},
-          'height': {'ideal': 1080, 'min': 720},
-        },
+        'fps': 10,
+        'qrbox': {'width': 250, 'height': 250},
       }.jsify() as JSObject;
 
       void onSuccess(JSString code, JSAny? _) {
@@ -273,7 +316,19 @@ class _Html5QrcodeScannerWidgetState
     try {
       _hostDiv?.remove();
     } catch (_) {}
+    try {
+      _backBtnDiv?.remove();
+    } catch (_) {}
+    try {
+      _cancelBtnDiv?.remove();
+    } catch (_) {}
+    try {
+      _styleElement?.remove();
+    } catch (_) {}
     _hostDiv = null;
+    _backBtnDiv = null;
+    _cancelBtnDiv = null;
+    _styleElement = null;
   }
 
   @override

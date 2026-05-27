@@ -25,6 +25,7 @@ import '../../database/database_service.dart';
 import '../../database/collections/local_table_tab.dart';
 import '../../database/collections/local_product.dart';
 import '../../services/api_service.dart';
+import '../../services/app_error.dart';
 import '../../services/auth_service.dart';
 import '../../services/hardware_service.dart';
 import '../../services/panic_trigger_service.dart';
@@ -33,6 +34,7 @@ import '../../services/tax_settings_service.dart';
 import '../../database/collections/local_sale.dart';
 import '../../utils/credit_labels.dart';
 import '../inventory/add_merchandise_screen.dart';
+import '../inventory/create_product_screen.dart';
 import '../payments/confirm_payment_scanner_screen.dart';
 import '../tables/tab_review_screen.dart';
 
@@ -369,7 +371,10 @@ class _PosScreenBodyState extends State<_PosScreenBody> {
 
   /// Called when the barcode scanner returns a code. Finds the matching
   /// product locally or via API, plays a cash-register beep, vibrates,
-  /// and shows a quantity picker modal.
+  /// and shows a quantity picker modal. Si el código no existe en
+  /// inventario, muestra un diálogo "Crear producto" — antes vivía en
+  /// ScanScreen pero el wrapper HTML del scanner web lo tapaba; acá
+  /// se rendera correcto porque el scanner ya cerró.
   Future<void> _onBarcodeScanned(BuildContext _, String barcode) async {
     if (!mounted) return;
     // 1. Try local cart products first (instant)
@@ -391,15 +396,94 @@ class _PosScreenBodyState extends State<_PosScreenBody> {
     try {
       final api = ApiService(AuthService());
       final data = await api.lookupProductByBarcode(barcode);
-      if (data == null || !mounted) return;
+      if (!mounted) return;
+
+      if (data == null) {
+        // 404 — el código no existe en el inventario. Ofrecer crearlo.
+        HapticFeedback.heavyImpact();
+        _showBarcodeNotFoundDialog(barcode);
+        return;
+      }
 
       final product = Product.fromJson(data);
-
       playBeep();
       _showQuantityPicker(product);
-    } catch (_) {
-      // API failed — silent failure.
+    } on AppError catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text('No se pudo buscar el código: ${e.message}',
+            style: const TextStyle(fontSize: 16)),
+        backgroundColor: AppTheme.error,
+      ));
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text('Error inesperado buscando el código: $e',
+            style: const TextStyle(fontSize: 16)),
+        backgroundColor: AppTheme.error,
+      ));
     }
+  }
+
+  /// Diálogo cuando un código escaneado no existe en inventario.
+  /// Dos caminos: crear producto nuevo con el SKU pre-poblado, o
+  /// cancelar y seguir vendiendo.
+  void _showBarcodeNotFoundDialog(String barcode) {
+    showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20)),
+        title: const Text(
+          'Código no registrado',
+          style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'No hay producto con el código $barcode en su inventario.',
+              style: const TextStyle(fontSize: 18),
+            ),
+            const SizedBox(height: 12),
+            const Text(
+              '¿Quiere crearlo ahora? Lo agregamos al inventario con ese '
+              'código y la próxima vez el escáner lo reconoce.',
+              style: TextStyle(fontSize: 16, color: AppTheme.textSecondary),
+            ),
+          ],
+        ),
+        actionsOverflowDirection: VerticalDirection.down,
+        actionsOverflowButtonSpacing: 8,
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('Cancelar',
+                style: TextStyle(
+                    fontSize: 18, color: AppTheme.textSecondary)),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              Navigator.of(ctx).pop();
+              Navigator.of(context).push(
+                MaterialPageRoute<void>(
+                  builder: (_) =>
+                      CreateProductScreen(initialSku: barcode),
+                ),
+              );
+            },
+            style: ElevatedButton.styleFrom(
+                minimumSize: const Size(140, 56)),
+            child: const Text('Crear producto',
+                style: TextStyle(
+                    fontSize: 16,
+                    color: Colors.white,
+                    fontWeight: FontWeight.w700)),
+          ),
+        ],
+      ),
+    );
   }
 
   void _showQuantityPicker(Product product) {
