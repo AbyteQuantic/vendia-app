@@ -14,16 +14,16 @@
 importScripts('https://www.gstatic.com/firebasejs/10.13.0/firebase-app-compat.js');
 importScripts('https://www.gstatic.com/firebasejs/10.13.0/firebase-messaging-compat.js');
 
-// REEMPLAZAR con los valores reales de Firebase Console → Web App.
-// El stub deja vacío `apiKey` para que el SW falle el init y la app
-// detecte que push no está configurado.
+// Valores reales del proyecto vendia-prod (generados por
+// `flutterfire configure` el 2026-05-28). Coinciden con
+// lib/firebase_options.dart → DefaultFirebaseOptions.web.
 firebase.initializeApp({
-  apiKey: '',
-  authDomain: '',
-  projectId: '',
-  storageBucket: '',
-  messagingSenderId: '',
-  appId: '',
+  apiKey: 'AIzaSyABFUzX-6VH2gSFg7myzj5mT-fECGJ0OMw',
+  authDomain: 'vendia-prod.firebaseapp.com',
+  projectId: 'vendia-prod',
+  storageBucket: 'vendia-prod.firebasestorage.app',
+  messagingSenderId: '43323748804',
+  appId: '1:43323748804:web:e787bb056c40b70eccb491',
 });
 
 const messaging = firebase.messaging();

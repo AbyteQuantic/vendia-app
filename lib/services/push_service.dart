@@ -65,15 +65,6 @@ class PushService {
     _initialized = true;
     _deepLinkHandler = onDeepLink;
 
-    if (!DefaultFirebaseOptions.isConfigured) {
-      // Stub mode: el server arranca, pero push no se activa.
-      if (kDebugMode) {
-        debugPrint('[PUSH] firebase_options stub — push inactivo. '
-            'Corra `flutterfire configure` para activar.');
-      }
-      return;
-    }
-
     try {
       await Firebase.initializeApp(
         options: DefaultFirebaseOptions.currentPlatform,
@@ -83,9 +74,11 @@ class PushService {
       _wireMessageListeners();
       await _checkInitialMessage();
     } catch (e) {
-      // Init de Firebase puede fallar en algunos browsers (iOS Safari
-      // viejo, navegadores que bloquean el SW). Degradar a inactivo
-      // sin romper la app.
+      // Init de Firebase puede fallar en plataformas no soportadas
+      // (iOS Safari pre-16.4 sin PWA, navegadores que bloquean el SW),
+      // o si las credenciales se desconfiguraron. Degradar a inactivo
+      // sin romper la app — el PushOptinGate chequea isAvailable
+      // antes de mostrarse, así que el usuario no ve nada raro.
       debugPrint('[PUSH] init failed (push queda inactivo): $e');
     }
   }

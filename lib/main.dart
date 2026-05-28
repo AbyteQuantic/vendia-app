@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
@@ -11,6 +13,7 @@ import 'services/active_fiado_service.dart';
 import 'services/api_service.dart';
 import 'services/auth_service.dart';
 import 'services/backend_warmup.dart';
+import 'services/push_service.dart';
 import 'services/hardware_service.dart';
 import 'services/tax_settings_service.dart';
 import 'models/branch.dart';
@@ -40,6 +43,13 @@ Future<void> main() async {
   // awaited: a sleeping backend makes this request slow, and nothing
   // in the UI may wait on it.
   BackendWarmup.ping();
+
+  // Spec 038 — init de Push Notifications (FCM Web + Android).
+  // Es fire-and-forget: si Firebase no responde (red caída, browser
+  // que bloquea SW, iPhone sin PWA), degrada en silencio sin
+  // bloquear el arranque. NUNCA pide permiso al usuario acá —
+  // eso lo hace PushOptinCard cuando el tendero toca el botón.
+  unawaited(PushService().init());
 
   runApp(const VendIAApp());
 }

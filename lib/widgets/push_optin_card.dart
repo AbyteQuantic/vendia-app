@@ -18,6 +18,55 @@ import 'package:flutter/services.dart';
 
 import '../services/push_service.dart';
 
+/// Wrapper que decide si renderear `PushOptinCard` o no.
+/// Se muestra SOLO si:
+///   - PushService está disponible (Firebase configurado + browser soporta).
+///   - El usuario aún no tiene ningún dispositivo activo registrado.
+/// En cualquier otro caso queda invisible — el render es 0px de alto.
+///
+/// Diseñado para insertarse directo en el Dashboard sin pollear estado
+/// global: él mismo consulta `listMyDevices` al montar.
+class PushOptinGate extends StatefulWidget {
+  const PushOptinGate({super.key});
+
+  @override
+  State<PushOptinGate> createState() => _PushOptinGateState();
+}
+
+class _PushOptinGateState extends State<PushOptinGate> {
+  bool? _shouldShow;
+
+  @override
+  void initState() {
+    super.initState();
+    _check();
+  }
+
+  Future<void> _check() async {
+    if (!PushService().isAvailable) {
+      if (mounted) setState(() => _shouldShow = false);
+      return;
+    }
+    try {
+      final devices = await PushService().listMyDevices();
+      if (!mounted) return;
+      setState(() => _shouldShow = devices.isEmpty);
+    } catch (_) {
+      // Si no podemos consultar (sin sesión, sin red), mejor no
+      // ofrecer la tarjeta — evita spam si el backend está caído.
+      if (mounted) setState(() => _shouldShow = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_shouldShow != true) return const SizedBox.shrink();
+    return PushOptinCard(
+      onActivated: () => setState(() => _shouldShow = false),
+    );
+  }
+}
+
 class PushOptinCard extends StatefulWidget {
   /// Se llama cuando el tendero activa exitosamente las notificaciones.
   /// El Dashboard lo usa para esconder la tarjeta sin tener que
