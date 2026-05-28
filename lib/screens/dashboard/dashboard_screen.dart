@@ -14,6 +14,7 @@ import '../../theme/app_theme.dart';
 import '../../widgets/online_orders_bell.dart';
 import '../../widgets/profile_photo_avatar.dart';
 import '../../widgets/profile_photo_picker.dart';
+import '../../widgets/push_optin_card.dart';
 import '../../widgets/trial_bar.dart';
 import '../auth/login_screen.dart';
 import '../inventory/add_merchandise_screen.dart';
@@ -464,6 +465,17 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     if (mounted) _loadCapabilityFlags();
                   },
                   todayLabel: _todayLabel(),
+                ),
+              ),
+
+              // ── Spec 038 — Tarjeta de opt-in a push notifications ──
+              // Solo se muestra si Firebase está disponible y el usuario
+              // aún no tiene un dispositivo registrado activo. En cualquier
+              // otro caso es 0px de alto (transparente al layout).
+              const SliverToBoxAdapter(
+                child: Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 2),
+                  child: PushOptinGate(),
                 ),
               ),
 
