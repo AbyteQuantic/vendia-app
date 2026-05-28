@@ -1,0 +1,1 @@
+{"flutter":{"platforms":{"android":{"default":{"projectId":"vendia-prod","appId":"1:43323748804:android:4977cabc6e39f70bccb491","fileOutput":"android/app/google-services.json"}},"dart":{"lib/firebase_options.dart":{"projectId":"vendia-prod","configurations":{"android":"1:43323748804:android:4977cabc6e39f70bccb491","web":"1:43323748804:web:e787bb056c40b70eccb491"}}}}}}

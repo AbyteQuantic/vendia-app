@@ -3771,5 +3771,54 @@ class ApiService {
     }
     throw AppError.fromDioException(lastError!);
   }
+
+  // ─── Spec 038 — Push Notifications ────────────────────────────────
+
+  /// Registra (o refresca, idempotente) el token FCM del dispositivo
+  /// actual contra el backend. El tenant y user salen del JWT en el
+  /// backend, no se pasan en el body — Art. III.
+  Future<Map<String, dynamic>> registerDevice({
+    required String token,
+    required String platform,
+    String? deviceLabel,
+  }) async {
+    try {
+      final response = await _dio.post(
+        '/api/v1/devices/register',
+        data: {
+          'token': token,
+          'platform': platform,
+          if (deviceLabel != null) 'device_label': deviceLabel,
+        },
+      );
+      return _extractData(response);
+    } on DioException catch (e) {
+      throw AppError.fromDioException(e);
+    }
+  }
+
+  /// Lista los dispositivos activos del usuario logueado. Lo usa la
+  /// pantalla de settings para mostrar "Notificaciones activas en:
+  /// iPhone Safari, Galaxy A20".
+  Future<List<Map<String, dynamic>>> listMyDevices() async {
+    try {
+      final response = await _dio.get('/api/v1/devices/me');
+      final data = response.data['data'] as List<dynamic>?;
+      return (data ?? []).cast<Map<String, dynamic>>();
+    } on DioException catch (e) {
+      throw AppError.fromDioException(e);
+    }
+  }
+
+  /// Revoca (soft) un dispositivo. El token sigue válido en el
+  /// browser, pero el backend lo marca `invalidated_at` y deja de
+  /// enviarle push (AC-12).
+  Future<void> revokeDevice(String deviceId) async {
+    try {
+      await _dio.delete('/api/v1/devices/me/$deviceId');
+    } on DioException catch (e) {
+      throw AppError.fromDioException(e);
+    }
+  }
 }
 

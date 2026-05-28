@@ -1,0 +1,233 @@
+// Spec: specs/038-push-notifications-web-android/spec.md
+//
+// ignore_for_file: prefer_const_constructors
+//
+// PushService es el singleton que orquesta la integración con FCM en
+// Flutter (Web + Android). Responsabilidades:
+//
+//   1. Init de Firebase Core con `DefaultFirebaseOptions.currentPlatform`
+//      — pero solo cuando hay credenciales reales (stub → no-op).
+//   2. Pedir permiso al sistema al ser invocado explícitamente desde
+//      `PushOptinCard` (NUNCA al arranque — Art. I: el tendero ve
+//      nuestra tarjeta primero y decide).
+//   3. Obtener el token FCM y registrarlo contra
+//      `POST /api/v1/devices/register`.
+//   4. Escuchar `onTokenRefresh` y re-registrar.
+//   5. Foreground listener (`onMessage`) → `flutter_local_notifications`
+//      para que la push se vea aunque la app esté abierta (FR-14 / AC-14).
+//   6. `onMessageOpenedApp` y `getInitialMessage` para deep link routing
+//      (FR-08).
+//
+// IMPORTANTE — el servicio degrada en silencio cuando:
+//   - `DefaultFirebaseOptions.isConfigured == false` (stub).
+//   - El navegador no soporta Web Push (iOS Safari pre-16.4 sin PWA).
+//   - El usuario rechaza el permiso (AC-03).
+import 'dart:async';
+
+import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:flutter/foundation.dart';
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+
+import '../firebase_options.dart';
+import 'api_service.dart';
+import 'auth_service.dart';
+
+/// Callback que el `app.dart` registra para que un deep link entrante
+/// navegue a la pantalla correcta. PushService solo sabe extraer la
+/// ruta del payload; quién navega es responsabilidad de la app
+/// (separación de capas: el servicio no importa `Navigator`).
+typedef DeepLinkHandler = void Function(String deepLink);
+
+class PushService {
+  PushService._();
+  static final PushService _instance = PushService._();
+  factory PushService() => _instance;
+
+  bool _initialized = false;
+  bool _firebaseReady = false;
+  DeepLinkHandler? _deepLinkHandler;
+
+  static const _androidChannel = AndroidNotificationChannel(
+    'vendia_default',
+    'VendIA',
+    description: 'Notificaciones de VendIA (pedidos, abonos, alertas)',
+    importance: Importance.high,
+  );
+
+  final FlutterLocalNotificationsPlugin _localNotif =
+      FlutterLocalNotificationsPlugin();
+
+  /// Llamar UNA vez al arranque de la app, antes de runApp si es
+  /// posible. NUNCA solicita permiso — eso lo hace `requestOptInAndRegister`.
+  Future<void> init({DeepLinkHandler? onDeepLink}) async {
+    if (_initialized) return;
+    _initialized = true;
+    _deepLinkHandler = onDeepLink;
+
+    try {
+      await Firebase.initializeApp(
+        options: DefaultFirebaseOptions.currentPlatform,
+      );
+      _firebaseReady = true;
+      await _setupLocalNotifications();
+      _wireMessageListeners();
+      await _checkInitialMessage();
+    } catch (e) {
+      // Init de Firebase puede fallar en plataformas no soportadas
+      // (iOS Safari pre-16.4 sin PWA, navegadores que bloquean el SW),
+      // o si las credenciales se desconfiguraron. Degradar a inactivo
+      // sin romper la app — el PushOptinGate chequea isAvailable
+      // antes de mostrarse, así que el usuario no ve nada raro.
+      debugPrint('[PUSH] init failed (push queda inactivo): $e');
+    }
+  }
+
+  /// `true` si la integración está viva y se puede pedir token.
+  /// `false` si Firebase no está configurado o init falló.
+  bool get isAvailable => _firebaseReady;
+
+  /// Pide permiso al usuario (dispara el prompt nativo del navegador /
+  /// OS) y, si el usuario acepta, obtiene + registra el token. Es lo
+  /// que llama el botón "Activar notificaciones" del `PushOptinCard`.
+  ///
+  /// Retorna `true` si se obtuvo y registró un token (push activo);
+  /// `false` si el permiso fue denegado o el flujo falló.
+  Future<bool> requestOptInAndRegister() async {
+    if (!_firebaseReady) return false;
+    final messaging = FirebaseMessaging.instance;
+
+    final settings = await messaging.requestPermission(
+      alert: true,
+      badge: true,
+      sound: true,
+    );
+    if (settings.authorizationStatus != AuthorizationStatus.authorized &&
+        settings.authorizationStatus != AuthorizationStatus.provisional) {
+      return false;
+    }
+    return _fetchAndRegisterToken();
+  }
+
+  /// Llama `POST /api/v1/devices/register` con el token actual. Idempotente
+  /// del lado backend — si ya existe, refresca `last_seen_at`.
+  Future<bool> _fetchAndRegisterToken() async {
+    try {
+      final messaging = FirebaseMessaging.instance;
+      // En web el VAPID key sale del firebase_options autogenerado.
+      final token = await messaging.getToken();
+      if (token == null || token.isEmpty) return false;
+
+      final api = ApiService(AuthService());
+      await api.registerDevice(
+        token: token,
+        platform: kIsWeb ? 'web' : 'android',
+        deviceLabel: _deviceLabel(),
+      );
+
+      // Re-registrar cada vez que el OS / browser refresque el token.
+      messaging.onTokenRefresh.listen((newToken) async {
+        try {
+          await api.registerDevice(
+            token: newToken,
+            platform: kIsWeb ? 'web' : 'android',
+            deviceLabel: _deviceLabel(),
+          );
+        } catch (_) {
+          // Best-effort. Próximo arranque reintenta.
+        }
+      });
+      return true;
+    } catch (e) {
+      debugPrint('[PUSH] fetchAndRegisterToken failed: $e');
+      return false;
+    }
+  }
+
+  /// Revoca el token actual del backend. Llamar desde el toggle en
+  /// settings (AC-12). El token FCM local sigue válido, pero el
+  /// backend no lo usa más.
+  Future<void> revokeFromBackend(String deviceId) async {
+    final api = ApiService(AuthService());
+    await api.revokeDevice(deviceId);
+  }
+
+  Future<List<Map<String, dynamic>>> listMyDevices() async {
+    final api = ApiService(AuthService());
+    return api.listMyDevices();
+  }
+
+  Future<void> _setupLocalNotifications() async {
+    const androidInit = AndroidInitializationSettings('@mipmap/ic_launcher');
+    final initSettings = InitializationSettings(android: androidInit);
+    await _localNotif.initialize(
+      initSettings,
+      onDidReceiveNotificationResponse: (resp) {
+        final payload = resp.payload;
+        if (payload != null && payload.isNotEmpty) {
+          _deepLinkHandler?.call(payload);
+        }
+      },
+    );
+    if (!kIsWeb) {
+      await _localNotif
+          .resolvePlatformSpecificImplementation<
+              AndroidFlutterLocalNotificationsPlugin>()
+          ?.createNotificationChannel(_androidChannel);
+    }
+  }
+
+  void _wireMessageListeners() {
+    // Foreground (AC-14): la push del OS la entrega el browser/Android
+    // automáticamente en background. En foreground el SDK NO la
+    // muestra — somos nosotros quienes la disparamos via
+    // flutter_local_notifications para que el tendero la vea sin
+    // tener que mirar la barra de notificaciones.
+    FirebaseMessaging.onMessage.listen((RemoteMessage msg) {
+      final n = msg.notification;
+      if (n == null) return;
+      _localNotif.show(
+        n.hashCode,
+        n.title,
+        n.body,
+        NotificationDetails(
+          android: AndroidNotificationDetails(
+            _androidChannel.id,
+            _androidChannel.name,
+            channelDescription: _androidChannel.description,
+            importance: Importance.high,
+            priority: Priority.high,
+          ),
+        ),
+        payload: msg.data['deep_link'] as String?,
+      );
+    });
+
+    // Tap en push entregada por el OS (app en background, no terminada).
+    FirebaseMessaging.onMessageOpenedApp.listen((RemoteMessage msg) {
+      final deepLink = msg.data['deep_link'] as String?;
+      if (deepLink != null && deepLink.isNotEmpty) {
+        _deepLinkHandler?.call(deepLink);
+      }
+    });
+  }
+
+  Future<void> _checkInitialMessage() async {
+    // Cuando el tendero toca una push estando la app TERMINADA, el
+    // OS la lanza pasando el mensaje en getInitialMessage.
+    final initial = await FirebaseMessaging.instance.getInitialMessage();
+    if (initial == null) return;
+    final deepLink = initial.data['deep_link'] as String?;
+    if (deepLink != null && deepLink.isNotEmpty) {
+      // Demoramos un frame para que el Navigator esté listo.
+      Future.microtask(() => _deepLinkHandler?.call(deepLink));
+    }
+  }
+
+  String _deviceLabel() {
+    if (kIsWeb) return 'Navegador web';
+    return defaultTargetPlatform == TargetPlatform.android
+        ? 'Android'
+        : defaultTargetPlatform.toString();
+  }
+}

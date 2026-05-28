@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "43323748804",
+    "project_id": "vendia-prod",
+    "storage_bucket": "vendia-prod.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:43323748804:android:4977cabc6e39f70bccb491",
+        "android_client_info": {
+          "package_name": "com.vendia.vendia_pos"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDyZSEju7llErn5pqDJJBLPRyiHObj2g2k"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

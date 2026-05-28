@@ -10,6 +10,7 @@ import '../../models/product.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/notification_center_sheet.dart';
 import '../../widgets/panic_button.dart';
+import '../../widgets/push_optin_card.dart';
 import '../../widgets/table_qr_sheet.dart';
 import '../../widgets/stock_badge.dart';
 import '../../utils/beep.dart';
@@ -2181,6 +2182,10 @@ class _PosScreenBodyState extends State<_PosScreenBody> {
                 ),
 
                 const SyncStatusBanner(),
+
+                // Spec 038 — tarjeta de opt-in a push (solo visible
+                // si push disponible + usuario sin dispositivos).
+                const PushOptinGate(),
 
                 // ── Cart tabs ──
                 _CartTabs(
