@@ -84,6 +84,15 @@ dependencies:
   xml: ^6.6.1
   web: ^1.1.1
 
+  # Spec 038 — Push Notifications (Web + Android via FCM).
+  # firebase_options.dart se genera con `flutterfire configure`
+  # después de crear el proyecto Firebase. Mientras tanto el código
+  # compila contra el stub; en runtime sin config, el opt-in card no
+  # se muestra y el push_service queda en modo inactivo.
+  firebase_core: ^3.8.0
+  firebase_messaging: ^15.1.5
+  flutter_local_notifications: ^17.2.4
+
 dev_dependencies:
   flutter_test:
     sdk: flutter
