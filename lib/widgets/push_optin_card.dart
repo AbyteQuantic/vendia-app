@@ -19,13 +19,23 @@ import 'package:flutter/services.dart';
 import '../services/push_service.dart';
 
 /// Wrapper que decide si renderear `PushOptinCard` o no.
-/// Se muestra SOLO si:
-///   - PushService está disponible (Firebase configurado + browser soporta).
-///   - El usuario aún no tiene ningún dispositivo activo registrado.
-/// En cualquier otro caso queda invisible — el render es 0px de alto.
 ///
-/// Diseñado para insertarse directo en el Dashboard sin pollear estado
-/// global: él mismo consulta `listMyDevices` al montar.
+/// Política — **fallar abierto**: si no podemos confirmar que el
+/// usuario YA tiene un dispositivo registrado, mostramos la tarjeta.
+/// Razón: el costo de mostrarla cuando no toca (tendero ve "Activar"
+/// y al tocar no pasa nada) es mucho menor que el costo de NO
+/// mostrarla cuando sí toca (tendero nunca se entera de que existe
+/// la feature).
+///
+/// Se OCULTA solo en dos casos:
+///   - `PushService` no está disponible (Firebase falló init, p. ej.
+///     iPhone Safari sin PWA, o navegador que bloquea SW).
+///   - El backend confirmó explícitamente que el usuario YA tiene ≥1
+///     dispositivo registrado activo.
+///
+/// Reintenta cada 5s mientras `PushService` no esté ready — el init
+/// es async (corre fire-and-forget en main()) y puede no haber
+/// terminado cuando el Dashboard se monta.
 class PushOptinGate extends StatefulWidget {
   const PushOptinGate({super.key});
 
@@ -34,7 +44,10 @@ class PushOptinGate extends StatefulWidget {
 }
 
 class _PushOptinGateState extends State<PushOptinGate> {
+  /// `null` = aún chequeando; `true` = mostrar; `false` = ocultar.
   bool? _shouldShow;
+  int _retries = 0;
+  static const _maxRetries = 6; // 6 * 5s = 30s max espera por init
 
   @override
   void initState() {
@@ -43,18 +56,30 @@ class _PushOptinGateState extends State<PushOptinGate> {
   }
 
   Future<void> _check() async {
+    // Si Firebase aún no terminó init (main() lo lanza en background),
+    // reintentar hasta _maxRetries veces. Después nos rendimos —
+    // probablemente el browser no soporta push.
     if (!PushService().isAvailable) {
-      if (mounted) setState(() => _shouldShow = false);
+      if (_retries >= _maxRetries) {
+        if (mounted) setState(() => _shouldShow = false);
+        return;
+      }
+      _retries++;
+      await Future<void>.delayed(const Duration(seconds: 5));
+      if (mounted) await _check();
       return;
     }
+
+    // Firebase listo. Si el backend confirma ≥1 device → ocultar.
+    // Cualquier otro caso (lista vacía, error de red, 404, JWT inválido)
+    // → mostrar (fallar abierto). El tap del botón hace el opt-in real,
+    // que de fallar muestra mensaje de error in-place.
     try {
       final devices = await PushService().listMyDevices();
       if (!mounted) return;
       setState(() => _shouldShow = devices.isEmpty);
     } catch (_) {
-      // Si no podemos consultar (sin sesión, sin red), mejor no
-      // ofrecer la tarjeta — evita spam si el backend está caído.
-      if (mounted) setState(() => _shouldShow = false);
+      if (mounted) setState(() => _shouldShow = true);
     }
   }
 
