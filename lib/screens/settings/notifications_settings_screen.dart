@@ -63,6 +63,15 @@ class _NotificationsSettingsScreenState
 
   Future<void> _activate() async {
     HapticFeedback.lightImpact();
+    // Feedback inmediato — sin esto el tendero no sabe si el tap
+    // registró (sobre todo en iPhone donde el prompt puede tardar
+    // varios segundos o no aparecer del todo si Safari ya recordaba
+    // un "Denegado" previo).
+    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+      content: Text('Solicitando permiso…',
+          style: TextStyle(fontSize: 16)),
+      duration: Duration(seconds: 2),
+    ));
     setState(() {
       _busy = true;
       _error = null;
@@ -71,17 +80,18 @@ class _NotificationsSettingsScreenState
       final ok = await PushService().requestOptInAndRegister();
       if (!mounted) return;
       if (!ok) {
-        // Causa más común en iPhone: la PWA no detecta el SW o el
-        // permiso fue rechazado antes. Damos un mensaje accionable
-        // sin culpar al usuario.
-        setState(() {
-          _error = 'No pudimos activar las notificaciones en este '
-              'dispositivo. Asegúrese de haber agregado VendIA a la '
-              'pantalla de inicio del iPhone (botón compartir → '
-              '"Agregar a pantalla de inicio") y abra desde ese ícono. '
-              'Si ya lo hizo, revise los permisos del sitio en su '
-              'navegador.';
-        });
+        // Mostramos el error REAL del PushService (init failed,
+        // permiso denegado, getToken vacío) en vez de un mensaje
+        // genérico — sin esto no se puede diagnosticar en iPhone.
+        final reason = PushService().lastOptInError ??
+            'No se pudo activar (causa desconocida).';
+        setState(() => _error = reason);
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('✓ Notificaciones activadas',
+              style: TextStyle(fontSize: 16)),
+          backgroundColor: Color(0xFF059669),
+        ));
       }
       await _reload();
     } finally {

@@ -51,7 +51,18 @@ class PushService {
   /// "Activar" antes de que el init de Firebase termine (sobre todo
   /// en iPhone Safari donde el primer init puede tardar 1-2s).
   Future<void>? _initFuture;
+  /// Si `_doInit` falló, guardamos el mensaje crudo para mostrarlo
+  /// al tendero (no en log invisible). Sin esto era imposible saber
+  /// si el problema era VAPID, SW, permiso denegado o credenciales.
+  String? _lastInitError;
+  /// Si `requestOptInAndRegister` falló y no fue por init (Firebase
+  /// listo pero permiso rechazado / getToken vacío / register al
+  /// backend falló), guardamos la razón acá para el UI.
+  String? _lastOptInError;
   DeepLinkHandler? _deepLinkHandler;
+
+  String? get lastInitError => _lastInitError;
+  String? get lastOptInError => _lastOptInError;
 
   static const _androidChannel = AndroidNotificationChannel(
     'vendia_default',
@@ -83,10 +94,7 @@ class PushService {
       _wireMessageListeners();
       await _checkInitialMessage();
     } catch (e) {
-      // Init puede fallar en plataformas no soportadas (iOS Safari
-      // pre-16.4 sin PWA, navegadores que bloquean el SW). Degradar
-      // sin romper la app — el caller `requestOptInAndRegister`
-      // chequea `_firebaseReady` y devuelve false con mensaje.
+      _lastInitError = e.toString();
       debugPrint('[PUSH] init failed (push queda inactivo): $e');
     }
   }
@@ -102,26 +110,38 @@ class PushService {
   /// Retorna `true` si se obtuvo y registró un token (push activo);
   /// `false` si el permiso fue denegado o el flujo falló.
   Future<bool> requestOptInAndRegister() async {
+    _lastOptInError = null;
     // Esperar a que el init de Firebase termine si aún está en curso.
-    // Si init() jamás se llamó, lo disparamos acá (idempotente).
     if (_initFuture == null) {
       await init();
     } else {
       await _initFuture;
     }
-    if (!_firebaseReady) return false;
-    final messaging = FirebaseMessaging.instance;
-
-    final settings = await messaging.requestPermission(
-      alert: true,
-      badge: true,
-      sound: true,
-    );
-    if (settings.authorizationStatus != AuthorizationStatus.authorized &&
-        settings.authorizationStatus != AuthorizationStatus.provisional) {
+    if (!_firebaseReady) {
+      _lastOptInError =
+          'Firebase no se pudo iniciar en este navegador. '
+          '${_lastInitError ?? "Causa desconocida."}';
       return false;
     }
-    return _fetchAndRegisterToken();
+    try {
+      final messaging = FirebaseMessaging.instance;
+      final settings = await messaging.requestPermission(
+        alert: true,
+        badge: true,
+        sound: true,
+      );
+      if (settings.authorizationStatus != AuthorizationStatus.authorized &&
+          settings.authorizationStatus != AuthorizationStatus.provisional) {
+        _lastOptInError =
+            'El navegador no concedió el permiso de notificaciones '
+            '(estado: ${settings.authorizationStatus.name}).';
+        return false;
+      }
+      return await _fetchAndRegisterToken();
+    } catch (e) {
+      _lastOptInError = 'Error pidiendo el permiso: $e';
+      return false;
+    }
   }
 
   /// Llama `POST /api/v1/devices/register` con el token actual. Idempotente
@@ -131,7 +151,12 @@ class PushService {
       final messaging = FirebaseMessaging.instance;
       // En web el VAPID key sale del firebase_options autogenerado.
       final token = await messaging.getToken();
-      if (token == null || token.isEmpty) return false;
+      if (token == null || token.isEmpty) {
+        _lastOptInError =
+            'El navegador no entregó un token push (puede que el '
+            'Service Worker no esté registrado).';
+        return false;
+      }
 
       final api = ApiService(AuthService());
       await api.registerDevice(
@@ -154,6 +179,7 @@ class PushService {
       });
       return true;
     } catch (e) {
+      _lastOptInError = 'Error registrando el dispositivo: $e';
       debugPrint('[PUSH] fetchAndRegisterToken failed: $e');
       return false;
     }
