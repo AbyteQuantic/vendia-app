@@ -3820,5 +3820,19 @@ class ApiService {
       throw AppError.fromDioException(e);
     }
   }
+
+  /// Dispara un push de prueba al tenant del usuario logueado.
+  /// Retorna cuántos dispositivos recibieron la push (0 si ninguno
+  /// está registrado activo). Lo usa el botón "Enviar push de
+  /// prueba" en la pantalla de settings de notificaciones.
+  Future<int> sendTestPush() async {
+    try {
+      final response = await _dio.post('/api/v1/devices/me/test');
+      final data = response.data['data'] as Map<String, dynamic>?;
+      return (data?['tokens_targeted'] as int?) ?? 0;
+    } on DioException catch (e) {
+      throw AppError.fromDioException(e);
+    }
+  }
 }
 

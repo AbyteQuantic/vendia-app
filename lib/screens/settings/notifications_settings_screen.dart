@@ -174,33 +174,106 @@ class _NotificationsSettingsScreenState
               ),
             ...devices.map((d) => _deviceTile(d)),
             const SizedBox(height: 24),
-            if (PushService().isAvailable)
+            // El botón "Activar" se muestra SIEMPRE — incluso si el
+            // PushService no reporta available todavía. Razón: el
+            // init de Firebase puede tardar, y queremos que el
+            // tendero pueda intentar manualmente sin tener que
+            // esperar/refrescar. requestOptInAndRegister maneja el
+            // caso "Firebase no listo" devolviendo false con mensaje.
+            SizedBox(
+              width: double.infinity,
+              height: 56,
+              child: ElevatedButton.icon(
+                onPressed: _busy ? null : _activate,
+                icon: const Icon(Icons.notifications_active),
+                label: const Text(
+                  'Activar en este dispositivo',
+                  style: TextStyle(
+                    fontSize: 17,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF6D28D9),
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                ),
+              ),
+            ),
+            if (devices.isNotEmpty) ...[
+              const SizedBox(height: 12),
               SizedBox(
                 width: double.infinity,
                 height: 56,
-                child: ElevatedButton.icon(
-                  onPressed: _busy ? null : _activate,
-                  icon: const Icon(Icons.notifications_active),
+                child: OutlinedButton.icon(
+                  onPressed: _busy ? null : _sendTest,
+                  icon: const Icon(Icons.send_rounded),
                   label: const Text(
-                    'Activar en este dispositivo',
+                    'Enviar push de prueba',
                     style: TextStyle(
                       fontSize: 17,
                       fontWeight: FontWeight.w700,
                     ),
                   ),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF6D28D9),
-                    foregroundColor: Colors.white,
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: const Color(0xFF6D28D9),
+                    side: const BorderSide(
+                        color: Color(0xFF6D28D9), width: 2),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(14),
                     ),
                   ),
                 ),
               ),
+              const SizedBox(height: 8),
+              const Text(
+                'Le mandamos una notificación de prueba a este '
+                'dispositivo. Si no llega, revise los permisos del '
+                'sitio en su navegador.',
+                style: TextStyle(
+                  fontSize: 13,
+                  color: Color(0xFF6B7280),
+                ),
+              ),
+            ],
           ],
         ),
       ),
     );
+  }
+
+  Future<void> _sendTest() async {
+    HapticFeedback.lightImpact();
+    setState(() => _busy = true);
+    try {
+      final sent = await PushService().sendTestPush();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(
+          sent > 0
+              ? 'Push enviada a $sent dispositivo(s). Revise la barra de notificaciones.'
+              : 'No hay dispositivos registrados que reciban la prueba.',
+          style: const TextStyle(fontSize: 16),
+        ),
+        backgroundColor: sent > 0
+            ? const Color(0xFF059669)
+            : const Color(0xFFDC2626),
+        duration: const Duration(seconds: 5),
+      ));
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(
+          'No pudimos enviar la prueba: $e',
+          style: const TextStyle(fontSize: 16),
+        ),
+        backgroundColor: const Color(0xFFDC2626),
+      ));
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
   }
 
   Widget _deviceTile(Map<String, dynamic> d) {

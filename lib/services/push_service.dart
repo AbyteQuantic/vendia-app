@@ -157,6 +157,14 @@ class PushService {
     return api.listMyDevices();
   }
 
+  /// Pide al backend disparar un push de prueba al tenant. Retorna
+  /// el número de dispositivos que recibieron la push. Si retorna 0
+  /// es probable que el token no haya sido registrado todavía.
+  Future<int> sendTestPush() async {
+    final api = ApiService(AuthService());
+    return api.sendTestPush();
+  }
+
   Future<void> _setupLocalNotifications() async {
     const androidInit = AndroidInitializationSettings('@mipmap/ic_launcher');
     final initSettings = InitializationSettings(android: androidInit);
