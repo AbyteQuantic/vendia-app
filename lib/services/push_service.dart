@@ -46,6 +46,11 @@ class PushService {
 
   bool _initialized = false;
   bool _firebaseReady = false;
+  /// Future del init en curso. `requestOptInAndRegister` lo `await`
+  /// para resolver la race condition: el tendero puede tocar
+  /// "Activar" antes de que el init de Firebase termine (sobre todo
+  /// en iPhone Safari donde el primer init puede tardar 1-2s).
+  Future<void>? _initFuture;
   DeepLinkHandler? _deepLinkHandler;
 
   static const _androidChannel = AndroidNotificationChannel(
@@ -61,10 +66,14 @@ class PushService {
   /// Llamar UNA vez al arranque de la app, antes de runApp si es
   /// posible. NUNCA solicita permiso — eso lo hace `requestOptInAndRegister`.
   Future<void> init({DeepLinkHandler? onDeepLink}) async {
-    if (_initialized) return;
+    if (_initialized) return _initFuture ?? Future.value();
     _initialized = true;
     _deepLinkHandler = onDeepLink;
+    _initFuture = _doInit();
+    return _initFuture!;
+  }
 
+  Future<void> _doInit() async {
     try {
       await Firebase.initializeApp(
         options: DefaultFirebaseOptions.currentPlatform,
@@ -74,11 +83,10 @@ class PushService {
       _wireMessageListeners();
       await _checkInitialMessage();
     } catch (e) {
-      // Init de Firebase puede fallar en plataformas no soportadas
-      // (iOS Safari pre-16.4 sin PWA, navegadores que bloquean el SW),
-      // o si las credenciales se desconfiguraron. Degradar a inactivo
-      // sin romper la app — el PushOptinGate chequea isAvailable
-      // antes de mostrarse, así que el usuario no ve nada raro.
+      // Init puede fallar en plataformas no soportadas (iOS Safari
+      // pre-16.4 sin PWA, navegadores que bloquean el SW). Degradar
+      // sin romper la app — el caller `requestOptInAndRegister`
+      // chequea `_firebaseReady` y devuelve false con mensaje.
       debugPrint('[PUSH] init failed (push queda inactivo): $e');
     }
   }
@@ -94,6 +102,13 @@ class PushService {
   /// Retorna `true` si se obtuvo y registró un token (push activo);
   /// `false` si el permiso fue denegado o el flujo falló.
   Future<bool> requestOptInAndRegister() async {
+    // Esperar a que el init de Firebase termine si aún está en curso.
+    // Si init() jamás se llamó, lo disparamos acá (idempotente).
+    if (_initFuture == null) {
+      await init();
+    } else {
+      await _initFuture;
+    }
     if (!_firebaseReady) return false;
     final messaging = FirebaseMessaging.instance;
 

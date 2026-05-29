@@ -35,15 +35,11 @@ class _NotificationsSettingsScreenState
   }
 
   Future<void> _reload() async {
-    if (!PushService().isAvailable) {
-      setState(() {
-        _devices = const [];
-        _error = 'Las notificaciones aún no están configuradas en su '
-            'navegador. Si tiene iPhone, agregue VendIA a la pantalla '
-            'de inicio para activarlas.';
-      });
-      return;
-    }
+    // NO bloqueamos por `isAvailable` — el init de Firebase puede no
+    // haber terminado y dispararíamos el warning innecesariamente.
+    // Si la API falla por sesión / red, mostramos lista vacía sin
+    // texto rojo: el botón "Activar" sigue disponible y guía al
+    // tendero.
     setState(() => _busy = true);
     try {
       final list = await PushService().listMyDevices();
@@ -52,12 +48,11 @@ class _NotificationsSettingsScreenState
         _devices = list;
         _error = null;
       });
-    } catch (e) {
+    } catch (_) {
       if (!mounted) return;
       setState(() {
         _devices = const [];
-        _error = 'No pudimos cargar la lista de dispositivos. Vuelva a '
-            'intentar en un momento.';
+        _error = null; // sin texto rojo — la acción es activar
       });
     } finally {
       if (mounted) {
@@ -68,14 +63,24 @@ class _NotificationsSettingsScreenState
 
   Future<void> _activate() async {
     HapticFeedback.lightImpact();
-    setState(() => _busy = true);
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
     try {
       final ok = await PushService().requestOptInAndRegister();
       if (!mounted) return;
       if (!ok) {
+        // Causa más común en iPhone: la PWA no detecta el SW o el
+        // permiso fue rechazado antes. Damos un mensaje accionable
+        // sin culpar al usuario.
         setState(() {
-          _error = 'El navegador rechazó el permiso. Búsquelo en la '
-              'configuración del sitio y permítalo manualmente.';
+          _error = 'No pudimos activar las notificaciones en este '
+              'dispositivo. Asegúrese de haber agregado VendIA a la '
+              'pantalla de inicio del iPhone (botón compartir → '
+              '"Agregar a pantalla de inicio") y abra desde ese ícono. '
+              'Si ya lo hizo, revise los permisos del sitio en su '
+              'navegador.';
         });
       }
       await _reload();
