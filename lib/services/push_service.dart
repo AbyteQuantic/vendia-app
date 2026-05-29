@@ -32,6 +32,7 @@ import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import '../firebase_options.dart';
 import 'api_service.dart';
 import 'auth_service.dart';
+import 'web_push_native.dart';
 
 /// Callback que el `app.dart` registra para que un deep link entrante
 /// navegue a la pantalla correcta. PushService solo sabe extraer la
@@ -100,8 +101,35 @@ class PushService {
   }
 
   /// `true` si la integración está viva y se puede pedir token.
-  /// `false` si Firebase no está configurado o init falló.
-  bool get isAvailable => _firebaseReady;
+  /// - En iPhone/iPad: siempre `true` (Web Push API estándar).
+  /// - En otros browsers: solo si Firebase init OK.
+  bool get isAvailable => WebPushNative.isAppleSafari || _firebaseReady;
+
+  /// Implementación para iOS Safari — usa Web Push API estándar
+  /// con VAPID (sin Firebase).
+  Future<bool> _registerWebPushNative() async {
+    try {
+      final sub = await WebPushNative.instance.requestSubscription();
+      if (sub == null) {
+        _lastOptInError = WebPushNative.instance.lastError ??
+            'No se pudo suscribir al servicio de notificaciones.';
+        return false;
+      }
+
+      final api = ApiService(AuthService());
+      await api.registerDevice(
+        platform: 'web_ios',
+        endpoint: sub.endpoint,
+        p256dhKey: sub.p256dhKey,
+        authKey: sub.authKey,
+        deviceLabel: 'iPhone Safari',
+      );
+      return true;
+    } catch (e) {
+      _lastOptInError = 'Error registrando el dispositivo iOS: $e';
+      return false;
+    }
+  }
 
   /// Pide permiso al usuario (dispara el prompt nativo del navegador /
   /// OS) y, si el usuario acepta, obtiene + registra el token. Es lo
@@ -111,7 +139,16 @@ class PushService {
   /// `false` si el permiso fue denegado o el flujo falló.
   Future<bool> requestOptInAndRegister() async {
     _lastOptInError = null;
-    // Esperar a que el init de Firebase termine si aún está en curso.
+
+    // En iPhone/iPad → Web Push nativo (RFC 8030). Saltamos Firebase
+    // entero porque firebase_messaging falla con channel-error en
+    // WebKit. Web Push API estándar del browser SÍ funciona.
+    if (WebPushNative.isAppleSafari) {
+      return _registerWebPushNative();
+    }
+
+    // Resto de browsers: el camino firebase_messaging (Chrome, Firefox,
+    // Edge, Android WebView).
     if (_initFuture == null) {
       await init();
     } else {

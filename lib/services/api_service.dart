@@ -3774,21 +3774,32 @@ class ApiService {
 
   // ─── Spec 038 — Push Notifications ────────────────────────────────
 
-  /// Registra (o refresca, idempotente) el token FCM del dispositivo
-  /// actual contra el backend. El tenant y user salen del JWT en el
-  /// backend, no se pasan en el body — Art. III.
+  /// Registra (o refresca, idempotente) el dispositivo contra el
+  /// backend. Soporta dos modos:
+  /// - **FCM** (Chrome / Firefox / Android): pasar `token`.
+  /// - **Web Push nativo** (iOS Safari): pasar `endpoint` + `p256dhKey`
+  ///   + `authKey`. `token` queda vacío.
+  ///
+  /// Al menos uno de los dos modos debe estar completo; el backend
+  /// devuelve 400 si faltan ambas credenciales.
   Future<Map<String, dynamic>> registerDevice({
-    required String token,
+    String? token,
     required String platform,
     String? deviceLabel,
+    String? endpoint,
+    String? p256dhKey,
+    String? authKey,
   }) async {
     try {
       final response = await _dio.post(
         '/api/v1/devices/register',
         data: {
-          'token': token,
+          if (token != null && token.isNotEmpty) 'token': token,
           'platform': platform,
           if (deviceLabel != null) 'device_label': deviceLabel,
+          if (endpoint != null && endpoint.isNotEmpty) 'endpoint': endpoint,
+          if (p256dhKey != null && p256dhKey.isNotEmpty) 'p256dh_key': p256dhKey,
+          if (authKey != null && authKey.isNotEmpty) 'auth_key': authKey,
         },
       );
       return _extractData(response);
