@@ -56,9 +56,7 @@ class _PushOptinGateState extends State<PushOptinGate> {
   }
 
   Future<void> _check() async {
-    // Si Firebase aún no terminó init (main() lo lanza en background),
-    // reintentar hasta _maxRetries veces. Después nos rendimos —
-    // probablemente el browser no soporta push.
+    // 1. Esperar a que el PushService esté disponible.
     if (!PushService().isAvailable) {
       if (_retries >= _maxRetries) {
         if (mounted) setState(() => _shouldShow = false);
@@ -70,16 +68,26 @@ class _PushOptinGateState extends State<PushOptinGate> {
       return;
     }
 
-    // Firebase listo. Si el backend confirma ≥1 device → ocultar.
-    // Cualquier otro caso (lista vacía, error de red, 404, JWT inválido)
-    // → mostrar (fallar abierto). El tap del botón hace el opt-in real,
-    // que de fallar muestra mensaje de error in-place.
-    try {
-      final devices = await PushService().listMyDevices();
-      if (!mounted) return;
-      setState(() => _shouldShow = devices.isEmpty);
-    } catch (_) {
-      if (mounted) setState(() => _shouldShow = true);
+    // 2. Consultar al backend si el usuario YA tiene un dispositivo.
+    //    Con retry: hay race con AuthService cargando el JWT desde
+    //    disco al arranque — el primer call puede dar 401 porque no
+    //    hay token aún. Reintenta 5 veces espaciadas 2s (10s en
+    //    total). Solo si todos fallan hace fail-open.
+    for (var attempt = 0; attempt < 5; attempt++) {
+      try {
+        final devices = await PushService().listMyDevices();
+        if (!mounted) return;
+        setState(() => _shouldShow = devices.isEmpty);
+        return;
+      } catch (_) {
+        if (attempt < 4) {
+          await Future<void>.delayed(const Duration(seconds: 2));
+          continue;
+        }
+        // Fail-open: mostrar la tarjeta para que el tendero pueda
+        // intentar activar manualmente.
+        if (mounted) setState(() => _shouldShow = true);
+      }
     }
   }
 
