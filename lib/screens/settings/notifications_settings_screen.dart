@@ -9,6 +9,8 @@
 //     usuario lo había rechazado y quiere reactivar (AC-03).
 //   - Input del umbral de stock crítico — el dueño lo edita, la
 //     pantalla persiste con `PATCH /tenants/me` (AC-18).
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -157,6 +159,13 @@ class _NotificationsSettingsScreenState
           padding: const EdgeInsets.all(16),
           children: [
             if (_busy) const LinearProgressIndicator(),
+
+            // ── Panel de diagnóstico — siempre visible para que el
+            //    tendero (y nosotros) sepamos qué pasó sin abrir
+            //    devtools del browser. Muestra el estado en tiempo
+            //    real del PushService.
+            _DiagnosticPanel(),
+
             if (_error != null)
               Container(
                 padding: const EdgeInsets.all(16),
@@ -340,5 +349,92 @@ class _NotificationsSettingsScreenState
     } catch (_) {
       return iso;
     }
+  }
+}
+
+/// Panel de diagnóstico siempre visible. Cuando algo falla en
+/// iPhone Safari PWA no podemos abrir devtools, así que exponemos
+/// el estado del PushService directamente en la UI.
+class _DiagnosticPanel extends StatefulWidget {
+  @override
+  State<_DiagnosticPanel> createState() => _DiagnosticPanelState();
+}
+
+class _DiagnosticPanelState extends State<_DiagnosticPanel> {
+  Timer? _refresh;
+
+  @override
+  void initState() {
+    super.initState();
+    // Refresca el panel cada 1s mientras la pantalla está abierta
+    // — así si el init de Firebase termina después de montar, lo
+    // vemos sin recargar.
+    _refresh = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (mounted) setState(() {});
+    });
+  }
+
+  @override
+  void dispose() {
+    _refresh?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final service = PushService();
+    final ready = service.isAvailable;
+    final initErr = service.lastInitError;
+    final optInErr = service.lastOptInError;
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 16),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF3F4F6),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: const Color(0xFFD1D5DB)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text('Diagnóstico',
+              style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.bold,
+                  color: Color(0xFF374151))),
+          const SizedBox(height: 6),
+          _row('Firebase listo', ready ? 'Sí ✓' : 'No ✗',
+              ready ? const Color(0xFF059669) : const Color(0xFFDC2626)),
+          if (initErr != null)
+            _row('Error de init', initErr, const Color(0xFFDC2626)),
+          if (optInErr != null)
+            _row('Último intento', optInErr, const Color(0xFFDC2626)),
+          if (initErr == null && optInErr == null && ready)
+            const Text('Sin errores registrados.',
+                style:
+                    TextStyle(fontSize: 12, color: Color(0xFF6B7280))),
+        ],
+      ),
+    );
+  }
+
+  Widget _row(String label, String value, Color valueColor) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 3),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(label,
+              style: const TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  color: Color(0xFF6B7280))),
+          Text(value,
+              style: TextStyle(
+                  fontSize: 13, color: valueColor, height: 1.3)),
+        ],
+      ),
+    );
   }
 }
