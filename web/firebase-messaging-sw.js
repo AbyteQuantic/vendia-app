@@ -28,9 +28,9 @@ firebase.initializeApp({
 
 const messaging = firebase.messaging();
 
-// Background handler: cuando la PWA NO está abierta (o está en
-// otra pestaña), el browser entrega el push aquí. Mostramos la
-// notificación nativa del OS con el título/cuerpo del payload.
+// Background handler para mensajes vía Firebase Cloud Messaging
+// (Chrome, Firefox, Edge, Android). Firebase ya decripta y nos pasa
+// `payload.notification` + `payload.data`.
 messaging.onBackgroundMessage((payload) => {
   const notification = payload.notification || {};
   const data = payload.data || {};
@@ -45,6 +45,33 @@ messaging.onBackgroundMessage((payload) => {
     },
   };
   self.registration.showNotification(title, options);
+});
+
+// Spec 038 — Web Push protocol nativo (RFC 8030) para iOS Safari.
+// El backend Go con webpush-go envía un payload JSON plano:
+// { title, body, deep_link }. firebase-messaging-compat NO maneja
+// este evento; lo hacemos manualmente.
+//
+// Detección anti-doble: si el payload viene con campo `notification`
+// es FCM (ya manejado por messaging.onBackgroundMessage), no
+// duplicamos. Web Push nativo viene plano sin `notification`.
+self.addEventListener('push', (event) => {
+  if (!event.data) return;
+  let payload = {};
+  try {
+    payload = event.data.json();
+  } catch (_) {
+    payload = { title: 'VendIA', body: event.data.text() };
+  }
+  if (payload.notification) return; // ya manejado por FCM handler
+  const title = payload.title || 'VendIA';
+  const options = {
+    body: payload.body || '',
+    icon: '/icons/Icon-192.png',
+    badge: '/icons/Icon-192.png',
+    data: { deep_link: payload.deep_link || '' },
+  };
+  event.waitUntil(self.registration.showNotification(title, options));
 });
 
 // Tap en la notificación: si trae `deep_link`, abrir o enfocar la

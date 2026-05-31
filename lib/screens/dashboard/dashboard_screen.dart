@@ -14,6 +14,8 @@ import '../../theme/app_theme.dart';
 import '../../widgets/online_orders_bell.dart';
 import '../../widgets/profile_photo_avatar.dart';
 import '../../widgets/profile_photo_picker.dart';
+import '../../widgets/push_optin_card.dart';
+import '../settings/notifications_settings_screen.dart';
 import '../../widgets/trial_bar.dart';
 import '../auth/login_screen.dart';
 import '../inventory/add_merchandise_screen.dart';
@@ -464,6 +466,17 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     if (mounted) _loadCapabilityFlags();
                   },
                   todayLabel: _todayLabel(),
+                ),
+              ),
+
+              // ── Spec 038 — Tarjeta de opt-in a push notifications ──
+              // Solo se muestra si Firebase está disponible y el usuario
+              // aún no tiene un dispositivo registrado activo. En cualquier
+              // otro caso es 0px de alto (transparente al layout).
+              const SliverToBoxAdapter(
+                child: Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 2),
+                  child: PushOptinGate(),
                 ),
               ),
 
@@ -1585,6 +1598,38 @@ class _AccountSheetContentState extends State<_AccountSheetContent> {
                 ],
               ),
               const SizedBox(height: 20),
+              // Spec F038 — acceso a settings de notificaciones desde
+              // el menú de cuenta. Reemplaza el flujo automático del
+              // PushOptinCard del Dashboard, que en iPhone Safari PWA
+              // resultó no aparecer de forma confiable. Acá el tendero
+              // entra explícitamente, ve el estado, activa y prueba.
+              SizedBox(
+                width: double.infinity,
+                height: 56,
+                child: ElevatedButton.icon(
+                  icon: const Icon(Icons.notifications_active_rounded,
+                      color: Color(0xFF6D28D9)),
+                  label: const Text('Notificaciones',
+                      style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                          color: Color(0xFF6D28D9))),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFFEDE9FE),
+                    elevation: 0,
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(16)),
+                  ),
+                  onPressed: () {
+                    Navigator.of(context).pop();
+                    Navigator.of(context).push(MaterialPageRoute(
+                      builder: (_) =>
+                          const NotificationsSettingsScreen(),
+                    ));
+                  },
+                ),
+              ),
+              const SizedBox(height: 12),
               SizedBox(
                 width: double.infinity,
                 height: 56,

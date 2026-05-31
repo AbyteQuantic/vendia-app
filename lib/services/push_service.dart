@@ -32,6 +32,7 @@ import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import '../firebase_options.dart';
 import 'api_service.dart';
 import 'auth_service.dart';
+import 'web_push_native.dart';
 
 /// Callback que el `app.dart` registra para que un deep link entrante
 /// navegue a la pantalla correcta. PushService solo sabe extraer la
@@ -46,7 +47,23 @@ class PushService {
 
   bool _initialized = false;
   bool _firebaseReady = false;
+  /// Future del init en curso. `requestOptInAndRegister` lo `await`
+  /// para resolver la race condition: el tendero puede tocar
+  /// "Activar" antes de que el init de Firebase termine (sobre todo
+  /// en iPhone Safari donde el primer init puede tardar 1-2s).
+  Future<void>? _initFuture;
+  /// Si `_doInit` falló, guardamos el mensaje crudo para mostrarlo
+  /// al tendero (no en log invisible). Sin esto era imposible saber
+  /// si el problema era VAPID, SW, permiso denegado o credenciales.
+  String? _lastInitError;
+  /// Si `requestOptInAndRegister` falló y no fue por init (Firebase
+  /// listo pero permiso rechazado / getToken vacío / register al
+  /// backend falló), guardamos la razón acá para el UI.
+  String? _lastOptInError;
   DeepLinkHandler? _deepLinkHandler;
+
+  String? get lastInitError => _lastInitError;
+  String? get lastOptInError => _lastOptInError;
 
   static const _androidChannel = AndroidNotificationChannel(
     'vendia_default',
@@ -61,10 +78,14 @@ class PushService {
   /// Llamar UNA vez al arranque de la app, antes de runApp si es
   /// posible. NUNCA solicita permiso — eso lo hace `requestOptInAndRegister`.
   Future<void> init({DeepLinkHandler? onDeepLink}) async {
-    if (_initialized) return;
+    if (_initialized) return _initFuture ?? Future.value();
     _initialized = true;
     _deepLinkHandler = onDeepLink;
+    _initFuture = _doInit();
+    return _initFuture!;
+  }
 
+  Future<void> _doInit() async {
     try {
       await Firebase.initializeApp(
         options: DefaultFirebaseOptions.currentPlatform,
@@ -74,18 +95,41 @@ class PushService {
       _wireMessageListeners();
       await _checkInitialMessage();
     } catch (e) {
-      // Init de Firebase puede fallar en plataformas no soportadas
-      // (iOS Safari pre-16.4 sin PWA, navegadores que bloquean el SW),
-      // o si las credenciales se desconfiguraron. Degradar a inactivo
-      // sin romper la app — el PushOptinGate chequea isAvailable
-      // antes de mostrarse, así que el usuario no ve nada raro.
+      _lastInitError = e.toString();
       debugPrint('[PUSH] init failed (push queda inactivo): $e');
     }
   }
 
   /// `true` si la integración está viva y se puede pedir token.
-  /// `false` si Firebase no está configurado o init falló.
-  bool get isAvailable => _firebaseReady;
+  /// - En iPhone/iPad: siempre `true` (Web Push API estándar).
+  /// - En otros browsers: solo si Firebase init OK.
+  bool get isAvailable => WebPushNative.isAppleSafari || _firebaseReady;
+
+  /// Implementación para iOS Safari — usa Firebase JS SDK directo
+  /// (no via firebase_messaging plugin de Flutter que falla en
+  /// WebKit). Obtiene un FCM token estándar que el backend envía
+  /// vía Firebase Admin SDK como cualquier otro device.
+  Future<bool> _registerWebPushNative() async {
+    try {
+      final sub = await WebPushNative.instance.requestSubscription();
+      if (sub == null) {
+        _lastOptInError = WebPushNative.instance.lastError ??
+            'No se pudo suscribir al servicio de notificaciones.';
+        return false;
+      }
+
+      final api = ApiService(AuthService());
+      await api.registerDevice(
+        platform: 'web_ios',
+        token: sub.fcmToken, // ← ahora es un FCM token, no endpoint
+        deviceLabel: 'iPhone Safari',
+      );
+      return true;
+    } catch (e) {
+      _lastOptInError = 'Error registrando el dispositivo iOS: $e';
+      return false;
+    }
+  }
 
   /// Pide permiso al usuario (dispara el prompt nativo del navegador /
   /// OS) y, si el usuario acepta, obtiene + registra el token. Es lo
@@ -94,19 +138,47 @@ class PushService {
   /// Retorna `true` si se obtuvo y registró un token (push activo);
   /// `false` si el permiso fue denegado o el flujo falló.
   Future<bool> requestOptInAndRegister() async {
-    if (!_firebaseReady) return false;
-    final messaging = FirebaseMessaging.instance;
+    _lastOptInError = null;
 
-    final settings = await messaging.requestPermission(
-      alert: true,
-      badge: true,
-      sound: true,
-    );
-    if (settings.authorizationStatus != AuthorizationStatus.authorized &&
-        settings.authorizationStatus != AuthorizationStatus.provisional) {
+    // En iPhone/iPad → Web Push nativo (RFC 8030). Saltamos Firebase
+    // entero porque firebase_messaging falla con channel-error en
+    // WebKit. Web Push API estándar del browser SÍ funciona.
+    if (WebPushNative.isAppleSafari) {
+      return _registerWebPushNative();
+    }
+
+    // Resto de browsers: el camino firebase_messaging (Chrome, Firefox,
+    // Edge, Android WebView).
+    if (_initFuture == null) {
+      await init();
+    } else {
+      await _initFuture;
+    }
+    if (!_firebaseReady) {
+      _lastOptInError =
+          'Firebase no se pudo iniciar en este navegador. '
+          '${_lastInitError ?? "Causa desconocida."}';
       return false;
     }
-    return _fetchAndRegisterToken();
+    try {
+      final messaging = FirebaseMessaging.instance;
+      final settings = await messaging.requestPermission(
+        alert: true,
+        badge: true,
+        sound: true,
+      );
+      if (settings.authorizationStatus != AuthorizationStatus.authorized &&
+          settings.authorizationStatus != AuthorizationStatus.provisional) {
+        _lastOptInError =
+            'El navegador no concedió el permiso de notificaciones '
+            '(estado: ${settings.authorizationStatus.name}).';
+        return false;
+      }
+      return await _fetchAndRegisterToken();
+    } catch (e) {
+      _lastOptInError = 'Error pidiendo el permiso: $e';
+      return false;
+    }
   }
 
   /// Llama `POST /api/v1/devices/register` con el token actual. Idempotente
@@ -116,7 +188,12 @@ class PushService {
       final messaging = FirebaseMessaging.instance;
       // En web el VAPID key sale del firebase_options autogenerado.
       final token = await messaging.getToken();
-      if (token == null || token.isEmpty) return false;
+      if (token == null || token.isEmpty) {
+        _lastOptInError =
+            'El navegador no entregó un token push (puede que el '
+            'Service Worker no esté registrado).';
+        return false;
+      }
 
       final api = ApiService(AuthService());
       await api.registerDevice(
@@ -139,6 +216,7 @@ class PushService {
       });
       return true;
     } catch (e) {
+      _lastOptInError = 'Error registrando el dispositivo: $e';
       debugPrint('[PUSH] fetchAndRegisterToken failed: $e');
       return false;
     }
@@ -155,6 +233,14 @@ class PushService {
   Future<List<Map<String, dynamic>>> listMyDevices() async {
     final api = ApiService(AuthService());
     return api.listMyDevices();
+  }
+
+  /// Pide al backend disparar un push de prueba al tenant. Retorna
+  /// el número de dispositivos que recibieron la push. Si retorna 0
+  /// es probable que el token no haya sido registrado todavía.
+  Future<int> sendTestPush() async {
+    final api = ApiService(AuthService());
+    return api.sendTestPush();
   }
 
   Future<void> _setupLocalNotifications() async {

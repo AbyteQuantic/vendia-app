@@ -41,6 +41,25 @@
        deploy (el script no depende de un tercero). El archivo lo
        copia flutter build web desde `web/` a `build/web/`. -->
   <script src="html5-qrcode.min.js"></script>
+
+  <!-- Spec 038 — Firebase JS SDK (compat) pre-cargado.
+       firebase_core 3.x para Flutter web hace JS interop contra el
+       objeto global `firebase`. Si no esta cargado antes de Flutter,
+       initializeApp() falla con PlatformException(channel-error).
+       FlutterFire CLI NO los inserta automaticamente — bug conocido.
+       Mismo project config que lib/firebase_options.dart. -->
+  <script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-messaging-compat.js"></script>
+  <script>
+    firebase.initializeApp({
+      apiKey: 'AIzaSyABFUzX-6VH2gSFg7myzj5mT-fECGJ0OMw',
+      authDomain: 'vendia-prod.firebaseapp.com',
+      projectId: 'vendia-prod',
+      storageBucket: 'vendia-prod.firebasestorage.app',
+      messagingSenderId: '43323748804',
+      appId: '1:43323748804:web:e787bb056c40b70eccb491',
+    });
+  </script>
 </head>
 <body>
   <!--

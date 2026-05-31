@@ -85,12 +85,13 @@ dependencies:
   web: ^1.1.1
 
   # Spec 038 — Push Notifications (Web + Android via FCM).
-  # firebase_options.dart se genera con `flutterfire configure`
-  # después de crear el proyecto Firebase. Mientras tanto el código
-  # compila contra el stub; en runtime sin config, el opt-in card no
-  # se muestra y el push_service queda en modo inactivo.
-  firebase_core: ^3.8.0
-  firebase_messaging: ^15.1.5
+  # firebase_core 3.15+ introdujo el canal pigeon nuevo
+  # `dev.flutter.pigeon.firebase_core_platform_interface.FirebaseCoreHostApi`
+  # que falla con `channel-error` en iPhone Safari PWA (verificado
+  # 2026-05-29). Pinneamos a versiones pre-pigeon estables hasta que
+  # firebase_core_web actualice el handler.
+  firebase_core: 3.6.0
+  firebase_messaging: 15.1.3
   flutter_local_notifications: ^17.2.4
 
 dev_dependencies:

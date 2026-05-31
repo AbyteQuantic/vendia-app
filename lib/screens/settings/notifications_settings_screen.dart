@@ -9,6 +9,8 @@
 //     usuario lo había rechazado y quiere reactivar (AC-03).
 //   - Input del umbral de stock crítico — el dueño lo edita, la
 //     pantalla persiste con `PATCH /tenants/me` (AC-18).
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -35,15 +37,11 @@ class _NotificationsSettingsScreenState
   }
 
   Future<void> _reload() async {
-    if (!PushService().isAvailable) {
-      setState(() {
-        _devices = const [];
-        _error = 'Las notificaciones aún no están configuradas en su '
-            'navegador. Si tiene iPhone, agregue VendIA a la pantalla '
-            'de inicio para activarlas.';
-      });
-      return;
-    }
+    // NO bloqueamos por `isAvailable` — el init de Firebase puede no
+    // haber terminado y dispararíamos el warning innecesariamente.
+    // Si la API falla por sesión / red, mostramos lista vacía sin
+    // texto rojo: el botón "Activar" sigue disponible y guía al
+    // tendero.
     setState(() => _busy = true);
     try {
       final list = await PushService().listMyDevices();
@@ -52,12 +50,11 @@ class _NotificationsSettingsScreenState
         _devices = list;
         _error = null;
       });
-    } catch (e) {
+    } catch (_) {
       if (!mounted) return;
       setState(() {
         _devices = const [];
-        _error = 'No pudimos cargar la lista de dispositivos. Vuelva a '
-            'intentar en un momento.';
+        _error = null; // sin texto rojo — la acción es activar
       });
     } finally {
       if (mounted) {
@@ -68,15 +65,35 @@ class _NotificationsSettingsScreenState
 
   Future<void> _activate() async {
     HapticFeedback.lightImpact();
-    setState(() => _busy = true);
+    // Feedback inmediato — sin esto el tendero no sabe si el tap
+    // registró (sobre todo en iPhone donde el prompt puede tardar
+    // varios segundos o no aparecer del todo si Safari ya recordaba
+    // un "Denegado" previo).
+    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+      content: Text('Solicitando permiso…',
+          style: TextStyle(fontSize: 16)),
+      duration: Duration(seconds: 2),
+    ));
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
     try {
       final ok = await PushService().requestOptInAndRegister();
       if (!mounted) return;
       if (!ok) {
-        setState(() {
-          _error = 'El navegador rechazó el permiso. Búsquelo en la '
-              'configuración del sitio y permítalo manualmente.';
-        });
+        // Mostramos el error REAL del PushService (init failed,
+        // permiso denegado, getToken vacío) en vez de un mensaje
+        // genérico — sin esto no se puede diagnosticar en iPhone.
+        final reason = PushService().lastOptInError ??
+            'No se pudo activar (causa desconocida).';
+        setState(() => _error = reason);
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('✓ Notificaciones activadas',
+              style: TextStyle(fontSize: 16)),
+          backgroundColor: Color(0xFF059669),
+        ));
       }
       await _reload();
     } finally {
@@ -142,6 +159,13 @@ class _NotificationsSettingsScreenState
           padding: const EdgeInsets.all(16),
           children: [
             if (_busy) const LinearProgressIndicator(),
+
+            // ── Panel de diagnóstico — siempre visible para que el
+            //    tendero (y nosotros) sepamos qué pasó sin abrir
+            //    devtools del browser. Muestra el estado en tiempo
+            //    real del PushService.
+            _DiagnosticPanel(),
+
             if (_error != null)
               Container(
                 padding: const EdgeInsets.all(16),
@@ -174,33 +198,106 @@ class _NotificationsSettingsScreenState
               ),
             ...devices.map((d) => _deviceTile(d)),
             const SizedBox(height: 24),
-            if (PushService().isAvailable)
+            // El botón "Activar" se muestra SIEMPRE — incluso si el
+            // PushService no reporta available todavía. Razón: el
+            // init de Firebase puede tardar, y queremos que el
+            // tendero pueda intentar manualmente sin tener que
+            // esperar/refrescar. requestOptInAndRegister maneja el
+            // caso "Firebase no listo" devolviendo false con mensaje.
+            SizedBox(
+              width: double.infinity,
+              height: 56,
+              child: ElevatedButton.icon(
+                onPressed: _busy ? null : _activate,
+                icon: const Icon(Icons.notifications_active),
+                label: const Text(
+                  'Activar en este dispositivo',
+                  style: TextStyle(
+                    fontSize: 17,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF6D28D9),
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                ),
+              ),
+            ),
+            if (devices.isNotEmpty) ...[
+              const SizedBox(height: 12),
               SizedBox(
                 width: double.infinity,
                 height: 56,
-                child: ElevatedButton.icon(
-                  onPressed: _busy ? null : _activate,
-                  icon: const Icon(Icons.notifications_active),
+                child: OutlinedButton.icon(
+                  onPressed: _busy ? null : _sendTest,
+                  icon: const Icon(Icons.send_rounded),
                   label: const Text(
-                    'Activar en este dispositivo',
+                    'Enviar push de prueba',
                     style: TextStyle(
                       fontSize: 17,
                       fontWeight: FontWeight.w700,
                     ),
                   ),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF6D28D9),
-                    foregroundColor: Colors.white,
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: const Color(0xFF6D28D9),
+                    side: const BorderSide(
+                        color: Color(0xFF6D28D9), width: 2),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(14),
                     ),
                   ),
                 ),
               ),
+              const SizedBox(height: 8),
+              const Text(
+                'Le mandamos una notificación de prueba a este '
+                'dispositivo. Si no llega, revise los permisos del '
+                'sitio en su navegador.',
+                style: TextStyle(
+                  fontSize: 13,
+                  color: Color(0xFF6B7280),
+                ),
+              ),
+            ],
           ],
         ),
       ),
     );
+  }
+
+  Future<void> _sendTest() async {
+    HapticFeedback.lightImpact();
+    setState(() => _busy = true);
+    try {
+      final sent = await PushService().sendTestPush();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(
+          sent > 0
+              ? 'Push enviada a $sent dispositivo(s). Revise la barra de notificaciones.'
+              : 'No hay dispositivos registrados que reciban la prueba.',
+          style: const TextStyle(fontSize: 16),
+        ),
+        backgroundColor: sent > 0
+            ? const Color(0xFF059669)
+            : const Color(0xFFDC2626),
+        duration: const Duration(seconds: 5),
+      ));
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(
+          'No pudimos enviar la prueba: $e',
+          style: const TextStyle(fontSize: 16),
+        ),
+        backgroundColor: const Color(0xFFDC2626),
+      ));
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
   }
 
   Widget _deviceTile(Map<String, dynamic> d) {
@@ -252,5 +349,92 @@ class _NotificationsSettingsScreenState
     } catch (_) {
       return iso;
     }
+  }
+}
+
+/// Panel de diagnóstico siempre visible. Cuando algo falla en
+/// iPhone Safari PWA no podemos abrir devtools, así que exponemos
+/// el estado del PushService directamente en la UI.
+class _DiagnosticPanel extends StatefulWidget {
+  @override
+  State<_DiagnosticPanel> createState() => _DiagnosticPanelState();
+}
+
+class _DiagnosticPanelState extends State<_DiagnosticPanel> {
+  Timer? _refresh;
+
+  @override
+  void initState() {
+    super.initState();
+    // Refresca el panel cada 1s mientras la pantalla está abierta
+    // — así si el init de Firebase termina después de montar, lo
+    // vemos sin recargar.
+    _refresh = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (mounted) setState(() {});
+    });
+  }
+
+  @override
+  void dispose() {
+    _refresh?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final service = PushService();
+    final ready = service.isAvailable;
+    final initErr = service.lastInitError;
+    final optInErr = service.lastOptInError;
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 16),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF3F4F6),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: const Color(0xFFD1D5DB)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text('Diagnóstico',
+              style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.bold,
+                  color: Color(0xFF374151))),
+          const SizedBox(height: 6),
+          _row('Firebase listo', ready ? 'Sí ✓' : 'No ✗',
+              ready ? const Color(0xFF059669) : const Color(0xFFDC2626)),
+          if (initErr != null)
+            _row('Error de init', initErr, const Color(0xFFDC2626)),
+          if (optInErr != null)
+            _row('Último intento', optInErr, const Color(0xFFDC2626)),
+          if (initErr == null && optInErr == null && ready)
+            const Text('Sin errores registrados.',
+                style:
+                    TextStyle(fontSize: 12, color: Color(0xFF6B7280))),
+        ],
+      ),
+    );
+  }
+
+  Widget _row(String label, String value, Color valueColor) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 3),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(label,
+              style: const TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  color: Color(0xFF6B7280))),
+          Text(value,
+              style: TextStyle(
+                  fontSize: 13, color: valueColor, height: 1.3)),
+        ],
+      ),
+    );
   }
 }
