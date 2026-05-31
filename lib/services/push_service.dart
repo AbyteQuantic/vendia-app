@@ -105,8 +105,10 @@ class PushService {
   /// - En otros browsers: solo si Firebase init OK.
   bool get isAvailable => WebPushNative.isAppleSafari || _firebaseReady;
 
-  /// Implementación para iOS Safari — usa Web Push API estándar
-  /// con VAPID (sin Firebase).
+  /// Implementación para iOS Safari — usa Firebase JS SDK directo
+  /// (no via firebase_messaging plugin de Flutter que falla en
+  /// WebKit). Obtiene un FCM token estándar que el backend envía
+  /// vía Firebase Admin SDK como cualquier otro device.
   Future<bool> _registerWebPushNative() async {
     try {
       final sub = await WebPushNative.instance.requestSubscription();
@@ -119,9 +121,7 @@ class PushService {
       final api = ApiService(AuthService());
       await api.registerDevice(
         platform: 'web_ios',
-        endpoint: sub.endpoint,
-        p256dhKey: sub.p256dhKey,
-        authKey: sub.authKey,
+        token: sub.fcmToken, // ← ahora es un FCM token, no endpoint
         deviceLabel: 'iPhone Safari',
       );
       return true;
