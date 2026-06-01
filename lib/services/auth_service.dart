@@ -68,11 +68,42 @@ class AuthService {
   }
 
   Future<void> _saveFeatureFlags(Map<String, dynamic> source) async {
-    final flags = source['feature_flags'];
+    // El backend devuelve un shape mixto: `feature_flags` es un
+    // sub-objeto JSONB con los flags VIEJOS (kds/tips/tables/services/
+    // custom_billing/fractional_units), pero los flags NUEVOS
+    // (enable_marketing_hub, enable_quotes, enable_promotions, etc.
+    // — todo lo agregado por F029-F037) viven como columnas
+    // top-level del tenant. Si solo persistimos `source['feature_flags']`
+    // perdemos los nuevos y el Dashboard nunca los ve hasta el
+    // siguiente PATCH (que tampoco los persistía hasta hoy).
+    //
+    // Solución: mergear ambos en un mismo blob antes de escribir a
+    // disco. `FeatureFlags.fromJson` ya entiende las dos formas.
+    final flagsSub = source['feature_flags'];
+    final merged = <String, dynamic>{};
+    if (flagsSub is Map) {
+      merged.addAll(flagsSub.map((k, v) => MapEntry(k.toString(), v)));
+    }
+    const topLevelKeys = [
+      'enable_marketing_hub',
+      'enable_quotes',
+      'enable_promotions',
+      'enable_customer_management',
+      'enable_recipes',
+      'enable_supplies',
+      'enable_furniture_jobs',
+      'enable_purchase_orders',
+      'enable_price_tiers',
+    ];
+    for (final k in topLevelKeys) {
+      if (source.containsKey(k)) {
+        merged[k] = source[k];
+      }
+    }
     final types = source['business_types'];
     await _storage.write(
       key: _keyFeatureFlags,
-      value: flags is Map ? jsonEncode(flags) : null,
+      value: merged.isEmpty ? null : jsonEncode(merged),
     );
     await _storage.write(
       key: _keyBusinessTypes,
