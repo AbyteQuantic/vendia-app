@@ -24,6 +24,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../config/dashboard_modules.dart';
+import '../screens/capabilities/capabilities_registry.dart';
+import '../screens/capabilities/capability_scaffold.dart';
 import '../screens/dashboard/business_capabilities_screen.dart';
 import '../screens/quotes/quote_capability_screen.dart';
 import '../theme/app_theme.dart';
@@ -156,9 +158,21 @@ class _CapabilitiesReelState extends State<CapabilitiesReel> {
   /// pantalla general con highlight. Switch cerrado a propósito para
   /// que añadir nuevas pantallas dedicadas (F040) sea un solo `case`.
   MaterialPageRoute<void> _routeFor(DashboardModule module) {
+    // Cotizaciones: pantalla propia (caso especial — tiene settings
+    // funcionales de validez por defecto).
     if (module.capability == OptionalCapability.quotes) {
       return MaterialPageRoute(
         builder: (_) => const QuoteCapabilityScreen(),
+      );
+    }
+    // El resto sale del registry — una entrada de metadata por cada
+    // capacidad. Mientras la capacidad tenga entrada acá, abre su
+    // pantalla dedicada con el scaffold; si no la tiene (por error de
+    // datos o capacidad nueva sin registrar), cae al fallback general.
+    final metadata = capabilitiesRegistry[module.capability];
+    if (metadata != null) {
+      return MaterialPageRoute(
+        builder: (_) => CapabilityScaffold(metadata: metadata),
       );
     }
     return MaterialPageRoute(
