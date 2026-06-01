@@ -25,6 +25,7 @@ import 'package:flutter/services.dart';
 
 import '../config/dashboard_modules.dart';
 import '../screens/dashboard/business_capabilities_screen.dart';
+import '../screens/quotes/quote_capability_screen.dart';
 import '../theme/app_theme.dart';
 import '../utils/business_capability_map.dart';
 
@@ -139,16 +140,32 @@ class _CapabilitiesReelState extends State<CapabilitiesReel> {
   Future<void> _openCapabilitiesScreen(DashboardModule module) async {
     HapticFeedback.lightImpact();
     _pauseAutoplay();
-    await Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => BusinessCapabilitiesScreen(
-          highlightCapability: module.capability,
-        ),
-      ),
-    );
+    // F040 (en construcción): cada capacidad gana una pantalla
+    // dedicada con foto + activación + settings + acceso al módulo.
+    // Cotizaciones es la primera implementada; el resto sigue cayendo
+    // en la pantalla general con highlight hasta que F040 las cubra
+    // una a una.
+    final route = _routeFor(module);
+    await Navigator.of(context).push(route);
     if (!mounted) return;
     widget.onReturned?.call();
     _startAutoplay();
+  }
+
+  /// Devuelve la ruta dedicada de una capacidad si existe, o cae a la
+  /// pantalla general con highlight. Switch cerrado a propósito para
+  /// que añadir nuevas pantallas dedicadas (F040) sea un solo `case`.
+  MaterialPageRoute<void> _routeFor(DashboardModule module) {
+    if (module.capability == OptionalCapability.quotes) {
+      return MaterialPageRoute(
+        builder: (_) => const QuoteCapabilityScreen(),
+      );
+    }
+    return MaterialPageRoute(
+      builder: (_) => BusinessCapabilitiesScreen(
+        highlightCapability: module.capability,
+      ),
+    );
   }
 
   /// Cards más altas en pantallas chicas (mobile) que en anchas

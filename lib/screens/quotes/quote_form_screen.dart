@@ -19,6 +19,7 @@
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../models/product.dart';
 import '../../models/quote.dart';
@@ -29,6 +30,8 @@ import '../../services/tax_settings_service.dart';
 import '../../theme/app_theme.dart';
 import '../../utils/format_cop.dart';
 import '../customers/customer_selector_sheet.dart';
+import 'quote_capability_screen.dart'
+    show kQuoteDefaultValidityDaysKey, kQuoteDefaultValidityDaysFallback;
 
 class QuoteFormScreen extends StatefulWidget {
   /// Cotización a editar. Null → crear una nueva.
@@ -66,6 +69,9 @@ class _QuoteFormScreenState extends State<QuoteFormScreen> {
   final _discountCtrl = TextEditingController(text: '0');
   final _noteCtrl = TextEditingController();
 
+  // Default sobrescrito en initState con la preferencia que guarda
+  // QuoteCapabilityScreen (F040). Si no hay preferencia, queda en 15
+  // (fallback histórico, kQuoteDefaultValidityDaysFallback).
   DateTime _validUntil = DateTime.now().add(const Duration(days: 15));
 
   bool _saving = false;
@@ -92,6 +98,27 @@ class _QuoteFormScreenState extends State<QuoteFormScreen> {
       _discountCtrl.text = existing.discountTotal.round().toString();
       _noteCtrl.text = existing.note;
       if (existing.validUntil != null) _validUntil = existing.validUntil!;
+    } else {
+      // Cotización nueva: respetar el default que el tendero configuró
+      // en QuoteCapabilityScreen (F040). Es async — si llega tarde, el
+      // usuario ve 15 días primero y luego se actualiza al elegido.
+      // En la práctica SharedPreferences resuelve en <50ms del primer
+      // frame, así que el "salto" no es perceptible.
+      _loadDefaultValidity();
+    }
+  }
+
+  Future<void> _loadDefaultValidity() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final days = prefs.getInt(kQuoteDefaultValidityDaysKey) ??
+          kQuoteDefaultValidityDaysFallback;
+      if (!mounted) return;
+      setState(() {
+        _validUntil = DateTime.now().add(Duration(days: days));
+      });
+    } catch (_) {
+      // Fallback al hardcoded — ya está aplicado.
     }
   }
 
