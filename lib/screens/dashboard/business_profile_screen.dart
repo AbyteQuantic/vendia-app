@@ -388,7 +388,11 @@ class _BusinessProfileScreenState extends State<BusinessProfileScreen> {
         if (_longitude != 0) 'longitude': _longitude,
       };
 
-      await _api.updateBusinessProfile(updates);
+      final response = await _api.updateBusinessProfile(updates);
+      // Refrescar cache local de feature_flags + business_types — al
+      // cambiar el tipo de negocio o toggles desde aquí, el Dashboard
+      // (que lee de disco) tiene que ver el cambio al volver.
+      await AuthService().saveFeatureFlagsFromProfile(response);
 
       if (!mounted) return;
       _showSnack('Perfil guardado correctamente');

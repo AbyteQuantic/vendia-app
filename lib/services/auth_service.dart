@@ -54,6 +54,19 @@ class AuthService {
   // demás la reutilizan. En móvil el cambio es funcionalmente neutro.
   // Ver specs/011-web-auth-token/spec.md §2.
 
+  /// Refresca el cache local de `feature_flags` + `business_types` a
+  /// partir del shape que devuelve `GET/PATCH /api/v1/store/profile`.
+  /// Lo usa `CapabilityScaffold` después de activar/desactivar una
+  /// capacidad para que el Dashboard vea el cambio al volver — el
+  /// Dashboard lee de disco vía [getFeatureFlags], no del backend.
+  ///
+  /// Falla silenciosa: si el shape no trae `feature_flags`, el cache
+  /// queda como estaba.
+  Future<void> saveFeatureFlagsFromProfile(
+      Map<String, dynamic> profile) async {
+    await _saveFeatureFlags(profile);
+  }
+
   Future<void> _saveFeatureFlags(Map<String, dynamic> source) async {
     final flags = source['feature_flags'];
     final types = source['business_types'];

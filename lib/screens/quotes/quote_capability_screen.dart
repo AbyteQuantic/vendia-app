@@ -99,9 +99,13 @@ class _QuoteCapabilityScreenState extends State<QuoteCapabilityScreen> {
     HapticFeedback.mediumImpact();
     setState(() => _toggling = true);
     try {
-      await _api.updateBusinessProfile({
+      final updated = await _api.updateBusinessProfile({
         'config': {'enable_quotes': next},
       });
+      // Refrescar el cache local de feature_flags para que el
+      // Dashboard vea la capacidad activada al volver (lee de disco,
+      // no del backend).
+      await AuthService().saveFeatureFlagsFromProfile(updated);
       if (!mounted) return;
       setState(() => _enabled = next);
       _showSnack(next

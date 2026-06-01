@@ -328,7 +328,11 @@ class _BusinessCapabilitiesScreenState
               _enabled[OptionalCapability.purchaseOrders],
         },
       };
-      await _api.updateBusinessProfile(updates);
+      final response = await _api.updateBusinessProfile(updates);
+      // Refrescar el cache local de feature_flags para que el
+      // Dashboard vea las capacidades activadas/desactivadas al
+      // volver (lee de disco, no del backend).
+      await AuthService().saveFeatureFlagsFromProfile(response);
       if (!mounted) return;
       _showSnack('Capacidades guardadas');
       Navigator.of(context).pop(true);

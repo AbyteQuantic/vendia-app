@@ -169,9 +169,13 @@ class _CapabilityScaffoldState extends State<CapabilityScaffold> {
     HapticFeedback.mediumImpact();
     setState(() => _toggling = true);
     try {
-      await _api.updateBusinessProfile({
+      final updated = await _api.updateBusinessProfile({
         'config': {widget.metadata.configKey: next},
       });
+      // Refrescar el cache local de feature_flags — el Dashboard
+      // lee de disco al volver y sin esto la capacidad recién
+      // activada no aparecía en el grid hasta el siguiente login.
+      await AuthService().saveFeatureFlagsFromProfile(updated);
       if (!mounted) return;
       setState(() => _enabled = next);
       _snack(next
