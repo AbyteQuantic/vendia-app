@@ -23,6 +23,7 @@ import '../inventory/reorder_screen.dart';
 import '../pos/pos_screen.dart';
 import '../../database/sync/sales_sync.dart';
 import '../../widgets/sync_status_banner.dart';
+import '../../widgets/active_capabilities_section.dart';
 import '../../widgets/capabilities_reel.dart';
 import '../../widgets/dashboard_module_grid.dart';
 import '../../config/dashboard_modules.dart';
@@ -716,6 +717,20 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   child: CapabilitiesReel(
                     key: const Key('dashboard_capabilities_reel'),
                     modules: unactivatedOptionalModules(_featureFlags),
+                    onReturned: _loadCapabilityFlags,
+                  ),
+                ),
+
+                // ── F040: Cards destacadas de capacidades activadas ──
+                // Una card por cada capacidad opcional ACTIVA, con foto
+                // real + acción al módulo + ⚙️. Se inserta antes del
+                // grid normal para que el dueño vea "lo que ya tiene
+                // funcionando" arriba, no perdido entre los módulos
+                // core. Si no hay activas, retorna SizedBox.shrink.
+                SliverToBoxAdapter(
+                  child: ActiveCapabilitiesSection(
+                    key: const Key('dashboard_active_capabilities'),
+                    flags: _featureFlags,
                     onReturned: _loadCapabilityFlags,
                   ),
                 ),
