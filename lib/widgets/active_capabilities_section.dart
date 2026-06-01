@@ -1,18 +1,27 @@
 // Spec: specs/040-capacidades-fotos-config-card/spec.md
 //
-// Sección del Dashboard que renderea una card DESTACADA por cada
-// capacidad opcional ACTIVA, usando la metadata del registry F040
-// (foto real + título + acción principal al módulo + botón ⚙️).
+// Carrusel del Dashboard con las capacidades opcionales ACTIVAS, cada
+// una con foto real grande (Pexels — registry F040). Estilo:
 //
-// Se inserta entre el reel de descubrimiento (capacidades NO activas)
-// y el `DashboardModuleGrid` (que sigue mostrando todos los módulos
-// como cards básicas por categoría). Las activas quedan tanto acá
-// (visualmente destacadas con foto) como en el grid (organizadas por
-// categoría) — son dos puntos de entrada distintos para el tendero
-// 50+.
+//   - PageView horizontal con viewportFraction 0.78 → la card central
+//     casi llena el ancho, las laterales asoman lo suficiente para
+//     anunciar "hay más".
+//   - Foto cubre la mayor parte de la card; gradient overlay inferior
+//     para legibilidad del título.
+//   - Botón circular grande inferior-derecha: acción principal (abrir
+//     módulo funcional, p. ej. "Ver mis cotizaciones").
+//   - Chip ⚙️ superior-derecha: abre la pantalla dedicada de la
+//     capacidad (settings + activación).
+//   - Animación de escala (1.0 centro / 0.9 laterales) + opacidad
+//     (1.0 centro / 0.65 laterales) basada en la distancia de página.
+//   - Auto-rotación cada 20s (pidió el dueño). Pausa al tocar; reanuda
+//     3s después del último pan-end / pan-cancel.
+//   - Dots indicador grandes (10dp / activo 22dp) — Art. I.
 //
 // Si NO hay capacidades opcionales activas, retorna `SizedBox.shrink`
 // — la sección no aparece en el Dashboard de un tenant nuevo.
+
+import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -25,11 +34,17 @@ import '../services/auth_service.dart';
 import '../theme/app_theme.dart';
 import '../utils/business_capability_map.dart';
 
-class ActiveCapabilitiesSection extends StatelessWidget {
+/// Cadencia de auto-rotación — 20s (pedida por el dueño).
+const Duration _kAutoplayInterval = Duration(seconds: 20);
+
+/// Tiempo desde el último toque hasta que reanuda la auto-rotación.
+const Duration _kResumeDelay = Duration(seconds: 3);
+
+class ActiveCapabilitiesSection extends StatefulWidget {
   final FeatureFlags flags;
 
-  /// Callback opcional para refrescar el Dashboard tras volver de la
-  /// pantalla de capacidad (p. ej. si el tendero la apagó).
+  /// Refrescar el Dashboard tras volver de la pantalla de capacidad
+  /// (p. ej. si el dueño la apagó).
   final VoidCallback? onReturned;
 
   const ActiveCapabilitiesSection({
@@ -39,27 +54,114 @@ class ActiveCapabilitiesSection extends StatelessWidget {
   });
 
   @override
-  Widget build(BuildContext context) {
-    // Recolectamos las capacidades opcionales activadas que TIENEN
-    // entrada en el registry F040. Si una capacidad está activa pero
-    // no en el registry (caso teórico), cae al grid normal.
-    final active = dashboardModules
+  State<ActiveCapabilitiesSection> createState() =>
+      _ActiveCapabilitiesSectionState();
+}
+
+class _ActiveCapabilitiesSectionState extends State<ActiveCapabilitiesSection> {
+  late PageController _pageCtrl;
+  Timer? _autoplayTimer;
+  Timer? _resumeTimer;
+  int _currentPage = 0;
+  final double _viewportFraction = 0.78;
+
+  @override
+  void initState() {
+    super.initState();
+    _pageCtrl = PageController(viewportFraction: _viewportFraction);
+    // initial-page = 0; el primer frame lo confirma.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      // Listener para repintar las cards laterales con scale/opacity
+      // mientras el dueño hace swipe.
+      _pageCtrl.addListener(_onPageScroll);
+      _startAutoplay();
+    });
+  }
+
+  @override
+  void didUpdateWidget(covariant ActiveCapabilitiesSection oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // Si cambia el set de activas, reiniciamos a la primera.
+    if (_activeModules(oldWidget.flags).length !=
+        _activeModules(widget.flags).length) {
+      _currentPage = 0;
+      if (_pageCtrl.hasClients) {
+        _pageCtrl.jumpToPage(0);
+      }
+      _restartAutoplay();
+    }
+  }
+
+  @override
+  void dispose() {
+    _autoplayTimer?.cancel();
+    _resumeTimer?.cancel();
+    _pageCtrl.removeListener(_onPageScroll);
+    _pageCtrl.dispose();
+    super.dispose();
+  }
+
+  void _onPageScroll() {
+    // Trigger rebuild para que las cards apliquen scale/opacity nuevos.
+    if (mounted) setState(() {});
+  }
+
+  List<DashboardModule> _activeModules(FeatureFlags flags) {
+    return dashboardModules
         .where((m) =>
             m.layer == ModuleLayer.optional &&
             capabilityEnabled(m.capability, flags) &&
             (m.capability == OptionalCapability.quotes ||
                 capabilitiesRegistry.containsKey(m.capability)))
         .toList();
+  }
 
-    if (active.isEmpty) return const SizedBox.shrink();
+  void _startAutoplay() {
+    _autoplayTimer?.cancel();
+    final modules = _activeModules(widget.flags);
+    if (modules.length <= 1) return;
+    _autoplayTimer = Timer.periodic(_kAutoplayInterval, (_) {
+      if (!mounted || !_pageCtrl.hasClients) return;
+      final next = (_currentPage + 1) % modules.length;
+      _pageCtrl.animateToPage(
+        next,
+        duration: const Duration(milliseconds: 700),
+        curve: Curves.easeInOut,
+      );
+    });
+  }
+
+  void _pauseAutoplay() {
+    _autoplayTimer?.cancel();
+    _resumeTimer?.cancel();
+  }
+
+  void _restartAutoplay() {
+    _autoplayTimer?.cancel();
+    _startAutoplay();
+  }
+
+  void _scheduleResume() {
+    _resumeTimer?.cancel();
+    _resumeTimer = Timer(_kResumeDelay, () {
+      if (!mounted) return;
+      _startAutoplay();
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final modules = _activeModules(widget.flags);
+    if (modules.isEmpty) return const SizedBox.shrink();
 
     return Padding(
-      padding: const EdgeInsets.fromLTRB(18, 20, 18, 0),
+      padding: const EdgeInsets.fromLTRB(0, 20, 0, 0),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const Padding(
-            padding: EdgeInsets.only(left: 4, bottom: 12),
+            padding: EdgeInsets.fromLTRB(22, 0, 22, 12),
             child: Text(
               '⚡ Sus capacidades activas',
               style: TextStyle(
@@ -69,28 +171,59 @@ class ActiveCapabilitiesSection extends StatelessWidget {
               ),
             ),
           ),
-          for (final m in active) ...[
-            _ActiveCapabilityCard(
-              module: m,
-              onReturned: onReturned,
+          SizedBox(
+            height: 300,
+            child: GestureDetector(
+              onPanDown: (_) => _pauseAutoplay(),
+              onPanEnd: (_) => _scheduleResume(),
+              onPanCancel: () => _scheduleResume(),
+              child: PageView.builder(
+                controller: _pageCtrl,
+                itemCount: modules.length,
+                onPageChanged: (p) {
+                  if (!mounted) return;
+                  setState(() => _currentPage = p);
+                },
+                itemBuilder: (context, index) {
+                  return _CarouselCard(
+                    module: modules[index],
+                    pageCtrl: _pageCtrl,
+                    pageIndex: index,
+                    onReturned: () {
+                      widget.onReturned?.call();
+                    },
+                  );
+                },
+              ),
             ),
-            const SizedBox(height: 12),
-          ],
+          ),
+          const SizedBox(height: 14),
+          _DotsIndicator(
+            count: modules.length,
+            current: _currentPage,
+          ),
+          const SizedBox(height: 4),
         ],
       ),
     );
   }
 }
 
-/// Card individual: foto + título/tagline + acción principal al módulo
-/// + chip ⚙️ a la pantalla de configuración de la capacidad.
-class _ActiveCapabilityCard extends StatelessWidget {
+/// Card individual del carrusel. Reactiva al scroll del PageController
+/// para aplicar scale/opacity a medida que se centra o se aleja.
+class _CarouselCard extends StatelessWidget {
   final DashboardModule module;
-  final VoidCallback? onReturned;
+  final PageController pageCtrl;
+  final int pageIndex;
+  final VoidCallback onReturned;
 
-  const _ActiveCapabilityCard({required this.module, this.onReturned});
+  const _CarouselCard({
+    required this.module,
+    required this.pageCtrl,
+    required this.pageIndex,
+    required this.onReturned,
+  });
 
-  // Cotizaciones tiene pantalla propia (settings de validez).
   Widget _capabilityScreen() {
     if (module.capability == OptionalCapability.quotes) {
       return const QuoteCapabilityScreen();
@@ -99,12 +232,9 @@ class _ActiveCapabilityCard extends StatelessWidget {
     return CapabilityScaffold(metadata: meta);
   }
 
-  String _photoUrlOrEmpty() {
+  String _photoUrl() {
     if (module.capability == OptionalCapability.quotes) {
-      // Misma foto Pexels que `QuoteCapabilityScreen`. Si cambia allá,
-      // hay que actualizarla acá — no es un duplicado lógico, sólo
-      // visual; un mismatch no rompe nada.
-      return 'https://images.pexels.com/photos/95916/pexels-photo-95916.jpeg?auto=compress&cs=tinysrgb&w=600&h=400&fit=crop';
+      return 'https://images.pexels.com/photos/95916/pexels-photo-95916.jpeg?auto=compress&cs=tinysrgb&w=900&h=700&fit=crop';
     }
     return capabilitiesRegistry[module.capability]?.heroPhotoUrl ?? '';
   }
@@ -125,12 +255,16 @@ class _ActiveCapabilityCard extends StatelessWidget {
         module.color;
   }
 
+  String _ctaLabel() {
+    return 'Abrir ${module.title.toLowerCase()}';
+  }
+
   Future<void> _openModule(BuildContext context) async {
     HapticFeedback.lightImpact();
     await Navigator.of(context).push(
       MaterialPageRoute(builder: (_) => module.destination()),
     );
-    onReturned?.call();
+    onReturned();
   }
 
   Future<void> _openSettings(BuildContext context) async {
@@ -138,146 +272,235 @@ class _ActiveCapabilityCard extends StatelessWidget {
     await Navigator.of(context).push(
       MaterialPageRoute(builder: (_) => _capabilityScreen()),
     );
-    onReturned?.call();
+    onReturned();
+  }
+
+  /// Distancia 0.0 (centrada) → 1.0+ (totalmente fuera). Se calcula a
+  /// partir de `pageCtrl.page` para una transición fluida durante
+  /// el swipe.
+  double _distanceFromCenter() {
+    if (!pageCtrl.hasClients || pageCtrl.position.haveDimensions == false) {
+      return pageIndex == 0 ? 0.0 : 1.0;
+    }
+    final page = pageCtrl.page ?? pageCtrl.initialPage.toDouble();
+    return (page - pageIndex).abs().clamp(0.0, 1.0);
   }
 
   @override
   Widget build(BuildContext context) {
     final accent = _accentColor();
     final fallback = _fallbackIcon();
-    final photoUrl = _photoUrlOrEmpty();
+    final photoUrl = _photoUrl();
+    final d = _distanceFromCenter();
+    // 1.0 (centro) → 0.92 (lateral). Lerp suave.
+    final scale = 1.0 - (d * 0.08);
+    // 1.0 (centro) → 0.6 (lateral).
+    final opacity = 1.0 - (d * 0.4);
 
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: accent.withValues(alpha: 0.18), width: 1.5),
-        boxShadow: [
-          BoxShadow(
-            color: accent.withValues(alpha: 0.08),
-            blurRadius: 12,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          // Hero compacto con foto.
-          ClipRRect(
-            borderRadius: const BorderRadius.only(
-              topLeft: Radius.circular(20),
-              topRight: Radius.circular(20),
-            ),
-            child: SizedBox(
-              height: 100,
-              child: Stack(
-                fit: StackFit.expand,
-                children: [
-                  Container(color: accent.withValues(alpha: 0.15)),
-                  if (photoUrl.isNotEmpty)
-                    Image.network(
-                      photoUrl,
-                      fit: BoxFit.cover,
-                      errorBuilder: (_, __, ___) =>
-                          _photoPlaceholder(accent, fallback),
-                      loadingBuilder: (_, child, progress) {
-                        if (progress == null) return child;
-                        return _photoPlaceholder(accent, fallback);
-                      },
-                    )
-                  else
-                    _photoPlaceholder(accent, fallback),
-                ],
-              ),
-            ),
-          ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 14, 12, 14),
-            child: Row(
-              children: [
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+    return AnimatedScale(
+      scale: scale,
+      duration: const Duration(milliseconds: 0),
+      child: Opacity(
+        opacity: opacity,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+          child: Material(
+            elevation: 0,
+            color: Colors.transparent,
+            child: InkWell(
+              borderRadius: BorderRadius.circular(24),
+              onTap: () => _openModule(context),
+              child: Container(
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(24),
+                  boxShadow: [
+                    BoxShadow(
+                      color: accent.withValues(alpha: 0.25 * opacity),
+                      blurRadius: 18,
+                      offset: const Offset(0, 8),
+                    ),
+                  ],
+                ),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(24),
+                  child: Stack(
+                    fit: StackFit.expand,
                     children: [
-                      Text(
-                        module.title,
-                        style: const TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.w800,
-                          color: AppTheme.textPrimary,
+                      // Foto de fondo.
+                      Container(color: accent.withValues(alpha: 0.18)),
+                      if (photoUrl.isNotEmpty)
+                        Image.network(
+                          photoUrl,
+                          fit: BoxFit.cover,
+                          errorBuilder: (_, __, ___) =>
+                              _placeholder(accent, fallback),
+                          loadingBuilder: (_, child, progress) {
+                            if (progress == null) return child;
+                            return _placeholder(accent, fallback);
+                          },
+                        )
+                      else
+                        _placeholder(accent, fallback),
+                      // Gradient inferior para legibilidad del texto.
+                      Positioned.fill(
+                        child: DecoratedBox(
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(
+                              begin: Alignment.topCenter,
+                              end: Alignment.bottomCenter,
+                              colors: [
+                                Colors.black.withValues(alpha: 0.0),
+                                Colors.black.withValues(alpha: 0.05),
+                                Colors.black.withValues(alpha: 0.75),
+                              ],
+                              stops: const [0.0, 0.45, 1.0],
+                            ),
+                          ),
                         ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
                       ),
-                      const SizedBox(height: 2),
-                      Text(
-                        module.subtitle,
-                        style: const TextStyle(
-                          fontSize: 13,
-                          color: AppTheme.textSecondary,
-                          height: 1.3,
+                      // ⚙️ chip arriba-derecha.
+                      Positioned(
+                        top: 14,
+                        right: 14,
+                        child: Material(
+                          color: Colors.white.withValues(alpha: 0.92),
+                          shape: const CircleBorder(),
+                          child: InkWell(
+                            customBorder: const CircleBorder(),
+                            onTap: () => _openSettings(context),
+                            child: Padding(
+                              padding: const EdgeInsets.all(10),
+                              child: Icon(Icons.settings_rounded,
+                                  color: accent, size: 20),
+                            ),
+                          ),
                         ),
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
+                      ),
+                      // Bloque inferior: título + subtítulo + CTA circular.
+                      Positioned(
+                        left: 20,
+                        right: 20,
+                        bottom: 20,
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.end,
+                          children: [
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Text(
+                                    module.title,
+                                    style: const TextStyle(
+                                      fontSize: 24,
+                                      fontWeight: FontWeight.w900,
+                                      color: Colors.white,
+                                      height: 1.1,
+                                      shadows: [
+                                        Shadow(
+                                            blurRadius: 8,
+                                            color: Colors.black54,
+                                            offset: Offset(0, 2)),
+                                      ],
+                                    ),
+                                    maxLines: 2,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                  const SizedBox(height: 6),
+                                  Text(
+                                    module.subtitle,
+                                    style: TextStyle(
+                                      fontSize: 14,
+                                      color: Colors.white
+                                          .withValues(alpha: 0.92),
+                                      fontWeight: FontWeight.w500,
+                                      height: 1.3,
+                                      shadows: const [
+                                        Shadow(
+                                            blurRadius: 6,
+                                            color: Colors.black45,
+                                            offset: Offset(0, 1)),
+                                      ],
+                                    ),
+                                    maxLines: 2,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ],
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            // CTA principal: botón circular grande con
+                            // play-style. Tooltip largo para tendero
+                            // 50+.
+                            Tooltip(
+                              message: _ctaLabel(),
+                              child: Material(
+                                color: Colors.white,
+                                shape: const CircleBorder(),
+                                elevation: 4,
+                                child: InkWell(
+                                  customBorder: const CircleBorder(),
+                                  onTap: () => _openModule(context),
+                                  child: Padding(
+                                    padding: const EdgeInsets.all(14),
+                                    child: Icon(
+                                      Icons.arrow_forward_rounded,
+                                      color: accent,
+                                      size: 28,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
                     ],
                   ),
                 ),
-                const SizedBox(width: 8),
-                // Botón ⚙️ — abre la pantalla dedicada de la capacidad.
-                Material(
-                  color: accent.withValues(alpha: 0.10),
-                  shape: const CircleBorder(),
-                  child: InkWell(
-                    customBorder: const CircleBorder(),
-                    onTap: () => _openSettings(context),
-                    child: Padding(
-                      padding: const EdgeInsets.all(10),
-                      child: Icon(Icons.settings_rounded,
-                          color: accent, size: 22),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          // CTA principal — abre el módulo funcional.
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-            child: SizedBox(
-              width: double.infinity,
-              height: 52,
-              child: ElevatedButton.icon(
-                onPressed: () => _openModule(context),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: accent,
-                  foregroundColor: Colors.white,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(14),
-                  ),
-                  elevation: 0,
-                ),
-                icon: Icon(module.icon, size: 22),
-                label: Text(
-                  'Abrir ${module.title.toLowerCase()}',
-                  style: const TextStyle(
-                      fontSize: 16, fontWeight: FontWeight.w800),
-                ),
               ),
             ),
           ),
-        ],
+        ),
       ),
     );
   }
 
-  Widget _photoPlaceholder(Color accent, IconData icon) {
+  Widget _placeholder(Color accent, IconData icon) {
     return Container(
-      color: accent.withValues(alpha: 0.15),
+      color: accent.withValues(alpha: 0.18),
       child: Center(
-        child: Icon(icon, size: 48, color: accent),
+        child: Icon(icon, size: 84, color: accent.withValues(alpha: 0.7)),
       ),
+    );
+  }
+}
+
+/// Dots indicador. 10dp inactivo / 22dp activo (Art. I).
+class _DotsIndicator extends StatelessWidget {
+  final int count;
+  final int current;
+
+  const _DotsIndicator({required this.count, required this.current});
+
+  @override
+  Widget build(BuildContext context) {
+    if (count <= 1) return const SizedBox.shrink();
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: List.generate(count, (i) {
+        final active = i == current;
+        return AnimatedContainer(
+          duration: const Duration(milliseconds: 250),
+          margin: const EdgeInsets.symmetric(horizontal: 4),
+          width: active ? 22 : 10,
+          height: 10,
+          decoration: BoxDecoration(
+            color: active ? AppTheme.primary : AppTheme.borderColor,
+            borderRadius: BorderRadius.circular(5),
+          ),
+        );
+      }),
     );
   }
 }
