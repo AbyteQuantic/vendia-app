@@ -26,6 +26,7 @@ import '../../widgets/sync_status_banner.dart';
 import '../../widgets/active_capabilities_section.dart';
 import '../../widgets/capabilities_reel.dart';
 import '../../widgets/dashboard_module_grid.dart';
+import '../../widgets/kpi_carousel.dart';
 import '../../config/dashboard_modules.dart';
 import '../../utils/credit_labels.dart';
 import 'business_profile_screen.dart';
@@ -345,6 +346,58 @@ class _DashboardScreenState extends State<DashboardScreen> {
     return buffer.toString();
   }
 
+  /// Construye la lista de KPIs para el carrusel del Dashboard. Las
+  /// fotos son Pexels (licencia libre, sin atribución obligatoria).
+  /// "Ventas de hoy" se oculta para roles sin permiso de finanzas
+  /// (un cajero no debe ver la facturación del día).
+  List<KpiCardData> _buildKpiCards(BuildContext context) {
+    final canSeeFinances = context.watch<RoleManager>().canSeeFinances;
+    final cards = <KpiCardData>[];
+
+    if (canSeeFinances) {
+      cards.add(KpiCardData(
+        title: 'Ventas de hoy',
+        value: _formatCOP(_data.totalToday.round()),
+        subtitle: _data.txCount > 0
+            ? '${_data.txCount} venta${_data.txCount > 1 ? "s" : ""}'
+            : 'primer día',
+        photoUrl:
+            'https://images.pexels.com/photos/3943723/pexels-photo-3943723.jpeg?auto=compress&cs=tinysrgb&w=900&h=700&fit=crop',
+        fallbackIcon: Icons.trending_up_rounded,
+        accentColor: const Color(0xFF3B82F6),
+        onTap: () => Navigator.of(context).push(MaterialPageRoute(
+          builder: (_) => const FinancialDashboardScreen(),
+        )),
+      ));
+    }
+
+    cards.add(KpiCardData(
+      title: 'Más vendido',
+      value: _data.topProduct,
+      photoUrl:
+          'https://images.pexels.com/photos/4393668/pexels-photo-4393668.jpeg?auto=compress&cs=tinysrgb&w=900&h=700&fit=crop',
+      fallbackIcon: Icons.star_rounded,
+      accentColor: const Color(0xFFF59E0B),
+      onTap: () => Navigator.of(context).push(MaterialPageRoute(
+        builder: (_) => const ProductInsightsScreen(),
+      )),
+    ));
+
+    cards.add(KpiCardData(
+      title: 'Inventario',
+      value: _data.prodCount == 0 ? 'Vacío' : '${_data.prodCount} ref.',
+      photoUrl:
+          'https://images.pexels.com/photos/4483610/pexels-photo-4483610.jpeg?auto=compress&cs=tinysrgb&w=900&h=700&fit=crop',
+      fallbackIcon: Icons.inventory_2_rounded,
+      accentColor: const Color(0xFF6366F1),
+      onTap: () => Navigator.of(context).push(MaterialPageRoute(
+        builder: (_) => const AddMerchandiseScreen(),
+      )),
+    ));
+
+    return cards;
+  }
+
   String _topProduct(List<LocalSale> sales) {
     if (sales.isEmpty) return '—';
     final counts = <String, int>{};
@@ -481,173 +534,19 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 ),
               ),
 
-              // ── Glass Stats Cards ──────────────────────────────
+              // ── KPI Carousel (F040 estilo inmersivo) ────────────
+              // Reemplaza los 3 "glass cards" anteriores por un
+              // carrusel con foto representativa + valor grande. El
+              // primer KPI (Ventas de hoy) solo aparece para roles
+              // con `canSeeFinances` (cajero no ve facturación).
               SliverToBoxAdapter(
                 child: Padding(
-                  padding: const EdgeInsets.fromLTRB(18, 16, 18, 8),
-                  child: Column(
-                    children: [
-                        if (context.watch<RoleManager>().canSeeFinances) ...[
-                          _GlassCard(
-                            onTap: () {
-                              HapticFeedback.lightImpact();
-                              Navigator.of(context).push(MaterialPageRoute(
-                                  builder: (_) =>
-                                      const FinancialDashboardScreen()));
-                            },
-                            child: Row(
-                              children: [
-                                Container(
-                                  width: 52, height: 52,
-                                  decoration: BoxDecoration(
-                                    gradient: const LinearGradient(
-                                      colors: [Color(0xFF3B82F6), Color(0xFF6366F1)],
-                                    ),
-                                    borderRadius: BorderRadius.circular(16),
-                                  ),
-                                  child: const Icon(Icons.trending_up_rounded,
-                                      color: Colors.white, size: 28),
-                                ),
-                                const SizedBox(width: 16),
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    children: [
-                                      const Text('Ventas de hoy',
-                                          style: TextStyle(
-                                              fontSize: 15,
-                                              color: AppTheme.textSecondary,
-                                              fontWeight: FontWeight.w500)),
-                                      const SizedBox(height: 2),
-                                      Text(_formatCOP(_data.totalToday.round()),
-                                          style: const TextStyle(
-                                              fontSize: 32,
-                                              fontWeight: FontWeight.w800,
-                                              color: AppTheme.textPrimary,
-                                              letterSpacing: -1)),
-                                    ],
-                                  ),
-                                ),
-                                Container(
-                                  padding: const EdgeInsets.symmetric(
-                                      horizontal: 10, vertical: 5),
-                                  decoration: BoxDecoration(
-                                    color: _data.txCount > 0
-                                        ? AppTheme.success.withValues(alpha: 0.12)
-                                        : AppTheme.warning.withValues(alpha: 0.12),
-                                    borderRadius: BorderRadius.circular(10),
-                                  ),
-                                  child: Text(
-                                    _data.txCount > 0
-                                        ? '${_data.txCount} venta${_data.txCount > 1 ? "s" : ""}'
-                                        : 'primer día',
-                                    style: TextStyle(
-                                        fontSize: 13,
-                                        fontWeight: FontWeight.w700,
-                                        color: _data.txCount > 0
-                                            ? AppTheme.success
-                                            : AppTheme.warning),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                          const SizedBox(height: 12),
-                        ],
-                        Row(
-                          children: [
-                            Expanded(
-                              child: _GlassCard(
-                                onTap: () {
-                                  HapticFeedback.lightImpact();
-                                  Navigator.of(context).push(MaterialPageRoute(
-                                      builder: (_) =>
-                                          const ProductInsightsScreen()));
-                                },
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Container(
-                                      width: 40, height: 40,
-                                      decoration: BoxDecoration(
-                                        color: const Color(0xFFF59E0B).withValues(alpha: 0.15),
-                                        borderRadius: BorderRadius.circular(12),
-                                      ),
-                                      child: const Icon(Icons.star_rounded,
-                                          color: Color(0xFFF59E0B), size: 22),
-                                    ),
-                                    const SizedBox(height: 10),
-                                    const Text('Más vendido',
-                                        style: TextStyle(
-                                            fontSize: 14,
-                                            color: AppTheme.textSecondary)),
-                                    const SizedBox(height: 2),
-                                    Text(_data.topProduct,
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                        style: const TextStyle(
-                                            fontSize: 18,
-                                            fontWeight: FontWeight.bold,
-                                            color: AppTheme.textPrimary)),
-                                  ],
-                                ),
-                              ),
-                            ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: _GlassCard(
-                                onTap: () async {
-                                  HapticFeedback.lightImpact();
-                                  await Navigator.of(context).push(
-                                    MaterialPageRoute(
-                                      builder: (_) =>
-                                          const AddMerchandiseScreen(),
-                                    ),
-                                  );
-                                },
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Row(
-                                      children: [
-                                        Container(
-                                          width: 40, height: 40,
-                                          decoration: BoxDecoration(
-                                            color: const Color(0xFF6366F1).withValues(alpha: 0.15),
-                                            borderRadius: BorderRadius.circular(12),
-                                          ),
-                                          child: const Icon(Icons.inventory_2_rounded,
-                                              color: Color(0xFF6366F1), size: 22),
-                                        ),
-                                        const Spacer(),
-                                        Icon(Icons.chevron_right_rounded,
-                                            color: Colors.grey.shade400, size: 20),
-                                      ],
-                                    ),
-                                    const SizedBox(height: 10),
-                                    const Text('Inventario',
-                                        style: TextStyle(
-                                            fontSize: 14,
-                                            color: AppTheme.textSecondary)),
-                                    const SizedBox(height: 2),
-                                    Text(
-                                        _data.prodCount == 0
-                                            ? 'Vacío'
-                                            : '${_data.prodCount} ref.',
-                                        style: const TextStyle(
-                                            fontSize: 18,
-                                            fontWeight: FontWeight.bold,
-                                            color: AppTheme.textPrimary)),
-                                  ],
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
+                  padding: const EdgeInsets.fromLTRB(0, 8, 0, 4),
+                  child: KpiCarousel(
+                    cards: _buildKpiCards(context),
                   ),
                 ),
+              ),
 
                 // ── Low Stock Alert ────────────────────────────────
                 if (_lowStockCount > 0)
@@ -1265,50 +1164,8 @@ class _HeroHeaderDelegate extends SliverPersistentHeaderDelegate {
   }
 }
 
-// ═══════════════════════════════════════════════════════════════════════════════
-// GLASS CARD
-// ═══════════════════════════════════════════════════════════════════════════════
+// _GlassCard removido — los 3 KPIs ahora usan KpiCarousel (F040).
 
-class _GlassCard extends StatelessWidget {
-  final Widget child;
-  final VoidCallback? onTap;
-
-  const _GlassCard({required this.child, this.onTap});
-
-  @override
-  Widget build(BuildContext context) {
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        borderRadius: BorderRadius.circular(22),
-        onTap: onTap,
-        child: Container(
-          padding: const EdgeInsets.all(18),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(22),
-            border: Border.all(
-              color: Colors.white.withValues(alpha: 0.8),
-            ),
-            boxShadow: [
-              BoxShadow(
-                color: const Color(0xFF1E3A8A).withValues(alpha: 0.06),
-                blurRadius: 24,
-                offset: const Offset(0, 8),
-              ),
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.03),
-                blurRadius: 6,
-                offset: const Offset(0, 2),
-              ),
-            ],
-          ),
-          child: child,
-        ),
-      ),
-    );
-  }
-}
 /// Account menu button on the dashboard header. Opens a bottom sheet
 /// with the user's identity + workspace and a "Cerrar sesión" action.
 /// Visible to every role — owners had logout inside Configuración,
