@@ -582,21 +582,29 @@ class _Step1FilePickerContent extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         const Text(
-          'Selecciona tu archivo de inventario',
+          'Suba su lista de productos',
           style: TextStyle(
-            fontSize: 20,
+            fontSize: 22,
             fontWeight: FontWeight.bold,
             color: AppTheme.textPrimary,
+            height: 1.2,
           ),
         ),
         const SizedBox(height: 8),
         const Text(
-          'Formatos aceptados: .xlsx, .csv\n'
-          'Tamaño máximo: 5 MB · Máximo 5.000 filas\n'
-          'La primera fila debe tener los nombres de columna.',
-          style: TextStyle(fontSize: 16, color: AppTheme.textSecondary),
+          'Si ya lleva su inventario en una hoja de cálculo, puede '
+          'subir el archivo y VendIA crea los productos automáticamente.',
+          style: TextStyle(
+            fontSize: 16,
+            color: AppTheme.textSecondary,
+            height: 1.4,
+          ),
         ),
-        const SizedBox(height: 32),
+        const SizedBox(height: 24),
+        const _ProductFieldsGuideCard(),
+        const SizedBox(height: 20),
+        const _ProductFileSpecsCard(),
+        const SizedBox(height: 24),
         GestureDetector(
           onTap: onPick,
           child: Container(
@@ -624,15 +632,25 @@ class _Step1FilePickerContent extends StatelessWidget {
                 ),
                 const SizedBox(height: 12),
                 Text(
-                  fileName ?? 'Toca aquí para seleccionar un archivo',
+                  fileName ?? 'Toque aquí para escoger su archivo',
                   style: TextStyle(
                     fontSize: 18,
                     fontWeight:
-                        fileName != null ? FontWeight.bold : FontWeight.normal,
+                        fileName != null ? FontWeight.bold : FontWeight.w600,
                     color: AppTheme.textPrimary,
                   ),
                   textAlign: TextAlign.center,
                 ),
+                if (fileName == null) ...[
+                  const SizedBox(height: 6),
+                  const Text(
+                    'Excel (.xlsx) o CSV',
+                    style: TextStyle(
+                      fontSize: 14,
+                      color: AppTheme.textSecondary,
+                    ),
+                  ),
+                ],
                 if (fileName != null) ...[
                   const SizedBox(height: 4),
                   Text(
@@ -1332,6 +1350,309 @@ class _BottomNav extends StatelessWidget {
                 step == 2 ? 'Importar' : 'Siguiente',
                 style: const TextStyle(
                     fontSize: 18, fontWeight: FontWeight.bold),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+
+// ── Guía visual de campos esperados — productos (UI/UX Pro Max F040) ─────────
+//
+// Tarjeta que muestra ANTES del dropzone qué columnas se reconocen. Tiene
+// dos grupos: obligatorios (Nombre + Precio) y opcionales (códigos, stock,
+// categoría, vencimiento). Reglas aplicadas del skill ui-ux-pro-max:
+// `form-labels`, `required-indicators` (chip + ícono ⭐), `color-only`
+// (cada campo con icono propio), `empty-states` (guía con acción).
+
+class _ProductFieldsGuideCard extends StatelessWidget {
+  const _ProductFieldsGuideCard();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(20, 18, 20, 20),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(
+            color: AppTheme.primary.withValues(alpha: 0.18), width: 1.5),
+        boxShadow: [
+          BoxShadow(
+            color: AppTheme.primary.withValues(alpha: 0.05),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 36,
+                height: 36,
+                decoration: BoxDecoration(
+                  color: AppTheme.primary.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: const Icon(Icons.assignment_outlined,
+                    color: AppTheme.primary, size: 22),
+              ),
+              const SizedBox(width: 12),
+              const Expanded(
+                child: Text(
+                  "Qué necesita tener su archivo",
+                  style: TextStyle(
+                    fontSize: 17,
+                    fontWeight: FontWeight.w800,
+                    color: AppTheme.textPrimary,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          // ─── Obligatorios ──────────────────────────────────────
+          const _ProductFieldRow(
+            icon: Icons.inventory_2_rounded,
+            iconColor: Color(0xFF6366F1),
+            title: "Nombre del producto",
+            description: "Como lo conoce el cliente (ej. \"Coca-Cola 350ml\", \"Pan tajado\").",
+            required: true,
+          ),
+          const SizedBox(height: 12),
+          const _ProductFieldRow(
+            icon: Icons.sell_rounded,
+            iconColor: Color(0xFF059669),
+            title: "Precio de venta",
+            description: "Número en pesos (ej. 3500 o 3.500). Acepta puntos o comas.",
+            required: true,
+          ),
+          const SizedBox(height: 14),
+          // ─── Recomendados ──────────────────────────────────────
+          const Padding(
+            padding: EdgeInsets.only(left: 4, bottom: 6),
+            child: Text(
+              "RECOMENDADOS",
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w800,
+                color: AppTheme.textSecondary,
+                letterSpacing: 1.0,
+              ),
+            ),
+          ),
+          const _ProductFieldRow(
+            icon: Icons.qr_code_2_rounded,
+            iconColor: Color(0xFF1A2FA0),
+            title: "Código de barras",
+            description: "Para vender con el escáner. Si no lo tiene, no pasa nada.",
+          ),
+          const SizedBox(height: 10),
+          const _ProductFieldRow(
+            icon: Icons.shopping_cart_rounded,
+            iconColor: Color(0xFFD97706),
+            title: "Precio de compra",
+            description: "Lo que le cuesta a usted comprarlo. Sirve para ver ganancias.",
+          ),
+          const SizedBox(height: 10),
+          const _ProductFieldRow(
+            icon: Icons.format_list_numbered_rounded,
+            iconColor: Color(0xFF7C3AED),
+            title: "Stock",
+            description: "Cantidad que tiene en bodega/estante hoy.",
+          ),
+          const SizedBox(height: 10),
+          const _ProductFieldRow(
+            icon: Icons.warning_amber_rounded,
+            iconColor: Color(0xFFEE5A24),
+            title: "Stock mínimo",
+            description: "Cuando baje a este número, VendIA le avisa para pedir.",
+          ),
+          const SizedBox(height: 14),
+          // ─── Otros campos opcionales (texto suelto) ─────────────
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            decoration: BoxDecoration(
+              color: AppTheme.surfaceGrey,
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: const Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Icon(Icons.add_circle_outline_rounded,
+                    color: AppTheme.textSecondary, size: 18),
+                SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    "También puede traer: Categoría · Unidad · Presentación · Contenido · Fecha de vencimiento · Emoji",
+                    style: TextStyle(
+                      fontSize: 13,
+                      color: AppTheme.textSecondary,
+                      height: 1.4,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 12),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            decoration: BoxDecoration(
+              color: const Color(0xFFE0F2FE),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: const Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Icon(Icons.lightbulb_outline_rounded,
+                    color: Color(0xFF075985), size: 20),
+                SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    "No importa el orden de las columnas, ni que el nombre sea exacto: en el paso siguiente le mostramos cuál cree que es cuál y usted confirma.",
+                    style: TextStyle(
+                      fontSize: 14,
+                      color: Color(0xFF075985),
+                      height: 1.4,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Fila de un campo en la guía. El "Obligatorio" se comunica con ícono
+/// ⭐ + chip de texto (no solo color — guía #37 del skill).
+class _ProductFieldRow extends StatelessWidget {
+  final IconData icon;
+  final Color iconColor;
+  final String title;
+  final String description;
+  final bool required;
+
+  const _ProductFieldRow({
+    required this.icon,
+    required this.iconColor,
+    required this.title,
+    required this.description,
+    this.required = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          width: 36,
+          height: 36,
+          decoration: BoxDecoration(
+            color: iconColor.withValues(alpha: 0.12),
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: Icon(icon, color: iconColor, size: 20),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Flexible(
+                    child: Text(
+                      title,
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w700,
+                        color: AppTheme.textPrimary,
+                      ),
+                    ),
+                  ),
+                  if (required) ...[
+                    const SizedBox(width: 8),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 8, vertical: 3),
+                      decoration: BoxDecoration(
+                        color: AppTheme.error.withValues(alpha: 0.10),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: const Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.star_rounded,
+                              color: AppTheme.error, size: 14),
+                          SizedBox(width: 4),
+                          Text(
+                            "Obligatorio",
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w800,
+                              color: AppTheme.error,
+                              letterSpacing: 0.3,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+              const SizedBox(height: 3),
+              Text(
+                description,
+                style: const TextStyle(
+                  fontSize: 14,
+                  color: AppTheme.textSecondary,
+                  height: 1.35,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// Tarjeta compacta con los límites técnicos del archivo.
+class _ProductFileSpecsCard extends StatelessWidget {
+  const _ProductFileSpecsCard();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      decoration: BoxDecoration(
+        color: AppTheme.surfaceGrey,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: const Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          Icon(Icons.info_outline_rounded,
+              color: AppTheme.textSecondary, size: 20),
+          SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              "Excel (.xlsx) o CSV · hasta 5 MB · hasta 5.000 filas · primera fila con nombres de columna",
+              style: TextStyle(
+                fontSize: 13,
+                color: AppTheme.textSecondary,
+                height: 1.4,
               ),
             ),
           ),
