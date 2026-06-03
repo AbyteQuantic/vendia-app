@@ -68,7 +68,7 @@ class _KpiCarouselState extends State<KpiCarousel> {
   Timer? _autoplayTimer;
   Timer? _resumeTimer;
   int _currentPage = 0;
-  final double _viewportFraction = 0.82;
+  final double _viewportFraction = 0.78;
 
   @override
   void initState() {
@@ -144,7 +144,7 @@ class _KpiCarouselState extends State<KpiCarousel> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         SizedBox(
-          height: 240,
+          height: 340,
           child: GestureDetector(
             onPanDown: (_) => _pauseAutoplay(),
             onPanEnd: (_) => _scheduleResume(),
@@ -198,8 +198,11 @@ class _KpiCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final accent = data.accentColor;
     final d = _distanceFromCenter();
-    final scale = 1.0 - (d * 0.08);
-    final opacity = 1.0 - (d * 0.4);
+    // 1.0 (centro) → 0.88 (lateral). Más marcado que antes para que
+    // las cards laterales se vean claramente "atrás" del centro.
+    final scale = 1.0 - (d * 0.12);
+    // 1.0 (centro) → 0.55 (lateral). Más profundidad visual.
+    final opacity = 1.0 - (d * 0.45);
 
     return AnimatedScale(
       scale: scale,
@@ -207,152 +210,157 @@ class _KpiCard extends StatelessWidget {
       child: Opacity(
         opacity: opacity,
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
           child: Material(
             elevation: 0,
             color: Colors.transparent,
             child: InkWell(
-              borderRadius: BorderRadius.circular(24),
+              borderRadius: BorderRadius.circular(28),
               onTap: () {
                 HapticFeedback.lightImpact();
                 data.onTap();
               },
               child: Container(
                 decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(24),
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(28),
                   boxShadow: [
                     BoxShadow(
-                      color: accent.withValues(alpha: 0.25 * opacity),
-                      blurRadius: 18,
-                      offset: const Offset(0, 8),
+                      color: Colors.black.withValues(alpha: 0.15 * opacity),
+                      blurRadius: 24,
+                      offset: const Offset(0, 12),
+                    ),
+                    BoxShadow(
+                      color: accent.withValues(alpha: 0.12 * opacity),
+                      blurRadius: 16,
+                      offset: const Offset(0, 6),
                     ),
                   ],
                 ),
                 child: ClipRRect(
-                  borderRadius: BorderRadius.circular(24),
-                  child: Stack(
-                    fit: StackFit.expand,
+                  borderRadius: BorderRadius.circular(28),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      Container(color: accent.withValues(alpha: 0.18)),
-                      Image.network(
-                        data.photoUrl,
-                        fit: BoxFit.cover,
-                        errorBuilder: (_, __, ___) =>
-                            _placeholder(accent, data.fallbackIcon),
-                        loadingBuilder: (_, child, progress) {
-                          if (progress == null) return child;
-                          return _placeholder(accent, data.fallbackIcon);
-                        },
-                      ),
-                      Positioned.fill(
-                        child: DecoratedBox(
-                          decoration: BoxDecoration(
-                            gradient: LinearGradient(
-                              begin: Alignment.topCenter,
-                              end: Alignment.bottomCenter,
-                              colors: [
-                                Colors.black.withValues(alpha: 0.0),
-                                Colors.black.withValues(alpha: 0.05),
-                                Colors.black.withValues(alpha: 0.8),
-                              ],
-                              stops: const [0.0, 0.4, 1.0],
+                      // ── Foto arriba (proporción póster — domina) ────
+                      Expanded(
+                        flex: 5,
+                        child: Stack(
+                          fit: StackFit.expand,
+                          children: [
+                            Container(color: accent.withValues(alpha: 0.18)),
+                            Image.network(
+                              data.photoUrl,
+                              fit: BoxFit.cover,
+                              errorBuilder: (_, __, ___) =>
+                                  _placeholder(accent, data.fallbackIcon),
+                              loadingBuilder: (_, child, progress) {
+                                if (progress == null) return child;
+                                return _placeholder(accent, data.fallbackIcon);
+                              },
                             ),
-                          ),
+                          ],
                         ),
                       ),
-                      // Bloque inferior: título + valor + CTA circular.
-                      Positioned(
-                        left: 20,
-                        right: 20,
-                        bottom: 20,
-                        child: Row(
-                          crossAxisAlignment: CrossAxisAlignment.end,
-                          children: [
-                            Expanded(
-                              child: Column(
+                      // ── Bloque blanco inferior con info estructurada ─
+                      Expanded(
+                        flex: 4,
+                        child: Padding(
+                          padding: const EdgeInsets.fromLTRB(20, 18, 16, 16),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              // Título + subtitle (zona "destino" /
+                              // "ubicación" del estilo de referencia).
+                              Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 mainAxisSize: MainAxisSize.min,
                                 children: [
                                   Text(
-                                    data.title.toUpperCase(),
-                                    style: TextStyle(
-                                      fontSize: 12,
-                                      fontWeight: FontWeight.w800,
-                                      letterSpacing: 1.2,
-                                      color: Colors.white
-                                          .withValues(alpha: 0.85),
-                                      shadows: const [
-                                        Shadow(
-                                            blurRadius: 6,
-                                            color: Colors.black45,
-                                            offset: Offset(0, 1)),
-                                      ],
-                                    ),
-                                  ),
-                                  const SizedBox(height: 4),
-                                  Text(
-                                    data.value,
+                                    data.title,
                                     style: const TextStyle(
-                                      fontSize: 30,
-                                      fontWeight: FontWeight.w900,
-                                      color: Colors.white,
-                                      height: 1.1,
-                                      letterSpacing: -0.5,
-                                      shadows: [
-                                        Shadow(
-                                            blurRadius: 10,
-                                            color: Colors.black54,
-                                            offset: Offset(0, 2)),
-                                      ],
+                                      fontSize: 20,
+                                      fontWeight: FontWeight.w800,
+                                      color: AppTheme.textPrimary,
+                                      height: 1.15,
+                                      letterSpacing: -0.3,
                                     ),
                                     maxLines: 1,
                                     overflow: TextOverflow.ellipsis,
                                   ),
                                   if (data.subtitle != null) ...[
                                     const SizedBox(height: 4),
-                                    Text(
-                                      data.subtitle!,
-                                      style: TextStyle(
-                                        fontSize: 13,
-                                        color: Colors.white
-                                            .withValues(alpha: 0.9),
-                                        fontWeight: FontWeight.w600,
-                                        shadows: const [
-                                          Shadow(
-                                              blurRadius: 6,
-                                              color: Colors.black45,
-                                              offset: Offset(0, 1)),
-                                        ],
-                                      ),
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
+                                    Row(
+                                      children: [
+                                        Icon(Icons.fiber_manual_record,
+                                            size: 8,
+                                            color: accent.withValues(alpha: 0.8)),
+                                        const SizedBox(width: 6),
+                                        Flexible(
+                                          child: Text(
+                                            data.subtitle!,
+                                            style: const TextStyle(
+                                              fontSize: 13,
+                                              fontWeight: FontWeight.w600,
+                                              color: AppTheme.textSecondary,
+                                            ),
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                          ),
+                                        ),
+                                      ],
                                     ),
                                   ],
                                 ],
                               ),
-                            ),
-                            const SizedBox(width: 12),
-                            Material(
-                              color: Colors.white,
-                              shape: const CircleBorder(),
-                              elevation: 4,
-                              child: InkWell(
-                                customBorder: const CircleBorder(),
-                                onTap: () {
-                                  HapticFeedback.lightImpact();
-                                  data.onTap();
-                                },
-                                child: Padding(
-                                  padding: const EdgeInsets.all(12),
-                                  child: Icon(
-                                    Icons.arrow_forward_rounded,
-                                    color: accent,
-                                    size: 26,
+                              // Valor grande + botón circular (zona
+                              // "precio + play" del estilo de
+                              // referencia).
+                              Row(
+                                crossAxisAlignment: CrossAxisAlignment.end,
+                                children: [
+                                  Expanded(
+                                    child: Text(
+                                      data.value,
+                                      style: TextStyle(
+                                        fontSize: 28,
+                                        fontWeight: FontWeight.w900,
+                                        color: accent,
+                                        height: 1.0,
+                                        letterSpacing: -0.5,
+                                      ),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
                                   ),
-                                ),
+                                  const SizedBox(width: 12),
+                                  Material(
+                                    color: accent,
+                                    shape: const CircleBorder(),
+                                    elevation: 6,
+                                    shadowColor:
+                                        accent.withValues(alpha: 0.5),
+                                    child: InkWell(
+                                      customBorder: const CircleBorder(),
+                                      onTap: () {
+                                        HapticFeedback.lightImpact();
+                                        data.onTap();
+                                      },
+                                      child: const Padding(
+                                        padding: EdgeInsets.all(14),
+                                        child: Icon(
+                                          Icons.arrow_forward_rounded,
+                                          color: Colors.white,
+                                          size: 26,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ],
                               ),
-                            ),
-                          ],
+                            ],
+                          ),
                         ),
                       ),
                     ],

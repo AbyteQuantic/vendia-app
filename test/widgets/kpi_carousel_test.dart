@@ -51,8 +51,10 @@ void main() {
     await tester.pump();
 
     expect(find.byType(PageView), findsOneWidget);
-    // El título en mayúsculas y el valor de la primera card visibles.
-    expect(find.text('VENTAS HOY'), findsOneWidget);
+    // Tras el rediseño foto-arriba/info-abajo el título se muestra tal
+    // cual (sin uppercase) y el valor se pinta en grande con color de
+    // acento. Solo verificamos presencia.
+    expect(find.text('Ventas hoy'), findsOneWidget);
     expect(find.text(r'$50.000'), findsOneWidget);
   });
 
