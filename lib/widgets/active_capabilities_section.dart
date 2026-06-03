@@ -63,7 +63,10 @@ class _ActiveCapabilitiesSectionState extends State<ActiveCapabilitiesSection> {
   Timer? _autoplayTimer;
   Timer? _resumeTimer;
   int _currentPage = 0;
-  final double _viewportFraction = 0.78;
+  // 0.70 — las laterales se superponen ligeramente con la central,
+  // lo que sumado a la rotación 3D crea el efecto coverflow
+  // semicircular pedido por el dueño.
+  final double _viewportFraction = 0.70;
 
   @override
   void initState() {
@@ -275,15 +278,16 @@ class _CarouselCard extends StatelessWidget {
     onReturned();
   }
 
-  /// Distancia 0.0 (centrada) → 1.0+ (totalmente fuera). Se calcula a
-  /// partir de `pageCtrl.page` para una transición fluida durante
-  /// el swipe.
-  double _distanceFromCenter() {
+  /// Signed distance — preserva el signo para que la rotación 3D sepa
+  /// hacia qué lado inclinar la card (positivo = derecha, negativo =
+  /// izquierda). Clamped a [-1, 1] para que más allá del primer vecino
+  /// la rotación no se siga acumulando.
+  double _signedDistance() {
     if (!pageCtrl.hasClients || pageCtrl.position.haveDimensions == false) {
       return pageIndex == 0 ? 0.0 : 1.0;
     }
     final page = pageCtrl.page ?? pageCtrl.initialPage.toDouble();
-    return (page - pageIndex).abs().clamp(0.0, 1.0);
+    return (page - pageIndex).clamp(-1.0, 1.0);
   }
 
   @override
@@ -291,19 +295,26 @@ class _CarouselCard extends StatelessWidget {
     final accent = _accentColor();
     final fallback = _fallbackIcon();
     final photoUrl = _photoUrl();
-    final d = _distanceFromCenter();
-    // 1.0 (centro) → 0.88 (lateral) — más marcado para mostrar
-    // perspectiva de las laterales como en la referencia.
-    final scale = 1.0 - (d * 0.12);
-    final opacity = 1.0 - (d * 0.45);
+    final signed = _signedDistance();
+    final d = signed.abs();
+    final scale = 1.0 - (d * 0.18);
+    final opacity = 1.0 - (d * 0.55);
+    // ~31° de rotación Y máxima — las laterales se inclinan hacia el
+    // centro para dar el efecto semicircular.
+    final rotationY = -signed * 0.55;
 
-    return AnimatedScale(
-      scale: scale,
-      duration: const Duration(milliseconds: 0),
-      child: Opacity(
-        opacity: opacity,
+    final transform = Matrix4.identity()
+      ..setEntry(3, 2, 0.0014)
+      ..scaleByDouble(scale, scale, 1.0, 1.0)
+      ..rotateY(rotationY);
+
+    return Opacity(
+      opacity: opacity,
+      child: Transform(
+        alignment: Alignment.center,
+        transform: transform,
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
           child: Material(
             elevation: 0,
             color: Colors.transparent,

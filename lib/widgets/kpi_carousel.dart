@@ -68,7 +68,10 @@ class _KpiCarouselState extends State<KpiCarousel> {
   Timer? _autoplayTimer;
   Timer? _resumeTimer;
   int _currentPage = 0;
-  final double _viewportFraction = 0.78;
+  // 0.70 — las cards laterales se superponen ligeramente con la
+  // central, lo que sumado a la rotación Y crea el efecto coverflow
+  // semicircular pedido por el dueño.
+  final double _viewportFraction = 0.70;
 
   @override
   void initState() {
@@ -186,31 +189,48 @@ class _KpiCard extends StatelessWidget {
     required this.pageIndex,
   });
 
-  double _distanceFromCenter() {
+  /// Signed distance — preserva el signo para que la rotación 3D sepa
+  /// hacia qué lado inclinar la card (positivo = derecha, negativo =
+  /// izquierda). Clamped a [-1, 1] para que más allá del primer vecino
+  /// la rotación no se siga acumulando.
+  double _signedDistance() {
     if (!pageCtrl.hasClients || pageCtrl.position.haveDimensions == false) {
       return pageIndex == 0 ? 0.0 : 1.0;
     }
     final page = pageCtrl.page ?? pageCtrl.initialPage.toDouble();
-    return (page - pageIndex).abs().clamp(0.0, 1.0);
+    return (page - pageIndex).clamp(-1.0, 1.0);
   }
 
   @override
   Widget build(BuildContext context) {
     final accent = data.accentColor;
-    final d = _distanceFromCenter();
-    // 1.0 (centro) → 0.88 (lateral). Más marcado que antes para que
-    // las cards laterales se vean claramente "atrás" del centro.
-    final scale = 1.0 - (d * 0.12);
-    // 1.0 (centro) → 0.55 (lateral). Más profundidad visual.
-    final opacity = 1.0 - (d * 0.45);
+    final signed = _signedDistance();
+    final d = signed.abs();
+    // 1.0 (centro) → 0.82 (lateral). Bajo más la escala para
+    // reforzar el efecto de profundidad del coverflow 3D.
+    final scale = 1.0 - (d * 0.18);
+    // 1.0 (centro) → 0.45 (lateral). Las laterales quedan "atrás".
+    final opacity = 1.0 - (d * 0.55);
+    // Rotación Y máxima ~30° hacia el centro. signed > 0 (la card está
+    // a la derecha del scroll) gira a la izquierda — y viceversa — para
+    // dar la sensación de un semicírculo enfrentándose al usuario.
+    final rotationY = -signed * 0.55; // radianes (~31°)
 
-    return AnimatedScale(
-      scale: scale,
-      duration: const Duration(milliseconds: 0),
-      child: Opacity(
-        opacity: opacity,
+    // Matrix4 con perspectiva — `setEntry(3, 2, 0.0014)` es el valor
+    // típico para perspectiva agradable en flutter; sin este entry la
+    // rotateY se ve plana (escalado afín, no 3D).
+    final transform = Matrix4.identity()
+      ..setEntry(3, 2, 0.0014)
+      ..scaleByDouble(scale, scale, 1.0, 1.0)
+      ..rotateY(rotationY);
+
+    return Opacity(
+      opacity: opacity,
+      child: Transform(
+        alignment: Alignment.center,
+        transform: transform,
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
           child: Material(
             elevation: 0,
             color: Colors.transparent,
