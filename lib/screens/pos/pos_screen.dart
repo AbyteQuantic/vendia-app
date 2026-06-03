@@ -2586,36 +2586,48 @@ class _ProductCard extends StatelessWidget {
                           child: Row(
                             crossAxisAlignment: CrossAxisAlignment.center,
                             children: [
-                              // Price absorbs available width and truncates
-                              // with ellipsis when long; it never pushes the
-                              // qty controls off-card.
+                              // Precio: ocupa todo el ancho disponible y se
+                              // escala con FittedBox(scaleDown) para verse
+                              // COMPLETO en cualquier pantalla — nunca se
+                              // corta con "…". Solo encoge la fuente si el
+                              // espacio no alcanza (precio millonario + items
+                              // en el carrito); nunca crece más de 16px.
                               Expanded(
-                                child: Text(
-                                  product.price <= 0 ? 'Sin precio' : product.formattedPrice,
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: TextStyle(
-                                    fontSize: 16,
-                                    fontWeight: FontWeight.bold,
-                                    color: product.price <= 0 ? AppTheme.error : AppTheme.primary,
+                                child: FittedBox(
+                                  fit: BoxFit.scaleDown,
+                                  alignment: Alignment.centerLeft,
+                                  child: Text(
+                                    product.price <= 0
+                                        ? 'Sin precio'
+                                        : product.formattedPrice,
+                                    maxLines: 1,
+                                    softWrap: false,
+                                    overflow: TextOverflow.clip,
+                                    style: TextStyle(
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.bold,
+                                      color: product.price <= 0
+                                          ? AppTheme.error
+                                          : AppTheme.primary,
+                                    ),
                                   ),
                                 ),
                               ),
                               const SizedBox(width: 8),
-                              // Qty controls anchor: nominal-size Row (no
-                              // FittedBox) so 40×40 buttons keep their
-                              // ergonomic footprint on every device.
-                              // Visibility maintainSize/Animation/State keeps
-                              // the "+" anchored across qty 0/1/N
-                              // (PR #12 invariant).
+                              // Controles de cantidad: Row de tamaño nominal
+                              // (sin FittedBox) para que los botones 40×40
+                              // conserven su área táctil ergonómica.
+                              // El [-] y el número SOLO ocupan espacio cuando
+                              // hay items en el carrito (sin `maintainSize`):
+                              // así, en el estado normal (no en carrito) el
+                              // precio gana ~73px y se ve completo. Al agregar,
+                              // los controles aparecen y el "+" se corre a la
+                              // derecha — feedback natural, no rompe nada.
                               Row(
                                 mainAxisSize: MainAxisSize.min,
                                 children: [
                                   Visibility(
                                     visible: inCart,
-                                    maintainSize: true,
-                                    maintainAnimation: true,
-                                    maintainState: true,
                                     child: _miniButton(
                                       icon: quantity == 1
                                           ? Icons.delete_outline_rounded
@@ -2633,9 +2645,6 @@ class _ProductCard extends StatelessWidget {
                                   ),
                                   Visibility(
                                     visible: inCart,
-                                    maintainSize: true,
-                                    maintainAnimation: true,
-                                    maintainState: true,
                                     // Tap en el número abre input directo —
                                     // imposible pedirle al tendero tocar [+]
                                     // 100 veces cuando lleva 100 sacos de
