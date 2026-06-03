@@ -22,7 +22,12 @@ import 'package:web/web.dart' as web;
 
 @JS('Html5Qrcode')
 extension type _Html5Qrcode._(JSObject _) implements JSObject {
-  external _Html5Qrcode(String elementId);
+  // 2º arg = Html5QrcodeFullConfig: aquí (NO en start) es donde la lib lee
+  // `formatsToSupport` y `experimentalFeatures.useBarCodeDetectorIfSupported`.
+  // Antes se pasaban en el scanConfig de start() y se ignoraban → la
+  // decodificación probaba todos los formatos y nunca usaba el detector
+  // nativo, por eso "no reconocía los códigos".
+  external _Html5Qrcode(String elementId, JSObject config);
   external JSPromise<JSAny?> start(
     JSAny cameraConfig,
     JSObject scanConfig,
@@ -61,6 +66,10 @@ class _Html5QrcodeScannerWidgetState
   _Html5Qrcode? _scanner;
   bool _started = false;
   web.HTMLDivElement? _hostDiv;
+  /// Overlay separado del host del scanner. Los controles (atrás, texto
+  /// guía, errores) viven aquí — html5-qrcode reemplaza el contenido del
+  /// host al iniciar, así que NUNCA se ponen dentro del host o se borran.
+  web.HTMLDivElement? _overlayDiv;
   String? _errorMessage;
 
   @override
@@ -71,8 +80,10 @@ class _Html5QrcodeScannerWidgetState
   }
 
   void _injectDom() {
-    // Wrapper full-screen sobre el canvas Flutter.
-    final div = web.HTMLDivElement()
+    // ── Host: SOLO el video del scanner ──────────────────────────────
+    // html5-qrcode toma este div y reemplaza su contenido al iniciar, así
+    // que NO se le meten controles (antes se borraban al arrancar).
+    final host = web.HTMLDivElement()
       ..id = _hostId
       ..style.position = 'fixed'
       ..style.top = '0'
@@ -84,30 +95,43 @@ class _Html5QrcodeScannerWidgetState
       ..style.zIndex = '999999'
       ..style.backgroundColor = 'black'
       ..style.overflow = 'hidden';
-    web.document.body!.append(div);
-    _hostDiv = div;
+    web.document.body!.append(host);
+    _hostDiv = host;
 
-    // Botón back HTML (porque el back del Scaffold queda debajo del
-    // wrapper en z-index). Posicionado arriba-izquierda con SafeArea
-    // emulado (padding 12 + 12).
+    // ── Overlay: controles, por ENCIMA del video y aparte del host ───
+    final overlay = web.HTMLDivElement()
+      ..id = '$_hostId-ov'
+      ..style.position = 'fixed'
+      ..style.top = '0'
+      ..style.left = '0'
+      ..style.right = '0'
+      ..style.bottom = '0'
+      ..style.zIndex = '1000000'
+      // El overlay deja pasar los toques al video salvo en sus hijos
+      // interactivos (el botón), que reactivan pointer-events.
+      ..style.pointerEvents = 'none';
+    web.document.body!.append(overlay);
+    _overlayDiv = overlay;
+
+    // Botón atrás / cerrar — objetivo táctil grande (52dp, Art. I).
     final btn = web.HTMLDivElement()
       ..innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" '
-              'viewBox="0 0 24 24" width="28" height="28" '
+              'viewBox="0 0 24 24" width="30" height="30" '
               'fill="white"><path d="M20 11H7.83l5.59-5.59L12 4l-8 '
               '8 8 8 1.41-1.41L7.83 13H20v-2z"/></svg>'
           .toJS
       ..style.position = 'absolute'
-      ..style.top = 'calc(env(safe-area-inset-top, 0px) + 12px)'
-      ..style.left = '12px'
-      ..style.width = '48px'
-      ..style.height = '48px'
+      ..style.top = 'calc(env(safe-area-inset-top, 0px) + 16px)'
+      ..style.left = '16px'
+      ..style.width = '52px'
+      ..style.height = '52px'
       ..style.display = 'flex'
       ..style.alignItems = 'center'
       ..style.justifyContent = 'center'
-      ..style.backgroundColor = 'rgba(0,0,0,0.45)'
-      ..style.borderRadius = '24px'
+      ..style.backgroundColor = 'rgba(0,0,0,0.55)'
+      ..style.borderRadius = '26px'
       ..style.cursor = 'pointer'
-      ..style.zIndex = '1';
+      ..style.pointerEvents = 'auto';
     btn.onclick = ((web.MouseEvent _) {
       if (widget.onBack != null) {
         widget.onBack!();
@@ -115,30 +139,20 @@ class _Html5QrcodeScannerWidgetState
         Navigator.of(context).pop();
       }
     }).toJS;
-    div.append(btn);
+    overlay.append(btn);
 
-    // Corners + texto guía. Inyectados como HTML estático para no
-    // depender del Flutter canvas.
+    // Texto guía abajo (html5-qrcode ya dibuja el recuadro de escaneo).
     final guide = web.HTMLDivElement()
       ..innerHTML = '''
-<div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;pointer-events:none">
-  <div style="width:260px;height:260px;position:relative">
-    <div style="position:absolute;top:0;left:0;width:36px;height:36px;border-top:4px solid white;border-left:4px solid white;border-top-left-radius:4px"></div>
-    <div style="position:absolute;top:0;right:0;width:36px;height:36px;border-top:4px solid white;border-right:4px solid white;border-top-right-radius:4px"></div>
-    <div style="position:absolute;bottom:0;left:0;width:36px;height:36px;border-bottom:4px solid white;border-left:4px solid white;border-bottom-left-radius:4px"></div>
-    <div style="position:absolute;bottom:0;right:0;width:36px;height:36px;border-bottom:4px solid white;border-right:4px solid white;border-bottom-right-radius:4px"></div>
-  </div>
-</div>
-<div style="position:absolute;left:0;right:0;bottom:calc(env(safe-area-inset-bottom, 0px) + 48px);text-align:center;color:white;font-size:17px;font-weight:600;padding:0 24px;pointer-events:none;text-shadow:0 1px 3px rgba(0,0,0,0.6)">
-  Apunte la cámara al código de barras del producto
+<div style="position:absolute;left:0;right:0;bottom:calc(env(safe-area-inset-bottom, 0px) + 56px);text-align:center;color:white;font-size:17px;font-weight:600;padding:0 24px;text-shadow:0 1px 3px rgba(0,0,0,0.7)">
+  Centre el código de barras dentro del recuadro
 </div>
 '''
           .toJS
       ..style.position = 'absolute'
       ..style.inset = '0'
-      ..style.pointerEvents = 'none'
-      ..style.zIndex = '2';
-    div.append(guide);
+      ..style.pointerEvents = 'none';
+    overlay.append(guide);
   }
 
   void _start() {
@@ -153,35 +167,42 @@ class _Html5QrcodeScannerWidgetState
     }
 
     try {
-      final scanner = _Html5Qrcode(_hostId);
-      _scanner = scanner;
-
-      // cameraIdOrConfig: la API de html5-qrcode requiere
-      // EXACTAMENTE 1 key cuando se pasa como objeto (solo el
-      // selector de cámara). La resolución va en scanConfig.
-      // videoConstraints.
-      final cameraConfig = {'facingMode': 'environment'}.jsify()!;
-
-      // formatosToSupport: enum entero de Html5QrcodeSupportedFormats:
+      // formatsToSupport: enum entero de Html5QrcodeSupportedFormats:
       //   0=QR_CODE, 2=CODABAR, 3=CODE_39, 5=CODE_128, 8=ITF,
       //   9=EAN_13, 10=EAN_8, 14=UPC_A, 15=UPC_E
-      // Pasar la lista explícita acelera la decodificación.
+      // Restringir a formatos retail acelera y estabiliza la decodificación.
       const retailFormatsInt = [9, 10, 14, 15, 5, 3, 8, 0];
+
+      // Config del CONSTRUCTOR (no de start): aquí la lib SÍ lee los
+      // formatos y el detector nativo. `experimentalFeatures` es la
+      // ubicación correcta del flag; lo dejo también top-level por compat.
+      final ctorConfig = {
+        'formatsToSupport': widget.formats ?? retailFormatsInt,
+        'useBarCodeDetectorIfSupported': true,
+        'experimentalFeatures': {'useBarCodeDetectorIfSupported': true},
+        'verbose': false,
+      }.jsify() as JSObject;
+
+      final scanner = _Html5Qrcode(_hostId, ctorConfig);
+      _scanner = scanner;
+
+      // cameraIdOrConfig: solo el selector de cámara.
+      final cameraConfig = {'facingMode': 'environment'}.jsify()!;
+
+      // qrbox RECTANGULAR ANCHO: un EAN-13 es ancho y bajo. Un recuadro
+      // cuadrado (el bug anterior) recorta el código y ZXing no engancha.
+      // Se dimensiona al viewport para verse bien en cualquier pantalla.
+      final vw = web.window.innerWidth;
+      final boxW = (vw * 0.86).clamp(220, 380).toInt();
+      final boxH = (boxW * 0.52).clamp(120, 220).toInt();
 
       final scanConfig = {
         'fps': 15,
-        'qrbox': {'width': 320, 'height': 320},
-        'aspectRatio': 1.7777778,
+        'qrbox': {'width': boxW, 'height': boxH},
         'disableFlip': false,
-        // BarcodeDetector nativo del browser cuando está disponible
-        // (iOS Safari 17+, Chrome). Es ~10x más rápido que ZXing JS.
-        'useBarCodeDetectorIfSupported': true,
-        'formatsToSupport': widget.formats ?? retailFormatsInt,
-        // videoConstraints: extras pasados a getUserMedia. Pedimos
-        // alta resolución para que el motor (nativo o ZXing) tenga
-        // pixels suficientes para decodificar barras finas de EAN-13.
-        // iOS Safari por default da 640x480 que queda al límite y
-        // muchos códigos no se reconocen.
+        // videoConstraints: alta resolución para que el motor tenga
+        // pixels suficientes para barras finas de EAN-13. iOS Safari por
+        // default da 640x480, que queda al límite y muchos no se leen.
         'videoConstraints': {
           'facingMode': 'environment',
           'width': {'ideal': 1920, 'min': 1280},
@@ -230,7 +251,14 @@ class _Html5QrcodeScannerWidgetState
   }
 
   void _showError(String message) {
-    if (_hostDiv == null) return;
+    // Se pinta en el overlay (z-index mayor, no lo toca la lib) para que
+    // sea visible aunque el host ya tenga el video. Si no hay overlay,
+    // el build() de Flutter dibuja el mismo mensaje como respaldo.
+    final target = _overlayDiv;
+    if (target == null) {
+      if (mounted) setState(() => _errorMessage = message);
+      return;
+    }
     final err = web.HTMLDivElement()
       ..innerHTML = '''
 <div style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;background:rgba(0,0,0,0.85);color:white;padding:0 32px;text-align:center">
@@ -241,8 +269,9 @@ class _Html5QrcodeScannerWidgetState
           .toJS
       ..style.position = 'absolute'
       ..style.inset = '0'
+      ..style.pointerEvents = 'auto'
       ..style.zIndex = '3';
-    _hostDiv!.append(err);
+    target.append(err);
     if (mounted) setState(() => _errorMessage = message);
   }
 
@@ -273,7 +302,11 @@ class _Html5QrcodeScannerWidgetState
     try {
       _hostDiv?.remove();
     } catch (_) {}
+    try {
+      _overlayDiv?.remove();
+    } catch (_) {}
     _hostDiv = null;
+    _overlayDiv = null;
   }
 
   @override
