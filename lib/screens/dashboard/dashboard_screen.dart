@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:ui' show ImageFilter;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
@@ -9,6 +10,7 @@ import '../../services/api_service.dart';
 import '../../services/app_error.dart';
 import '../../services/auth_service.dart';
 import '../../services/branch_provider.dart';
+import '../../models/subscription.dart';
 import '../../services/role_manager.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/online_orders_bell.dart';
@@ -104,6 +106,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
   List<String> _businessTypes = const [];
   FeatureFlags _featureFlags = const FeatureFlags();
 
+  // Estado de suscripción del tenant. Lo posee el Dashboard (no la
+  // TrialBar) porque el header necesita saber si la barra del trial se
+  // mostrará para dimensionar su alto y no dejar espacio vacío cuando el
+  // tenant es Pro. Se inyecta a la TrialBar para evitar un segundo fetch.
+  // `null` mientras carga / si falló → el header no reserva el espacio.
+  SubscriptionStatus? _subscriptionStatus;
+
   @override
   void initState() {
     super.initState();
@@ -112,6 +121,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     _loadLowStockCount();
     _loadStoreStatus();
     _loadCapabilityFlags();
+    _loadSubscriptionStatus();
 
     _salesSub = _db.watchSalesLazy().listen((_) => _debouncedLoad());
 
@@ -204,6 +214,23 @@ class _DashboardScreenState extends State<DashboardScreen> {
       }
     } catch (_) {
       // Offline / sin flags — el grid se queda con solo los core.
+    }
+  }
+
+  /// Carga el estado de suscripción una sola vez para el header. Misma
+  /// regla que la TrialBar (F009): si falla, NO se muestra la barra y el
+  /// header queda compacto — no bloquea el Dashboard. El error se
+  /// registra, nunca se traga en silencio.
+  Future<void> _loadSubscriptionStatus() async {
+    try {
+      final api = ApiService(AuthService());
+      final status = await api.fetchSubscriptionStatus();
+      if (mounted) setState(() => _subscriptionStatus = status);
+    } on AppError catch (e) {
+      debugPrint('Dashboard: no se pudo cargar /subscription/status: '
+          '${e.message}');
+    } catch (e) {
+      debugPrint('Dashboard: error inesperado al cargar suscripción: $e');
     }
   }
 
@@ -511,6 +538,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   loadingStoreStatus: _loadingStoreStatus,
                   onToggleStore: _toggleStoreStatus,
                   onLogout: _onLogout,
+                  subscriptionStatus: _subscriptionStatus,
                   onEditBusinessTypes: () async {
                     HapticFeedback.lightImpact();
                     await Navigator.of(context).push(
@@ -854,6 +882,11 @@ class _HeroHeaderDelegate extends SliverPersistentHeaderDelegate {
   /// el dueño puede cambiar o agregar tipos de negocio.
   final VoidCallback onEditBusinessTypes;
   final String todayLabel;
+  /// Estado de suscripción del tenant (lo posee el Dashboard). Decide si
+  /// la barra del trial se muestra; el header reserva su alto solo cuando
+  /// realmente va a pintarse, evitando el espacio vacío que dejaba el
+  /// alto fijo anterior cuando el tenant es Pro o aún carga.
+  final SubscriptionStatus? subscriptionStatus;
 
   _HeroHeaderDelegate({
     required this.topPadding,
@@ -867,6 +900,7 @@ class _HeroHeaderDelegate extends SliverPersistentHeaderDelegate {
     required this.onLogout,
     required this.onEditBusinessTypes,
     required this.todayLabel,
+    this.subscriptionStatus,
   });
 
   // Mapa label legible — espejo del grid de selección en
@@ -889,21 +923,47 @@ class _HeroHeaderDelegate extends SliverPersistentHeaderDelegate {
 
   String _labelFor(String type) => _typeLabels[type] ?? type;
 
-  static const _heroGradient = LinearGradient(
-    begin: Alignment.topLeft,
-    end: Alignment.bottomRight,
-    colors: [Color(0xFF1E3A8A), Color(0xFF3B82F6), Color(0xFF6366F1)],
-  );
-
-  // El cuerpo expandido incluye, además del saludo y la fila de
-  // estado/fecha, la barra del trial (F009). 226 = 170 base + ~56 de
-  // la barra; cuando el tenant es Pro la barra es `SizedBox.shrink`
-  // y el espacio extra queda como aire — sin overflow a 360dp.
+  // Alto del header = suma de los bloques que realmente se pintan, en
+  // vez de un alto fijo. Antes era 234 const, que reservaba ~56dp para
+  // la barra del trial aunque el tenant fuera Pro (barra = `SizedBox
+  // .shrink`) y, con `MainAxisAlignment.center`, repartía el sobrante en
+  // bandas vacías arriba y abajo. Resultado: header demasiado alto con
+  // huecos. Ahora cada bloque aporta su alto solo si se muestra.
+  //
   // _collapsedBody = 60 reserva el avatar de 40dp + 8 padding superior
-  // + 16 padding inferior (estándar Material). Antes era 52, lo que
-  // dejaba el contenido pegado al borde redondeado inferior.
-  static const double _expandedBody = 234;
+  // + 16 padding inferior (estándar Material). Los valores llevan un
+  // pequeño margen para no hacer overflow a 360dp (Art. I).
+  static const double _vPadding = 24; // top 8 + bottom 16
+  static const double _ownerLine = 26;
+  static const double _businessLine = 20;
+  static const double _branchLine = 16;
+  static const double _chipLine = 28; // solo si hay tipo(s) de negocio
+  static const double _detailGap = 8; // padding superior del bloque expandible
+  static const double _storeRow = 42; // pill de estado + fecha
+  static const double _trialGap = 10;
+  static const double _trialBody = 74; // alto máx. de la barra/prompt del trial
   static const double _collapsedBody = 60;
+
+  /// La barra del trial solo se pinta en TRIAL o FREE. En PRO (o mientras
+  /// el estado carga / falló) no ocupa nada — y el header no la reserva.
+  bool get _showsTrialBar {
+    final s = subscriptionStatus;
+    return s != null &&
+        (s.status == SubscriptionStatusValue.trial ||
+            s.status == SubscriptionStatusValue.free);
+  }
+
+  double get _expandedBody {
+    var h = _vPadding +
+        _ownerLine +
+        _businessLine +
+        _branchLine +
+        _detailGap +
+        _storeRow;
+    if (businessTypes.isNotEmpty) h += _chipLine;
+    if (_showsTrialBar) h += _trialGap + _trialBody;
+    return h;
+  }
 
   @override
   double get maxExtent => topPadding + _expandedBody;
@@ -913,32 +973,45 @@ class _HeroHeaderDelegate extends SliverPersistentHeaderDelegate {
   @override
   Widget build(BuildContext context, double shrinkOffset, bool overlapsContent) {
     final range = maxExtent - minExtent;
-    final t = (shrinkOffset / range).clamp(0.0, 1.0);
+    final t = range <= 0 ? 0.0 : (shrinkOffset / range).clamp(0.0, 1.0);
     final detailsOpacity = (1.0 - t * 1.8).clamp(0.0, 1.0);
 
-    return ClipRRect(
-      borderRadius: const BorderRadius.only(
-        bottomLeft: Radius.circular(24),
-        bottomRight: Radius.circular(24),
-      ),
-      child: Container(
-        decoration: BoxDecoration(
-          gradient: _heroGradient,
-          borderRadius: const BorderRadius.only(
-            bottomLeft: Radius.circular(24),
-            bottomRight: Radius.circular(24),
-          ),
-          boxShadow: t > 0.3
-              ? [
-                  BoxShadow(
-                    color: const Color(0xFF1E3A8A).withValues(alpha: 0.3),
-                    blurRadius: 12,
-                    offset: const Offset(0, 4),
-                  ),
-                ]
-              : null,
+    // ── Glass al hacer scroll ────────────────────────────────────────
+    // En reposo (t=0) el header es el gradiente sólido de siempre. Al
+    // desplazar el contenido (t→1) el gradiente se vuelve translúcido y
+    // se aplica un desenfoque que deja ver el contenido pasar detrás
+    // (efecto vidrio). El blur cuesta en Android de gama baja (Art. I),
+    // así que el BackdropFilter solo se monta cuando ya hay scroll.
+    final bgAlpha = 1.0 - 0.24 * t; // 1.0 → 0.76
+    final blurSigma = 14.0 * t; // 0 → 14
+    final gradient = LinearGradient(
+      begin: Alignment.topLeft,
+      end: Alignment.bottomRight,
+      colors: [
+        const Color(0xFF1E3A8A).withValues(alpha: bgAlpha),
+        const Color(0xFF3B82F6).withValues(alpha: bgAlpha),
+        const Color(0xFF6366F1).withValues(alpha: bgAlpha),
+      ],
+    );
+
+    Widget surface = Container(
+      decoration: BoxDecoration(
+        gradient: gradient,
+        borderRadius: const BorderRadius.only(
+          bottomLeft: Radius.circular(24),
+          bottomRight: Radius.circular(24),
         ),
-        child: Padding(
+        boxShadow: t > 0.3
+            ? [
+                BoxShadow(
+                  color: const Color(0xFF1E3A8A).withValues(alpha: 0.3),
+                  blurRadius: 12,
+                  offset: const Offset(0, 4),
+                ),
+              ]
+            : null,
+      ),
+      child: Padding(
           // Padding interno consistente expandido↔colapsado. Antes el
           // bottom era 8dp y el contenido quedaba pegado al borde
           // redondeado del gradiente al colapsar el header. Material 3
@@ -948,7 +1021,10 @@ class _HeroHeaderDelegate extends SliverPersistentHeaderDelegate {
           padding: EdgeInsets.fromLTRB(20, topPadding + 8, 12, 16),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisAlignment: MainAxisAlignment.center,
+            // El contenido se ancla arriba; el alto del header ya se
+            // ajusta a lo que se pinta, así que no queda sobrante que
+            // `center` repartiría en bandas vacías arriba/abajo.
+            mainAxisAlignment: MainAxisAlignment.start,
             children: [
               // ── Row 1: name + icons (always visible) ──────────
               Row(
@@ -1127,11 +1203,19 @@ class _HeroHeaderDelegate extends SliverPersistentHeaderDelegate {
                             ],
                           ),
                           // ── Barra del trial (Feature 009) ────────
-                          // Acceso directo a la vista de planes. Se
-                          // pinta sola: TRIAL → barra; FREE → prompt;
-                          // PRO → `SizedBox.shrink` (no ocupa nada).
-                          const SizedBox(height: 10),
-                          const TrialBar(),
+                          // Acceso directo a la vista de planes. Solo se
+                          // monta en TRIAL/FREE; el alto del header ya
+                          // reservó su espacio (ver `_showsTrialBar`). En
+                          // PRO no se incluye → cero espacio vacío. El
+                          // estado se inyecta desde el Dashboard para no
+                          // hacer un segundo fetch (`selfLoad: false`).
+                          if (_showsTrialBar) ...[
+                            const SizedBox(height: 10),
+                            TrialBar(
+                              status: subscriptionStatus,
+                              selfLoad: false,
+                            ),
+                          ],
                         ],
                       ),
                     ),
@@ -1141,7 +1225,24 @@ class _HeroHeaderDelegate extends SliverPersistentHeaderDelegate {
             ],
           ),
         ),
+      );
+
+    // El BackdropFilter solo se monta cuando hay desplazamiento real:
+    // en reposo (sigma 0) ahorramos el `saveLayer` que el blur exige —
+    // crítico en Android de gama baja.
+    if (blurSigma > 0.5) {
+      surface = BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: blurSigma, sigmaY: blurSigma),
+        child: surface,
+      );
+    }
+
+    return ClipRRect(
+      borderRadius: const BorderRadius.only(
+        bottomLeft: Radius.circular(24),
+        bottomRight: Radius.circular(24),
       ),
+      child: surface,
     );
   }
 
@@ -1153,6 +1254,9 @@ class _HeroHeaderDelegate extends SliverPersistentHeaderDelegate {
       o.businessName != businessName ||
       o.branchName != branchName ||
       o.todayLabel != todayLabel ||
+      o.subscriptionStatus?.status != subscriptionStatus?.status ||
+      o.subscriptionStatus?.trialDaysRemaining !=
+          subscriptionStatus?.trialDaysRemaining ||
       !_listEquals(o.businessTypes, businessTypes);
 
   static bool _listEquals(List<String> a, List<String> b) {

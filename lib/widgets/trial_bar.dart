@@ -28,7 +28,13 @@ import 'premium_upsell_sheet.dart';
 /// `null` y la barra usa el `ApiService` real y abre el bottom sheet
 /// de planes de F008.
 class TrialBar extends StatefulWidget {
-  const TrialBar({super.key, this.api, this.onOpenPlans});
+  const TrialBar({
+    super.key,
+    this.api,
+    this.onOpenPlans,
+    this.status,
+    this.selfLoad = true,
+  });
 
   /// Cliente HTTP. `null` en producción → se crea el real.
   final ApiService? api;
@@ -36,6 +42,17 @@ class TrialBar extends StatefulWidget {
   /// Acción al tocar la barra. `null` en producción → abre la vista
   /// de planes (`showPremiumUpsellSheet`).
   final VoidCallback? onOpenPlans;
+
+  /// Estado de suscripción inyectado por el padre. Cuando el Dashboard
+  /// ya posee el estado (lo carga una sola vez para dimensionar el
+  /// header), lo pasa aquí para evitar un segundo fetch a
+  /// `/subscription/status`. Si es `null` y [selfLoad] es `true`, la
+  /// barra lo carga ella misma (uso standalone / tests).
+  final SubscriptionStatus? status;
+
+  /// Si la barra debe cargar el estado por su cuenta cuando [status] es
+  /// `null`. El Dashboard lo pone en `false` porque ya inyecta el estado.
+  final bool selfLoad;
 
   @override
   State<TrialBar> createState() => _TrialBarState();
@@ -52,7 +69,12 @@ class _TrialBarState extends State<TrialBar> {
   void initState() {
     super.initState();
     _api = widget.api ?? ApiService(AuthService());
-    _loadStatus();
+    // Solo carga por su cuenta si nadie le inyectó el estado y está en
+    // modo self-load. En el Dashboard el padre inyecta `status`, así que
+    // no se dispara un segundo fetch.
+    if (widget.status == null && widget.selfLoad) {
+      _loadStatus();
+    }
   }
 
   Future<void> _loadStatus() async {
@@ -82,7 +104,9 @@ class _TrialBarState extends State<TrialBar> {
 
   @override
   Widget build(BuildContext context) {
-    final status = _status;
+    // El estado inyectado por el padre tiene prioridad; si no, el que la
+    // barra cargó por su cuenta.
+    final status = widget.status ?? _status;
     // Mientras carga, falló o el tenant es Pro: no se muestra nada.
     if (status == null) return const SizedBox.shrink();
 
