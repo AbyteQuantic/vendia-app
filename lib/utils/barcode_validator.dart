@@ -64,4 +64,34 @@ class BarcodeValidator {
     final check = remainder == 0 ? 0 : 10 - remainder;
     return check.toString();
   }
+
+  /// Sugiere el código completo y válido más cercano cuando el dígito de
+  /// control no cuadra o falta. Devuelve `null` si [code] ya es válido, si
+  /// trae caracteres no numéricos, o si no hay una sugerencia clara.
+  ///
+  /// Casos cubiertos (lo que el tendero suele teclear/copiar de la caja):
+  ///   - 12 dígitos cuyo checksum no cuadra → se asume que son los datos de
+  ///     un EAN-13 y se le agrega el dígito de control (→ 13 dígitos).
+  ///   - 8 / 13 / 14 dígitos con dígito de control equivocado → se corrige
+  ///     el último dígito por el que corresponde.
+  ///
+  /// NOTA: corregir el dígito de control de un código completo puede
+  /// enmascarar un error en un dígito intermedio; por eso la UI ofrece la
+  /// sugerencia para que el usuario la confirme, nunca la aplica sola.
+  static String? suggestCorrection(String code) {
+    final cleaned = code.replaceAll(RegExp(r'\s'), '');
+    if (!RegExp(r'^\d+$').hasMatch(cleaned)) return null;
+    if (validate(cleaned) == null) return null; // ya válido — nada que sugerir
+
+    if (cleaned.length == 12) {
+      final full = cleaned + computeCheckDigit(cleaned);
+      return isValid(full) ? full : null;
+    }
+    if (cleaned.length == 8 || cleaned.length == 13 || cleaned.length == 14) {
+      final partial = cleaned.substring(0, cleaned.length - 1);
+      final fixed = partial + computeCheckDigit(partial);
+      return (fixed != cleaned && isValid(fixed)) ? fixed : null;
+    }
+    return null;
+  }
 }

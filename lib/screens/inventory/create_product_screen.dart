@@ -65,6 +65,9 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
   DateTime? _expiryDate; // optional — only perishables carry one
   final _skuCtrl = TextEditingController();
   String? _skuError;
+  /// Código completo y válido sugerido cuando el dígito de control falta o
+  /// no cuadra (ver [BarcodeValidator.suggestCorrection]). Opt-in.
+  String? _skuSuggestion;
 
   // Autocomplete (local Isar + backend catalog)
   List<_ProductSuggestion> _suggestions = [];
@@ -851,8 +854,86 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
     }
   }
 
+  /// Aplica la sugerencia de [BarcodeValidator.suggestCorrection]:
+  /// reemplaza el SKU por el código completo y válido. Opt-in.
+  void _applySkuSuggestion() {
+    final s = _skuSuggestion;
+    if (s == null) return;
+    HapticFeedback.lightImpact();
+    setState(() {
+      _skuCtrl.text = s;
+      _skuError = BarcodeValidator.validate(s);
+      _skuSuggestion = null;
+    });
+  }
+
+  /// Banda accionable bajo el campo SKU con el código sugerido.
+  Widget _skuSuggestionHint() {
+    final suggestion = _skuSuggestion!;
+    final typed = _skuCtrl.text.trim();
+    final label = typed.length == 12
+        ? 'Le falta el dígito de control. ¿Completar a EAN-13?'
+        : 'El dígito de control no coincide. ¿Corregir?';
+    return Padding(
+      padding: const EdgeInsets.only(top: 8),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: _applySkuSuggestion,
+          borderRadius: BorderRadius.circular(12),
+          child: Container(
+            padding:
+                const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            decoration: BoxDecoration(
+              color: const Color(0xFF7C3AED).withValues(alpha: 0.08),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                  color: const Color(0xFF7C3AED).withValues(alpha: 0.30)),
+            ),
+            child: Row(
+              children: [
+                const Icon(Icons.auto_fix_high_rounded,
+                    color: Color(0xFF7C3AED), size: 20),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(label,
+                          style: const TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                              color: AppTheme.textPrimary)),
+                      const SizedBox(height: 2),
+                      Text(suggestion,
+                          style: const TextStyle(
+                              fontSize: 15,
+                              fontWeight: FontWeight.w800,
+                              color: Color(0xFF7C3AED),
+                              letterSpacing: 0.5)),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 8),
+                const Text('Aplicar',
+                    style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w800,
+                        color: Color(0xFF7C3AED))),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   Future<void> _lookupBarcode(String barcode) async {
-    setState(() => _lookingUp = true);
+    setState(() {
+      _lookingUp = true;
+      _skuSuggestion = BarcodeValidator.suggestCorrection(barcode);
+    });
     // Always fill the SKU field with the scanned barcode
     _skuCtrl.text = barcode;
     try {
@@ -1547,12 +1628,15 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
                     style: const TextStyle(fontSize: 18),
                     textInputAction: TextInputAction.next,
                     onChanged: (v) {
-                      if (v.trim().isNotEmpty) {
-                        setState(() =>
-                            _skuError = BarcodeValidator.validate(v.trim()));
-                      } else {
-                        setState(() => _skuError = null);
-                      }
+                      final code = v.trim();
+                      setState(() {
+                        _skuError = code.isEmpty
+                            ? null
+                            : BarcodeValidator.validate(code);
+                        _skuSuggestion = code.isEmpty
+                            ? null
+                            : BarcodeValidator.suggestCorrection(code);
+                      });
                     },
                     decoration: InputDecoration(
                       hintText: 'Ej: 7702535011119',
@@ -1585,6 +1669,7 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
                           vertical: 12, horizontal: 12),
                     ),
                   ),
+                  if (_skuSuggestion != null) _skuSuggestionHint(),
                   const SizedBox(height: 14),
 
                   // ── Presentation chips ────────────────────────────────────

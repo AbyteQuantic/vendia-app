@@ -59,4 +59,34 @@ void main() {
       expect(BarcodeValidator.isValid(full), isTrue);
     });
   });
+
+  group('BarcodeValidator.suggestCorrection', () {
+    test('12 dígitos → completa a EAN-13 válido', () {
+      expect(BarcodeValidator.suggestCorrection('770200500446'),
+          '7702005004467');
+    });
+
+    test('EAN-13 con último dígito equivocado → corrige el control', () {
+      expect(BarcodeValidator.suggestCorrection('7702005004460'),
+          '7702005004467');
+    });
+
+    test('código ya válido → sin sugerencia', () {
+      expect(BarcodeValidator.suggestCorrection('7702005004467'), isNull);
+    });
+
+    test('caracteres no numéricos → sin sugerencia', () {
+      expect(BarcodeValidator.suggestCorrection('7702A05004460'), isNull);
+    });
+
+    test('longitud no estándar → sin sugerencia', () {
+      expect(BarcodeValidator.suggestCorrection('12345'), isNull);
+    });
+
+    test('la sugerencia siempre es un código válido', () {
+      final s = BarcodeValidator.suggestCorrection('4006381333930');
+      expect(s, isNotNull);
+      expect(BarcodeValidator.isValid(s!), isTrue);
+    });
+  });
 }
