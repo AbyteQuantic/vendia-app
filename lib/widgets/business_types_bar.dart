@@ -212,18 +212,20 @@ class _AddChip extends StatelessWidget {
           onTap();
         },
         child: Container(
+          // Mismas métricas de caja que _TypeChip en reposo (padding 9,
+          // borde 1.0, ícono 18) → idéntico alto que los chips de tipo.
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(23),
             border: Border.all(
               color: AppTheme.primary.withValues(alpha: 0.5),
-              width: 1.4,
+              width: 1,
             ),
           ),
           child: const Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(Icons.add_rounded, size: 19, color: AppTheme.primary),
+              Icon(Icons.add_rounded, size: 18, color: AppTheme.primary),
               SizedBox(width: 5),
               Text(
                 'Agregar',
