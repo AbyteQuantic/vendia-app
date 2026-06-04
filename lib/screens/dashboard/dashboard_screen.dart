@@ -11,6 +11,9 @@ import '../../services/app_error.dart';
 import '../../services/auth_service.dart';
 import '../../services/branch_provider.dart';
 import '../../models/subscription.dart';
+import '../../models/catalog/catalog_models.dart';
+import '../../services/catalog_service.dart';
+import '../../config/catalog_merge.dart';
 import '../../services/role_manager.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/online_orders_bell.dart';
@@ -114,6 +117,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
   // `null` mientras carga / si falló → el header no reserva el espacio.
   SubscriptionStatus? _subscriptionStatus;
 
+  // F041 — catálogo dinámico. Si está disponible, la grilla y el reel se
+  // construyen desde él (reactivo a lo que configure el admin); si es null
+  // (primer arranque sin red), se usa el bundle compilado (fallback).
+  Catalog? _catalog;
+  final _catalogService = CatalogService();
+
   @override
   void initState() {
     super.initState();
@@ -124,6 +133,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     _loadCapabilityFlags();
     _syncBusinessTypesFromServer();
     _loadSubscriptionStatus();
+    _loadCatalog();
 
     _salesSub = _db.watchSalesLazy().listen((_) => _debouncedLoad());
 
@@ -255,6 +265,36 @@ class _DashboardScreenState extends State<DashboardScreen> {
     } catch (_) {
       // Offline / sin perfil — se conserva la cache local.
     }
+  }
+
+  /// Carga el catálogo dinámico: primero la cache (pinta al instante,
+  /// offline-first) y luego refresca desde el backend. Si no hay nada
+  /// (primer arranque sin red), el dashboard usa su bundle compilado.
+  Future<void> _loadCatalog() async {
+    final cached = await _catalogService.cached();
+    if (cached != null && mounted) setState(() => _catalog = cached);
+    final fresh = await _catalogService.refresh();
+    if (fresh != null && mounted) setState(() => _catalog = fresh);
+  }
+
+  /// Acceso Pro = TRIAL activo o PRO_ACTIVE (igual criterio que PremiumAuth).
+  bool get _isPro {
+    final s = _subscriptionStatus?.status;
+    return s == SubscriptionStatusValue.trial ||
+        s == SubscriptionStatusValue.proActive;
+  }
+
+  /// Grilla + reel resueltos desde el catálogo dinámico, o null si aún no
+  /// hay catálogo (entonces el dashboard usa el bundle compilado).
+  CatalogDashboard? get _catalogDashboard {
+    final c = _catalog;
+    if (c == null || c.isEmpty) return null;
+    return buildCatalogDashboard(
+      c,
+      businessTypes: _businessTypes,
+      flags: _featureFlags,
+      isPro: _isPro,
+    );
   }
 
   /// Abre el editor de tipos de negocio y refresca al volver. Compartido
@@ -727,7 +767,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 SliverToBoxAdapter(
                   child: CapabilitiesReel(
                     key: const Key('dashboard_capabilities_reel'),
-                    modules: unactivatedOptionalModules(_featureFlags),
+                    modules: _catalogDashboard?.reel ??
+                        unactivatedOptionalModules(_featureFlags),
                     onReturned: _loadCapabilityFlags,
                   ),
                 ),
@@ -756,6 +797,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   child: DashboardModuleGrid(
                     businessType: _businessType,
                     flags: _featureFlags,
+                    modules: _catalogDashboard?.grid,
                   ),
                 ),
 
