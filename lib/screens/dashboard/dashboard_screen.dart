@@ -669,6 +669,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   padding: const EdgeInsets.only(top: 8),
                   child: BusinessTypesBar(
                     types: _businessTypes,
+                    catalogTypes: _catalog?.types ?? const [],
                     onAdd: _openBusinessTypesEditor,
                     onDelete: _deleteBusinessType,
                   ),

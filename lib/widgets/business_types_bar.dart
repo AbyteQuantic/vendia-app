@@ -13,6 +13,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../config/business_types.dart';
+import '../config/module_icons.dart';
+import '../models/catalog/catalog_models.dart';
 import '../theme/app_theme.dart';
 
 class BusinessTypesBar extends StatelessWidget {
@@ -25,12 +27,29 @@ class BusinessTypesBar extends StatelessWidget {
   /// Elimina un tipo (mantener presionado 2s). El padre persiste el cambio.
   final ValueChanged<String> onDelete;
 
+  /// F041 — tipos del catálogo dinámico. Si trae el valor, su label/ícono
+  /// mandan (refleja renames del admin); si no, se usa el catálogo
+  /// compilado (businessTypeMeta). Vacío = comportamiento previo.
+  final List<CatalogTypeEntry> catalogTypes;
+
   const BusinessTypesBar({
     super.key,
     required this.types,
     required this.onAdd,
     required this.onDelete,
+    this.catalogTypes = const [],
   });
+
+  /// Resuelve label + ícono de un tipo: catálogo dinámico primero, luego el
+  /// catálogo compilado.
+  BusinessTypeMeta _metaFor(String value) {
+    for (final t in catalogTypes) {
+      if (t.value == value) {
+        return BusinessTypeMeta(value, iconForKey(t.iconKey), t.label);
+      }
+    }
+    return businessTypeMeta(value);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -58,7 +77,7 @@ class BusinessTypesBar extends StatelessWidget {
             if (i == types.length) return _AddChip(onTap: onAdd);
             final value = types[i];
             return _TypeChip(
-              meta: businessTypeMeta(value),
+              meta: _metaFor(value),
               onHoldComplete: () => onDelete(value),
             );
           },
