@@ -211,32 +211,40 @@ class _AddChip extends StatelessWidget {
           HapticFeedback.lightImpact();
           onTap();
         },
-        child: Container(
-          // Mismas métricas de caja que _TypeChip en reposo (padding 9,
-          // borde 1.0, ícono 18) → idéntico alto que los chips de tipo.
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(23),
-            border: Border.all(
-              color: AppTheme.primary.withValues(alpha: 0.5),
-              width: 1,
-            ),
-          ),
-          child: const Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(Icons.add_rounded, size: 18, color: AppTheme.primary),
-              SizedBox(width: 5),
-              Text(
-                'Agregar',
-                style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w700,
-                  color: AppTheme.primary,
+        // El Stack le da al Container restricciones SUELTAS, igual que en
+        // _TypeChip: así el chip se ajusta a su contenido (~39px) en vez
+        // de estirarse al alto del slot del ListView (46px) — esa era la
+        // razón de que el botón "Agregar" se viera más alto que los demás.
+        child: Stack(
+          children: [
+            Container(
+              // Mismas métricas de caja que _TypeChip en reposo.
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(23),
+                border: Border.all(
+                  color: AppTheme.primary.withValues(alpha: 0.5),
+                  width: 1,
                 ),
               ),
-            ],
-          ),
+              child: const Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.add_rounded, size: 18, color: AppTheme.primary),
+                  SizedBox(width: 5),
+                  Text(
+                    'Agregar',
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w700,
+                      color: AppTheme.primary,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
         ),
       ),
     );

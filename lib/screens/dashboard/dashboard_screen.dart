@@ -617,7 +617,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   onToggleStore: _toggleStoreStatus,
                   onLogout: _onLogout,
                   subscriptionStatus: _subscriptionStatus,
-                  onEditBusinessTypes: _openBusinessTypesEditor,
                   todayLabel: _todayLabel(),
                 ),
               ),
@@ -954,18 +953,15 @@ class _HeroHeaderDelegate extends SliverPersistentHeaderDelegate {
   final double topPadding;
   final String ownerName;
   final String businessName;
-  /// Tipos de negocio seleccionados por el dueño (uno o varios). El
-  /// header los muestra como chip(s) clickeables debajo del nombre del
-  /// negocio, antes del badge de sucursal. Vacío = no se muestra nada.
+  /// Tipos de negocio del tenant. Ya NO se pintan en el header (viven en
+  /// la BusinessTypesBar bajo el header); se conservan solo para que
+  /// shouldRebuild repinte el header si cambian.
   final List<String> businessTypes;
   final String? branchName;
   final bool isStoreOpen;
   final bool loadingStoreStatus;
   final ValueChanged<bool> onToggleStore;
   final Future<void> Function() onLogout;
-  /// Callback al tocar el chip de categoría — abre la pantalla donde
-  /// el dueño puede cambiar o agregar tipos de negocio.
-  final VoidCallback onEditBusinessTypes;
   final String todayLabel;
   /// Estado de suscripción del tenant (lo posee el Dashboard). Decide si
   /// la barra del trial se muestra; el header reserva su alto solo cuando
@@ -983,30 +979,9 @@ class _HeroHeaderDelegate extends SliverPersistentHeaderDelegate {
     required this.loadingStoreStatus,
     required this.onToggleStore,
     required this.onLogout,
-    required this.onEditBusinessTypes,
     required this.todayLabel,
     this.subscriptionStatus,
   });
-
-  // Mapa label legible — espejo del grid de selección en
-  // business_profile_screen.dart. Mantener sincronizados.
-  static const _typeLabels = <String, String>{
-    'tienda_barrio': 'Tienda de Barrio',
-    'minimercado': 'Minimercado',
-    'deposito_construccion': 'Depósito / Ferretería',
-    'restaurante': 'Restaurante',
-    'comidas_rapidas': 'Comidas Rápidas',
-    'bar': 'Bar / Discoteca',
-    'manufactura': 'Manufactura',
-    'reparacion_muebles': 'Reparación / Servicios',
-    'emprendimiento_general': 'Emprendimiento',
-    // Legacy → mismo mapeo que _legacyTypeRemap en business_profile_screen.
-    'muebles': 'Reparación / Servicios',
-    'reparacion': 'Reparación / Servicios',
-    'miscelanea': 'Emprendimiento',
-  };
-
-  String _labelFor(String type) => _typeLabels[type] ?? type;
 
   // Alto del header = suma de los bloques que realmente se pintan, en
   // vez de un alto fijo. Antes era 234 const, que reservaba ~56dp para
@@ -1022,7 +997,6 @@ class _HeroHeaderDelegate extends SliverPersistentHeaderDelegate {
   static const double _ownerLine = 26;
   static const double _businessLine = 20;
   static const double _branchLine = 16;
-  static const double _chipLine = 28; // solo si hay tipo(s) de negocio
   static const double _detailGap = 8; // padding superior del bloque expandible
   static const double _storeRow = 42; // pill de estado + fecha
   static const double _trialGap = 10;
@@ -1045,7 +1019,6 @@ class _HeroHeaderDelegate extends SliverPersistentHeaderDelegate {
         _branchLine +
         _detailGap +
         _storeRow;
-    if (businessTypes.isNotEmpty) h += _chipLine;
     if (_showsTrialBar) h += _trialGap + _trialBody;
     return h;
   }
@@ -1150,61 +1123,9 @@ class _HeroHeaderDelegate extends SliverPersistentHeaderDelegate {
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
                                 ),
-                                // Chip(s) de categoría(s) del negocio.
-                                // Acceso directo: tap → BusinessProfileScreen
-                                // donde el dueño elige/agrega categorías.
-                                if (businessTypes.isNotEmpty)
-                                  Padding(
-                                    padding: const EdgeInsets.only(top: 4),
-                                    child: InkWell(
-                                      borderRadius: BorderRadius.circular(20),
-                                      onTap: onEditBusinessTypes,
-                                      child: Container(
-                                        padding: const EdgeInsets.symmetric(
-                                            horizontal: 10, vertical: 4),
-                                        decoration: BoxDecoration(
-                                          color: Colors.white
-                                              .withValues(alpha: 0.18),
-                                          borderRadius:
-                                              BorderRadius.circular(20),
-                                          border: Border.all(
-                                            color: Colors.white
-                                                .withValues(alpha: 0.25),
-                                          ),
-                                        ),
-                                        child: Row(
-                                          mainAxisSize: MainAxisSize.min,
-                                          children: [
-                                            Icon(Icons.storefront_rounded,
-                                                size: 12,
-                                                color: Colors.white
-                                                    .withValues(alpha: 0.9)),
-                                            const SizedBox(width: 4),
-                                            Flexible(
-                                              child: Text(
-                                                businessTypes
-                                                    .map(_labelFor)
-                                                    .join(' · '),
-                                                style: const TextStyle(
-                                                  fontSize: 11,
-                                                  color: Colors.white,
-                                                  fontWeight: FontWeight.w600,
-                                                  height: 1.2,
-                                                ),
-                                                maxLines: 1,
-                                                overflow: TextOverflow.ellipsis,
-                                              ),
-                                            ),
-                                            const SizedBox(width: 4),
-                                            Icon(Icons.edit_rounded,
-                                                size: 11,
-                                                color: Colors.white
-                                                    .withValues(alpha: 0.7)),
-                                          ],
-                                        ),
-                                      ),
-                                    ),
-                                  ),
+                                // Los tipos de negocio ya NO se muestran aquí:
+                                // viven en la BusinessTypesBar bajo el header,
+                                // con agregar (+) y borrar (long-press).
                                 Builder(
                                   builder: (ctx) {
                                     final bp = ctx.watch<BranchProvider>();
