@@ -29,6 +29,7 @@ import '../../widgets/active_capabilities_section.dart';
 import '../../widgets/capabilities_reel.dart';
 import '../../widgets/dashboard_module_grid.dart';
 import '../../widgets/kpi_carousel.dart';
+import '../../widgets/business_types_bar.dart';
 import '../../config/dashboard_modules.dart';
 import '../../utils/credit_labels.dart';
 import 'business_profile_screen.dart';
@@ -231,6 +232,55 @@ class _DashboardScreenState extends State<DashboardScreen> {
           '${e.message}');
     } catch (e) {
       debugPrint('Dashboard: error inesperado al cargar suscripción: $e');
+    }
+  }
+
+  /// Abre el editor de tipos de negocio y refresca al volver. Compartido
+  /// por el chip del header y el botón "+" de la barra de tipos.
+  Future<void> _openBusinessTypesEditor() async {
+    HapticFeedback.lightImpact();
+    await Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => const BusinessProfileScreen()),
+    );
+    if (mounted) _loadCapabilityFlags();
+  }
+
+  /// Elimina un tipo de negocio (long-press de 2s en la barra). Persiste
+  /// contra el backend (PATCH business_types) y refresca el estado local.
+  /// Impide quedar sin ningún tipo: el perfil exige al menos uno.
+  Future<void> _deleteBusinessType(String type) async {
+    if (_businessTypes.length <= 1) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Debe conservar al menos un tipo de negocio.',
+              style: TextStyle(fontSize: 15)),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
+    final updated = _businessTypes.where((t) => t != type).toList();
+    // Optimista: refleja el cambio ya; si el backend falla, recargamos.
+    setState(() => _businessTypes = updated);
+    try {
+      final api = ApiService(AuthService());
+      final resp =
+          await api.updateBusinessProfile({'business_types': updated});
+      await AuthService().saveFeatureFlagsFromProfile(resp);
+      if (mounted) _loadCapabilityFlags();
+    } catch (e) {
+      if (!mounted) return;
+      // Revertimos al estado persistido real.
+      _loadCapabilityFlags();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('No se pudo eliminar el tipo: $e',
+              style: const TextStyle(fontSize: 15)),
+          backgroundColor: AppTheme.error,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
     }
   }
 
@@ -539,15 +589,22 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   onToggleStore: _toggleStoreStatus,
                   onLogout: _onLogout,
                   subscriptionStatus: _subscriptionStatus,
-                  onEditBusinessTypes: () async {
-                    HapticFeedback.lightImpact();
-                    await Navigator.of(context).push(
-                      MaterialPageRoute(
-                          builder: (_) => const BusinessProfileScreen()),
-                    );
-                    if (mounted) _loadCapabilityFlags();
-                  },
+                  onEditBusinessTypes: _openBusinessTypesEditor,
                   todayLabel: _todayLabel(),
+                ),
+              ),
+
+              // ── Barra de tipos de negocio habilitados ──────────────
+              // Justo bajo el header: chips ícono+texto por cada tipo,
+              // "+" para agregar, y long-press 2s para quitar uno.
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.only(top: 8),
+                  child: BusinessTypesBar(
+                    types: _businessTypes,
+                    onAdd: _openBusinessTypesEditor,
+                    onDelete: _deleteBusinessType,
+                  ),
                 ),
               ),
 

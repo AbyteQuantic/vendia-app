@@ -68,10 +68,10 @@ class _KpiCarouselState extends State<KpiCarousel> {
   Timer? _autoplayTimer;
   Timer? _resumeTimer;
   int _currentPage = 0;
-  // 0.70 — las cards laterales se superponen ligeramente con la
-  // central, lo que sumado a la rotación Y crea el efecto coverflow
-  // semicircular pedido por el dueño.
-  final double _viewportFraction = 0.70;
+  // 0.66 — más bajo que antes (0.70) para que asome MÁS de las cards
+  // vecinas: así se nota de inmediato que hay más ítems a los lados y
+  // el conjunto se ve más junto, no una card aislada en el centro.
+  final double _viewportFraction = 0.66;
 
   @override
   void initState() {
@@ -206,15 +206,15 @@ class _KpiCard extends StatelessWidget {
     final accent = data.accentColor;
     final signed = _signedDistance();
     final d = signed.abs();
-    // 1.0 (centro) → 0.82 (lateral). Bajo más la escala para
-    // reforzar el efecto de profundidad del coverflow 3D.
-    final scale = 1.0 - (d * 0.18);
-    // 1.0 (centro) → 0.45 (lateral). Las laterales quedan "atrás".
-    final opacity = 1.0 - (d * 0.55);
-    // Rotación Y máxima ~30° hacia el centro. signed > 0 (la card está
-    // a la derecha del scroll) gira a la izquierda — y viceversa — para
-    // dar la sensación de un semicírculo enfrentándose al usuario.
-    final rotationY = -signed * 0.55; // radianes (~31°)
+    // 1.0 (centro) → 0.90 (lateral). Menos encogido que antes (0.82)
+    // para que las cards vecinas se vean cercanas y claras, no lejanas.
+    final scale = 1.0 - (d * 0.10);
+    // 1.0 (centro) → 0.65 (lateral). Antes 0.45 — subo la opacidad para
+    // que el vecino se identifique a simple vista.
+    final opacity = 1.0 - (d * 0.35);
+    // Rotación Y más suave (~24°) — el coverflow se mantiene pero sin
+    // alejar tanto las cards laterales.
+    final rotationY = -signed * 0.42; // radianes (~24°)
 
     // Matrix4 con perspectiva — `setEntry(3, 2, 0.0014)` es el valor
     // típico para perspectiva agradable en flutter; sin este entry la
