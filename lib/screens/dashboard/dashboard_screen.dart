@@ -122,6 +122,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     _loadLowStockCount();
     _loadStoreStatus();
     _loadCapabilityFlags();
+    _syncBusinessTypesFromServer();
     _loadSubscriptionStatus();
 
     _salesSub = _db.watchSalesLazy().listen((_) => _debouncedLoad());
@@ -235,6 +236,27 @@ class _DashboardScreenState extends State<DashboardScreen> {
     }
   }
 
+  /// Sincroniza los tipos de negocio desde el backend y refresca la barra.
+  /// El login trae `business_type` (singular) pero NO el array
+  /// `business_types`, así que la cache local quedaba vacía aunque el
+  /// tenant tuviera varios tipos. Aquí leemos la fuente de verdad
+  /// (`/store/profile`) y la persistimos sin tocar los feature flags.
+  /// Offline-safe: si falla, se queda con lo que cargó _loadCapabilityFlags.
+  Future<void> _syncBusinessTypesFromServer() async {
+    try {
+      final api = ApiService(AuthService());
+      final profile = await api.fetchBusinessProfile();
+      final raw = profile['business_types'];
+      if (raw is List) {
+        final types = raw.whereType<String>().toList();
+        await AuthService().setBusinessTypes(types);
+        if (mounted) setState(() => _businessTypes = types);
+      }
+    } catch (_) {
+      // Offline / sin perfil — se conserva la cache local.
+    }
+  }
+
   /// Abre el editor de tipos de negocio y refresca al volver. Compartido
   /// por el chip del header y el botón "+" de la barra de tipos.
   Future<void> _openBusinessTypesEditor() async {
@@ -242,7 +264,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
     await Navigator.of(context).push(
       MaterialPageRoute(builder: (_) => const BusinessProfileScreen()),
     );
-    if (mounted) _loadCapabilityFlags();
+    if (mounted) {
+      _loadCapabilityFlags();
+      // Trae la verdad del backend por si el cache local no reflejó el
+      // cambio (p.ej. la respuesta del PATCH no incluyó business_types).
+      _syncBusinessTypesFromServer();
+    }
   }
 
   /// Elimina un tipo de negocio (long-press de 2s en la barra). Persiste
@@ -261,18 +288,19 @@ class _DashboardScreenState extends State<DashboardScreen> {
       return;
     }
     final updated = _businessTypes.where((t) => t != type).toList();
-    // Optimista: refleja el cambio ya; si el backend falla, recargamos.
+    // Optimista: refleja el cambio ya; si el backend falla, revertimos.
     setState(() => _businessTypes = updated);
     try {
       final api = ApiService(AuthService());
-      final resp =
-          await api.updateBusinessProfile({'business_types': updated});
-      await AuthService().saveFeatureFlagsFromProfile(resp);
+      await api.updateBusinessProfile({'business_types': updated});
+      // Persistimos SOLO los tipos (no saveFeatureFlagsFromProfile, que
+      // podría borrar los flags si la respuesta no los trae).
+      await AuthService().setBusinessTypes(updated);
       if (mounted) _loadCapabilityFlags();
     } catch (e) {
       if (!mounted) return;
-      // Revertimos al estado persistido real.
-      _loadCapabilityFlags();
+      // Revertimos a la verdad del backend.
+      _syncBusinessTypesFromServer();
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('No se pudo eliminar el tipo: $e',

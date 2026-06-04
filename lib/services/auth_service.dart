@@ -105,10 +105,13 @@ class AuthService {
       key: _keyFeatureFlags,
       value: merged.isEmpty ? null : jsonEncode(merged),
     );
-    await _storage.write(
-      key: _keyBusinessTypes,
-      value: types is List ? jsonEncode(types) : null,
-    );
+    // Solo sobrescribimos los tipos cuando el source TRAE el array. El
+    // login envía `business_type` (singular) pero NO `business_types`
+    // (plural), y antes esto nulaba la cache en cada login aunque el
+    // tenant tuviera varios tipos. Igual criterio que `onboarding_completed`.
+    if (types is List) {
+      await _storage.write(key: _keyBusinessTypes, value: jsonEncode(types));
+    }
     // F028: persist credit_label_mode — default 'fiar' when absent.
     final mode = source['credit_label_mode'];
     await _storage.write(
@@ -213,6 +216,17 @@ class AuthService {
   /// Update cached logo URL after upload.
   Future<void> updateLogoUrl(String url) =>
       _storage.write(key: _keyLogoUrl, value: url);
+
+  /// Persiste SOLO la lista de tipos de negocio, sin tocar los feature
+  /// flags. Útil cuando el Dashboard sincroniza los tipos desde el
+  /// backend (`fetchBusinessProfile`) — el login trae `business_type`
+  /// singular pero NO el array `business_types`, así que la cache quedaba
+  /// vacía. No usar `saveFeatureFlagsFromProfile` para esto: ese merge
+  /// podría borrar los flags si la respuesta no los incluye.
+  Future<void> setBusinessTypes(List<String> types) => _storage.write(
+        key: _keyBusinessTypes,
+        value: types.isEmpty ? null : jsonEncode(types),
+      );
 
   Future<String?> getTenantId() async {
     return _storage.read(key: _keyTenantId);
