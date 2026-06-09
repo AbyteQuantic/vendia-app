@@ -13,7 +13,7 @@ import '../../services/api_service.dart';
 import '../../services/auth_service.dart';
 
 /// Qué se está diseñando.
-enum EventDesignKind { badge, certificate }
+enum EventDesignKind { poster, badge, certificate }
 
 class EventDesignScreen extends StatefulWidget {
   final String eventId;
@@ -41,8 +41,6 @@ class _EventDesignScreenState extends State<EventDesignScreen> {
   bool _generating = false;
   String? _error;
 
-  bool get _isBadge => widget.kind == EventDesignKind.badge;
-
   @override
   void initState() {
     super.initState();
@@ -56,9 +54,12 @@ class _EventDesignScreenState extends State<EventDesignScreen> {
       _error = null;
     });
     try {
-      final url = _isBadge
-          ? await _api.generateEventBadge(widget.eventId)
-          : await _api.generateEventCertificate(widget.eventId);
+      final url = switch (widget.kind) {
+        EventDesignKind.poster => await _api.generateEventPoster(widget.eventId),
+        EventDesignKind.badge => await _api.generateEventBadge(widget.eventId),
+        EventDesignKind.certificate =>
+          await _api.generateEventCertificate(widget.eventId),
+      };
       if (!mounted) return;
       setState(() {
         _imageUrl = url;
@@ -76,7 +77,11 @@ class _EventDesignScreenState extends State<EventDesignScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final title = _isBadge ? 'Diseñar escarapela' : 'Diseñar certificado';
+    final title = switch (widget.kind) {
+      EventDesignKind.poster => 'Diseñar afiche',
+      EventDesignKind.badge => 'Diseñar escarapela',
+      EventDesignKind.certificate => 'Diseñar certificado',
+    };
     final hasImage = _imageUrl != null && _imageUrl!.isNotEmpty;
     return Scaffold(
       appBar: AppBar(title: Text(title)),
@@ -98,7 +103,7 @@ class _EventDesignScreenState extends State<EventDesignScreen> {
                       )
                     : hasImage
                         ? _DesignPreview(url: _imageUrl!)
-                        : _EmptyState(isBadge: _isBadge),
+                        : _EmptyState(kind: widget.kind),
               ),
             ),
             if (_error != null)
@@ -161,21 +166,35 @@ class _DesignPreview extends StatelessWidget {
 }
 
 class _EmptyState extends StatelessWidget {
-  final bool isBadge;
-  const _EmptyState({required this.isBadge});
+  final EventDesignKind kind;
+  const _EmptyState({required this.kind});
 
   @override
   Widget build(BuildContext context) {
+    final (IconData icon, String text) = switch (kind) {
+      EventDesignKind.poster => (
+          Icons.campaign_outlined,
+          'Genere un afiche llamativo con IA para promocionar el evento en su '
+              'catálogo.\nLuego puede regenerarlo hasta que le guste.'
+        ),
+      EventDesignKind.badge => (
+          Icons.badge_outlined,
+          'Genere una escarapela profesional con IA.\nLuego puede regenerarla '
+              'hasta que le guste.'
+        ),
+      EventDesignKind.certificate => (
+          Icons.workspace_premium_outlined,
+          'Genere un certificado elegante con IA.\nLuego puede regenerarlo '
+              'hasta que le guste.'
+        ),
+    };
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Icon(isBadge ? Icons.badge_outlined : Icons.workspace_premium_outlined,
-            size: 72, color: Colors.grey.shade400),
+        Icon(icon, size: 72, color: Colors.grey.shade400),
         const SizedBox(height: 16),
         Text(
-          isBadge
-              ? 'Genere una escarapela profesional con IA.\nLuego puede regenerarla hasta que le guste.'
-              : 'Genere un certificado elegante con IA.\nLuego puede regenerarlo hasta que le guste.',
+          text,
           textAlign: TextAlign.center,
           style: const TextStyle(fontSize: 16, color: Colors.black54),
         ),

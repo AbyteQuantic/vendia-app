@@ -290,19 +290,42 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
           ),
           const SizedBox(height: 6),
           const Text(
-            'Genere la escarapela y el certificado automáticamente. La IA usa '
-            'el nombre del evento y su descripción; puede regenerar hasta que '
-            'le guste.',
+            'La IA usa el nombre del evento y su descripción; puede regenerar '
+            'hasta que le guste.',
             style: TextStyle(fontSize: 14, color: Colors.black54, height: 1.35),
           ),
           const SizedBox(height: 14),
+          // Afiche — pieza principal: es la que aparece en el catálogo y viaja
+          // en el link que se comparte por WhatsApp.
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton.icon(
+              key: const Key('detail_design_poster'),
+              style: FilledButton.styleFrom(
+                backgroundColor: _eventAccent,
+                padding: const EdgeInsets.symmetric(vertical: 14),
+              ),
+              onPressed: () => _openDesigner(EventDesignKind.poster),
+              icon: const Icon(Icons.campaign_rounded, size: 22),
+              label: const Text('Afiche para el catálogo',
+                  style: TextStyle(fontSize: 16)),
+            ),
+          ),
+          const SizedBox(height: 4),
+          const Text(
+            'Es la imagen que verán sus clientes en el catálogo y en el link '
+            'de WhatsApp.',
+            style: TextStyle(fontSize: 12.5, color: Colors.black45),
+          ),
+          const SizedBox(height: 12),
           Row(
             children: [
               Expanded(
-                child: FilledButton.icon(
+                child: OutlinedButton.icon(
                   key: const Key('detail_design_badge'),
-                  style: FilledButton.styleFrom(
-                    backgroundColor: _eventAccent,
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: _eventAccent,
+                    side: const BorderSide(color: _eventAccent),
                     padding: const EdgeInsets.symmetric(vertical: 12),
                   ),
                   onPressed: () => _openDesigner(EventDesignKind.badge),
@@ -312,10 +335,11 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
               ),
               const SizedBox(width: 12),
               Expanded(
-                child: FilledButton.icon(
+                child: OutlinedButton.icon(
                   key: const Key('detail_design_cert'),
-                  style: FilledButton.styleFrom(
-                    backgroundColor: _eventAccent,
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: _eventAccent,
+                    side: const BorderSide(color: _eventAccent),
                     padding: const EdgeInsets.symmetric(vertical: 12),
                   ),
                   onPressed: () => _openDesigner(EventDesignKind.certificate),

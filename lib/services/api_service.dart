@@ -1313,6 +1313,20 @@ class ApiService {
     }
   }
 
+  /// Genera el AFICHE publicitario del evento con IA — la pieza que se muestra
+  /// en el catálogo público (el link que se comparte por WhatsApp). Sin QR.
+  Future<String> generateEventPoster(String eventId) async {
+    try {
+      final response =
+          await _dio.post('/api/v1/events/$eventId/poster/ai-generate');
+      final data = (response.data as Map<String, dynamic>)['data']
+          as Map<String, dynamic>;
+      return (data['image_url'] as String?) ?? '';
+    } on DioException catch (e) {
+      throw AppError.fromDioException(e);
+    }
+  }
+
   /// Historial de compras de un cliente: registro base + summary
   /// (gastado, compras, primera/última visita) + lista de ventas.
   ///
