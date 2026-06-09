@@ -65,6 +65,22 @@ class _EventsListScreenState extends State<EventsListScreen> {
     if (created != null) _load();
   }
 
+  Future<void> _publish(Event e) async {
+    try {
+      await _api.publishEvent(e.id);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Evento publicado en tu catálogo')),
+      );
+      _load();
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No pudimos publicar el evento.')),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -106,7 +122,10 @@ class _EventsListScreenState extends State<EventsListScreen> {
         padding: const EdgeInsets.all(16),
         itemCount: _events.length,
         separatorBuilder: (_, __) => const SizedBox(height: 12),
-        itemBuilder: (_, i) => _EventCard(event: _events[i]),
+        itemBuilder: (_, i) => _EventCard(
+          event: _events[i],
+          onPublish: () => _publish(_events[i]),
+        ),
       ),
     );
   }
@@ -114,7 +133,8 @@ class _EventsListScreenState extends State<EventsListScreen> {
 
 class _EventCard extends StatelessWidget {
   final Event event;
-  const _EventCard({required this.event});
+  final VoidCallback onPublish;
+  const _EventCard({required this.event, required this.onPublish});
 
   @override
   Widget build(BuildContext context) {
@@ -161,6 +181,18 @@ class _EventCard extends StatelessWidget {
                 ),
               ],
             ),
+            if (event.status == EventStatus.borrador) ...[
+              const SizedBox(height: 12),
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton.icon(
+                  key: Key('event_publish_${event.id}'),
+                  onPressed: onPublish,
+                  icon: const Icon(Icons.publish_rounded),
+                  label: const Text('Publicar en mi catálogo'),
+                ),
+              ),
+            ],
           ],
         ),
       ),

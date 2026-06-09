@@ -12,10 +12,17 @@ class _FakeApi extends ApiService {
   _FakeApi({this.events = const []}) : super(AuthService());
 
   final List<Map<String, dynamic>> events;
+  String? publishedId;
 
   @override
   Future<List<Map<String, dynamic>>> listEvents({String? status}) async =>
       events;
+
+  @override
+  Future<Map<String, dynamic>> publishEvent(String id) async {
+    publishedId = id;
+    return {'id': id, 'status': 'publicado'};
+  }
 }
 
 Widget _wrap(Widget child) => MaterialApp(home: child);
@@ -69,6 +76,47 @@ void main() {
       expect(find.text('Hackatón gratis'), findsOneWidget);
       expect(find.text('Gratis'), findsOneWidget);
       expect(find.text('Sin límite'), findsOneWidget);
+    });
+
+    testWidgets('evento en borrador muestra "Publicar" y lo publica al tocar',
+        (tester) async {
+      final api = _FakeApi(events: [
+        {
+          'id': 'e2',
+          'type': 'curso',
+          'title': 'Borrador',
+          'modality': 'virtual',
+          'status': 'borrador',
+          'price': 0,
+          'capacity': 10,
+        },
+      ]);
+      await tester.pumpWidget(_wrap(EventsListScreen(apiOverride: api)));
+      await tester.pumpAndSettle();
+
+      final publishBtn = find.byKey(const Key('event_publish_e2'));
+      expect(publishBtn, findsOneWidget);
+
+      await tester.tap(publishBtn);
+      await tester.pump();
+      expect(api.publishedId, 'e2');
+    });
+
+    testWidgets('evento publicado NO muestra botón Publicar', (tester) async {
+      final api = _FakeApi(events: [
+        {
+          'id': 'e3',
+          'type': 'curso',
+          'title': 'Ya publicado',
+          'modality': 'virtual',
+          'status': 'publicado',
+          'price': 0,
+          'capacity': 10,
+        },
+      ]);
+      await tester.pumpWidget(_wrap(EventsListScreen(apiOverride: api)));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('event_publish_e3')), findsNothing);
     });
   });
 }
