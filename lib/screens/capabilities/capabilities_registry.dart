@@ -64,7 +64,7 @@ final Map<OptionalCapability, CapabilityMetadata> capabilitiesRegistry = {
         'Al activar, los productos del inventario aceptarán cantidades '
         'decimales (1.5 kg, 0.25 lb) en "Registrar venta".',
   ),
-  OptionalCapability.tables: CapabilityMetadata(
+  OptionalCapability.tables: const CapabilityMetadata(
     title: 'Atención en mesas',
     tagline: 'Maneje mesas y cuentas abiertas',
     description:
@@ -73,7 +73,7 @@ final Map<OptionalCapability, CapabilityMetadata> capabilitiesRegistry = {
     heroPhotoUrl:
         'https://images.pexels.com/photos/941861/pexels-photo-941861.jpeg?auto=compress&cs=tinysrgb&w=1280&h=600&fit=crop',
     fallbackIcon: Icons.table_restaurant_rounded,
-    accentColor: const Color(0xFF3B82F6),
+    accentColor: Color(0xFF3B82F6),
     configKey: 'has_tables',
     profileKey: 'enable_tables',
     primaryActionLabel: 'Ver mis mesas',
@@ -97,7 +97,7 @@ final Map<OptionalCapability, CapabilityMetadata> capabilitiesRegistry = {
         'Al activar, podrá poner precios por nivel en cada producto '
         '("Productos") y elegir el nivel al cobrar.',
   ),
-  OptionalCapability.customerManagement: CapabilityMetadata(
+  OptionalCapability.customerManagement: const CapabilityMetadata(
     title: 'Gestión de clientes',
     tagline: 'Sepa quién le compra y cuánto',
     description:
@@ -107,14 +107,14 @@ final Map<OptionalCapability, CapabilityMetadata> capabilitiesRegistry = {
     heroPhotoUrl:
         'https://images.pexels.com/photos/3760067/pexels-photo-3760067.jpeg?auto=compress&cs=tinysrgb&w=1280&h=600&fit=crop',
     fallbackIcon: Icons.people_outline,
-    accentColor: const Color(0xFF1A2FA0),
+    accentColor: Color(0xFF1A2FA0),
     configKey: 'enable_customer_management',
     profileKey: 'enable_customer_management',
     primaryActionLabel: 'Ver mis clientes',
     primaryActionIcon: Icons.people_alt_rounded,
     primaryDestination: CustomersListScreen.new,
   ),
-  OptionalCapability.promotions: CapabilityMetadata(
+  OptionalCapability.promotions: const CapabilityMetadata(
     title: 'Promociones',
     tagline: 'Avise por WhatsApp cuando tenga ofertas',
     description:
@@ -124,14 +124,14 @@ final Map<OptionalCapability, CapabilityMetadata> capabilitiesRegistry = {
     heroPhotoUrl:
         'https://images.pexels.com/photos/5632398/pexels-photo-5632398.jpeg?auto=compress&cs=tinysrgb&w=1280&h=600&fit=crop',
     fallbackIcon: Icons.campaign_rounded,
-    accentColor: const Color(0xFFD97706),
+    accentColor: Color(0xFFD97706),
     configKey: 'enable_promotions',
     profileKey: 'enable_promotions',
     primaryActionLabel: 'Ver mis promociones',
     primaryActionIcon: Icons.campaign_rounded,
     primaryDestination: PromotionsListScreen.new,
   ),
-  OptionalCapability.marketingHub: CapabilityMetadata(
+  OptionalCapability.marketingHub: const CapabilityMetadata(
     title: 'Marketing y Combos',
     tagline: 'Combos, banners con IA y catálogo en línea',
     description:
@@ -140,14 +140,14 @@ final Map<OptionalCapability, CapabilityMetadata> capabilitiesRegistry = {
     heroPhotoUrl:
         'https://images.pexels.com/photos/267350/pexels-photo-267350.jpeg?auto=compress&cs=tinysrgb&w=1280&h=600&fit=crop',
     fallbackIcon: Icons.auto_awesome_rounded,
-    accentColor: const Color(0xFF7C3AED),
+    accentColor: Color(0xFF7C3AED),
     configKey: 'enable_marketing_hub',
     profileKey: 'enable_marketing_hub',
     primaryActionLabel: 'Abrir Marketing y Combos',
     primaryActionIcon: Icons.auto_awesome_rounded,
     primaryDestination: PromoManagementScreen.new,
   ),
-  OptionalCapability.recipes: CapabilityMetadata(
+  OptionalCapability.recipes: const CapabilityMetadata(
     title: 'Recetas y Platos',
     tagline: 'Arme un plato y vea su costo y ganancia',
     description:
@@ -157,14 +157,14 @@ final Map<OptionalCapability, CapabilityMetadata> capabilitiesRegistry = {
     heroPhotoUrl:
         'https://images.pexels.com/photos/2284166/pexels-photo-2284166.jpeg?auto=compress&cs=tinysrgb&w=1280&h=600&fit=crop',
     fallbackIcon: Icons.restaurant_menu_rounded,
-    accentColor: const Color(0xFFEE5A24),
+    accentColor: Color(0xFFEE5A24),
     configKey: 'enable_recipes',
     profileKey: 'enable_recipes',
     primaryActionLabel: 'Ver mis recetas',
     primaryActionIcon: Icons.restaurant_menu_rounded,
     primaryDestination: RecipeStep1Screen.new,
   ),
-  OptionalCapability.supplies: CapabilityMetadata(
+  OptionalCapability.supplies: const CapabilityMetadata(
     title: 'Mis Insumos',
     tagline: 'Materia prima: stock, mínimos y costo',
     description:
@@ -174,14 +174,14 @@ final Map<OptionalCapability, CapabilityMetadata> capabilitiesRegistry = {
     heroPhotoUrl:
         'https://images.pexels.com/photos/1207978/pexels-photo-1207978.jpeg?auto=compress&cs=tinysrgb&w=1280&h=600&fit=crop',
     fallbackIcon: Icons.kitchen_rounded,
-    accentColor: const Color(0xFFD97706),
+    accentColor: Color(0xFFD97706),
     configKey: 'enable_supplies',
     profileKey: 'enable_supplies',
     primaryActionLabel: 'Ver mis insumos',
     primaryActionIcon: Icons.kitchen_rounded,
     primaryDestination: IngredientsScreen.new,
   ),
-  OptionalCapability.furnitureJobs: CapabilityMetadata(
+  OptionalCapability.furnitureJobs: const CapabilityMetadata(
     title: 'Trabajos de Muebles',
     tagline: 'Cotice, fabrique y repare por encargo',
     description:
@@ -197,7 +197,7 @@ final Map<OptionalCapability, CapabilityMetadata> capabilitiesRegistry = {
     primaryActionIcon: Icons.handyman_rounded,
     primaryDestination: WorkOrdersScreen.new,
   ),
-  OptionalCapability.purchaseOrders: CapabilityMetadata(
+  OptionalCapability.purchaseOrders: const CapabilityMetadata(
     title: 'Órdenes de Compra',
     tagline: 'Pida a proveedores y reciba el stock',
     description:
@@ -207,7 +207,7 @@ final Map<OptionalCapability, CapabilityMetadata> capabilitiesRegistry = {
     heroPhotoUrl:
         'https://images.pexels.com/photos/4481259/pexels-photo-4481259.jpeg?auto=compress&cs=tinysrgb&w=1280&h=600&fit=crop',
     fallbackIcon: Icons.shopping_cart_rounded,
-    accentColor: const Color(0xFF0D9668),
+    accentColor: Color(0xFF0D9668),
     configKey: 'enable_purchase_orders',
     profileKey: 'enable_purchase_orders',
     primaryActionLabel: 'Ver mis órdenes',
@@ -215,7 +215,7 @@ final Map<OptionalCapability, CapabilityMetadata> capabilitiesRegistry = {
     primaryDestination: PurchaseOrdersScreen.new,
   ),
   // F042 — Módulo de Eventos.
-  OptionalCapability.events: CapabilityMetadata(
+  OptionalCapability.events: const CapabilityMetadata(
     title: 'Eventos',
     tagline: 'Cobre cursos, conferencias y hackatones',
     description:
@@ -225,7 +225,7 @@ final Map<OptionalCapability, CapabilityMetadata> capabilitiesRegistry = {
     heroPhotoUrl:
         'https://images.pexels.com/photos/2774556/pexels-photo-2774556.jpeg?auto=compress&cs=tinysrgb&w=1280&h=600&fit=crop',
     fallbackIcon: Icons.event_rounded,
-    accentColor: const Color(0xFF0EA5E9),
+    accentColor: Color(0xFF0EA5E9),
     configKey: 'enable_events',
     profileKey: 'enable_events',
     primaryActionLabel: 'Ver mis eventos',

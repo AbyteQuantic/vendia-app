@@ -3320,8 +3320,9 @@ class ApiService {
     try {
       final data = <String, dynamic>{};
       if (message != null) data['panic_message'] = message;
-      if (includeAddress != null)
+      if (includeAddress != null) {
         data['panic_include_address'] = includeAddress;
+      }
       if (includeGPS != null) data['panic_include_gps'] = includeGPS;
       await _dio.patch('/api/v1/store/panic-config', data: data);
     } on DioException catch (e) {

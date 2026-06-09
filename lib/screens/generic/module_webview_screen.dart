@@ -59,7 +59,7 @@ class ModuleWebviewScreen extends StatelessWidget {
                   label: const Text('Abrir'),
                 )
               else
-                Text('Este módulo aún no tiene un enlace configurado.',
+                const Text('Este módulo aún no tiene un enlace configurado.',
                     style:
                         TextStyle(fontSize: 15, color: AppTheme.textSecondary),
                     textAlign: TextAlign.center),

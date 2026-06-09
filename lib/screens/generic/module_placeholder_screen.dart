@@ -26,14 +26,14 @@ class ModulePlaceholderScreen extends StatelessWidget {
               Icon(Icons.hourglass_empty_rounded,
                   size: 72, color: AppTheme.primary.withValues(alpha: 0.6)),
               const SizedBox(height: 16),
-              Text(
+              const Text(
                 'Próximamente',
-                style: const TextStyle(
+                style: TextStyle(
                     fontSize: 22, fontWeight: FontWeight.bold),
                 textAlign: TextAlign.center,
               ),
               const SizedBox(height: 8),
-              Text(
+              const Text(
                 'Esta opción estará disponible pronto en tu app.',
                 style: TextStyle(fontSize: 16, color: AppTheme.textSecondary),
                 textAlign: TextAlign.center,

@@ -1,0 +1,15 @@
+# build_runner usa el paquete `analyzer` resuelto por pub (5.13.0), que es
+# anterior a la sintaxis `extension type` (Dart 3.3). El SDK de Flutter sí la
+# soporta, por eso `flutter test`/`analyze` pasan pero `build_runner` falla al
+# parsear el binding JS de `html5_qrcode_scanner_web.dart`. Ese archivo es solo
+# interop web y NO necesita generación de código, así que lo excluimos de los
+# inputs de build_runner. (Si algún día se sube `analyzer` a >=6.4, esto sobra.)
+targets:
+  $default:
+    sources:
+      include:
+        - lib/**
+        - test/**
+        - $package$
+      exclude:
+        - lib/widgets/html5_qrcode_scanner_web.dart
