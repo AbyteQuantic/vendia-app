@@ -8,9 +8,9 @@
 import 'package:flutter/material.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 
-import '../../models/event.dart';
 import '../../services/api_service.dart';
 import '../../services/auth_service.dart';
+import 'event_feedback.dart';
 
 class EventCheckinScanScreen extends StatefulWidget {
   final String eventId;
@@ -64,13 +64,15 @@ class _EventCheckinScanScreenState extends State<EventCheckinScanScreen> {
       final already =
           await _api.checkinEvent(widget.eventId, code, widget.scanType);
       if (!mounted) return;
-      _toast(
+      showEventSnack(
+        context,
         already ? 'Ese código ya estaba registrado' : '¡Registrado!',
-        already ? Colors.orange : Colors.green,
+        kind: already ? EventSnackKind.info : EventSnackKind.success,
       );
     } catch (_) {
       if (!mounted) return;
-      _toast('Código no válido para este evento', Colors.red);
+      showEventSnack(context, 'Código no válido para este evento',
+          kind: EventSnackKind.error);
     } finally {
       // Pequeña pausa para evitar relecturas del mismo encuadre.
       await Future<void>.delayed(const Duration(milliseconds: 1200));
@@ -79,12 +81,6 @@ class _EventCheckinScanScreenState extends State<EventCheckinScanScreen> {
         _lastCode = null;
       }
     }
-  }
-
-  void _toast(String msg, Color color) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(msg), backgroundColor: color),
-    );
   }
 
   @override

@@ -56,6 +56,11 @@ void main() {
     await tester.pumpWidget(_wrap(EventDetailScreen(event: ev, apiOverride: api)));
     await tester.pumpAndSettle();
 
+    // La lista de inscritos vive al final del detalle (tras hero + tarjetas);
+    // hay que desplazar para que el ListView construya esas filas.
+    final scrollable = find.byType(Scrollable).first;
+    await tester.scrollUntilVisible(find.text('Ana'), 300, scrollable: scrollable);
+
     expect(find.text('Ana'), findsOneWidget);
     expect(find.textContaining('Pagado'), findsOneWidget);
     expect(find.textContaining('Entró'), findsOneWidget);
@@ -75,6 +80,10 @@ void main() {
     ]);
     await tester.pumpWidget(_wrap(EventDetailScreen(event: ev, apiOverride: api)));
     await tester.pumpAndSettle();
+
+    final scrollable = find.byType(Scrollable).first;
+    await tester.scrollUntilVisible(find.text('Certificar'), 300,
+        scrollable: scrollable);
 
     final btn = find.text('Certificar');
     expect(btn, findsOneWidget);

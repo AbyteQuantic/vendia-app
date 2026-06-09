@@ -12,6 +12,7 @@ import '../../services/api_service.dart';
 import '../../services/auth_service.dart';
 import 'create_event_screen.dart';
 import 'event_detail_screen.dart';
+import 'event_feedback.dart';
 
 class EventsListScreen extends StatefulWidget {
   /// Inyectable para tests — en producción usa el ApiService default.
@@ -70,15 +71,13 @@ class _EventsListScreenState extends State<EventsListScreen> {
     try {
       await _api.publishEvent(e.id);
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Evento publicado en tu catálogo')),
-      );
+      showEventSnack(context, 'Evento publicado en tu catálogo',
+          kind: EventSnackKind.success);
       _load();
     } catch (_) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('No pudimos publicar el evento.')),
-      );
+      showEventSnack(context, 'No pudimos publicar el evento.',
+          kind: EventSnackKind.error);
     }
   }
 

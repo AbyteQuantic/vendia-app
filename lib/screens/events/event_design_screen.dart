@@ -87,9 +87,9 @@ class _EventDesignScreenState extends State<EventDesignScreen> {
             Expanded(
               child: Center(
                 child: _generating
-                    ? Column(
+                    ? const Column(
                         mainAxisSize: MainAxisSize.min,
-                        children: const [
+                        children: [
                           CircularProgressIndicator(),
                           SizedBox(height: 16),
                           Text('Generando el diseño con IA…',
