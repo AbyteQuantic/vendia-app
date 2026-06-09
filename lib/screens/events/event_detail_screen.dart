@@ -5,6 +5,8 @@
 // publicarlo, diseñar la escarapela/certificado con IA, abrir el escáner de
 // check-in/out y ver/gestionar a los inscritos (pago, asistencia, certificado).
 
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 
 import '../../models/event.dart';
@@ -31,6 +33,7 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
   late final ApiService _api;
   late Event _event;
   List<EventRegistrationView> _regs = [];
+  List<EventPaymentView> _pendingPayments = [];
   bool _loading = true;
 
   @override
@@ -45,15 +48,64 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
     if (mounted) setState(() => _loading = true);
     try {
       final raw = await _api.listEventRegistrations(_event.id);
+      // Comprobantes pendientes de revisión (no bloquea si falla).
+      List<EventPaymentView> pending = const [];
+      try {
+        final pays = await _api.listEventPayments(_event.id, status: 'pending');
+        pending = pays.map(EventPaymentView.fromJson).toList(growable: false);
+      } catch (_) {/* ignore */}
       if (!mounted) return;
       setState(() {
         _regs = raw.map(EventRegistrationView.fromJson).toList(growable: false);
+        _pendingPayments = pending;
         _loading = false;
       });
     } catch (_) {
       if (!mounted) return;
       setState(() => _loading = false);
     }
+  }
+
+  Future<void> _approvePayment(EventPaymentView p) async {
+    try {
+      await _api.approveEventPayment(_event.id, p.id);
+      if (!mounted) return;
+      _snack('Pago aprobado de ${p.customerName}',
+          kind: EventSnackKind.success);
+      _loadRegs();
+    } catch (_) {
+      _snack('No pudimos aprobar el pago.', kind: EventSnackKind.error);
+    }
+  }
+
+  void _viewProof(EventPaymentView p) {
+    showDialog<void>(
+      context: context,
+      builder: (ctx) => Dialog(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            AppBar(
+              title: Text('Comprobante · ${p.customerName}'),
+              automaticallyImplyLeading: false,
+              actions: [
+                IconButton(
+                  onPressed: () => Navigator.of(ctx).pop(),
+                  icon: const Icon(Icons.close),
+                ),
+              ],
+            ),
+            Flexible(
+              child: p.proofUrl.startsWith('data:image')
+                  ? Image.memory(
+                      base64Decode(p.proofUrl.substring(p.proofUrl.indexOf(',') + 1)),
+                      fit: BoxFit.contain)
+                  : Image.network(p.proofUrl, fit: BoxFit.contain),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   Future<void> _publish() async {
@@ -146,6 +198,10 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
             _aiDesignCard(),
             const SizedBox(height: 16),
             _attendanceCard(),
+            if (_pendingPayments.isNotEmpty) ...[
+              const SizedBox(height: 16),
+              _paymentsInbox(),
+            ],
             const SizedBox(height: 20),
             Row(
               children: [
@@ -441,6 +497,101 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
                 ),
               ),
             ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ── Bandeja de comprobantes por revisar (pago manual con comprobante) ──
+  Widget _paymentsInbox() {
+    return Container(
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(16),
+        color: const Color(0xFFFFFBEB),
+        border: Border.all(color: const Color(0xFFFcd34d)),
+      ),
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.receipt_long_rounded, color: Color(0xFFD97706)),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text('Pagos por revisar (${_pendingPayments.length})',
+                    style: const TextStyle(
+                        fontSize: 16, fontWeight: FontWeight.bold)),
+              ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          const Text(
+            'Comprobantes que enviaron tus asistentes. Apruébalos para activar '
+            'su carné.',
+            style: TextStyle(fontSize: 12.5, color: Colors.black54),
+          ),
+          const SizedBox(height: 12),
+          ..._pendingPayments.map(_proofTile),
+        ],
+      ),
+    );
+  }
+
+  Widget _proofTile(EventPaymentView p) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.grey.shade200),
+      ),
+      child: Row(
+        children: [
+          GestureDetector(
+            onTap: p.hasProof ? () => _viewProof(p) : null,
+            child: Container(
+              width: 44,
+              height: 44,
+              decoration: BoxDecoration(
+                color: const Color(0xFFFEF3C7),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Icon(
+                p.hasProof ? Icons.image_rounded : Icons.payments_rounded,
+                color: const Color(0xFFD97706),
+              ),
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(p.customerName.isEmpty ? 'Asistente' : p.customerName,
+                    style: const TextStyle(fontWeight: FontWeight.w600)),
+                Text('Reportó \$${p.amount}${p.note.isEmpty ? '' : ' · ${p.note}'}',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontSize: 13, color: Colors.black54)),
+              ],
+            ),
+          ),
+          if (p.hasProof)
+            TextButton(
+              onPressed: () => _viewProof(p),
+              child: const Text('Ver'),
+            ),
+          FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: const Color(0xFF059669),
+              padding: const EdgeInsets.symmetric(horizontal: 14),
+              minimumSize: const Size(0, 38),
+            ),
+            onPressed: () => _approvePayment(p),
+            child: const Text('Aprobar'),
           ),
         ],
       ),

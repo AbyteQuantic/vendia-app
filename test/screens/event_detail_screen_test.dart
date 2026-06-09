@@ -19,6 +19,11 @@ class _FakeApi extends ApiService {
       regs;
 
   @override
+  Future<List<Map<String, dynamic>>> listEventPayments(String eventId,
+          {String status = 'pending'}) async =>
+      const [];
+
+  @override
   Future<void> issueEventCertificate(String eventId, String regId) async {
     certifiedRegId = regId;
   }

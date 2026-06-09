@@ -1289,6 +1289,36 @@ class ApiService {
     }
   }
 
+  /// Lista los comprobantes/pagos de un evento (por defecto los pendientes
+  /// de revisión) para la bandeja del organizador (F042).
+  Future<List<Map<String, dynamic>>> listEventPayments(String eventId,
+      {String status = 'pending'}) async {
+    try {
+      final response = await _dio.get(
+        '/api/v1/events/$eventId/payments',
+        queryParameters: {if (status.isNotEmpty) 'status': status},
+      );
+      final data = (response.data as Map<String, dynamic>)['data'] as List?;
+      return (data ?? []).cast<Map<String, dynamic>>();
+    } on DioException catch (e) {
+      throw AppError.fromDioException(e);
+    }
+  }
+
+  /// Aprueba un comprobante: su monto se cuenta y el carné se activa al
+  /// completar el precio (F042). Devuelve la inscripción actualizada.
+  Future<Map<String, dynamic>> approveEventPayment(
+      String eventId, String paymentId) async {
+    try {
+      final response = await _dio
+          .post('/api/v1/events/$eventId/payments/$paymentId/approve');
+      return (response.data as Map<String, dynamic>)['data']
+          as Map<String, dynamic>;
+    } on DioException catch (e) {
+      throw AppError.fromDioException(e);
+    }
+  }
+
   /// Lista los inscritos de un evento (panel del organizador, F042).
   Future<List<Map<String, dynamic>>> listEventRegistrations(
       String eventId) async {

@@ -245,6 +245,42 @@ class EventRegistrationView {
   }
 }
 
+/// Un comprobante/pago manual reportado por un asistente, en la bandeja de
+/// revisión del organizador (F042).
+class EventPaymentView {
+  final String id;
+  final String registrationId;
+  final String customerName;
+  final int amount;
+  final String proofUrl;
+  final String note;
+  final String status;
+
+  const EventPaymentView({
+    required this.id,
+    this.registrationId = '',
+    this.customerName = '',
+    this.amount = 0,
+    this.proofUrl = '',
+    this.note = '',
+    this.status = '',
+  });
+
+  bool get hasProof => proofUrl.isNotEmpty;
+
+  factory EventPaymentView.fromJson(Map<String, dynamic> json) {
+    return EventPaymentView(
+      id: (json['id'] ?? '').toString(),
+      registrationId: (json['registration_id'] as String?) ?? '',
+      customerName: (json['customer_name'] as String?) ?? '',
+      amount: (json['amount'] as num? ?? 0).toInt(),
+      proofUrl: (json['proof_url'] as String?) ?? '',
+      note: (json['note'] as String?) ?? '',
+      status: (json['status'] as String?) ?? '',
+    );
+  }
+}
+
 DateTime? _parseDate(dynamic raw) {
   if (raw == null) return null;
   if (raw is! String || raw.isEmpty) return null;
