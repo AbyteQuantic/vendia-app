@@ -90,6 +90,7 @@ class OnboardingStepperController extends ChangeNotifier {
     'manufactura': 'Fábrica/Manufactura',
     'reparacion_muebles': 'Reparación/Mueblería',
     'emprendimiento_general': 'Emprendimiento General',
+    'academias_instituciones': 'Academias e Instituciones',
   };
 
   /// Returns readable labels for all selected business types.

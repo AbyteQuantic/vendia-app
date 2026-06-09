@@ -65,6 +65,8 @@ class _BusinessProfileScreenState extends State<BusinessProfileScreen> {
     ('manufactura', Icons.precision_manufacturing_rounded, 'Manufactura'),
     ('reparacion_muebles', Icons.build_rounded, 'Reparación / Servicios'),
     ('emprendimiento_general', Icons.rocket_launch_rounded, 'Emprendimiento General'),
+    // F042 — academias/institutos: al elegirlo se activa el módulo de Eventos.
+    ('academias_instituciones', Icons.school_rounded, 'Academias e Instituciones'),
   ];
 
   // Legacy values that early-2026 tenants still carry in storage.

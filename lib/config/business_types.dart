@@ -37,6 +37,9 @@ const List<BusinessTypeMeta> kBusinessTypes = [
       'reparacion_muebles', Icons.build_rounded, 'Reparación / Servicios'),
   BusinessTypeMeta('emprendimiento_general', Icons.rocket_launch_rounded,
       'Emprendimiento'),
+  // F042 — academias/institutos: su tipo activa el módulo de Eventos.
+  BusinessTypeMeta('academias_instituciones', Icons.school_rounded,
+      'Academias e Instituciones'),
 ];
 
 /// Alias legacy → value vigente (mismo mapeo que el header del Dashboard).
