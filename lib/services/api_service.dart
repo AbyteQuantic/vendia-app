@@ -1235,6 +1235,19 @@ class ApiService {
     }
   }
 
+  /// Actualiza campos de un evento (PATCH parcial). Ej: la descripción
+  /// pública que verán los clientes en el catálogo (F042).
+  Future<Map<String, dynamic>> updateEvent(
+      String id, Map<String, dynamic> body) async {
+    try {
+      final response = await _dio.patch('/api/v1/events/$id', data: body);
+      return (response.data as Map<String, dynamic>)['data']
+          as Map<String, dynamic>;
+    } on DioException catch (e) {
+      throw AppError.fromDioException(e);
+    }
+  }
+
   /// Publica un evento (borrador → publicado).
   Future<Map<String, dynamic>> publishEvent(String id) async {
     try {

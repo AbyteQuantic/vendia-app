@@ -199,20 +199,22 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
               ),
             ),
             const SizedBox(height: 16),
-            // Descripción — alimenta a la IA y se muestra en el catálogo.
+            // Descripción — se muestra en el catálogo (detalle del evento) y
+            // alimenta a la IA como contexto. Admite texto largo y estructurado.
             TextFormField(
               key: const Key('event_description'),
               controller: _descCtrl,
-              minLines: 3,
-              maxLines: 6,
+              minLines: 4,
+              maxLines: 12,
               textCapitalization: TextCapitalization.sentences,
               decoration: const InputDecoration(
                 labelText: 'Descripción del evento',
                 alignLabelWithHint: true,
                 hintText:
-                    'De qué trata, qué incluye, a quién va dirigido… Entre más '
-                    'detalle, mejores serán la escarapela y el certificado que '
-                    'genera la IA.',
+                    'Describa el evento para sus clientes: de qué trata, qué '
+                    'incluye, a quién va dirigido, duración/horas, temario, '
+                    'requisitos previos… Esto se muestra en el link del '
+                    'catálogo y le da contexto a la IA para el afiche.',
               ),
             ),
             const SizedBox(height: 16),

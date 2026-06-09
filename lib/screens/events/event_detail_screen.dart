@@ -124,10 +124,8 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
             _HeroHeader(event: e),
             const SizedBox(height: 16),
             _infoCard(e, confirmed),
-            if (e.description.trim().isNotEmpty) ...[
-              const SizedBox(height: 16),
-              _descriptionCard(e.description),
-            ],
+            const SizedBox(height: 16),
+            _descriptionCard(e),
             const SizedBox(height: 16),
             if (e.status == EventStatus.borrador)
               SizedBox(
@@ -239,8 +237,9 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
     );
   }
 
-  // ── Descripción (la que alimenta a la IA y al catálogo) ───────────────
-  Widget _descriptionCard(String description) {
+  // ── Descripción pública (se muestra en el catálogo + contexto para la IA) ─
+  Widget _descriptionCard(Event e) {
+    final hasDesc = e.description.trim().isNotEmpty;
     return Card(
       elevation: 0,
       shape: RoundedRectangleBorder(
@@ -252,16 +251,107 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text('Descripción',
-                style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
-            const SizedBox(height: 8),
-            Text(description,
-                style: const TextStyle(
-                    fontSize: 15, height: 1.4, color: Colors.black87)),
+            Row(
+              children: [
+                const Expanded(
+                  child: Text('Descripción para el catálogo',
+                      style:
+                          TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
+                ),
+                TextButton.icon(
+                  key: const Key('detail_edit_description'),
+                  onPressed: _editDescription,
+                  style: TextButton.styleFrom(
+                    foregroundColor: _eventAccent,
+                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                    minimumSize: const Size(0, 36),
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  ),
+                  icon: const Icon(Icons.edit_outlined, size: 18),
+                  label: Text(hasDesc ? 'Editar' : 'Agregar'),
+                ),
+              ],
+            ),
+            const SizedBox(height: 4),
+            if (hasDesc)
+              Text(e.description,
+                  style: const TextStyle(
+                      fontSize: 15, height: 1.45, color: Colors.black87))
+            else
+              Text(
+                'Cuente de qué trata: temario, horas, requisitos, a quién va '
+                'dirigido… Esto se muestra a sus clientes en el link del '
+                'catálogo.',
+                style: TextStyle(
+                    fontSize: 14, height: 1.4, color: Colors.grey.shade500),
+              ),
           ],
         ),
       ),
     );
+  }
+
+  /// Edita la descripción pública. Envía el evento COMPLETO porque el PATCH
+  /// del backend reemplaza los campos enviados (un body parcial borraría
+  /// fecha/precio/cupo/lugar).
+  Future<void> _editDescription() async {
+    final controller = TextEditingController(text: _event.description);
+    final saved = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Descripción del evento'),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: TextField(
+            controller: controller,
+            autofocus: true,
+            minLines: 5,
+            maxLines: 12,
+            textCapitalization: TextCapitalization.sentences,
+            decoration: const InputDecoration(
+              alignLabelWithHint: true,
+              hintText:
+                  'De qué trata, qué incluye, duración/horas, temario, '
+                  'requisitos previos, a quién va dirigido…',
+              border: OutlineInputBorder(),
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('Cancelar'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(ctx).pop(controller.text.trim()),
+            child: const Text('Guardar'),
+          ),
+        ],
+      ),
+    );
+    if (saved == null) return; // cancelado
+    final e = _event;
+    final body = <String, dynamic>{
+      'type': e.type,
+      'title': e.title,
+      'description': saved,
+      'modality': e.modality,
+      'location_or_link': e.locationOrLink,
+      'price': e.price,
+      'capacity': e.capacity,
+      'installments_enabled': e.installmentsEnabled,
+      'installments_count': e.installmentsCount,
+      if (e.startAt != null) 'start_at': e.startAt!.toUtc().toIso8601String(),
+      if (e.endAt != null) 'end_at': e.endAt!.toUtc().toIso8601String(),
+    };
+    try {
+      final updated = await _api.updateEvent(e.id, body);
+      if (!mounted) return;
+      setState(() => _event = Event.fromJson(updated));
+      _snack('Descripción actualizada', kind: EventSnackKind.success);
+    } catch (_) {
+      _snack('No pudimos guardar la descripción.', kind: EventSnackKind.error);
+    }
   }
 
   // ── Sección destacada: diseñar piezas con IA ──────────────────────────
