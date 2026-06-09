@@ -10,6 +10,7 @@ import '../../models/event.dart';
 import '../../services/api_service.dart';
 import '../../services/auth_service.dart';
 import 'event_checkin_scan_screen.dart';
+import 'event_design_screen.dart';
 
 class EventDetailScreen extends StatefulWidget {
   final Event event;
@@ -85,6 +86,18 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
     }
   }
 
+  Future<void> _openDesigner(EventDesignKind kind) async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => EventDesignScreen(
+          eventId: _event.id,
+          kind: kind,
+          apiOverride: widget.apiOverride,
+        ),
+      ),
+    );
+  }
+
   void _snack(String m) =>
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(m)));
 
@@ -123,6 +136,28 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
                     onPressed: () => _openScanner(ScanType.checkOut),
                     icon: const Icon(Icons.logout_rounded),
                     label: const Text('Salida'),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton.icon(
+                    key: const Key('detail_design_badge'),
+                    onPressed: () => _openDesigner(EventDesignKind.badge),
+                    icon: const Icon(Icons.badge_outlined),
+                    label: const Text('Escarapela'),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: OutlinedButton.icon(
+                    key: const Key('detail_design_cert'),
+                    onPressed: () => _openDesigner(EventDesignKind.certificate),
+                    icon: const Icon(Icons.workspace_premium_outlined),
+                    label: const Text('Certificado'),
                   ),
                 ),
               ],

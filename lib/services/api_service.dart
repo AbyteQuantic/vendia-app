@@ -1286,6 +1286,33 @@ class ApiService {
     }
   }
 
+  /// Genera el diseño de la ESCARAPELA del evento con IA y devuelve la URL.
+  /// El backend persiste la URL en la plantilla del evento (F042 FR-11).
+  Future<String> generateEventBadge(String eventId) async {
+    try {
+      final response =
+          await _dio.post('/api/v1/events/$eventId/badge/ai-generate');
+      final data = (response.data as Map<String, dynamic>)['data']
+          as Map<String, dynamic>;
+      return (data['image_url'] as String?) ?? '';
+    } on DioException catch (e) {
+      throw AppError.fromDioException(e);
+    }
+  }
+
+  /// Genera el diseño del CERTIFICADO del evento con IA (F042 FR-12).
+  Future<String> generateEventCertificate(String eventId) async {
+    try {
+      final response =
+          await _dio.post('/api/v1/events/$eventId/certificate/ai-generate');
+      final data = (response.data as Map<String, dynamic>)['data']
+          as Map<String, dynamic>;
+      return (data['image_url'] as String?) ?? '';
+    } on DioException catch (e) {
+      throw AppError.fromDioException(e);
+    }
+  }
+
   /// Historial de compras de un cliente: registro base + summary
   /// (gastado, compras, primera/última visita) + lista de ventas.
   ///
