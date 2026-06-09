@@ -10,6 +10,7 @@ import 'package:flutter/services.dart';
 
 import '../../models/event.dart';
 import '../../services/api_service.dart';
+import '../../services/app_error.dart';
 import '../../services/auth_service.dart';
 
 class CreateEventScreen extends StatefulWidget {
@@ -71,11 +72,45 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
     } catch (e) {
       if (!mounted) return;
       setState(() => _saving = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-            content: Text('No pudimos crear el evento. Intente de nuevo.')),
-      );
+      _showError(_friendlyError(e));
     }
+  }
+
+  /// Mensaje claro: usa el del backend (AppError trae el `{"error": ...}` en
+  /// español) y si no, uno genérico.
+  String _friendlyError(Object e) {
+    final msg = e is AppError ? e.message : e.toString();
+    if (msg.trim().isEmpty || msg.contains('Exception')) {
+      return 'No pudimos crear el evento. Intente de nuevo.';
+    }
+    return msg;
+  }
+
+  /// SnackBar de error con buen estilo: flotante, redondeado, rojo, con ícono.
+  void _showError(String message) {
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          behavior: SnackBarBehavior.floating,
+          backgroundColor: const Color(0xFFDC2626),
+          margin: const EdgeInsets.all(16),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(14),
+          ),
+          duration: const Duration(seconds: 4),
+          content: Row(
+            children: [
+              const Icon(Icons.error_outline_rounded, color: Colors.white),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(message,
+                    style: const TextStyle(color: Colors.white, fontSize: 15)),
+              ),
+            ],
+          ),
+        ),
+      );
   }
 
   @override
@@ -95,8 +130,9 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
                 hintText: 'Ej: Curso de repostería',
               ),
               textCapitalization: TextCapitalization.sentences,
-              validator: (v) =>
-                  (v == null || v.trim().length < 2) ? 'Escriba un nombre' : null,
+              validator: (v) => (v == null || v.trim().length < 2)
+                  ? 'Escriba un nombre'
+                  : null,
             ),
             const SizedBox(height: 16),
             DropdownButtonFormField<String>(
@@ -157,7 +193,8 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
                         width: 20,
                         child: CircularProgressIndicator(strokeWidth: 2),
                       )
-                    : const Text('Guardar evento', style: TextStyle(fontSize: 17)),
+                    : const Text('Guardar evento',
+                        style: TextStyle(fontSize: 17)),
               ),
             ),
           ],
