@@ -28,12 +28,12 @@ import '../inventory/reorder_screen.dart';
 import '../pos/pos_screen.dart';
 import '../../database/sync/sales_sync.dart';
 import '../../widgets/sync_status_banner.dart';
-import '../../widgets/active_capabilities_section.dart';
 import '../../widgets/capabilities_reel.dart';
 import '../../widgets/dashboard_module_grid.dart';
 import '../../widgets/kpi_carousel.dart';
 import '../../widgets/business_types_bar.dart';
 import '../../config/dashboard_modules.dart';
+import '../../screens/capabilities/capabilities_registry.dart';
 import '../../utils/credit_labels.dart';
 import 'business_profile_screen.dart';
 import 'financial_dashboard_screen.dart';
@@ -543,6 +543,44 @@ class _DashboardScreenState extends State<DashboardScreen> {
     return cards;
   }
 
+  /// Capacidades opcionales ACTIVAS como cards del MISMO carrusel inmersivo
+  /// que los KPIs (un solo carrusel — pedido del dueño). Usa la foto/acento
+  /// del registry F040 y navega al módulo funcional. Reemplaza la sección
+  /// "Sus capacidades activas" separada.
+  List<KpiCardData> _buildActiveCapabilityCards(BuildContext context) {
+    final cards = <KpiCardData>[];
+    for (final m in dashboardModules) {
+      if (m.layer != ModuleLayer.optional || m.capability == null) continue;
+      if (!capabilityEnabled(m.capability, _featureFlags)) continue;
+      final meta = capabilitiesRegistry[m.capability];
+      cards.add(KpiCardData(
+        title: m.title,
+        value: 'Activo',
+        subtitle: m.subtitle,
+        photoUrl: meta?.heroPhotoUrl ?? '',
+        fallbackIcon: m.icon,
+        accentColor: m.color,
+        onTap: () async {
+          await Navigator.of(context).push(
+            MaterialPageRoute(builder: (_) => m.destination()),
+          );
+          if (mounted) _loadCapabilityFlags();
+        },
+      ));
+    }
+    return cards;
+  }
+
+  /// IDs de capacidades opcionales activas — se muestran en el carrusel, así
+  /// que se EXCLUYEN de la grilla para no duplicarlas (pedido del dueño).
+  Set<String> _activeOptionalIds() => dashboardModules
+      .where((m) =>
+          m.layer == ModuleLayer.optional &&
+          m.capability != null &&
+          capabilityEnabled(m.capability, _featureFlags))
+      .map((m) => m.id)
+      .toSet();
+
   String _topProduct(List<LocalSale> sales) {
     if (sales.isEmpty) return '—';
     final counts = <String, int>{};
@@ -696,7 +734,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 child: Padding(
                   padding: const EdgeInsets.fromLTRB(0, 8, 0, 4),
                   child: KpiCarousel(
-                    cards: _buildKpiCards(context),
+                    // Un solo carrusel: KPIs + capacidades activas (Eventos,
+                    // etc.). La sección "Sus capacidades activas" separada se
+                    // eliminó; las activas se excluyen de la grilla abajo.
+                    cards: [
+                      ..._buildKpiCards(context),
+                      ..._buildActiveCapabilityCards(context),
+                    ],
                   ),
                 ),
               ),
@@ -774,19 +818,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   ),
                 ),
 
-                // ── F040: Cards destacadas de capacidades activadas ──
-                // Una card por cada capacidad opcional ACTIVA, con foto
-                // real + acción al módulo + ⚙️. Se inserta antes del
-                // grid normal para que el dueño vea "lo que ya tiene
-                // funcionando" arriba, no perdido entre los módulos
-                // core. Si no hay activas, retorna SizedBox.shrink.
-                SliverToBoxAdapter(
-                  child: ActiveCapabilitiesSection(
-                    key: const Key('dashboard_active_capabilities'),
-                    flags: _featureFlags,
-                    onReturned: _loadCapabilityFlags,
-                  ),
-                ),
+                // F040/F042: las capacidades activas ya NO van en una sección
+                // separada — se fusionaron en el carrusel de arriba (KPIs +
+                // capacidades) y se excluyen de la grilla para no duplicarse.
 
                 // ── F036: Grid adaptativo de módulos ────────────────
                 // Reemplaza el antiguo stack imperativo de tarjetas
@@ -795,11 +829,21 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 // Las 4 categorías se construyen filtrando el registro
                 // `dashboardModules` por el tipo de negocio + flags.
                 SliverToBoxAdapter(
-                  child: DashboardModuleGrid(
-                    businessType: _businessType,
-                    flags: _featureFlags,
-                    modules: _catalogDashboard?.grid,
-                  ),
+                  child: Builder(builder: (context) {
+                    // Excluir capacidades activas (van en el carrusel) para
+                    // que no aparezcan duplicadas en la grilla.
+                    final activeIds = _activeOptionalIds();
+                    final source = _catalogDashboard?.grid ??
+                        visibleModulesFor(_businessType, _featureFlags);
+                    final gridModules = source
+                        .where((m) => !activeIds.contains(m.id))
+                        .toList();
+                    return DashboardModuleGrid(
+                      businessType: _businessType,
+                      flags: _featureFlags,
+                      modules: gridModules,
+                    );
+                  }),
                 ),
 
                 // ── Recent Sales Header ─────────────────────────────
