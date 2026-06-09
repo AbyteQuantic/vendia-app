@@ -1203,6 +1203,47 @@ class ApiService {
     }
   }
 
+  // ── Eventos (F042) ───────────────────────────────────────────────
+
+  /// Lista los eventos del tenant. `status` opcional filtra por estado.
+  /// Spec: specs/042-modulo-eventos/spec.md
+  Future<List<Map<String, dynamic>>> listEvents({String? status}) async {
+    try {
+      final params = <String, dynamic>{};
+      if (status != null && status.isNotEmpty) params['status'] = status;
+      final response =
+          await _dio.get('/api/v1/events', queryParameters: params);
+      final data = (response.data as Map<String, dynamic>)['data'] as List?;
+      return (data ?? const [])
+          .whereType<Map<String, dynamic>>()
+          .toList(growable: false);
+    } on DioException catch (e) {
+      throw AppError.fromDioException(e);
+    }
+  }
+
+  /// Crea un evento. Devuelve el registro creado (`data`).
+  Future<Map<String, dynamic>> createEvent(Map<String, dynamic> body) async {
+    try {
+      final response = await _dio.post('/api/v1/events', data: body);
+      return (response.data as Map<String, dynamic>)['data']
+          as Map<String, dynamic>;
+    } on DioException catch (e) {
+      throw AppError.fromDioException(e);
+    }
+  }
+
+  /// Publica un evento (borrador → publicado).
+  Future<Map<String, dynamic>> publishEvent(String id) async {
+    try {
+      final response = await _dio.post('/api/v1/events/$id/publish');
+      return (response.data as Map<String, dynamic>)['data']
+          as Map<String, dynamic>;
+    } on DioException catch (e) {
+      throw AppError.fromDioException(e);
+    }
+  }
+
   /// Historial de compras de un cliente: registro base + summary
   /// (gastado, compras, primera/última visita) + lista de ventas.
   ///

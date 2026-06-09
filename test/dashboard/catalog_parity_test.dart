@@ -38,6 +38,8 @@ String? _capKey(OptionalCapability? c) {
       return 'enable_tables';
     case OptionalCapability.fractionalUnits:
       return 'enable_fractional_units';
+    case OptionalCapability.events:
+      return 'enable_events';
     case null:
       return null;
   }

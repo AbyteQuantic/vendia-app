@@ -26,6 +26,7 @@ import '../screens/purchases/purchase_orders_screen.dart';
 import '../screens/quotes/quotes_list_screen.dart';
 import '../screens/recipes/recipe_step1_screen.dart';
 import '../screens/work_orders/work_orders_screen.dart';
+import '../screens/events/events_list_screen.dart';
 
 typedef ScreenBuilder = Widget Function();
 
@@ -47,6 +48,7 @@ final Map<String, ScreenBuilder> kScreenRegistry = {
   'promotions': PromotionsListScreen.new,
   'promo_management': PromoManagementScreen.new,
   'admin_hub': AdminHubScreen.new,
+  'eventos': EventsListScreen.new,
 };
 
 /// True si la app instalada conoce la pantalla nativa de [screenKey].

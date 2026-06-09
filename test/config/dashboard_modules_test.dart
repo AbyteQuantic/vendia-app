@@ -184,6 +184,7 @@ void main() {
         enableSupplies: true,
         enableFurnitureJobs: true,
         enablePurchaseOrders: true,
+        enableEvents: true,
       );
       final unactivated = unactivatedOptionalModules(flags);
       expect(unactivated, isEmpty);

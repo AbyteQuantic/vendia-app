@@ -440,6 +440,11 @@ class FeatureFlags {
   /// `tenants.enable_purchase_orders`. Default OFF.
   final bool enablePurchaseOrders;
 
+  /// F042: módulo de eventos (cursos / conferencias / hackatones).
+  /// Self-activado por el tendero desde el reel "Descubre más opciones".
+  /// Espejo de `tenants.feature_flags.enable_events`. Default OFF.
+  final bool enableEvents;
+
   const FeatureFlags({
     this.enableTables = false,
     this.enableKDS = false,
@@ -456,6 +461,7 @@ class FeatureFlags {
     this.enableSupplies = false,
     this.enableFurnitureJobs = false,
     this.enablePurchaseOrders = false,
+    this.enableEvents = false,
   });
 
   factory FeatureFlags.fromJson(Map<String, dynamic> json) => FeatureFlags(
@@ -486,5 +492,7 @@ class FeatureFlags {
         enableSupplies: json['enable_supplies'] == true,
         enableFurnitureJobs: json['enable_furniture_jobs'] == true,
         enablePurchaseOrders: json['enable_purchase_orders'] == true,
+        // F042 — default false: el módulo de eventos se activa self-service.
+        enableEvents: json['enable_events'] == true,
       );
 }

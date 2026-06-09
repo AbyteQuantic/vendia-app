@@ -23,6 +23,7 @@ import '../purchases/purchase_orders_screen.dart';
 import '../recipes/recipe_step1_screen.dart';
 import '../tables/tables_screen.dart';
 import '../work_orders/work_orders_screen.dart';
+import '../events/events_list_screen.dart';
 import 'capability_scaffold.dart';
 
 /// Catálogo inmutable de la metadata de cada capacidad. Las claves
@@ -212,5 +213,23 @@ final Map<OptionalCapability, CapabilityMetadata> capabilitiesRegistry = {
     primaryActionLabel: 'Ver mis órdenes',
     primaryActionIcon: Icons.shopping_cart_rounded,
     primaryDestination: PurchaseOrdersScreen.new,
+  ),
+  // F042 — Módulo de Eventos.
+  OptionalCapability.events: CapabilityMetadata(
+    title: 'Eventos',
+    tagline: 'Cobre cursos, conferencias y hackatones',
+    description:
+        'Cree eventos, véndalos en su catálogo, cobre la inscripción con '
+        'sus propios métodos de pago (incluso a cuotas), entregue '
+        'escarapelas y certificados, y controle la asistencia con QR.',
+    heroPhotoUrl:
+        'https://images.pexels.com/photos/2774556/pexels-photo-2774556.jpeg?auto=compress&cs=tinysrgb&w=1280&h=600&fit=crop',
+    fallbackIcon: Icons.event_rounded,
+    accentColor: const Color(0xFF0EA5E9),
+    configKey: 'enable_events',
+    profileKey: 'enable_events',
+    primaryActionLabel: 'Ver mis eventos',
+    primaryActionIcon: Icons.event_rounded,
+    primaryDestination: EventsListScreen.new,
   ),
 };

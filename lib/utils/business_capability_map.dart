@@ -116,6 +116,15 @@ enum OptionalCapability {
   /// Default OFF; migra de byType (cooking) a opt-in. Tenants con
   /// órdenes preexistentes ya quedaron en true por el backfill F037.
   purchaseOrders,
+
+  /// "Organiza eventos (cursos / conferencias / hackatones)" (F042).
+  /// → enable_events
+  ///
+  /// Default OFF; no implícita en ningún tipo de negocio — self-activada
+  /// por el tendero desde el reel "Descubre más opciones". Cuando está ON:
+  /// el Dashboard muestra "Eventos" para crear, publicar y gestionar la
+  /// inscripción/asistencia.
+  events,
 }
 
 /// Retorna las [OptionalCapability] que el [businessType] YA concede
