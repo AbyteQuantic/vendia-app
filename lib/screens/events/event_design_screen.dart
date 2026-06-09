@@ -22,6 +22,10 @@ class EventDesignScreen extends StatefulWidget {
 
   /// URL del diseño actual (si ya existe), para mostrarlo al abrir.
   final String? currentImageUrl;
+
+  /// Texto inicial del brief (típicamente la descripción del evento), para
+  /// que el organizador no parta de cero al guiar a la IA.
+  final String? initialBrief;
   final ApiService? apiOverride;
 
   const EventDesignScreen({
@@ -29,6 +33,7 @@ class EventDesignScreen extends StatefulWidget {
     required this.eventId,
     required this.kind,
     this.currentImageUrl,
+    this.initialBrief,
     this.apiOverride,
   });
 
@@ -38,6 +43,7 @@ class EventDesignScreen extends StatefulWidget {
 
 class _EventDesignScreenState extends State<EventDesignScreen> {
   late final ApiService _api;
+  late final TextEditingController _briefCtrl;
   String? _imageUrl;
   bool _generating = false;
   bool _uploading = false;
@@ -52,11 +58,32 @@ class _EventDesignScreenState extends State<EventDesignScreen> {
         EventDesignKind.certificate => 'certificate',
       };
 
+  /// Pista del campo de indicaciones según la pieza.
+  String get _briefHint => switch (widget.kind) {
+        EventDesignKind.poster =>
+          'Cuente de qué trata y qué quiere ver. Ej: "Curso de repostería; '
+              'muestre manos decorando un pastel, colores pastel, ambiente '
+              'cálido y profesional".',
+        EventDesignKind.badge =>
+          'Estilo y colores de la escarapela. Ej: "Elegante, azul y dorado, '
+              'logo del curso de repostería".',
+        EventDesignKind.certificate =>
+          'Estilo del certificado. Ej: "Formal, marco clásico, tonos sobrios '
+              'acordes a un curso de repostería".',
+      };
+
   @override
   void initState() {
     super.initState();
     _api = widget.apiOverride ?? ApiService(AuthService());
     _imageUrl = widget.currentImageUrl;
+    _briefCtrl = TextEditingController(text: widget.initialBrief?.trim() ?? '');
+  }
+
+  @override
+  void dispose() {
+    _briefCtrl.dispose();
+    super.dispose();
   }
 
   /// Camino B: el organizador sube su propia imagen para la pieza.
@@ -91,12 +118,15 @@ class _EventDesignScreenState extends State<EventDesignScreen> {
       _generating = true;
       _error = null;
     });
+    final brief = _briefCtrl.text.trim();
     try {
       final url = switch (widget.kind) {
-        EventDesignKind.poster => await _api.generateEventPoster(widget.eventId),
-        EventDesignKind.badge => await _api.generateEventBadge(widget.eventId),
+        EventDesignKind.poster =>
+          await _api.generateEventPoster(widget.eventId, brief: brief),
+        EventDesignKind.badge =>
+          await _api.generateEventBadge(widget.eventId, brief: brief),
         EventDesignKind.certificate =>
-          await _api.generateEventCertificate(widget.eventId),
+          await _api.generateEventCertificate(widget.eventId, brief: brief),
       };
       if (!mounted) return;
       setState(() {
@@ -153,7 +183,24 @@ class _EventDesignScreenState extends State<EventDesignScreen> {
                 padding: const EdgeInsets.only(bottom: 8),
                 child: Text(_error!, style: const TextStyle(color: Colors.red)),
               ),
-            const SizedBox(height: 8),
+            // Brief: indicación para la IA. Pre-cargado con la descripción del
+            // evento; el organizador puede ajustarlo para guiar la pieza.
+            TextField(
+              key: const Key('design_brief'),
+              controller: _briefCtrl,
+              enabled: !_busy,
+              minLines: 2,
+              maxLines: 3,
+              textCapitalization: TextCapitalization.sentences,
+              decoration: InputDecoration(
+                labelText: 'Indicaciones para la IA',
+                alignLabelWithHint: true,
+                hintText: _briefHint,
+                border: const OutlineInputBorder(),
+                isDense: true,
+              ),
+            ),
+            const SizedBox(height: 10),
             // Dos caminos lado a lado: generar con IA o subir imagen propia.
             Row(
               children: [

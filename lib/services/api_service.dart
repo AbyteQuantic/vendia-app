@@ -1286,12 +1286,23 @@ class ApiService {
     }
   }
 
+  /// Cuerpo opcional `{brief}` para los generadores con IA: la indicación
+  /// libre del organizador ("muestra manos decorando un pastel"). Se omite
+  /// cuando está vacío para no enviar un body innecesario.
+  Object? _briefBody(String? brief) {
+    final b = brief?.trim() ?? '';
+    return b.isEmpty ? null : {'brief': b};
+  }
+
   /// Genera el diseño de la ESCARAPELA del evento con IA y devuelve la URL.
   /// El backend persiste la URL en la plantilla del evento (F042 FR-11).
-  Future<String> generateEventBadge(String eventId) async {
+  /// [brief] es la indicación opcional del organizador para guiar a la IA.
+  Future<String> generateEventBadge(String eventId, {String? brief}) async {
     try {
-      final response =
-          await _dio.post('/api/v1/events/$eventId/badge/ai-generate');
+      final response = await _dio.post(
+        '/api/v1/events/$eventId/badge/ai-generate',
+        data: _briefBody(brief),
+      );
       final data = (response.data as Map<String, dynamic>)['data']
           as Map<String, dynamic>;
       return (data['image_url'] as String?) ?? '';
@@ -1301,10 +1312,13 @@ class ApiService {
   }
 
   /// Genera el diseño del CERTIFICADO del evento con IA (F042 FR-12).
-  Future<String> generateEventCertificate(String eventId) async {
+  /// [brief] es la indicación opcional del organizador para guiar a la IA.
+  Future<String> generateEventCertificate(String eventId, {String? brief}) async {
     try {
-      final response =
-          await _dio.post('/api/v1/events/$eventId/certificate/ai-generate');
+      final response = await _dio.post(
+        '/api/v1/events/$eventId/certificate/ai-generate',
+        data: _briefBody(brief),
+      );
       final data = (response.data as Map<String, dynamic>)['data']
           as Map<String, dynamic>;
       return (data['image_url'] as String?) ?? '';
@@ -1315,10 +1329,14 @@ class ApiService {
 
   /// Genera el AFICHE publicitario del evento con IA — la pieza que se muestra
   /// en el catálogo público (el link que se comparte por WhatsApp). Sin QR.
-  Future<String> generateEventPoster(String eventId) async {
+  /// [brief] es la indicación opcional del organizador para guiar a la IA
+  /// (escena, estilo, elementos de la pieza).
+  Future<String> generateEventPoster(String eventId, {String? brief}) async {
     try {
-      final response =
-          await _dio.post('/api/v1/events/$eventId/poster/ai-generate');
+      final response = await _dio.post(
+        '/api/v1/events/$eventId/poster/ai-generate',
+        data: _briefBody(brief),
+      );
       final data = (response.data as Map<String, dynamic>)['data']
           as Map<String, dynamic>;
       return (data['image_url'] as String?) ?? '';

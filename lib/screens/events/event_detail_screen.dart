@@ -98,6 +98,9 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
         builder: (_) => EventDesignScreen(
           eventId: _event.id,
           kind: kind,
+          // Pre-carga el brief con la descripción para que la IA tenga
+          // contexto desde el primer intento.
+          initialBrief: _event.description,
           apiOverride: widget.apiOverride,
         ),
       ),

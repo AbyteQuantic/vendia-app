@@ -12,7 +12,7 @@ class _FakeApi extends ApiService {
   int badgeCalls = 0;
 
   @override
-  Future<String> generateEventBadge(String eventId) async {
+  Future<String> generateEventBadge(String eventId, {String? brief}) async {
     badgeCalls++;
     // data URL para que el preview use Image.memory (sin red en test).
     return 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==';
@@ -62,6 +62,22 @@ void main() {
     expect(find.byKey(const Key('design_generate')), findsOneWidget);
     expect(find.byKey(const Key('design_upload')), findsOneWidget);
     expect(find.text('Subir mi imagen'), findsOneWidget);
+  });
+
+  testWidgets('campo de indicaciones visible y precargado con la descripción',
+      (tester) async {
+    await tester.pumpWidget(_wrap(EventDesignScreen(
+      eventId: 'e1',
+      kind: EventDesignKind.poster,
+      initialBrief: 'Curso de repostería para principiantes',
+      apiOverride: _FakeApi(),
+    )));
+    await tester.pump();
+
+    final brief = find.byKey(const Key('design_brief'));
+    expect(brief, findsOneWidget);
+    // Precargado con la descripción del evento para no partir de cero.
+    expect(find.text('Curso de repostería para principiantes'), findsOneWidget);
   });
 
   testWidgets('"Usar este diseño" cierra devolviendo la URL', (tester) async {
