@@ -54,17 +54,64 @@ class AuthService {
   // demás la reutilizan. En móvil el cambio es funcionalmente neutro.
   // Ver specs/011-web-auth-token/spec.md §2.
 
+  /// Refresca el cache local de `feature_flags` + `business_types` a
+  /// partir del shape que devuelve `GET/PATCH /api/v1/store/profile`.
+  /// Lo usa `CapabilityScaffold` después de activar/desactivar una
+  /// capacidad para que el Dashboard vea el cambio al volver — el
+  /// Dashboard lee de disco vía [getFeatureFlags], no del backend.
+  ///
+  /// Falla silenciosa: si el shape no trae `feature_flags`, el cache
+  /// queda como estaba.
+  Future<void> saveFeatureFlagsFromProfile(
+      Map<String, dynamic> profile) async {
+    await _saveFeatureFlags(profile);
+  }
+
   Future<void> _saveFeatureFlags(Map<String, dynamic> source) async {
-    final flags = source['feature_flags'];
+    // El backend devuelve un shape mixto: `feature_flags` es un
+    // sub-objeto JSONB con los flags VIEJOS (kds/tips/tables/services/
+    // custom_billing/fractional_units), pero los flags NUEVOS
+    // (enable_marketing_hub, enable_quotes, enable_promotions, etc.
+    // — todo lo agregado por F029-F037) viven como columnas
+    // top-level del tenant. Si solo persistimos `source['feature_flags']`
+    // perdemos los nuevos y el Dashboard nunca los ve hasta el
+    // siguiente PATCH (que tampoco los persistía hasta hoy).
+    //
+    // Solución: mergear ambos en un mismo blob antes de escribir a
+    // disco. `FeatureFlags.fromJson` ya entiende las dos formas.
+    final flagsSub = source['feature_flags'];
+    final merged = <String, dynamic>{};
+    if (flagsSub is Map) {
+      merged.addAll(flagsSub.map((k, v) => MapEntry(k.toString(), v)));
+    }
+    const topLevelKeys = [
+      'enable_marketing_hub',
+      'enable_quotes',
+      'enable_promotions',
+      'enable_customer_management',
+      'enable_recipes',
+      'enable_supplies',
+      'enable_furniture_jobs',
+      'enable_purchase_orders',
+      'enable_price_tiers',
+    ];
+    for (final k in topLevelKeys) {
+      if (source.containsKey(k)) {
+        merged[k] = source[k];
+      }
+    }
     final types = source['business_types'];
     await _storage.write(
       key: _keyFeatureFlags,
-      value: flags is Map ? jsonEncode(flags) : null,
+      value: merged.isEmpty ? null : jsonEncode(merged),
     );
-    await _storage.write(
-      key: _keyBusinessTypes,
-      value: types is List ? jsonEncode(types) : null,
-    );
+    // Solo sobrescribimos los tipos cuando el source TRAE el array. El
+    // login envía `business_type` (singular) pero NO `business_types`
+    // (plural), y antes esto nulaba la cache en cada login aunque el
+    // tenant tuviera varios tipos. Igual criterio que `onboarding_completed`.
+    if (types is List) {
+      await _storage.write(key: _keyBusinessTypes, value: jsonEncode(types));
+    }
     // F028: persist credit_label_mode — default 'fiar' when absent.
     final mode = source['credit_label_mode'];
     await _storage.write(
@@ -169,6 +216,17 @@ class AuthService {
   /// Update cached logo URL after upload.
   Future<void> updateLogoUrl(String url) =>
       _storage.write(key: _keyLogoUrl, value: url);
+
+  /// Persiste SOLO la lista de tipos de negocio, sin tocar los feature
+  /// flags. Útil cuando el Dashboard sincroniza los tipos desde el
+  /// backend (`fetchBusinessProfile`) — el login trae `business_type`
+  /// singular pero NO el array `business_types`, así que la cache quedaba
+  /// vacía. No usar `saveFeatureFlagsFromProfile` para esto: ese merge
+  /// podría borrar los flags si la respuesta no los incluye.
+  Future<void> setBusinessTypes(List<String> types) => _storage.write(
+        key: _keyBusinessTypes,
+        value: types.isEmpty ? null : jsonEncode(types),
+      );
 
   Future<String?> getTenantId() async {
     return _storage.read(key: _keyTenantId);
@@ -382,6 +440,11 @@ class FeatureFlags {
   /// `tenants.enable_purchase_orders`. Default OFF.
   final bool enablePurchaseOrders;
 
+  /// F042: módulo de eventos (cursos / conferencias / hackatones).
+  /// Self-activado por el tendero desde el reel "Descubre más opciones".
+  /// Espejo de `tenants.feature_flags.enable_events`. Default OFF.
+  final bool enableEvents;
+
   const FeatureFlags({
     this.enableTables = false,
     this.enableKDS = false,
@@ -398,6 +461,7 @@ class FeatureFlags {
     this.enableSupplies = false,
     this.enableFurnitureJobs = false,
     this.enablePurchaseOrders = false,
+    this.enableEvents = false,
   });
 
   factory FeatureFlags.fromJson(Map<String, dynamic> json) => FeatureFlags(
@@ -428,5 +492,7 @@ class FeatureFlags {
         enableSupplies: json['enable_supplies'] == true,
         enableFurnitureJobs: json['enable_furniture_jobs'] == true,
         enablePurchaseOrders: json['enable_purchase_orders'] == true,
+        // F042 — default false: el módulo de eventos se activa self-service.
+        enableEvents: json['enable_events'] == true,
       );
 }

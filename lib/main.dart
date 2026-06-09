@@ -157,7 +157,13 @@ class _VendIAAppState extends State<VendIAApp> {
   /// Sync the OFF catalog to Isar in background for offline-first autocomplete.
   Future<void> _syncCatalogInBackground() async {
     try {
-      final api = ApiService(AuthService());
+      // Race con AuthService cargando el token desde disco al arranque
+      // (mismo gate que `_syncSalesOnStart` y `_loadBranches`). Sin el
+      // chequeo, el primer call sale sin Authorization → 401 → cascada
+      // de Uncaught Errors visibles en consola en cada arranque.
+      final auth = AuthService();
+      if (!await auth.hasSession()) return;
+      final api = ApiService(auth);
       final items = await api.fetchCatalogSync();
       final products = items
           .map((json) => LocalCatalogProduct.fromJson(json))

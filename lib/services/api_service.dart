@@ -1203,6 +1203,47 @@ class ApiService {
     }
   }
 
+  // ── Eventos (F042) ───────────────────────────────────────────────
+
+  /// Lista los eventos del tenant. `status` opcional filtra por estado.
+  /// Spec: specs/042-modulo-eventos/spec.md
+  Future<List<Map<String, dynamic>>> listEvents({String? status}) async {
+    try {
+      final params = <String, dynamic>{};
+      if (status != null && status.isNotEmpty) params['status'] = status;
+      final response =
+          await _dio.get('/api/v1/events', queryParameters: params);
+      final data = (response.data as Map<String, dynamic>)['data'] as List?;
+      return (data ?? const [])
+          .whereType<Map<String, dynamic>>()
+          .toList(growable: false);
+    } on DioException catch (e) {
+      throw AppError.fromDioException(e);
+    }
+  }
+
+  /// Crea un evento. Devuelve el registro creado (`data`).
+  Future<Map<String, dynamic>> createEvent(Map<String, dynamic> body) async {
+    try {
+      final response = await _dio.post('/api/v1/events', data: body);
+      return (response.data as Map<String, dynamic>)['data']
+          as Map<String, dynamic>;
+    } on DioException catch (e) {
+      throw AppError.fromDioException(e);
+    }
+  }
+
+  /// Publica un evento (borrador → publicado).
+  Future<Map<String, dynamic>> publishEvent(String id) async {
+    try {
+      final response = await _dio.post('/api/v1/events/$id/publish');
+      return (response.data as Map<String, dynamic>)['data']
+          as Map<String, dynamic>;
+    } on DioException catch (e) {
+      throw AppError.fromDioException(e);
+    }
+  }
+
   /// Historial de compras de un cliente: registro base + summary
   /// (gastado, compras, primera/última visita) + lista de ventas.
   ///
@@ -2233,6 +2274,34 @@ class ApiService {
     try {
       final response = await _dio.get('/api/v1/store/config');
       return _extractData(response);
+    } on DioException catch (e) {
+      throw AppError.fromDioException(e);
+    }
+  }
+
+  /// F041 — catálogo dinámico de módulos/tipos. Soporta ETag/304: si
+  /// [etag] coincide con el del servidor, devuelve `notModified: true` y
+  /// `data: null` (la app conserva su cache). Devuelve además el ETag
+  /// nuevo para guardarlo.
+  Future<({Map<String, dynamic>? data, String etag, bool notModified})>
+      fetchBusinessCatalog({String? etag}) async {
+    try {
+      final response = await _dio.get(
+        '/api/v1/catalog',
+        options: Options(
+          headers: etag != null && etag.isNotEmpty
+              ? {'If-None-Match': etag}
+              : null,
+          // 304 es una respuesta válida (no error) para el flujo de cache.
+          validateStatus: (s) => s != null && s < 500,
+        ),
+      );
+      final newEtag =
+          (response.headers.value('etag') ?? etag ?? '').toString();
+      if (response.statusCode == 304) {
+        return (data: null, etag: newEtag, notModified: true);
+      }
+      return (data: _extractData(response), etag: newEtag, notModified: false);
     } on DioException catch (e) {
       throw AppError.fromDioException(e);
     }

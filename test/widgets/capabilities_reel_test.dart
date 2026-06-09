@@ -14,8 +14,9 @@ import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:vendia_pos/config/dashboard_modules.dart';
-import 'package:vendia_pos/screens/dashboard/business_capabilities_screen.dart';
+import 'package:vendia_pos/screens/quotes/quote_capability_screen.dart';
 import 'package:vendia_pos/services/auth_service.dart';
+import 'package:vendia_pos/utils/business_capability_map.dart';
 import 'package:vendia_pos/widgets/capabilities_reel.dart';
 
 Widget _wrap(Widget child, {Size size = const Size(360, 800)}) =>
@@ -139,11 +140,16 @@ void main() {
       await tester.pump();
     });
 
-    testWidgets('tap en card abre BusinessCapabilitiesScreen con highlight',
+    testWidgets('tap en la primera card abre la pantalla dedicada',
         (tester) async {
       const flags = FeatureFlags();
       final modules = unactivatedOptionalModules(flags);
+      // La primera card visible del reel es "cotizaciones" (quotes), que
+      // F040 enruta a su pantalla propia QuoteCapabilityScreen. (Las demás
+      // capacidades abren CapabilityScaffold; quotes es el caso especial.)
       final target = modules.first;
+      expect(target.capability, OptionalCapability.quotes,
+          reason: 'el primer módulo opcional sigue siendo cotizaciones');
 
       await tester.pumpWidget(_wrap(
         CapabilitiesReel(modules: modules),
@@ -153,15 +159,10 @@ void main() {
 
       await tester.tap(find.byKey(Key('reel_card_${target.id}')));
       await tester.pump();
-      // Esperar a que arranque la navegación + el load (offline:
-      // _load falla rápido y se queda con loading=false).
-      await tester.pump(const Duration(milliseconds: 200));
+      await tester.pump(const Duration(milliseconds: 300));
 
-      // La nueva screen está en árbol — la podemos encontrar y
-      // verificar que recibió la capability correcta.
-      final screen = tester.widget<BusinessCapabilitiesScreen>(
-          find.byType(BusinessCapabilitiesScreen));
-      expect(screen.highlightCapability, target.capability);
+      // Navegó a la pantalla dedicada de cotizaciones (F040).
+      expect(find.byType(QuoteCapabilityScreen), findsOneWidget);
 
       await tester.pumpWidget(_wrap(const SizedBox.shrink()));
       await tester.pump();

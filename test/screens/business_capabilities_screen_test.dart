@@ -130,22 +130,31 @@ void main() {
 
     testWidgets('cambiar un toggle + guardar dispara el PATCH',
         (tester) async {
+      // Viewport alto para montar todas las tarjetas (como los siblings).
+      tester.view.physicalSize = const Size(400, 2800);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+
       final api = _FakeApi(profile: {
         'business_types': ['tienda_barrio'],
       });
       await tester.pumpWidget(
           _wrap(BusinessCapabilitiesScreen(apiOverride: api)));
-      await tester.pumpAndSettle();
+      // pump() acotado en vez de pumpAndSettle(): las tarjetas cargan
+      // imágenes de red que nunca "settlean" en el harness de test
+      // (mismo patrón que capabilities_reel_test).
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 500));
 
       // Prender "Gestión de clientes".
       await tester.scrollUntilVisible(
           find.byKey(const Key('cap_toggle_customer_management')), 200);
       await tester.tap(find.byKey(const Key('cap_toggle_customer_management')));
-      await tester.pumpAndSettle();
+      await tester.pump(const Duration(milliseconds: 300));
 
       // Guardar.
       await tester.tap(find.byKey(const Key('cap_save_button')));
-      await tester.pumpAndSettle();
+      await tester.pump(const Duration(milliseconds: 500));
 
       expect(api.lastPatch, isNotNull);
       final config = api.lastPatch!['config'] as Map<String, dynamic>;
@@ -161,15 +170,16 @@ void main() {
       final api = _FakeApi();
       await tester.pumpWidget(
           _wrap(BusinessCapabilitiesScreen(apiOverride: api)));
-      await tester.pumpAndSettle();
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 500));
 
       await tester.scrollUntilVisible(
           find.byKey(const Key('cap_toggle_marketing_hub')), 200);
       await tester.tap(find.byKey(const Key('cap_toggle_marketing_hub')));
-      await tester.pumpAndSettle();
+      await tester.pump(const Duration(milliseconds: 300));
 
       await tester.tap(find.byKey(const Key('cap_save_button')));
-      await tester.pumpAndSettle();
+      await tester.pump(const Duration(milliseconds: 500));
 
       expect(api.lastPatch, isNotNull);
       final config = api.lastPatch!['config'] as Map<String, dynamic>;

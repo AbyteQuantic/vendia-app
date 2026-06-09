@@ -50,6 +50,7 @@ import '../screens/purchases/purchase_orders_screen.dart';
 import '../screens/quotes/quotes_list_screen.dart';
 import '../screens/recipes/recipe_step1_screen.dart';
 import '../screens/work_orders/work_orders_screen.dart';
+import '../screens/events/events_list_screen.dart';
 
 /// Las 4 categorías con encabezado del Dashboard (spec §4.1).
 enum ModuleCategory { vender, inventario, clientes, miNegocio }
@@ -280,6 +281,18 @@ const List<DashboardModule> dashboardModules = [
     capability: OptionalCapability.promotions,
     destination: PromotionsListScreen.new,
   ),
+  // F042 — Módulo de Eventos. Opt-in self-service desde el reel.
+  DashboardModule(
+    id: 'eventos',
+    title: 'Eventos',
+    subtitle: 'Cobre cursos, conferencias y hackatones; entregue escarapelas',
+    icon: Icons.event_rounded,
+    color: Color(0xFF0EA5E9),
+    category: ModuleCategory.clientes,
+    layer: ModuleLayer.optional,
+    capability: OptionalCapability.events,
+    destination: EventsListScreen.new,
+  ),
 
   // ── MI NEGOCIO ───────────────────────────────────────────────────
   // F037: Marketing Hub deja de ser core. Aparece en el reel como
@@ -366,6 +379,7 @@ bool capabilityEnabled(OptionalCapability? cap, FeatureFlags flags) {
     OptionalCapability.supplies => flags.enableSupplies,
     OptionalCapability.furnitureJobs => flags.enableFurnitureJobs,
     OptionalCapability.purchaseOrders => flags.enablePurchaseOrders,
+    OptionalCapability.events => flags.enableEvents,
     null => false,
   };
 }

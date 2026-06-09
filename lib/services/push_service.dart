@@ -32,7 +32,11 @@ import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import '../firebase_options.dart';
 import 'api_service.dart';
 import 'auth_service.dart';
-import 'web_push_native.dart';
+// Import condicional: en web (con dart:js_interop) usa la implementación
+// real; en VM de tests / móvil usa el stub no-op. Así push_service compila
+// en todas las plataformas (lo expuso el consumo del catálogo F041 en tests).
+import 'web_push_stub.dart'
+    if (dart.library.js_interop) 'web_push_native.dart';
 
 /// Callback que el `app.dart` registra para que un deep link entrante
 /// navegue a la pantalla correcta. PushService solo sabe extraer la

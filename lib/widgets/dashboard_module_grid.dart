@@ -23,15 +23,21 @@ class DashboardModuleGrid extends StatelessWidget {
   /// Feature flags del tenant — gatean los módulos `optional`.
   final FeatureFlags flags;
 
+  /// F041 — módulos ya resueltos desde el catálogo dinámico. Si es null
+  /// (sin catálogo / offline en primer arranque), se cae al cálculo
+  /// compilado `visibleModulesFor` (bundle), preservando el comportamiento.
+  final List<DashboardModule>? modules;
+
   const DashboardModuleGrid({
     super.key,
     required this.businessType,
     required this.flags,
+    this.modules,
   });
 
   @override
   Widget build(BuildContext context) {
-    final visible = visibleModulesFor(businessType, flags);
+    final visible = modules ?? visibleModulesFor(businessType, flags);
 
     final sections = <Widget>[];
     for (final category in ModuleCategory.values) {

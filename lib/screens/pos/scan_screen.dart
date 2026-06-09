@@ -423,13 +423,18 @@ class _ScanScreenState extends State<ScanScreen> {
                 onDetect: _onDetect,
               ),
 
-            // Overlay with guide frame
-            _ScanOverlay(isProcessing: _processing),
+            // En web, html5-qrcode inyecta su propio overlay (recuadro,
+            // botón atrás, texto guía) en un div sobre el canvas de
+            // Flutter, así que estos widgets quedarían ocultos detrás.
+            // Solo se montan en móvil (MobileScanner).
+            if (!kIsWeb) ...[
+              // Overlay with guide frame
+              _ScanOverlay(isProcessing: _processing),
 
-            // Back button
-            Positioned(
-              top: MediaQuery.of(context).padding.top + 8,
-              left: 8,
+              // Back button
+              Positioned(
+                top: MediaQuery.of(context).padding.top + 8,
+                left: 8,
               child: Semantics(
                 button: true,
                 label: 'Volver',
@@ -499,6 +504,7 @@ class _ScanScreenState extends State<ScanScreen> {
                 ),
               ),
             ),
+            ],
           ],
         ),
       ),
