@@ -122,8 +122,7 @@ class ApiService {
             const SnackBar(
               content: Row(
                 children: [
-                  Icon(Icons.lock_clock_rounded,
-                      color: Colors.white, size: 24),
+                  Icon(Icons.lock_clock_rounded, color: Colors.white, size: 24),
                   SizedBox(width: 12),
                   Expanded(
                     child: Text(
@@ -271,8 +270,7 @@ class ApiService {
       if (captchaToken != null && captchaToken.isNotEmpty) {
         body['captcha_token'] = captchaToken;
       }
-      final response =
-          await _dio.post('/api/v1/tenant/register', data: body);
+      final response = await _dio.post('/api/v1/tenant/register', data: body);
       return response.data as Map<String, dynamic>;
     } on DioException catch (e) {
       _throwIfCaptchaFailure(e);
@@ -331,11 +329,9 @@ class ApiService {
 
   /// Creates a new branch (sucursal). Required fields: `name`.
   /// Optional: `address`, `latitude`, `longitude`.
-  Future<Map<String, dynamic>> createBranch(
-      Map<String, dynamic> data) async {
+  Future<Map<String, dynamic>> createBranch(Map<String, dynamic> data) async {
     try {
-      final response =
-          await _dio.post('/api/v1/store/branches', data: data);
+      final response = await _dio.post('/api/v1/store/branches', data: data);
       return _extractData(response);
     } on DioException catch (e) {
       throw AppError.fromDioException(e);
@@ -377,8 +373,7 @@ class ApiService {
     }
   }
 
-  Future<Map<String, dynamic>> createEmployee(
-      Map<String, dynamic> data) async {
+  Future<Map<String, dynamic>> createEmployee(Map<String, dynamic> data) async {
     try {
       final response = await _dio.post('/api/v1/employees', data: data);
       return _extractData(response);
@@ -390,8 +385,7 @@ class ApiService {
   Future<Map<String, dynamic>> updateEmployee(
       String uuid, Map<String, dynamic> data) async {
     try {
-      final response =
-          await _dio.patch('/api/v1/employees/$uuid', data: data);
+      final response = await _dio.patch('/api/v1/employees/$uuid', data: data);
       return _extractData(response);
     } on DioException catch (e) {
       throw AppError.fromDioException(e);
@@ -487,8 +481,8 @@ class ApiService {
       final params = <String, dynamic>{'page': page, 'per_page': perPage};
       final bid = branchId ?? currentBranchId;
       if (bid != null && bid.isNotEmpty) params['branch_id'] = bid;
-      final response = await _dio.get('/api/v1/products',
-          queryParameters: params);
+      final response =
+          await _dio.get('/api/v1/products', queryParameters: params);
       return response.data as Map<String, dynamic>;
     } on DioException catch (e) {
       throw AppError.fromDioException(e);
@@ -499,8 +493,8 @@ class ApiService {
   /// Returns null if not found (404).
   Future<Map<String, dynamic>?> lookupProductByBarcode(String code) async {
     try {
-      final response = await _dio.get('/api/v1/products/by-barcode',
-          queryParameters: {'code': code});
+      final response = await _dio
+          .get('/api/v1/products/by-barcode', queryParameters: {'code': code});
       return _extractData(response);
     } on DioException catch (e) {
       if (e.response?.statusCode == 404) return null;
@@ -511,8 +505,7 @@ class ApiService {
   // Spec 029: createProduct / updateProduct aceptan opcionalmente
   // `price_tier_1`, `price_tier_2`, `price_tier_3` (números > 0). El
   // backend valida; este lado pasa el payload tal cual.
-  Future<Map<String, dynamic>> createProduct(
-      Map<String, dynamic> data) async {
+  Future<Map<String, dynamic>> createProduct(Map<String, dynamic> data) async {
     try {
       // Spec 014: defense-in-depth — inject the active sede into the
       // payload so a product is never created with branch_id NULL, the
@@ -575,8 +568,8 @@ class ApiService {
 
   Future<Map<String, dynamic>> searchCatalog(String query) async {
     try {
-      final response = await _dio.get('/api/v1/catalog/search',
-          queryParameters: {'q': query});
+      final response = await _dio
+          .get('/api/v1/catalog/search', queryParameters: {'q': query});
       return response.data as Map<String, dynamic>;
     } on DioException catch (e) {
       throw AppError.fromDioException(e);
@@ -585,8 +578,8 @@ class ApiService {
 
   Future<Map<String, dynamic>> searchProductsOFF(String query) async {
     try {
-      final response = await _dio.get('/api/v1/products/search-off',
-          queryParameters: {'q': query});
+      final response = await _dio
+          .get('/api/v1/products/search-off', queryParameters: {'q': query});
       return response.data as Map<String, dynamic>;
     } on DioException catch (e) {
       throw AppError.fromDioException(e);
@@ -646,8 +639,7 @@ class ApiService {
     // tenant identifier into the URL — the URL becomes evidence even
     // if the blob is gone.
     final path = 'public/$fileName';
-    final url =
-        '$supabaseUrl/storage/v1/object/$supabaseReceiptsBucket/$path';
+    final url = '$supabaseUrl/storage/v1/object/$supabaseReceiptsBucket/$path';
 
     final dio = Dio();
     try {
@@ -698,8 +690,8 @@ class ApiService {
       final formData = FormData.fromMap({
         'photo': await _imageMultipart(photo, prefix: 'foto'),
       });
-      final response = await _dio.post('/api/v1/products/$uuid/photo',
-          data: formData);
+      final response =
+          await _dio.post('/api/v1/products/$uuid/photo', data: formData);
       return _extractData(response);
     } on DioException catch (e) {
       throw AppError.fromDioException(e);
@@ -783,8 +775,7 @@ class ApiService {
     while (true) {
       Map<String, dynamic> job;
       try {
-        final response =
-            await _dio.get('/api/v1/products/$uuid/ai-job/$jobId');
+        final response = await _dio.get('/api/v1/products/$uuid/ai-job/$jobId');
         job = _extractData(response);
       } on DioException catch (e) {
         throw AppError.fromDioException(e);
@@ -817,8 +808,11 @@ class ApiService {
     }
   }
 
-  Future<Map<String, dynamic>> enhanceProductPhoto(String uuid, {
-    String? name, String? presentation, String? content,
+  Future<Map<String, dynamic>> enhanceProductPhoto(
+    String uuid, {
+    String? name,
+    String? presentation,
+    String? content,
   }) async {
     final params = <String, String>{};
     if (name != null && name.isNotEmpty) params['name'] = name;
@@ -831,8 +825,12 @@ class ApiService {
     return _runAiPhotoJob(uuid, '/enhance', params);
   }
 
-  Future<Map<String, dynamic>> generateProductImage(String uuid, {
-    String? name, String? presentation, String? content, String? barcode,
+  Future<Map<String, dynamic>> generateProductImage(
+    String uuid, {
+    String? name,
+    String? presentation,
+    String? content,
+    String? barcode,
   }) async {
     final params = <String, String>{};
     if (name != null && name.isNotEmpty) params['name'] = name;
@@ -909,7 +907,8 @@ class ApiService {
 
   Future<List<Map<String, dynamic>>> fetchInventoryAlerts() async {
     try {
-      final response = await _dio.get('/api/v1/inventory/alerts', queryParameters: {
+      final response =
+          await _dio.get('/api/v1/inventory/alerts', queryParameters: {
         if (currentBranchId != null && currentBranchId!.isNotEmpty)
           'branch_id': currentBranchId,
       });
@@ -932,7 +931,8 @@ class ApiService {
     int perPage = 20,
   }) async {
     try {
-      final response = await _dio.get('/api/v1/inventory/invoice-logs', queryParameters: {
+      final response =
+          await _dio.get('/api/v1/inventory/invoice-logs', queryParameters: {
         'page': page,
         'per_page': perPage,
         if (currentBranchId != null && currentBranchId!.isNotEmpty)
@@ -946,7 +946,8 @@ class ApiService {
 
   Future<List<Map<String, dynamic>>> fetchReorderSuggestions() async {
     try {
-      final response = await _dio.get('/api/v1/inventory/reorder-suggestions', queryParameters: {
+      final response = await _dio
+          .get('/api/v1/inventory/reorder-suggestions', queryParameters: {
         if (currentBranchId != null && currentBranchId!.isNotEmpty)
           'branch_id': currentBranchId,
       });
@@ -973,7 +974,8 @@ class ApiService {
     int perPage = 30,
   }) async {
     try {
-      final response = await _dio.get('/api/v1/inventory/kardex', queryParameters: {
+      final response =
+          await _dio.get('/api/v1/inventory/kardex', queryParameters: {
         'product_id': productId,
         'page': page,
         'per_page': perPage,
@@ -991,7 +993,8 @@ class ApiService {
     int perPage = 50,
   }) async {
     try {
-      final response = await _dio.get('/api/v1/inventory/report', queryParameters: {
+      final response =
+          await _dio.get('/api/v1/inventory/report', queryParameters: {
         'page': page,
         'per_page': perPage,
         if (currentBranchId != null && currentBranchId!.isNotEmpty)
@@ -1007,7 +1010,8 @@ class ApiService {
     List<Map<String, dynamic>> products,
   ) async {
     try {
-      final response = await _dio.post('/api/v1/inventory/match-products', data: {
+      final response =
+          await _dio.post('/api/v1/inventory/match-products', data: {
         'products': products,
       });
       final raw = response.data['data'] as List;
@@ -1058,8 +1062,7 @@ class ApiService {
       final params = <String, dynamic>{'page': page, 'per_page': perPage};
       final bid = branchId ?? currentBranchId;
       if (bid != null && bid.isNotEmpty) params['branch_id'] = bid;
-      final response = await _dio.get('/api/v1/sales',
-          queryParameters: params);
+      final response = await _dio.get('/api/v1/sales', queryParameters: params);
       return response.data as Map<String, dynamic>;
     } on DioException catch (e) {
       throw AppError.fromDioException(e);
@@ -1148,8 +1151,7 @@ class ApiService {
     }
   }
 
-  Future<Map<String, dynamic>> createCustomer(
-      Map<String, dynamic> data) async {
+  Future<Map<String, dynamic>> createCustomer(Map<String, dynamic> data) async {
     try {
       final response = await _dio.post('/api/v1/customers', data: data);
       return _extractData(response);
@@ -1244,6 +1246,46 @@ class ApiService {
     }
   }
 
+  /// Lista los inscritos de un evento (panel del organizador, F042).
+  Future<List<Map<String, dynamic>>> listEventRegistrations(
+      String eventId) async {
+    try {
+      final response = await _dio.get('/api/v1/events/$eventId/registrations');
+      final data = (response.data as Map<String, dynamic>)['data'] as List?;
+      return (data ?? const [])
+          .whereType<Map<String, dynamic>>()
+          .toList(growable: false);
+    } on DioException catch (e) {
+      throw AppError.fromDioException(e);
+    }
+  }
+
+  /// Registra un escaneo de entrada/salida (check-in/out) por QR.
+  /// Devuelve `already_registered` cuando el QR ya había sido escaneado.
+  Future<bool> checkinEvent(
+      String eventId, String qrToken, String scanType) async {
+    try {
+      final response = await _dio.post(
+        '/api/v1/events/$eventId/checkin',
+        data: {'qr_token': qrToken, 'scan_type': scanType},
+      );
+      final body = response.data as Map<String, dynamic>;
+      return body['already_registered'] == true;
+    } on DioException catch (e) {
+      throw AppError.fromDioException(e);
+    }
+  }
+
+  /// Emite manualmente el certificado de un asistente elegible (F042).
+  Future<void> issueEventCertificate(String eventId, String regId) async {
+    try {
+      await _dio
+          .post('/api/v1/events/$eventId/registrations/$regId/certificate');
+    } on DioException catch (e) {
+      throw AppError.fromDioException(e);
+    }
+  }
+
   /// Historial de compras de un cliente: registro base + summary
   /// (gastado, compras, primera/última visita) + lista de ventas.
   ///
@@ -1296,8 +1338,7 @@ class ApiService {
   /// Crea una cotización en estado `borrador`. El backend asigna el
   /// folio secuencial y calcula los totales. Devuelve la cotización
   /// creada (clave `data`).
-  Future<Map<String, dynamic>> createQuote(
-      Map<String, dynamic> data) async {
+  Future<Map<String, dynamic>> createQuote(Map<String, dynamic> data) async {
     try {
       final response = await _dio.post('/api/v1/quotes', data: data);
       return _extractData(response);
@@ -1434,8 +1475,7 @@ class ApiService {
 
   Future<Map<String, dynamic>> remindDebt(String customerUuid) async {
     try {
-      final response =
-          await _dio.post('/api/v1/fiar/remind/$customerUuid');
+      final response = await _dio.post('/api/v1/fiar/remind/$customerUuid');
       return _extractData(response);
     } on DioException catch (e) {
       throw AppError.fromDioException(e);
@@ -1446,8 +1486,7 @@ class ApiService {
   // 8. ORDERS / KDS
   // ═══════════════════════════════════════════════════════════════════════════
 
-  Future<Map<String, dynamic>> createOrder(
-      Map<String, dynamic> data) async {
+  Future<Map<String, dynamic>> createOrder(Map<String, dynamic> data) async {
     try {
       final response = await _dio.post('/api/v1/orders', data: data);
       return _extractData(response);
@@ -1477,8 +1516,7 @@ class ApiService {
     }
   }
 
-  Future<Map<String, dynamic>> updateOrderStatus(
-      String uuid, String status,
+  Future<Map<String, dynamic>> updateOrderStatus(String uuid, String status,
       {String? paymentMethod}) async {
     try {
       final data = <String, dynamic>{'status': status};
@@ -1644,8 +1682,7 @@ class ApiService {
     }
   }
 
-  Future<Map<String, dynamic>> createSupplier(
-      Map<String, dynamic> data) async {
+  Future<Map<String, dynamic>> createSupplier(Map<String, dynamic> data) async {
     try {
       final response = await _dio.post('/api/v1/suppliers', data: data);
       return _extractData(response);
@@ -1657,8 +1694,7 @@ class ApiService {
   Future<Map<String, dynamic>> updateSupplier(
       String uuid, Map<String, dynamic> data) async {
     try {
-      final response =
-          await _dio.patch('/api/v1/suppliers/$uuid', data: data);
+      final response = await _dio.patch('/api/v1/suppliers/$uuid', data: data);
       return _extractData(response);
     } on DioException catch (e) {
       throw AppError.fromDioException(e);
@@ -1676,9 +1712,8 @@ class ApiService {
   Future<Map<String, dynamic>> orderViaWhatsApp(
       String supplierUuid, Map<String, dynamic> data) async {
     try {
-      final response =
-          await _dio.post('/api/v1/suppliers/$supplierUuid/order-wa',
-              data: data);
+      final response = await _dio
+          .post('/api/v1/suppliers/$supplierUuid/order-wa', data: data);
       return _extractData(response);
     } on DioException catch (e) {
       throw AppError.fromDioException(e);
@@ -1698,8 +1733,7 @@ class ApiService {
     }
   }
 
-  Future<Map<String, dynamic>> createRecipe(
-      Map<String, dynamic> data) async {
+  Future<Map<String, dynamic>> createRecipe(Map<String, dynamic> data) async {
     try {
       final response = await _dio.post('/api/v1/recipes', data: data);
       return _extractData(response);
@@ -1776,8 +1810,7 @@ class ApiService {
   /// GET /api/v1/recipes/:uuid/availability (AC-03).
   Future<Map<String, dynamic>> fetchRecipeAvailability(String uuid) async {
     try {
-      final response =
-          await _dio.get('/api/v1/recipes/$uuid/availability');
+      final response = await _dio.get('/api/v1/recipes/$uuid/availability');
       return _extractData(response);
     } on DioException catch (e) {
       throw AppError.fromDioException(e);
@@ -1990,8 +2023,7 @@ class ApiService {
   Future<Map<String, dynamic>> createPurchaseOrder(
       Map<String, dynamic> data) async {
     try {
-      final response =
-          await _dio.post('/api/v1/purchase-orders', data: data);
+      final response = await _dio.post('/api/v1/purchase-orders', data: data);
       return _extractData(response);
     } on DioException catch (e) {
       throw AppError.fromDioException(e);
@@ -2026,8 +2058,7 @@ class ApiService {
   /// POST /api/v1/purchase-orders/:uuid/send → `{status, whatsapp_url}`.
   Future<Map<String, dynamic>> sendPurchaseOrder(String uuid) async {
     try {
-      final response =
-          await _dio.post('/api/v1/purchase-orders/$uuid/send');
+      final response = await _dio.post('/api/v1/purchase-orders/$uuid/send');
       return _extractData(response);
     } on DioException catch (e) {
       throw AppError.fromDioException(e);
@@ -2039,8 +2070,7 @@ class ApiService {
   /// POST /api/v1/purchase-orders/:uuid/receive → `{data:PurchaseOrder}`.
   Future<Map<String, dynamic>> receivePurchaseOrder(String uuid) async {
     try {
-      final response =
-          await _dio.post('/api/v1/purchase-orders/$uuid/receive');
+      final response = await _dio.post('/api/v1/purchase-orders/$uuid/receive');
       return _extractData(response);
     } on DioException catch (e) {
       throw AppError.fromDioException(e);
@@ -2052,8 +2082,7 @@ class ApiService {
   /// POST /api/v1/purchase-orders/from-reorder → `{data:[PurchaseOrder]}`.
   Future<List<Map<String, dynamic>>> createPurchaseOrdersFromReorder() async {
     try {
-      final response =
-          await _dio.post('/api/v1/purchase-orders/from-reorder');
+      final response = await _dio.post('/api/v1/purchase-orders/from-reorder');
       return _extractList(response);
     } on DioException catch (e) {
       throw AppError.fromDioException(e);
@@ -2188,8 +2217,7 @@ class ApiService {
     }
   }
 
-  Future<Map<String, dynamic>> applyPromotionToPOS(
-      String promotionUuid) async {
+  Future<Map<String, dynamic>> applyPromotionToPOS(String promotionUuid) async {
     try {
       final response = await _dio.post('/api/v1/promotions/apply-to-pos',
           data: {'promotion_uuid': promotionUuid});
@@ -2238,6 +2266,7 @@ class ApiService {
           data[key] = v.trim();
         }
       }
+
       addIfPresent('tenant_name', tenantName);
       addIfPresent('combo_title', comboTitle);
       addIfPresent('normal_price_str', normalPriceStr);
@@ -2289,15 +2318,13 @@ class ApiService {
       final response = await _dio.get(
         '/api/v1/catalog',
         options: Options(
-          headers: etag != null && etag.isNotEmpty
-              ? {'If-None-Match': etag}
-              : null,
+          headers:
+              etag != null && etag.isNotEmpty ? {'If-None-Match': etag} : null,
           // 304 es una respuesta válida (no error) para el flujo de cache.
           validateStatus: (s) => s != null && s < 500,
         ),
       );
-      final newEtag =
-          (response.headers.value('etag') ?? etag ?? '').toString();
+      final newEtag = (response.headers.value('etag') ?? etag ?? '').toString();
       if (response.statusCode == 304) {
         return (data: null, etag: newEtag, notModified: true);
       }
@@ -2370,8 +2397,7 @@ class ApiService {
   Future<Map<String, dynamic>> fetchCatalogProduct(
       String slug, String uuid) async {
     try {
-      final response =
-          await _dio.get('/api/v1/store/$slug/product/$uuid');
+      final response = await _dio.get('/api/v1/store/$slug/product/$uuid');
       return _extractData(response);
     } on DioException catch (e) {
       throw AppError.fromDioException(e);
@@ -2382,8 +2408,7 @@ class ApiService {
   Future<Map<String, dynamic>> createWebOrder(
       String slug, Map<String, dynamic> data) async {
     try {
-      final response =
-          await _dio.post('/api/v1/store/$slug/order', data: data);
+      final response = await _dio.post('/api/v1/store/$slug/order', data: data);
       return _extractData(response);
     } on DioException catch (e) {
       throw AppError.fromDioException(e);
@@ -2394,8 +2419,7 @@ class ApiService {
   Future<Map<String, dynamic>> fetchWebOrderStatus(
       String slug, String uuid) async {
     try {
-      final response =
-          await _dio.get('/api/v1/store/$slug/order/$uuid');
+      final response = await _dio.get('/api/v1/store/$slug/order/$uuid');
       return _extractData(response);
     } on DioException catch (e) {
       throw AppError.fromDioException(e);
@@ -2693,8 +2717,7 @@ class ApiService {
   // 17. REAL-TIME ACCOUNT (Public)
   // ═══════════════════════════════════════════════════════════════════════════
 
-  Future<Map<String, dynamic>> fetchAccountRealTime(
-      String orderUuid) async {
+  Future<Map<String, dynamic>> fetchAccountRealTime(String orderUuid) async {
     try {
       final response = await _dio.get('/api/v1/account/$orderUuid');
       return _extractData(response);
@@ -2773,9 +2796,8 @@ class ApiService {
   Future<Map<String, dynamic>> registerPayment(
       String orderUuid, Map<String, dynamic> data) async {
     try {
-      final response = await _dio.post(
-          '/api/v1/orders/$orderUuid/payments',
-          data: data);
+      final response =
+          await _dio.post('/api/v1/orders/$orderUuid/payments', data: data);
       return _extractData(response);
     } on DioException catch (e) {
       throw AppError.fromDioException(e);
@@ -2784,8 +2806,7 @@ class ApiService {
 
   Future<Map<String, dynamic>> fetchOrderPayments(String orderUuid) async {
     try {
-      final response =
-          await _dio.get('/api/v1/orders/$orderUuid/payments');
+      final response = await _dio.get('/api/v1/orders/$orderUuid/payments');
       return _extractData(response);
     } on DioException catch (e) {
       throw AppError.fromDioException(e);
@@ -2795,9 +2816,8 @@ class ApiService {
   Future<Map<String, dynamic>> registerSplitPayments(
       String orderUuid, Map<String, dynamic> data) async {
     try {
-      final response = await _dio.post(
-          '/api/v1/orders/$orderUuid/split-payments',
-          data: data);
+      final response = await _dio
+          .post('/api/v1/orders/$orderUuid/split-payments', data: data);
       return _extractData(response);
     } on DioException catch (e) {
       throw AppError.fromDioException(e);
@@ -3141,14 +3161,16 @@ class ApiService {
     }
   }
 
-  Future<void> updatePanicMessage(String? message, {
+  Future<void> updatePanicMessage(
+    String? message, {
     bool? includeAddress,
     bool? includeGPS,
   }) async {
     try {
       final data = <String, dynamic>{};
       if (message != null) data['panic_message'] = message;
-      if (includeAddress != null) data['panic_include_address'] = includeAddress;
+      if (includeAddress != null)
+        data['panic_include_address'] = includeAddress;
       if (includeGPS != null) data['panic_include_gps'] = includeGPS;
       await _dio.patch('/api/v1/store/panic-config', data: data);
     } on DioException catch (e) {
@@ -3202,7 +3224,8 @@ class ApiService {
     }
   }
 
-  Future<Map<String, dynamic>> registerAbono(String creditId, {
+  Future<Map<String, dynamic>> registerAbono(
+    String creditId, {
     required int amount,
     String method = 'cash',
     String note = '',
@@ -3228,7 +3251,8 @@ class ApiService {
   /// Append an amount to an already-accepted open fiado. Skips the WhatsApp
   /// handshake — the owner already authorized this line of credit when the
   /// customer originally accepted it.
-  Future<Map<String, dynamic>> appendToFiado(String creditId, {
+  Future<Map<String, dynamic>> appendToFiado(
+    String creditId, {
     required int totalAmount,
     String note = '',
   }) async {
@@ -3246,7 +3270,8 @@ class ApiService {
   /// Used when the tendero negotiates a discount or forgives a leftover.
   /// When the account still has a positive balance, the backend refuses
   /// unless [force] is true (protects against accidental closures).
-  Future<Map<String, dynamic>> closeFiado(String creditId, {
+  Future<Map<String, dynamic>> closeFiado(
+    String creditId, {
     String reason = '',
     bool force = false,
   }) async {
@@ -3263,12 +3288,13 @@ class ApiService {
   /// to the products, and the account flips to status='cancelled'. Only
   /// valid while the customer hasn't accepted the handshake (backend
   /// rejects with 409 otherwise).
-  Future<Map<String, dynamic>> cancelFiado(String creditId, {
+  Future<Map<String, dynamic>> cancelFiado(
+    String creditId, {
     String reason = '',
   }) async {
     try {
-      final response = await _dio.post('/api/v1/credits/$creditId/cancel',
-          data: {'reason': reason});
+      final response = await _dio
+          .post('/api/v1/credits/$creditId/cancel', data: {'reason': reason});
       return _extractData(response);
     } on DioException catch (e) {
       throw AppError.fromDioException(e);
@@ -3459,19 +3485,18 @@ class ApiService {
   /// Throws AppError on network failures or timeout.
   Future<bool> verifyOwnerPin(String pin) async {
     try {
-      final resp = await _dio
-          .post(
-            '/api/v1/tenant/owner-pin/verify',
-            data: {'pin': pin},
-          )
-          .timeout(const Duration(seconds: 5));
+      final resp = await _dio.post(
+        '/api/v1/tenant/owner-pin/verify',
+        data: {'pin': pin},
+      ).timeout(const Duration(seconds: 5));
       final body = resp.data;
       return body is Map && body['ok'] == true;
     } on TimeoutException catch (e) {
       // Network is hung — caller should show a connectivity message.
       throw AppError.fromDioException(
         DioException(
-          requestOptions: RequestOptions(path: '/api/v1/tenant/owner-pin/verify'),
+          requestOptions:
+              RequestOptions(path: '/api/v1/tenant/owner-pin/verify'),
           type: DioExceptionType.connectionTimeout,
           error: e,
         ),
@@ -3558,9 +3583,7 @@ class ApiService {
     try {
       final response = await _dio.get('/api/v1/subscription/plans');
       final list = _extractList(response);
-      return list
-          .map(SubscriptionPlan.fromJson)
-          .toList(growable: false);
+      return list.map(SubscriptionPlan.fromJson).toList(growable: false);
     } on DioException catch (e) {
       throw AppError.fromDioException(e);
     }
@@ -3867,7 +3890,8 @@ class ApiService {
           'platform': platform,
           if (deviceLabel != null) 'device_label': deviceLabel,
           if (endpoint != null && endpoint.isNotEmpty) 'endpoint': endpoint,
-          if (p256dhKey != null && p256dhKey.isNotEmpty) 'p256dh_key': p256dhKey,
+          if (p256dhKey != null && p256dhKey.isNotEmpty)
+            'p256dh_key': p256dhKey,
           if (authKey != null && authKey.isNotEmpty) 'auth_key': authKey,
         },
       );
@@ -3915,4 +3939,3 @@ class ApiService {
     }
   }
 }
-

@@ -163,6 +163,44 @@ class Event {
   }
 }
 
+/// Una fila del panel de inscritos del organizador (F042).
+class EventRegistrationView {
+  final String id;
+  final String customerName;
+  final String customerPhone;
+  final String paymentStatus;
+  final bool checkedIn;
+  final bool checkedOut;
+  final bool certificateEligible;
+  final bool certificateIssued;
+
+  const EventRegistrationView({
+    required this.id,
+    this.customerName = '',
+    this.customerPhone = '',
+    this.paymentStatus = '',
+    this.checkedIn = false,
+    this.checkedOut = false,
+    this.certificateEligible = false,
+    this.certificateIssued = false,
+  });
+
+  bool get isConfirmed => paymentStatus == 'confirmed';
+
+  factory EventRegistrationView.fromJson(Map<String, dynamic> json) {
+    return EventRegistrationView(
+      id: (json['id'] ?? '').toString(),
+      customerName: (json['customer_name'] as String?) ?? '',
+      customerPhone: (json['customer_phone'] as String?) ?? '',
+      paymentStatus: (json['payment_status'] as String?) ?? '',
+      checkedIn: json['checked_in'] == true,
+      checkedOut: json['checked_out'] == true,
+      certificateEligible: json['certificate_eligible'] == true,
+      certificateIssued: json['certificate_issued'] == true,
+    );
+  }
+}
+
 DateTime? _parseDate(dynamic raw) {
   if (raw == null) return null;
   if (raw is! String || raw.isEmpty) return null;

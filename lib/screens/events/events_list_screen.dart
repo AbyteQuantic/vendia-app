@@ -11,6 +11,7 @@ import '../../models/event.dart';
 import '../../services/api_service.dart';
 import '../../services/auth_service.dart';
 import 'create_event_screen.dart';
+import 'event_detail_screen.dart';
 
 class EventsListScreen extends StatefulWidget {
   /// Inyectable para tests — en producción usa el ApiService default.
@@ -125,6 +126,15 @@ class _EventsListScreenState extends State<EventsListScreen> {
         itemBuilder: (_, i) => _EventCard(
           event: _events[i],
           onPublish: () => _publish(_events[i]),
+          onOpen: () async {
+            await Navigator.of(context).push(MaterialPageRoute(
+              builder: (_) => EventDetailScreen(
+                event: _events[i],
+                apiOverride: widget.apiOverride,
+              ),
+            ));
+            _load();
+          },
         ),
       ),
     );
@@ -134,66 +144,77 @@ class _EventsListScreenState extends State<EventsListScreen> {
 class _EventCard extends StatelessWidget {
   final Event event;
   final VoidCallback onPublish;
-  const _EventCard({required this.event, required this.onPublish});
+  final VoidCallback onOpen;
+  const _EventCard({
+    required this.event,
+    required this.onPublish,
+    required this.onOpen,
+  });
 
   @override
   Widget build(BuildContext context) {
     return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    event.title,
-                    style: const TextStyle(
-                        fontSize: 18, fontWeight: FontWeight.bold),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: onOpen,
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      event.title,
+                      style: const TextStyle(
+                          fontSize: 18, fontWeight: FontWeight.bold),
+                    ),
+                  ),
+                  _StatusBadge(status: event.status),
+                ],
+              ),
+              const SizedBox(height: 6),
+              Text(
+                '${EventType.label(event.type)} · ${EventModality.label(event.modality)}',
+                style: const TextStyle(fontSize: 15, color: Colors.black54),
+              ),
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  Icon(Icons.payments_outlined,
+                      size: 18, color: Colors.grey.shade700),
+                  const SizedBox(width: 6),
+                  Text(
+                    event.isFree ? 'Gratis' : '\$${event.price}',
+                    style: const TextStyle(fontSize: 15),
+                  ),
+                  const SizedBox(width: 16),
+                  Icon(Icons.people_outline,
+                      size: 18, color: Colors.grey.shade700),
+                  const SizedBox(width: 6),
+                  Text(
+                    event.capacity > 0
+                        ? 'Cupo ${event.capacity}'
+                        : 'Sin límite',
+                    style: const TextStyle(fontSize: 15),
+                  ),
+                ],
+              ),
+              if (event.status == EventStatus.borrador) ...[
+                const SizedBox(height: 12),
+                SizedBox(
+                  width: double.infinity,
+                  child: FilledButton.icon(
+                    key: Key('event_publish_${event.id}'),
+                    onPressed: onPublish,
+                    icon: const Icon(Icons.publish_rounded),
+                    label: const Text('Publicar en mi catálogo'),
                   ),
                 ),
-                _StatusBadge(status: event.status),
               ],
-            ),
-            const SizedBox(height: 6),
-            Text(
-              '${EventType.label(event.type)} · ${EventModality.label(event.modality)}',
-              style: const TextStyle(fontSize: 15, color: Colors.black54),
-            ),
-            const SizedBox(height: 8),
-            Row(
-              children: [
-                Icon(Icons.payments_outlined,
-                    size: 18, color: Colors.grey.shade700),
-                const SizedBox(width: 6),
-                Text(
-                  event.isFree ? 'Gratis' : '\$${event.price}',
-                  style: const TextStyle(fontSize: 15),
-                ),
-                const SizedBox(width: 16),
-                Icon(Icons.people_outline,
-                    size: 18, color: Colors.grey.shade700),
-                const SizedBox(width: 6),
-                Text(
-                  event.capacity > 0 ? 'Cupo ${event.capacity}' : 'Sin límite',
-                  style: const TextStyle(fontSize: 15),
-                ),
-              ],
-            ),
-            if (event.status == EventStatus.borrador) ...[
-              const SizedBox(height: 12),
-              SizedBox(
-                width: double.infinity,
-                child: FilledButton.icon(
-                  key: Key('event_publish_${event.id}'),
-                  onPressed: onPublish,
-                  icon: const Icon(Icons.publish_rounded),
-                  label: const Text('Publicar en mi catálogo'),
-                ),
-              ),
             ],
-          ],
+          ),
         ),
       ),
     );
@@ -220,8 +241,8 @@ class _StatusBadge extends StatelessWidget {
       ),
       child: Text(
         EventStatus.label(status),
-        style: TextStyle(
-            color: color, fontSize: 13, fontWeight: FontWeight.w600),
+        style:
+            TextStyle(color: color, fontSize: 13, fontWeight: FontWeight.w600),
       ),
     );
   }
