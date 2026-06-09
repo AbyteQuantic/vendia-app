@@ -49,6 +49,21 @@ void main() {
     expect(find.text('Generar otra'), findsOneWidget);
   });
 
+  testWidgets('ofrece ambos caminos: generar con IA y subir imagen propia',
+      (tester) async {
+    await tester.pumpWidget(_wrap(EventDesignScreen(
+      eventId: 'e1',
+      kind: EventDesignKind.poster,
+      apiOverride: _FakeApi(),
+    )));
+    await tester.pump();
+
+    // El tenant ve las dos opciones desde el estado vacío.
+    expect(find.byKey(const Key('design_generate')), findsOneWidget);
+    expect(find.byKey(const Key('design_upload')), findsOneWidget);
+    expect(find.text('Subir mi imagen'), findsOneWidget);
+  });
+
   testWidgets('"Usar este diseño" cierra devolviendo la URL', (tester) async {
     final api = _FakeApi();
     String? popped;

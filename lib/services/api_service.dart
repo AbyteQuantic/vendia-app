@@ -1327,6 +1327,25 @@ class ApiService {
     }
   }
 
+  /// Sube la imagen propia del organizador para una pieza del evento
+  /// ([asset] = 'poster' | 'badge' | 'certificate') como alternativa a la IA
+  /// (F042 FR-11/13). Devuelve la URL persistida en la plantilla del evento.
+  /// La imagen se normaliza a PNG (HEIC/web) antes de enviarse.
+  Future<String> uploadEventAsset(String eventId, String asset, XFile image) async {
+    try {
+      final formData = FormData.fromMap({
+        'image': await imageMultipart(image, prefix: asset),
+      });
+      final response =
+          await _dio.post('/api/v1/events/$eventId/$asset/upload', data: formData);
+      final data = (response.data as Map<String, dynamic>)['data']
+          as Map<String, dynamic>;
+      return (data['image_url'] as String?) ?? '';
+    } on DioException catch (e) {
+      throw AppError.fromDioException(e);
+    }
+  }
+
   /// Historial de compras de un cliente: registro base + summary
   /// (gastado, compras, primera/última visita) + lista de ventas.
   ///
