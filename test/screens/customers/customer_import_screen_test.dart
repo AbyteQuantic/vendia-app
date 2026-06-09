@@ -30,8 +30,10 @@ void main() {
       await tester.pump();
 
       expect(find.text('Importar clientes'), findsOneWidget);
-      expect(find.text('Selecciona tu archivo de clientes'), findsOneWidget);
-      expect(find.text('Toca aquí para seleccionar un archivo'), findsOneWidget);
+      // Copy actualizado a modo USTED + rediseño del área de carga
+      // (el subtítulo "Selecciona tu archivo…" se eliminó).
+      expect(
+          find.text('Toque aquí para escoger su archivo'), findsOneWidget);
     });
 
     testWidgets('indicador de pasos muestra 4 pasos', (tester) async {
