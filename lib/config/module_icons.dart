@@ -24,6 +24,8 @@ const Map<String, IconData> _icons = {
   'auto_awesome_rounded': Icons.auto_awesome_rounded,
   'settings_rounded': Icons.settings_rounded,
   'storefront_rounded': Icons.storefront_rounded,
+  // F042 — módulo de Eventos.
+  'event_rounded': Icons.event_rounded,
 };
 
 /// Ícono para una clave del catálogo; fallback genérico si es desconocida.
