@@ -1259,6 +1259,36 @@ class ApiService {
     }
   }
 
+  /// Registra un abono (cuota o pago total) de un inscrito. Al completar el
+  /// precio, el backend confirma la inscripción y activa el carné (F042).
+  Future<Map<String, dynamic>> recordEventPayment(
+      String eventId, String regId, int amount) async {
+    try {
+      final response = await _dio.post(
+        '/api/v1/events/$eventId/registrations/$regId/payments',
+        data: {'amount': amount},
+      );
+      return (response.data as Map<String, dynamic>)['data']
+          as Map<String, dynamic>;
+    } on DioException catch (e) {
+      throw AppError.fromDioException(e);
+    }
+  }
+
+  /// Marca la inscripción como pagada en su totalidad (carné activado).
+  Future<Map<String, dynamic>> confirmEventPayment(
+      String eventId, String regId) async {
+    try {
+      final response = await _dio.post(
+        '/api/v1/events/$eventId/registrations/$regId/confirm-payment',
+      );
+      return (response.data as Map<String, dynamic>)['data']
+          as Map<String, dynamic>;
+    } on DioException catch (e) {
+      throw AppError.fromDioException(e);
+    }
+  }
+
   /// Lista los inscritos de un evento (panel del organizador, F042).
   Future<List<Map<String, dynamic>>> listEventRegistrations(
       String eventId) async {

@@ -62,12 +62,13 @@ void main() {
     await tester.scrollUntilVisible(find.text('Ana'), 300, scrollable: scrollable);
 
     expect(find.text('Ana'), findsOneWidget);
-    expect(find.textContaining('Pagado'), findsOneWidget);
+    // Inscripción confirmada → carné activo (sin saldo pendiente).
+    expect(find.textContaining('Carné activo'), findsOneWidget);
     expect(find.textContaining('Entró'), findsOneWidget);
     expect(find.textContaining('1 confirmados'), findsOneWidget);
   });
 
-  testWidgets('asistente elegible muestra "Certificar" y lo emite',
+  testWidgets('asistente elegible muestra "Emitir certificado" y lo emite',
       (tester) async {
     final api = _FakeApi(regs: [
       {
@@ -82,10 +83,10 @@ void main() {
     await tester.pumpAndSettle();
 
     final scrollable = find.byType(Scrollable).first;
-    await tester.scrollUntilVisible(find.text('Certificar'), 300,
+    await tester.scrollUntilVisible(find.text('Emitir certificado'), 300,
         scrollable: scrollable);
 
-    final btn = find.text('Certificar');
+    final btn = find.text('Emitir certificado');
     expect(btn, findsOneWidget);
     await tester.tap(btn);
     await tester.pump();

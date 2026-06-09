@@ -528,6 +528,8 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
   }
 
   Widget _regTile(EventRegistrationView r) {
+    final attendance = (r.checkedIn ? ' · Entró' : '') +
+        (r.checkedOut ? ' · Salió' : '');
     return Card(
       elevation: 0,
       margin: const EdgeInsets.only(bottom: 10),
@@ -535,32 +537,181 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
         borderRadius: BorderRadius.circular(14),
         side: BorderSide(color: Colors.grey.shade200),
       ),
-      child: ListTile(
-        leading: CircleAvatar(
-          backgroundColor: _eventAccent.withValues(alpha: 0.12),
-          child: Text(
-            (r.customerName.isEmpty ? 'A' : r.customerName.characters.first)
-                .toUpperCase(),
-            style: const TextStyle(
-                color: _eventAccent, fontWeight: FontWeight.bold),
-          ),
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                CircleAvatar(
+                  backgroundColor: _eventAccent.withValues(alpha: 0.12),
+                  child: Text(
+                    (r.customerName.isEmpty
+                            ? 'A'
+                            : r.customerName.characters.first)
+                        .toUpperCase(),
+                    style: const TextStyle(
+                        color: _eventAccent, fontWeight: FontWeight.bold),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                          r.customerName.isEmpty
+                              ? 'Asistente'
+                              : r.customerName,
+                          style:
+                              const TextStyle(fontWeight: FontWeight.w600)),
+                      if (r.customerPhone.isNotEmpty || attendance.isNotEmpty)
+                        Text('${r.customerPhone}$attendance',
+                            style: const TextStyle(
+                                fontSize: 13, color: Colors.black54)),
+                    ],
+                  ),
+                ),
+                _PaymentBadge(reg: r),
+              ],
+            ),
+            // Progreso de pago (solo eventos de pago con saldo pendiente).
+            if (r.hasBalance) ...[
+              const SizedBox(height: 10),
+              _paymentProgress(r),
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: () => _recordPayment(r),
+                      icon: const Icon(Icons.add_card_rounded, size: 18),
+                      label: const Text('Registrar abono'),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: FilledButton.icon(
+                      style: FilledButton.styleFrom(
+                          backgroundColor: const Color(0xFF059669)),
+                      onPressed: () => _markPaid(r),
+                      icon: const Icon(Icons.check_rounded, size: 18),
+                      label: const Text('Pagado'),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+            // Certificado (cuando es elegible y ya entró).
+            if (r.certificateIssued || r.certificateEligible) ...[
+              const SizedBox(height: 6),
+              Align(
+                alignment: Alignment.centerRight,
+                child: r.certificateIssued
+                    ? const Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.verified, color: Colors.green, size: 18),
+                          SizedBox(width: 4),
+                          Text('Certificado emitido',
+                              style: TextStyle(
+                                  color: Colors.green, fontSize: 13)),
+                        ],
+                      )
+                    : TextButton(
+                        onPressed: () => _issueCert(r),
+                        child: const Text('Emitir certificado'),
+                      ),
+              ),
+            ],
+          ],
         ),
-        title: Text(r.customerName.isEmpty ? 'Asistente' : r.customerName,
-            style: const TextStyle(fontWeight: FontWeight.w600)),
-        subtitle: Text(
-          '${r.customerPhone} · ${r.isConfirmed ? "Pagado" : "Pendiente"}'
-          '${r.checkedIn ? " · Entró" : ""}${r.checkedOut ? " · Salió" : ""}',
-        ),
-        trailing: r.certificateIssued
-            ? const Icon(Icons.verified, color: Colors.green)
-            : (r.certificateEligible
-                ? TextButton(
-                    onPressed: () => _issueCert(r),
-                    child: const Text('Certificar'),
-                  )
-                : null),
       ),
     );
+  }
+
+  Widget _paymentProgress(EventRegistrationView r) {
+    final pct = r.price > 0 ? (r.amountPaid / r.price).clamp(0.0, 1.0) : 0.0;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        ClipRRect(
+          borderRadius: BorderRadius.circular(6),
+          child: LinearProgressIndicator(
+            value: pct,
+            minHeight: 8,
+            backgroundColor: Colors.grey.shade200,
+            valueColor: const AlwaysStoppedAnimation(_eventAccent),
+          ),
+        ),
+        const SizedBox(height: 4),
+        Text('Pagó \$${r.amountPaid} de \$${r.price} · faltan \$${r.balance}',
+            style: const TextStyle(fontSize: 12.5, color: Colors.black54)),
+      ],
+    );
+  }
+
+  /// Registra un abono (cuota). El organizador escribe el monto recibido.
+  Future<void> _recordPayment(EventRegistrationView r) async {
+    final controller = TextEditingController(text: r.balance.toString());
+    final amount = await showDialog<int>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Registrar abono'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('${r.customerName} debe \$${r.balance}.',
+                style: const TextStyle(fontSize: 14)),
+            const SizedBox(height: 12),
+            TextField(
+              controller: controller,
+              autofocus: true,
+              keyboardType: TextInputType.number,
+              decoration: const InputDecoration(
+                labelText: 'Monto recibido (COP)',
+                prefixText: '\$ ',
+                border: OutlineInputBorder(),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('Cancelar'),
+          ),
+          FilledButton(
+            onPressed: () =>
+                Navigator.of(ctx).pop(int.tryParse(controller.text.trim())),
+            child: const Text('Registrar'),
+          ),
+        ],
+      ),
+    );
+    if (amount == null || amount <= 0) return;
+    try {
+      await _api.recordEventPayment(_event.id, r.id, amount);
+      if (!mounted) return;
+      _snack('Abono registrado', kind: EventSnackKind.success);
+      _loadRegs();
+    } catch (_) {
+      _snack('No pudimos registrar el abono.', kind: EventSnackKind.error);
+    }
+  }
+
+  /// Marca la inscripción como pagada en su totalidad (activa el carné).
+  Future<void> _markPaid(EventRegistrationView r) async {
+    try {
+      await _api.confirmEventPayment(_event.id, r.id);
+      if (!mounted) return;
+      _snack('Pago completo · carné activado', kind: EventSnackKind.success);
+      _loadRegs();
+    } catch (_) {
+      _snack('No pudimos confirmar el pago.', kind: EventSnackKind.error);
+    }
   }
 
   static String _formatDate(DateTime d) {
@@ -571,6 +722,36 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
     final l = d.toLocal();
     final m = months[l.month - 1];
     return '${l.day} de $m de ${l.year}';
+  }
+}
+
+/// Insignia de estado de pago del inscrito (verde pagado / ámbar pendiente).
+class _PaymentBadge extends StatelessWidget {
+  final EventRegistrationView reg;
+  const _PaymentBadge({required this.reg});
+
+  @override
+  Widget build(BuildContext context) {
+    final paid = reg.isConfirmed;
+    final color = paid ? const Color(0xFF059669) : const Color(0xFFD97706);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(paid ? Icons.verified_user_rounded : Icons.schedule_rounded,
+              size: 14, color: color),
+          const SizedBox(width: 4),
+          Text(paid ? 'Carné activo' : 'Pago pendiente',
+              style: TextStyle(
+                  color: color, fontSize: 12, fontWeight: FontWeight.w600)),
+        ],
+      ),
+    );
   }
 }
 

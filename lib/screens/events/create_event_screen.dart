@@ -38,6 +38,14 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
   DateTime? _startAt;
   bool _saving = false;
 
+  // Pago: métodos aceptados (por defecto efectivo + transferencia) y cuotas.
+  final Set<String> _methods = {
+    EventPaymentMethod.efectivo,
+    EventPaymentMethod.transferencia,
+  };
+  bool _installments = false;
+  int _installmentsCount = 2;
+
   @override
   void initState() {
     super.initState();
@@ -77,14 +85,19 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
     if (!_formKey.currentState!.validate()) return;
     setState(() => _saving = true);
     try {
+      final price = int.parse(_priceCtrl.text.trim());
       final body = <String, dynamic>{
         'type': _type,
         'title': _titleCtrl.text.trim(),
         'description': _descCtrl.text.trim(),
         'modality': _modality,
         'location_or_link': _locationCtrl.text.trim(),
-        'price': int.parse(_priceCtrl.text.trim()),
+        'price': price,
         'capacity': int.parse(_capacityCtrl.text.trim()),
+        // El pago solo aplica a eventos con precio.
+        'enabled_payment_methods': price > 0 ? _methods.toList() : <String>[],
+        'installments_enabled': price > 0 && _installments,
+        'installments_count': _installments ? _installmentsCount : 0,
         if (_startAt != null) 'start_at': _startAt!.toUtc().toIso8601String(),
       };
       final created = await _api.createEvent(body);
@@ -105,6 +118,77 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
       return 'No pudimos crear el evento. Intente de nuevo.';
     }
     return msg;
+  }
+
+  // Configuración de cobro (solo eventos con precio). El cobro ocurre por
+  // fuera (VendIA conecta); aquí el organizador declara qué acepta y si
+  // permite pagar en cuotas.
+  Widget _paymentConfig() {
+    return Padding(
+      padding: const EdgeInsets.only(top: 20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text('¿Cómo aceptas el pago?',
+              style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
+          const SizedBox(height: 2),
+          Text('Tus asistentes verán estos medios al inscribirse.',
+              style: TextStyle(fontSize: 12.5, color: Colors.grey.shade600)),
+          const SizedBox(height: 10),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              for (final m in EventPaymentMethod.all)
+                FilterChip(
+                  label: Text(EventPaymentMethod.label(m)),
+                  selected: _methods.contains(m),
+                  onSelected: (sel) => setState(() {
+                    if (sel) {
+                      _methods.add(m);
+                    } else {
+                      _methods.remove(m);
+                    }
+                  }),
+                ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          SwitchListTile(
+            contentPadding: EdgeInsets.zero,
+            title: const Text('Permitir pago en cuotas'),
+            subtitle: Text(_installments
+                ? 'Hasta $_installmentsCount cuotas — el carné se activa al '
+                    'completar el pago.'
+                : 'El asistente paga el total de una vez.'),
+            value: _installments,
+            onChanged: (v) => setState(() => _installments = v),
+          ),
+          if (_installments)
+            Row(
+              children: [
+                const Text('Número de cuotas:', style: TextStyle(fontSize: 14)),
+                const Spacer(),
+                IconButton(
+                  onPressed: _installmentsCount > 2
+                      ? () => setState(() => _installmentsCount--)
+                      : null,
+                  icon: const Icon(Icons.remove_circle_outline),
+                ),
+                Text('$_installmentsCount',
+                    style: const TextStyle(
+                        fontSize: 18, fontWeight: FontWeight.bold)),
+                IconButton(
+                  onPressed: _installmentsCount < 12
+                      ? () => setState(() => _installmentsCount++)
+                      : null,
+                  icon: const Icon(Icons.add_circle_outline),
+                ),
+              ],
+            ),
+        ],
+      ),
+    );
   }
 
   String get _locationLabel =>
@@ -248,6 +332,15 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
                   ),
                 ),
               ],
+            ),
+            // Pago: solo aplica a eventos con precio. Reactivo al campo precio.
+            AnimatedBuilder(
+              animation: _priceCtrl,
+              builder: (context, _) {
+                final price = int.tryParse(_priceCtrl.text.trim()) ?? 0;
+                if (price <= 0) return const SizedBox(height: 8);
+                return _paymentConfig();
+              },
             ),
             const SizedBox(height: 28),
             FilledButton(

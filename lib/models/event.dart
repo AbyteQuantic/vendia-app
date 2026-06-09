@@ -74,6 +74,10 @@ class Event {
   final bool installmentsEnabled;
   final int installmentsCount;
 
+  /// Métodos de pago que el organizador acepta para este evento (claves
+  /// estables: efectivo/transferencia/tarjeta/otro). Se muestran al asistente.
+  final List<String> enabledPaymentMethods;
+
   const Event({
     required this.id,
     this.type = EventType.otro,
@@ -88,6 +92,7 @@ class Event {
     this.status = EventStatus.borrador,
     this.installmentsEnabled = false,
     this.installmentsCount = 0,
+    this.enabledPaymentMethods = const [],
   });
 
   /// True cuando el evento es gratuito.
@@ -111,6 +116,10 @@ class Event {
       status: (json['status'] as String?) ?? EventStatus.borrador,
       installmentsEnabled: json['installments_enabled'] == true,
       installmentsCount: (json['installments_count'] as num? ?? 0).toInt(),
+      enabledPaymentMethods:
+          (json['enabled_payment_methods'] as List<dynamic>? ?? const [])
+              .map((e) => e.toString())
+              .toList(growable: false),
     );
   }
 
@@ -128,6 +137,7 @@ class Event {
         'status': status,
         'installments_enabled': installmentsEnabled,
         'installments_count': installmentsCount,
+        'enabled_payment_methods': enabledPaymentMethods,
       };
 
   Event copyWith({
@@ -144,6 +154,7 @@ class Event {
     String? status,
     bool? installmentsEnabled,
     int? installmentsCount,
+    List<String>? enabledPaymentMethods,
   }) {
     return Event(
       id: id ?? this.id,
@@ -159,8 +170,29 @@ class Event {
       status: status ?? this.status,
       installmentsEnabled: installmentsEnabled ?? this.installmentsEnabled,
       installmentsCount: installmentsCount ?? this.installmentsCount,
+      enabledPaymentMethods:
+          enabledPaymentMethods ?? this.enabledPaymentMethods,
     );
   }
+}
+
+/// Métodos de pago que el organizador puede habilitar para un evento. Claves
+/// estables que espejan el backend; el cobro ocurre por fuera (VendIA conecta).
+class EventPaymentMethod {
+  static const efectivo = 'efectivo';
+  static const transferencia = 'transferencia';
+  static const tarjeta = 'tarjeta';
+  static const otro = 'otro';
+
+  static const all = [efectivo, transferencia, tarjeta, otro];
+
+  static String label(String v) => switch (v) {
+        efectivo => 'Efectivo',
+        transferencia => 'Transferencia / Nequi / Daviplata',
+        tarjeta => 'Tarjeta / PSE',
+        otro => 'Otro',
+        _ => v,
+      };
 }
 
 /// Una fila del panel de inscritos del organizador (F042).
@@ -169,6 +201,9 @@ class EventRegistrationView {
   final String customerName;
   final String customerPhone;
   final String paymentStatus;
+  final int amountPaid;
+  final int price;
+  final int balance;
   final bool checkedIn;
   final bool checkedOut;
   final bool certificateEligible;
@@ -179,6 +214,9 @@ class EventRegistrationView {
     this.customerName = '',
     this.customerPhone = '',
     this.paymentStatus = '',
+    this.amountPaid = 0,
+    this.price = 0,
+    this.balance = 0,
     this.checkedIn = false,
     this.checkedOut = false,
     this.certificateEligible = false,
@@ -187,12 +225,18 @@ class EventRegistrationView {
 
   bool get isConfirmed => paymentStatus == 'confirmed';
 
+  /// True cuando el evento es de pago y aún queda saldo por cubrir.
+  bool get hasBalance => !isConfirmed && balance > 0;
+
   factory EventRegistrationView.fromJson(Map<String, dynamic> json) {
     return EventRegistrationView(
       id: (json['id'] ?? '').toString(),
       customerName: (json['customer_name'] as String?) ?? '',
       customerPhone: (json['customer_phone'] as String?) ?? '',
       paymentStatus: (json['payment_status'] as String?) ?? '',
+      amountPaid: (json['amount_paid'] as num? ?? 0).toInt(),
+      price: (json['price'] as num? ?? 0).toInt(),
+      balance: (json['balance'] as num? ?? 0).toInt(),
       checkedIn: json['checked_in'] == true,
       checkedOut: json['checked_out'] == true,
       certificateEligible: json['certificate_eligible'] == true,
