@@ -104,6 +104,8 @@ void main() {
       enableRecipes: true,
       enableMarketingHub: true,
     ),
+    // F042 — eventos en grilla cuando enable_events está ON.
+    'events on': const FeatureFlags(enableEvents: true),
   };
 
   for (final bt in businessTypes) {

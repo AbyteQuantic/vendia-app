@@ -120,6 +120,8 @@ bool _capEnabled(String key, FeatureFlags f) {
       return f.enableTables;
     case 'enable_fractional_units':
       return f.enableFractionalUnits;
+    case 'enable_events':
+      return f.enableEvents;
     default:
       return false;
   }
