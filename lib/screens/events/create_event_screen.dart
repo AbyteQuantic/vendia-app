@@ -68,6 +68,13 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
   final Map<String, String> _payQrUrls = {};
   String? _qrUploadingMethod;
 
+  // Texto editable del certificado (vacío = la app usa defaults).
+  final _certTitleCtrl = TextEditingController();
+  final _certIntroCtrl = TextEditingController();
+  final _certBodyCtrl = TextEditingController();
+  final _certSignatoryCtrl = TextEditingController();
+  final _certFooterCtrl = TextEditingController();
+
   bool get _isEdit => widget.existing != null;
 
   @override
@@ -100,6 +107,12 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
         _payInstrCtrls[d.method]?.text = d.instructions;
         if (d.qrImageUrl.isNotEmpty) _payQrUrls[d.method] = d.qrImageUrl;
       }
+      final cc = e.certificateConfig;
+      _certTitleCtrl.text = cc.title;
+      _certIntroCtrl.text = cc.intro;
+      _certBodyCtrl.text = cc.body;
+      _certSignatoryCtrl.text = cc.signatory;
+      _certFooterCtrl.text = cc.footer;
     }
   }
 
@@ -115,7 +128,59 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
     for (final c in _payInstrCtrls.values) {
       c.dispose();
     }
+    _certTitleCtrl.dispose();
+    _certIntroCtrl.dispose();
+    _certBodyCtrl.dispose();
+    _certSignatoryCtrl.dispose();
+    _certFooterCtrl.dispose();
     super.dispose();
+  }
+
+  /// Editor opcional del texto del certificado. La IA solo hace el marco; la
+  /// app compone el texto con estos campos (vacío = usa defaults sensatos).
+  Widget _certificateTextEditor() {
+    Widget field(TextEditingController c, String label, String hint,
+            {int maxLines = 1}) =>
+        Padding(
+          padding: const EdgeInsets.only(bottom: 10),
+          child: TextField(
+            controller: c,
+            minLines: 1,
+            maxLines: maxLines,
+            textCapitalization: TextCapitalization.sentences,
+            decoration: InputDecoration(
+                labelText: label, hintText: hint, isDense: true),
+          ),
+        );
+    return Theme(
+      data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+      child: ExpansionTile(
+        key: const Key('event_cert_text'),
+        tilePadding: EdgeInsets.zero,
+        childrenPadding: const EdgeInsets.only(bottom: 8),
+        leading: const Icon(Icons.workspace_premium_outlined,
+            color: Color(0xFF059669)),
+        title: const Text('Texto del certificado (opcional)',
+            style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
+        subtitle: Text(
+            'La IA hace el marco; la app pone el texto. Edítalo si quieres.',
+            style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
+        children: [
+          field(_certTitleCtrl, 'Título',
+              'Por defecto: Certificado de Participación'),
+          field(_certIntroCtrl, 'Frase de apertura',
+              'Por defecto: Se otorga el presente certificado a'),
+          field(_certBodyCtrl, 'Cuerpo',
+              'Por defecto: por haber participado satisfactoriamente en…',
+              maxLines: 2),
+          field(_certSignatoryCtrl, 'Otorgado por',
+              'Por defecto: el nombre de tu negocio'),
+          field(_certFooterCtrl, 'Nota al pie / normatividad (opcional)',
+              'Ej: Este certificado acredita 8 horas de formación.',
+              maxLines: 2),
+        ],
+      ),
+    );
   }
 
   Widget _agentField(TextEditingController c, String label, String hint) =>
@@ -444,6 +509,13 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
         'installments_count': _installments ? _installmentsCount : 0,
         if (_startAt != null) 'start_at': _startAt!.toUtc().toIso8601String(),
         if (_endAt != null) 'end_at': _endAt!.toUtc().toIso8601String(),
+        'certificate_config': {
+          'title': _certTitleCtrl.text.trim(),
+          'intro': _certIntroCtrl.text.trim(),
+          'body': _certBodyCtrl.text.trim(),
+          'signatory': _certSignatoryCtrl.text.trim(),
+          'footer': _certFooterCtrl.text.trim(),
+        },
       };
       final result = _isEdit
           ? await _api.updateEvent(widget.existing!.id, body)
@@ -835,6 +907,8 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
                     'catálogo y le da contexto a la IA para el afiche.',
               ),
             ),
+            const SizedBox(height: 16),
+            _certificateTextEditor(),
             const SizedBox(height: 16),
             // Moneda del precio (peso colombiano o dólar).
             SegmentedButton<String>(

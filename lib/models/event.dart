@@ -94,6 +94,9 @@ class Event {
   /// Datos de pago por método (instrucciones + QR) que ve el asistente.
   final List<EventPaymentDetail> paymentDetails;
 
+  /// Texto editable del certificado (la app compone el resto con defaults).
+  final EventCertificateConfig certificateConfig;
+
   const Event({
     required this.id,
     this.type = EventType.otro,
@@ -113,6 +116,7 @@ class Event {
     this.installmentsCount = 0,
     this.enabledPaymentMethods = const [],
     this.paymentDetails = const [],
+    this.certificateConfig = const EventCertificateConfig(),
     this.posterUrl = '',
     this.badgeUrl = '',
     this.certificateUrl = '',
@@ -150,6 +154,8 @@ class Event {
           .whereType<Map<String, dynamic>>()
           .map(EventPaymentDetail.fromJson)
           .toList(growable: false),
+      certificateConfig: EventCertificateConfig.fromJson(
+          (json['certificate_config'] as Map<String, dynamic>?) ?? const {}),
       posterUrl: _templateUrl(json['poster_template']),
       badgeUrl: _templateUrl(json['badge_template']),
       certificateUrl: _templateUrl(json['certificate_template']),
@@ -195,6 +201,7 @@ class Event {
     int? installmentsCount,
     List<String>? enabledPaymentMethods,
     List<EventPaymentDetail>? paymentDetails,
+    EventCertificateConfig? certificateConfig,
     String? posterUrl,
     String? badgeUrl,
     String? certificateUrl,
@@ -219,6 +226,7 @@ class Event {
       enabledPaymentMethods:
           enabledPaymentMethods ?? this.enabledPaymentMethods,
       paymentDetails: paymentDetails ?? this.paymentDetails,
+      certificateConfig: certificateConfig ?? this.certificateConfig,
       posterUrl: posterUrl ?? this.posterUrl,
       badgeUrl: badgeUrl ?? this.badgeUrl,
       certificateUrl: certificateUrl ?? this.certificateUrl,
@@ -252,6 +260,40 @@ class EventPaymentDetail {
       };
 
   bool get isEmpty => instructions.trim().isEmpty && qrImageUrl.isEmpty;
+}
+
+/// Texto editable del certificado. Campos vacíos → la app usa defaults.
+class EventCertificateConfig {
+  final String title;
+  final String intro;
+  final String body;
+  final String signatory;
+  final String footer;
+
+  const EventCertificateConfig({
+    this.title = '',
+    this.intro = '',
+    this.body = '',
+    this.signatory = '',
+    this.footer = '',
+  });
+
+  factory EventCertificateConfig.fromJson(Map<String, dynamic> json) =>
+      EventCertificateConfig(
+        title: (json['title'] as String?) ?? '',
+        intro: (json['intro'] as String?) ?? '',
+        body: (json['body'] as String?) ?? '',
+        signatory: (json['signatory'] as String?) ?? '',
+        footer: (json['footer'] as String?) ?? '',
+      );
+
+  Map<String, dynamic> toJson() => {
+        'title': title,
+        'intro': intro,
+        'body': body,
+        'signatory': signatory,
+        'footer': footer,
+      };
 }
 
 /// Extrae `image_url` de una plantilla (badge/certificate/poster) del JSON.
