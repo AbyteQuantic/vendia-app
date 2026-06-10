@@ -1541,6 +1541,24 @@ class ApiService {
     }
   }
 
+  /// Limpia con IA la foto de la firma (aísla los trazos, quita el fondo) y
+  /// devuelve la URL de la imagen lista para el certificado.
+  Future<String> cleanEventSignature(XFile image) async {
+    try {
+      final formData = FormData.fromMap({
+        'image': await imageMultipart(image, prefix: 'firma'),
+      });
+      final response = await _dio.post('/api/v1/event-signature-clean',
+          data: formData,
+          options: Options(receiveTimeout: const Duration(seconds: 70)));
+      final data = (response.data as Map<String, dynamic>)['data']
+          as Map<String, dynamic>;
+      return (data['url'] as String?) ?? '';
+    } on DioException catch (e) {
+      throw AppError.fromDioException(e);
+    }
+  }
+
   /// Sube la imagen del QR de un medio de pago y devuelve su URL, para
   /// incluirla en payment_details al guardar el evento (sirve al crear y
   /// editar — no requiere id del evento).

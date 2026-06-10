@@ -269,6 +269,7 @@ class EventCertificateConfig {
   final String body;
   final String signatory;
   final String footer;
+  final String signatureImage;
 
   const EventCertificateConfig({
     this.title = '',
@@ -276,6 +277,7 @@ class EventCertificateConfig {
     this.body = '',
     this.signatory = '',
     this.footer = '',
+    this.signatureImage = '',
   });
 
   factory EventCertificateConfig.fromJson(Map<String, dynamic> json) =>
@@ -285,6 +287,7 @@ class EventCertificateConfig {
         body: (json['body'] as String?) ?? '',
         signatory: (json['signatory'] as String?) ?? '',
         footer: (json['footer'] as String?) ?? '',
+        signatureImage: (json['signature_image'] as String?) ?? '',
       );
 
   Map<String, dynamic> toJson() => {
@@ -293,6 +296,7 @@ class EventCertificateConfig {
         'body': body,
         'signatory': signatory,
         'footer': footer,
+        'signature_image': signatureImage,
       };
 }
 
