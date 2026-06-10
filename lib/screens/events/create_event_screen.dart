@@ -210,14 +210,15 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
       data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
       child: ExpansionTile(
         key: const Key('event_cert_text'),
+        initiallyExpanded: true,
         tilePadding: EdgeInsets.zero,
         childrenPadding: const EdgeInsets.only(bottom: 8),
         leading: const Icon(Icons.workspace_premium_outlined,
             color: Color(0xFF059669)),
-        title: const Text('Texto del certificado (opcional)',
+        title: const Text('Certificado: texto y firma',
             style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
         subtitle: Text(
-            'La IA hace el marco; la app pone el texto. Edítalo si quieres.',
+            'La IA hace el marco; aquí pones el texto y tu firma. Opcional.',
             style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
         children: [
           field(_certTitleCtrl, 'Título',
