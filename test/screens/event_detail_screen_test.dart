@@ -96,9 +96,12 @@ void main() {
     final scrollable = find.byType(Scrollable).first;
     await tester.scrollUntilVisible(find.text('Emitir certificado'), 300,
         scrollable: scrollable);
+    await tester.pumpAndSettle();
 
     final btn = find.text('Emitir certificado');
     expect(btn, findsOneWidget);
+    await tester.ensureVisible(btn);
+    await tester.pumpAndSettle();
     await tester.tap(btn);
     await tester.pump();
     expect(api.certifiedRegId, 'r2');

@@ -1498,9 +1498,11 @@ class ApiService {
     required String title,
     String type = '',
     String modality = '',
+    String topic = '',
     String audience = '',
     String includes = '',
     String level = '',
+    String place = '',
     String extra = '',
     String current = '',
   }) async {
@@ -1509,9 +1511,11 @@ class ApiService {
         'title': title,
         'type': type,
         'modality': modality,
+        'topic': topic,
         'audience': audience,
         'includes': includes,
         'level': level,
+        'place': place,
         'extra': extra,
         'current': current,
       });

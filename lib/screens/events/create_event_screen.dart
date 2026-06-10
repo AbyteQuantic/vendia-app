@@ -131,18 +131,27 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
         ),
       );
 
-  /// Asistente IA: pregunta sobre el evento y redacta la descripción. Si ya
-  /// hay texto, lo mejora. Llena _descCtrl con el resultado (editable).
+  String _fmtDateShort(DateTime? d) => d == null
+      ? 'Elegir'
+      : '${d.day.toString().padLeft(2, '0')}/${d.month.toString().padLeft(2, '0')} '
+          '${d.hour.toString().padLeft(2, '0')}:${d.minute.toString().padLeft(2, '0')}';
+
+  /// Asistente IA: pregunta lo esencial del evento, PRE-LLENA el formulario
+  /// (ciudad/país, inicio, fin) y redacta la descripción. Todo queda editable.
+  /// Si ya hay descripción, la mejora.
   Future<void> _openDescriptionAgent() async {
     if (_titleCtrl.text.trim().length < 2) {
       showEventSnack(context, 'Primero ponle un nombre al evento.',
           kind: EventSnackKind.error);
       return;
     }
+    final topic = TextEditingController();
     final audience = TextEditingController();
     final includes = TextEditingController();
-    final level = TextEditingController();
-    final extra = TextEditingController();
+    final ciudad = TextEditingController(text: _cityCtrl.text.trim());
+    final pais = TextEditingController();
+    var startTmp = _startAt;
+    var endTmp = _endAt;
     var generating = false;
 
     await showModalBottomSheet<void>(
@@ -150,6 +159,10 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
       isScrollControlled: true,
       showDragHandle: true,
       builder: (ctx) => StatefulBuilder(builder: (ctx, setSheet) {
+        final place = [ciudad.text.trim(), pais.text.trim()]
+            .where((s) => s.isNotEmpty)
+            .join(', ');
+
         Future<void> generate() async {
           setSheet(() => generating = true);
           try {
@@ -157,16 +170,23 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
               title: _titleCtrl.text.trim(),
               type: _type,
               modality: _modality,
+              topic: topic.text.trim(),
               audience: audience.text.trim(),
               includes: includes.text.trim(),
-              level: level.text.trim(),
-              extra: extra.text.trim(),
+              place: place,
               current: _descCtrl.text.trim(),
             );
             if (!mounted) return;
-            setState(() => _descCtrl.text = text);
+            // Pre-llena el formulario con lo que respondió (editable).
+            setState(() {
+              _descCtrl.text = text;
+              if (place.isNotEmpty) _cityCtrl.text = place;
+              if (startTmp != null) _startAt = startTmp;
+              if (endTmp != null) _endAt = endTmp;
+            });
             if (ctx.mounted) Navigator.pop(ctx);
-            showEventSnack(context, 'Descripción lista. Puedes editarla.',
+            showEventSnack(context,
+                'Listo: descripción y datos pre-llenados. Revisa y edita.',
                 kind: EventSnackKind.success);
           } catch (_) {
             setSheet(() => generating = false);
@@ -190,27 +210,70 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
                   Icon(Icons.auto_awesome_rounded, color: Color(0xFF6C4CE0)),
                   SizedBox(width: 8),
                   Expanded(
-                    child: Text('Asistente de descripción',
+                    child: Text('Asistente del evento',
                         style: TextStyle(
                             fontSize: 18, fontWeight: FontWeight.bold)),
                   ),
                 ]),
                 const SizedBox(height: 4),
                 Text(
-                    'Cuéntame del evento y te armo una descripción atractiva '
-                    'para el catálogo.',
+                    'Respóndeme unas preguntas: pre-lleno los datos y te armo '
+                    'una buena descripción. Todo queda editable.',
                     style:
                         TextStyle(color: Colors.grey.shade600, fontSize: 13)),
                 const SizedBox(height: 14),
-                _agentField(audience, '¿Para quién es?',
-                    'Ej: estilistas que quieren dominar el tono ámbar'),
-                _agentField(includes, '¿Qué incluye o qué aprenderán?',
-                    'Ej: teoría del color, práctica y kit de muestras'),
-                _agentField(level, 'Nivel (opcional)',
-                    'Ej: principiante / intermedio'),
-                _agentField(extra, '¿Algo más a destacar? (opcional)',
-                    'Ej: certificado, refrigerio, cupos limitados'),
-                const SizedBox(height: 6),
+                _agentField(topic, '¿De qué trata el evento?',
+                    'Ej: técnicas de colorimetría para el tono ámbar'),
+                _agentField(audience, '¿Para quién es? (nicho)',
+                    'Ej: estilistas y coloristas profesionales'),
+                _agentField(includes, '¿Qué incluye o qué aprenderán? (opcional)',
+                    'Ej: teoría, práctica y kit de muestras'),
+                Row(
+                  children: [
+                    Expanded(child: _agentField(ciudad, 'Ciudad', 'Ej: Guayaquil')),
+                    const SizedBox(width: 10),
+                    Expanded(child: _agentField(pais, 'País', 'Ej: Ecuador')),
+                  ],
+                ),
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        icon: const Icon(Icons.event_rounded, size: 18),
+                        label: Text('Inicio: ${_fmtDateShort(startTmp)}',
+                            overflow: TextOverflow.ellipsis),
+                        onPressed: () async {
+                          final p = await _pickDateTime(
+                              current: startTmp, dateHelp: 'Inicio del evento');
+                          if (p != null) {
+                            setSheet(() {
+                              startTmp = p;
+                              if (endTmp != null && endTmp!.isBefore(p)) {
+                                endTmp = null;
+                              }
+                            });
+                          }
+                        },
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        icon: const Icon(Icons.event_available_rounded, size: 18),
+                        label: Text('Fin: ${_fmtDateShort(endTmp)}',
+                            overflow: TextOverflow.ellipsis),
+                        onPressed: () async {
+                          final p = await _pickDateTime(
+                              current: endTmp ?? startTmp,
+                              dateHelp: 'Finalización',
+                              firstDate: startTmp);
+                          if (p != null) setSheet(() => endTmp = p);
+                        },
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 10),
                 SizedBox(
                   width: double.infinity,
                   height: 52,
@@ -227,8 +290,8 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
                     label: Text(generating
                         ? 'Generando…'
                         : (hasCurrent
-                            ? 'Mejorar la actual'
-                            : 'Generar descripción')),
+                            ? 'Mejorar y pre-llenar'
+                            : 'Generar y pre-llenar')),
                   ),
                 ),
               ],
@@ -237,10 +300,11 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
         );
       }),
     );
+    topic.dispose();
     audience.dispose();
     includes.dispose();
-    level.dispose();
-    extra.dispose();
+    ciudad.dispose();
+    pais.dispose();
   }
 
   /// Sube el QR de un método y guarda su URL para incluirla al guardar.

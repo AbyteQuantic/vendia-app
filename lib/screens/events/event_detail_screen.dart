@@ -30,6 +30,9 @@ import 'event_seat_map_sheet.dart';
 
 /// Acento del módulo de Eventos (mismo cian del catálogo / ícono).
 const _eventAccent = Color(0xFF0EA5E9);
+// Estado de las piezas de diseño: verde = ya generada; ámbar = falta generar.
+const _designDone = Color(0xFF059669);
+const _designPending = Color(0xFFD97706);
 
 class EventDetailScreen extends StatefulWidget {
   final Event event;
@@ -633,59 +636,96 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
           ),
           const SizedBox(height: 14),
           // Afiche — pieza principal: es la que aparece en el catálogo y viaja
-          // en el link que se comparte por WhatsApp.
-          SizedBox(
-            width: double.infinity,
-            child: FilledButton.icon(
-              key: const Key('detail_design_poster'),
-              style: FilledButton.styleFrom(
-                backgroundColor: _eventAccent,
-                padding: const EdgeInsets.symmetric(vertical: 14),
+          // en el link que se comparte por WhatsApp. Verde = ya generado.
+          Builder(builder: (_) {
+            final done = _event.posterUrl.isNotEmpty;
+            return SizedBox(
+              width: double.infinity,
+              child: FilledButton.icon(
+                key: const Key('detail_design_poster'),
+                style: FilledButton.styleFrom(
+                  backgroundColor: done ? _designDone : _eventAccent,
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                ),
+                onPressed: () => _openDesigner(EventDesignKind.poster),
+                icon: Icon(
+                    done ? Icons.check_circle_rounded : Icons.campaign_rounded,
+                    size: 22),
+                label: Text(
+                    done
+                        ? 'Afiche listo · editar'
+                        : 'Generar afiche para el catálogo',
+                    style: const TextStyle(fontSize: 16)),
               ),
-              onPressed: () => _openDesigner(EventDesignKind.poster),
-              icon: const Icon(Icons.campaign_rounded, size: 22),
-              label: const Text('Afiche para el catálogo',
-                  style: TextStyle(fontSize: 16)),
-            ),
-          ),
+            );
+          }),
           const SizedBox(height: 4),
-          const Text(
-            'Es la imagen que verán sus clientes en el catálogo y en el link '
-            'de WhatsApp.',
-            style: TextStyle(fontSize: 12.5, color: Colors.black45),
+          Text(
+            _event.posterUrl.isNotEmpty
+                ? '✓ Generado. Es la imagen del catálogo y del link de WhatsApp; '
+                    'tócala para editarla.'
+                : '⚠ Falta generarlo. Es la imagen que verán sus clientes en el '
+                    'catálogo y en el link de WhatsApp.',
+            style: TextStyle(
+                fontSize: 12.5,
+                color: _event.posterUrl.isNotEmpty
+                    ? _designDone
+                    : _designPending,
+                fontWeight: FontWeight.w600),
           ),
           const SizedBox(height: 12),
           Row(
             children: [
-              Expanded(
-                child: OutlinedButton.icon(
-                  key: const Key('detail_design_badge'),
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: _eventAccent,
-                    side: const BorderSide(color: _eventAccent),
-                    padding: const EdgeInsets.symmetric(vertical: 12),
-                  ),
-                  onPressed: () => _openDesigner(EventDesignKind.badge),
-                  icon: const Icon(Icons.badge_outlined, size: 20),
-                  label: const Text('Escarapela'),
-                ),
-              ),
+              _secondaryDesignButton(
+                  const Key('detail_design_badge'),
+                  EventDesignKind.badge,
+                  'Escarapela',
+                  Icons.badge_outlined,
+                  _event.badgeUrl.isNotEmpty),
               const SizedBox(width: 12),
-              Expanded(
-                child: OutlinedButton.icon(
-                  key: const Key('detail_design_cert'),
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: _eventAccent,
-                    side: const BorderSide(color: _eventAccent),
-                    padding: const EdgeInsets.symmetric(vertical: 12),
-                  ),
-                  onPressed: () => _openDesigner(EventDesignKind.certificate),
-                  icon: const Icon(Icons.workspace_premium_outlined, size: 20),
-                  label: const Text('Certificado'),
-                ),
-              ),
+              _secondaryDesignButton(
+                  const Key('detail_design_cert'),
+                  EventDesignKind.certificate,
+                  'Certificado',
+                  Icons.workspace_premium_outlined,
+                  _event.certificateUrl.isNotEmpty),
             ],
           ),
+        ],
+      ),
+    );
+  }
+
+  /// Botón secundario (escarapela/certificado) con estado: verde "listo ·
+  /// editar" si ya se generó, o acento "falta generar" si aún no.
+  Widget _secondaryDesignButton(
+      Key key, EventDesignKind kind, String label, IconData icon, bool done) {
+    final color = done ? _designDone : _eventAccent;
+    return Expanded(
+      child: Column(
+        children: [
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton.icon(
+              key: key,
+              style: OutlinedButton.styleFrom(
+                foregroundColor: color,
+                side: BorderSide(color: color),
+                backgroundColor:
+                    done ? _designDone.withValues(alpha: 0.06) : null,
+                padding: const EdgeInsets.symmetric(vertical: 12),
+              ),
+              onPressed: () => _openDesigner(kind),
+              icon: Icon(done ? Icons.check_circle_rounded : icon, size: 20),
+              label: Text(label),
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(done ? 'Listo · editar' : 'Falta generar',
+              style: TextStyle(
+                  fontSize: 11.5,
+                  fontWeight: FontWeight.w700,
+                  color: done ? _designDone : _designPending)),
         ],
       ),
     );
