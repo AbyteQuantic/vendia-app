@@ -270,6 +270,11 @@ class EventCertificateConfig {
   final String signatory;
   final String footer;
   final String signatureImage;
+  final String logoImage;
+
+  /// Posición/tamaño de cada elemento (claves: title/intro/name/body/date/
+  /// signatory/signature/logo/qr). Vacío → layout por defecto.
+  final Map<String, CertElementPos> layout;
 
   const EventCertificateConfig({
     this.title = '',
@@ -278,17 +283,24 @@ class EventCertificateConfig {
     this.signatory = '',
     this.footer = '',
     this.signatureImage = '',
+    this.logoImage = '',
+    this.layout = const {},
   });
 
-  factory EventCertificateConfig.fromJson(Map<String, dynamic> json) =>
-      EventCertificateConfig(
-        title: (json['title'] as String?) ?? '',
-        intro: (json['intro'] as String?) ?? '',
-        body: (json['body'] as String?) ?? '',
-        signatory: (json['signatory'] as String?) ?? '',
-        footer: (json['footer'] as String?) ?? '',
-        signatureImage: (json['signature_image'] as String?) ?? '',
-      );
+  factory EventCertificateConfig.fromJson(Map<String, dynamic> json) {
+    final rawLayout = (json['layout'] as Map<String, dynamic>?) ?? const {};
+    return EventCertificateConfig(
+      title: (json['title'] as String?) ?? '',
+      intro: (json['intro'] as String?) ?? '',
+      body: (json['body'] as String?) ?? '',
+      signatory: (json['signatory'] as String?) ?? '',
+      footer: (json['footer'] as String?) ?? '',
+      signatureImage: (json['signature_image'] as String?) ?? '',
+      logoImage: (json['logo_image'] as String?) ?? '',
+      layout: rawLayout.map((k, v) =>
+          MapEntry(k, CertElementPos.fromJson((v as Map).cast<String, dynamic>()))),
+    );
+  }
 
   Map<String, dynamic> toJson() => {
         'title': title,
@@ -297,7 +309,42 @@ class EventCertificateConfig {
         'signatory': signatory,
         'footer': footer,
         'signature_image': signatureImage,
+        'logo_image': logoImage,
+        'layout': layout.map((k, v) => MapEntry(k, v.toJson())),
       };
+}
+
+/// Posición normalizada (0..1) y tamaño relativo de un elemento del diploma.
+class CertElementPos {
+  final double x;
+  final double y;
+  final double scale;
+  final bool hidden;
+
+  const CertElementPos({
+    this.x = 0.5,
+    this.y = 0.5,
+    this.scale = 0.04,
+    this.hidden = false,
+  });
+
+  factory CertElementPos.fromJson(Map<String, dynamic> json) => CertElementPos(
+        x: (json['x'] as num? ?? 0.5).toDouble(),
+        y: (json['y'] as num? ?? 0.5).toDouble(),
+        scale: (json['scale'] as num? ?? 0.04).toDouble(),
+        hidden: json['hidden'] == true,
+      );
+
+  Map<String, dynamic> toJson() =>
+      {'x': x, 'y': y, 'scale': scale, 'hidden': hidden};
+
+  CertElementPos copyWith({double? x, double? y, double? scale, bool? hidden}) =>
+      CertElementPos(
+        x: x ?? this.x,
+        y: y ?? this.y,
+        scale: scale ?? this.scale,
+        hidden: hidden ?? this.hidden,
+      );
 }
 
 /// Extrae `image_url` de una plantilla (badge/certificate/poster) del JSON.

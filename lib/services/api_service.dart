@@ -1541,6 +1541,23 @@ class ApiService {
     }
   }
 
+  /// Guarda SOLO la configuración del certificado (texto, firma, logo, layout)
+  /// desde el diseñador, sin tocar el resto del evento. Devuelve el evento.
+  Future<Map<String, dynamic>> updateEventCertificateConfig(
+      String eventId, Map<String, dynamic> config) async {
+    try {
+      final response = await _dio
+          .put('/api/v1/events/$eventId/certificate-config', data: config);
+      return (response.data as Map<String, dynamic>)['data']
+          as Map<String, dynamic>;
+    } on DioException catch (e) {
+      throw AppError.fromDioException(e);
+    }
+  }
+
+  /// Sube una imagen genérica del evento (logo, etc.) y devuelve su URL.
+  Future<String> uploadEventImage(XFile image) => uploadEventPaymentQR(image);
+
   /// Limpia con IA la foto de la firma (aísla los trazos, quita el fondo) y
   /// devuelve la URL de la imagen lista para el certificado.
   Future<String> cleanEventSignature(XFile image) async {

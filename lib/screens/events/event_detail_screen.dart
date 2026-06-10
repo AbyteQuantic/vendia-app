@@ -22,6 +22,7 @@ import '../../utils/markdown_plain.dart';
 import '../promotions/broadcast_list_helper_screen.dart';
 import 'create_event_screen.dart';
 import 'event_broadcast_screen.dart';
+import 'event_certificate_designer_screen.dart';
 import 'event_checkin_scan_screen.dart';
 import 'event_description_editor.dart';
 import 'event_design_screen.dart';
@@ -283,6 +284,21 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
         EventDesignKind.certificate => _event.copyWith(certificateUrl: url),
       };
     });
+  }
+
+  /// Abre el diseñador WYSIWYG del certificado (fondo IA/subir + firma + logo
+  /// + arrastrar/redimensionar elementos). Devuelve el evento actualizado.
+  Future<void> _openCertificateDesigner() async {
+    HapticFeedback.lightImpact();
+    final updated = await Navigator.of(context).push<Event>(
+      MaterialPageRoute(
+        builder: (_) => EventCertificateDesignerScreen(
+          event: _event,
+          apiOverride: widget.apiOverride,
+        ),
+      ),
+    );
+    if (updated != null && mounted) setState(() => _event = updated);
   }
 
   void _snack(String m, {EventSnackKind kind = EventSnackKind.info}) =>
@@ -760,7 +776,9 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
                     done ? _designDone.withValues(alpha: 0.06) : null,
                 padding: const EdgeInsets.symmetric(vertical: 12),
               ),
-              onPressed: () => _openDesigner(kind),
+              onPressed: () => kind == EventDesignKind.certificate
+                  ? _openCertificateDesigner()
+                  : _openDesigner(kind),
               icon: Icon(done ? Icons.check_circle_rounded : icon, size: 20),
               label: Text(label),
             ),

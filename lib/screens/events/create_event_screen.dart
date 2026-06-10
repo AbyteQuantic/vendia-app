@@ -68,18 +68,6 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
   final Map<String, String> _payQrUrls = {};
   String? _qrUploadingMethod;
 
-  // Texto editable del certificado (vacío = la app usa defaults).
-  final _certTitleCtrl = TextEditingController();
-  final _certIntroCtrl = TextEditingController();
-  final _certBodyCtrl = TextEditingController();
-  final _certSignatoryCtrl = TextEditingController();
-  final _certFooterCtrl = TextEditingController();
-  // Firma del certificado: imagen ya subida/limpiada + el archivo escogido
-  // (para poder limpiarlo con IA) + estados de carga.
-  String _certSignatureUrl = '';
-  XFile? _sigFile;
-  bool _sigBusy = false;
-
   bool get _isEdit => widget.existing != null;
 
   @override
@@ -112,61 +100,6 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
         _payInstrCtrls[d.method]?.text = d.instructions;
         if (d.qrImageUrl.isNotEmpty) _payQrUrls[d.method] = d.qrImageUrl;
       }
-      final cc = e.certificateConfig;
-      _certTitleCtrl.text = cc.title;
-      _certIntroCtrl.text = cc.intro;
-      _certBodyCtrl.text = cc.body;
-      _certSignatoryCtrl.text = cc.signatory;
-      _certFooterCtrl.text = cc.footer;
-      _certSignatureUrl = cc.signatureImage;
-    }
-  }
-
-  /// Escoge la imagen de la firma (galería o cámara) y la sube tal cual.
-  Future<void> _pickSignature(ImageSource source) async {
-    final picked = await ImagePicker().pickImage(source: source, imageQuality: 92);
-    if (picked == null) return;
-    setState(() {
-      _sigFile = picked;
-      _sigBusy = true;
-    });
-    try {
-      final url = await _api.uploadEventPaymentQR(picked); // genérico imagen→url
-      if (!mounted) return;
-      setState(() {
-        _certSignatureUrl = url;
-        _sigBusy = false;
-      });
-    } catch (_) {
-      if (!mounted) return;
-      setState(() => _sigBusy = false);
-      showEventSnack(context, 'No pudimos subir la firma.',
-          kind: EventSnackKind.error);
-    }
-  }
-
-  /// Limpia con IA la firma escogida (aísla los trazos, quita el fondo).
-  Future<void> _cleanSignature() async {
-    if (_sigFile == null) {
-      showEventSnack(context, 'Primero sube o toma la foto de la firma.',
-          kind: EventSnackKind.info);
-      return;
-    }
-    setState(() => _sigBusy = true);
-    try {
-      final url = await _api.cleanEventSignature(_sigFile!);
-      if (!mounted) return;
-      setState(() {
-        _certSignatureUrl = url;
-        _sigBusy = false;
-      });
-      showEventSnack(context, 'Firma limpiada con IA.',
-          kind: EventSnackKind.success);
-    } catch (_) {
-      if (!mounted) return;
-      setState(() => _sigBusy = false);
-      showEventSnack(context, 'No pudimos limpiar la firma. Intenta con otra.',
-          kind: EventSnackKind.error);
     }
   }
 
@@ -182,152 +115,10 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
     for (final c in _payInstrCtrls.values) {
       c.dispose();
     }
-    _certTitleCtrl.dispose();
-    _certIntroCtrl.dispose();
-    _certBodyCtrl.dispose();
-    _certSignatoryCtrl.dispose();
-    _certFooterCtrl.dispose();
     super.dispose();
   }
 
   /// Editor opcional del texto del certificado. La IA solo hace el marco; la
-  /// app compone el texto con estos campos (vacío = usa defaults sensatos).
-  Widget _certificateTextEditor() {
-    Widget field(TextEditingController c, String label, String hint,
-            {int maxLines = 1}) =>
-        Padding(
-          padding: const EdgeInsets.only(bottom: 10),
-          child: TextField(
-            controller: c,
-            minLines: 1,
-            maxLines: maxLines,
-            textCapitalization: TextCapitalization.sentences,
-            decoration: InputDecoration(
-                labelText: label, hintText: hint, isDense: true),
-          ),
-        );
-    return Theme(
-      data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
-      child: ExpansionTile(
-        key: const Key('event_cert_text'),
-        initiallyExpanded: true,
-        tilePadding: EdgeInsets.zero,
-        childrenPadding: const EdgeInsets.only(bottom: 8),
-        leading: const Icon(Icons.workspace_premium_outlined,
-            color: Color(0xFF059669)),
-        title: const Text('Certificado: texto y firma',
-            style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
-        subtitle: Text(
-            'La IA hace el marco; aquí pones el texto y tu firma. Opcional.',
-            style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
-        children: [
-          field(_certTitleCtrl, 'Título',
-              'Por defecto: Certificado de Participación'),
-          field(_certIntroCtrl, 'Frase de apertura',
-              'Por defecto: Se otorga el presente certificado a'),
-          field(_certBodyCtrl, 'Cuerpo',
-              'Por defecto: por haber participado satisfactoriamente en…',
-              maxLines: 2),
-          field(_certSignatoryCtrl, 'Otorgado por',
-              'Por defecto: el nombre de tu negocio'),
-          field(_certFooterCtrl, 'Nota al pie / normatividad (opcional)',
-              'Ej: Este certificado acredita 8 horas de formación.',
-              maxLines: 2),
-          const SizedBox(height: 8),
-          _signatureEditor(),
-        ],
-      ),
-    );
-  }
-
-  /// Firma del certificado: tomar/subir una imagen y, opcionalmente, limpiarla
-  /// con IA (quita el fondo de la foto). Se compone sobre el diploma.
-  Widget _signatureEditor() {
-    final has = _certSignatureUrl.isNotEmpty;
-    Widget thumb() {
-      const h = 60.0;
-      if (_certSignatureUrl.startsWith('data:')) {
-        final b64 =
-            _certSignatureUrl.substring(_certSignatureUrl.indexOf(',') + 1);
-        return Image.memory(base64Decode(b64), height: h, fit: BoxFit.contain);
-      }
-      return Image.network(_certSignatureUrl, height: h, fit: BoxFit.contain);
-    }
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text('Firma',
-            style: TextStyle(
-                fontSize: 13, fontWeight: FontWeight.w600, color: Colors.grey.shade800)),
-        Text('Toma o sube la foto de tu firma; puedes limpiarla con IA.',
-            style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
-        const SizedBox(height: 8),
-        if (has)
-          Container(
-            padding: const EdgeInsets.all(8),
-            decoration: BoxDecoration(
-                color: Colors.white,
-                border: Border.all(color: Colors.grey.shade300),
-                borderRadius: BorderRadius.circular(10)),
-            child: Row(
-              children: [
-                Expanded(child: thumb()),
-                if (_sigFile != null)
-                  TextButton.icon(
-                    onPressed: _sigBusy ? null : _cleanSignature,
-                    icon: _sigBusy
-                        ? const SizedBox(
-                            width: 14,
-                            height: 14,
-                            child: CircularProgressIndicator(strokeWidth: 2))
-                        : const Icon(Icons.auto_fix_high_rounded, size: 18),
-                    label: const Text('Limpiar IA'),
-                  ),
-                IconButton(
-                  onPressed: () => setState(() {
-                    _certSignatureUrl = '';
-                    _sigFile = null;
-                  }),
-                  icon: const Icon(Icons.delete_outline_rounded,
-                      color: Color(0xFFDC2626)),
-                ),
-              ],
-            ),
-          )
-        else
-          Row(
-            children: [
-              Expanded(
-                child: OutlinedButton.icon(
-                  key: const Key('event_sig_camera'),
-                  onPressed:
-                      _sigBusy ? null : () => _pickSignature(ImageSource.camera),
-                  icon: const Icon(Icons.photo_camera_rounded, size: 18),
-                  label: const Text('Tomar foto'),
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: OutlinedButton.icon(
-                  key: const Key('event_sig_gallery'),
-                  onPressed: _sigBusy
-                      ? null
-                      : () => _pickSignature(ImageSource.gallery),
-                  icon: _sigBusy
-                      ? const SizedBox(
-                          width: 16,
-                          height: 16,
-                          child: CircularProgressIndicator(strokeWidth: 2))
-                      : const Icon(Icons.upload_rounded, size: 18),
-                  label: const Text('Subir imagen'),
-                ),
-              ),
-            ],
-          ),
-      ],
-    );
-  }
 
   Widget _agentField(TextEditingController c, String label, String hint) =>
       Padding(
@@ -655,14 +446,6 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
         'installments_count': _installments ? _installmentsCount : 0,
         if (_startAt != null) 'start_at': _startAt!.toUtc().toIso8601String(),
         if (_endAt != null) 'end_at': _endAt!.toUtc().toIso8601String(),
-        'certificate_config': {
-          'title': _certTitleCtrl.text.trim(),
-          'intro': _certIntroCtrl.text.trim(),
-          'body': _certBodyCtrl.text.trim(),
-          'signatory': _certSignatoryCtrl.text.trim(),
-          'footer': _certFooterCtrl.text.trim(),
-          'signature_image': _certSignatureUrl,
-        },
       };
       final result = _isEdit
           ? await _api.updateEvent(widget.existing!.id, body)
@@ -1054,8 +837,6 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
                     'catálogo y le da contexto a la IA para el afiche.',
               ),
             ),
-            const SizedBox(height: 16),
-            _certificateTextEditor(),
             const SizedBox(height: 16),
             // Moneda del precio (peso colombiano o dólar).
             SegmentedButton<String>(
