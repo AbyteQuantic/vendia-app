@@ -1235,6 +1235,19 @@ class ApiService {
     }
   }
 
+  /// Tasa de cambio USD→COP (cuántos COP vale 1 USD) para convertir el precio
+  /// del evento al cambiar de moneda. Devuelve 0 si no se pudo obtener.
+  Future<double> fetchUsdCopRate() async {
+    try {
+      final response = await _dio.get('/api/v1/fx/usd-cop');
+      final data = (response.data as Map<String, dynamic>)['data']
+          as Map<String, dynamic>;
+      return (data['cop_per_usd'] as num? ?? 0).toDouble();
+    } on DioException {
+      return 0;
+    }
+  }
+
   /// Actualiza campos de un evento (PATCH parcial). Ej: la descripción
   /// pública que verán los clientes en el catálogo (F042).
   Future<Map<String, dynamic>> updateEvent(

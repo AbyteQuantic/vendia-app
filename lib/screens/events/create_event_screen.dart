@@ -12,6 +12,7 @@ import '../../models/event.dart';
 import '../../services/api_service.dart';
 import '../../services/app_error.dart';
 import '../../services/auth_service.dart';
+import '../../utils/currency_input.dart';
 import '../../utils/event_money.dart';
 import 'event_feedback.dart';
 
@@ -45,6 +46,9 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
   DateTime? _startAt;
   bool _saving = false;
 
+  // Tasa USD→COP para convertir el precio al cambiar de moneda (fallback).
+  double _copPerUsd = 4100;
+
   // Pago: métodos aceptados (por defecto efectivo + transferencia) y cuotas.
   final Set<String> _methods = {
     EventPaymentMethod.efectivo,
@@ -59,6 +63,7 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
   void initState() {
     super.initState();
     _api = widget.apiOverride ?? ApiService(AuthService());
+    _loadFxRate();
     final e = widget.existing;
     if (e != null) {
       _titleCtrl.text = e.title;
@@ -66,7 +71,7 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
       _locationCtrl.text = e.locationOrLink;
       _cityCtrl.text = e.city;
       _notesCtrl.text = e.locationNotes;
-      _priceCtrl.text = e.price.toString();
+      _priceCtrl.text = CurrencyUtils.formatInt(e.price);
       _capacityCtrl.text = e.capacity.toString();
       _type = e.type;
       _modality = e.modality;
@@ -94,9 +99,33 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
     super.dispose();
   }
 
+  /// Precio actual como entero (el campo lleva separadores de miles).
+  int get _priceValue => CurrencyUtils.parseToDouble(_priceCtrl.text).round();
+
+  Future<void> _loadFxRate() async {
+    final rate = await _api.fetchUsdCopRate();
+    if (rate > 0 && mounted) setState(() => _copPerUsd = rate);
+  }
+
+  /// Convierte el precio al cambiar de moneda usando la tasa USD→COP.
+  void _convertPrice(String from, String to) {
+    final amount = CurrencyUtils.parseToDouble(_priceCtrl.text);
+    if (amount <= 0) return;
+    double converted;
+    if (from == EventCurrency.cop && to == EventCurrency.usd) {
+      converted = amount / _copPerUsd;
+    } else if (from == EventCurrency.usd && to == EventCurrency.cop) {
+      converted = amount * _copPerUsd;
+      converted = (converted / 50).round() * 50.0; // múltiplo de $50 (COP)
+    } else {
+      return;
+    }
+    _priceCtrl.text = CurrencyUtils.formatInt(converted.round());
+  }
+
   String? _validatePrice(String? raw) {
-    final v = int.tryParse((raw ?? '').trim());
-    if (v == null || v < 0) return 'Ingrese un precio válido (0 si es gratis)';
+    final v = CurrencyUtils.parseToDouble(raw).round();
+    if (v < 0) return 'Ingrese un precio válido (0 si es gratis)';
     // La regla del múltiplo de $50 es propia del peso colombiano.
     if (_currency == EventCurrency.cop && v % 50 != 0) {
       return 'El precio debe ser múltiplo de \$50';
@@ -120,7 +149,7 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
     if (!_formKey.currentState!.validate()) return;
     setState(() => _saving = true);
     try {
-      final price = int.parse(_priceCtrl.text.trim());
+      final price = _priceValue;
       final body = <String, dynamic>{
         'type': _type,
         'title': _titleCtrl.text.trim(),
@@ -386,10 +415,14 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
               ],
               selected: {_currency},
               showSelectedIcon: false,
-              onSelectionChanged: (s) => setState(() {
-                _currency = s.first;
-                _formKey.currentState?.validate();
-              }),
+              onSelectionChanged: (s) {
+                final to = s.first;
+                if (to != _currency) _convertPrice(_currency, to);
+                setState(() {
+                  _currency = to;
+                  _formKey.currentState?.validate();
+                });
+              },
             ),
             const SizedBox(height: 16),
             Row(
@@ -406,7 +439,7 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
                           _currency == EventCurrency.usd ? 'US\$ ' : '\$ ',
                     ),
                     keyboardType: TextInputType.number,
-                    inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                    inputFormatters: const [CurrencyInputFormatter()],
                     validator: _validatePrice,
                   ),
                 ),
