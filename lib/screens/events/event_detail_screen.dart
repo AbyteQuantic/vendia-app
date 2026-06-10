@@ -52,6 +52,7 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
   String? _slug; // slug de la tienda para armar el link del catálogo
   bool _descExpanded = false; // descripción colapsada por defecto
   bool _loading = true;
+  bool _issuingAllCerts = false;
 
   @override
   void initState() {
@@ -134,6 +135,30 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
         ),
       ),
     );
+  }
+
+  /// Envío masivo de certificados a quienes registraron entrada y salida.
+  Future<void> _issueAllCertificates() async {
+    HapticFeedback.lightImpact();
+    setState(() => _issuingAllCerts = true);
+    try {
+      final n = await _api.issueAllEventCertificates(_event.id);
+      if (!mounted) return;
+      _snack(
+          n == 0
+              ? 'No hay asistentes con entrada y salida sin certificado.'
+              : 'Certificado emitido a $n asistente${n == 1 ? '' : 's'}. '
+                  'Ya pueden verlo en su carné.',
+          kind: n == 0 ? EventSnackKind.info : EventSnackKind.success);
+      await _loadRegs();
+    } catch (_) {
+      if (mounted) {
+        _snack('No pudimos emitir los certificados. Intenta de nuevo.',
+            kind: EventSnackKind.error);
+      }
+    } finally {
+      if (mounted) setState(() => _issuingAllCerts = false);
+    }
   }
 
   Future<void> _approvePayment(EventPaymentView p) async {
@@ -355,6 +380,26 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
                     ),
                   ),
                 ],
+              ),
+              const SizedBox(height: 8),
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  key: const Key('event_issue_all_certs_btn'),
+                  onPressed: _issuingAllCerts ? null : _issueAllCertificates,
+                  icon: _issuingAllCerts
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2))
+                      : const Icon(Icons.workspace_premium_rounded, size: 20),
+                  label: Text(_issuingAllCerts
+                      ? 'Emitiendo…'
+                      : 'Emitir certificados (entrada + salida)'),
+                  style: OutlinedButton.styleFrom(
+                      foregroundColor: const Color(0xFF059669),
+                      side: const BorderSide(color: Color(0xFF059669))),
+                ),
               ),
             ],
             const SizedBox(height: 10),

@@ -1388,6 +1388,20 @@ class ApiService {
     }
   }
 
+  /// Envío masivo: emite el certificado a todos los que registraron entrada y
+  /// salida (elegibles) y aún no lo tenían. Devuelve cuántos emitió.
+  Future<int> issueAllEventCertificates(String eventId) async {
+    try {
+      final response =
+          await _dio.post('/api/v1/events/$eventId/certificates/issue-all');
+      final data = (response.data as Map<String, dynamic>)['data']
+          as Map<String, dynamic>;
+      return (data['issued'] as num? ?? 0).toInt();
+    } on DioException catch (e) {
+      throw AppError.fromDioException(e);
+    }
+  }
+
   /// Cuerpo opcional `{brief}` para los generadores con IA: la indicación
   /// libre del organizador ("muestra manos decorando un pastel"). Se omite
   /// cuando está vacío para no enviar un body innecesario.
