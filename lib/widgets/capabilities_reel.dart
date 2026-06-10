@@ -26,6 +26,7 @@ import 'package:flutter/services.dart';
 import '../config/dashboard_modules.dart';
 import '../screens/capabilities/capabilities_registry.dart';
 import '../screens/capabilities/capability_scaffold.dart';
+import '../screens/customers/customers_list_screen.dart';
 import '../screens/dashboard/business_capabilities_screen.dart';
 import '../screens/quotes/quote_capability_screen.dart';
 import '../theme/app_theme.dart';
@@ -163,6 +164,16 @@ class _CapabilitiesReelState extends State<CapabilitiesReel> {
     if (module.capability == OptionalCapability.quotes) {
       return MaterialPageRoute(
         builder: (_) => const QuoteCapabilityScreen(),
+      );
+    }
+    // Mis Clientes: el módulo (lista/importar/editar/exportar/difundir) ya
+    // existe y los datos ya están (fiados + inscritos a eventos). Llevar al
+    // scaffold de activación genérico es fricción innecesaria (Art. I) —
+    // abrimos el módulo directo; éste activa la capacidad por sí mismo para
+    // que también quede fija en el grid.
+    if (module.capability == OptionalCapability.customerManagement) {
+      return MaterialPageRoute(
+        builder: (_) => const CustomersListScreen(),
       );
     }
     // El resto sale del registry — una entrada de metadata por cada

@@ -14,13 +14,20 @@
 //
 // Gerontodiseño: textos ≥17pt, filas táctiles, probado en 360dp.
 
+import 'dart:convert';
+
+import 'package:csv/csv.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:share_plus/share_plus.dart';
 
+import '../../config/api_config.dart';
 import '../../models/customer.dart';
 import '../../services/api_service.dart';
 import '../../services/auth_service.dart';
 import '../../theme/app_theme.dart';
+import '../promotions/broadcast_list_helper_screen.dart';
 import 'customer_detail_screen.dart';
 import 'customer_import_screen.dart';
 
@@ -102,6 +109,75 @@ class _CustomersListScreenState extends State<CustomersListScreen> {
     await _load();
   }
 
+  void _snack(String msg) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(msg, style: const TextStyle(fontSize: 16)),
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
+  }
+
+  /// Exporta los clientes visibles a un CSV y abre la hoja de compartir
+  /// (cross-platform vía share_plus — funciona en web y móvil).
+  Future<void> _exportCsv() async {
+    HapticFeedback.lightImpact();
+    if (_customers.isEmpty) {
+      _snack('No hay clientes para exportar.');
+      return;
+    }
+    final rows = <List<dynamic>>[
+      ['Nombre', 'Teléfono', 'Total gastado', 'Compras', 'Última compra'],
+      ..._customers.map((c) => [
+            c.name,
+            c.phone,
+            c.totalSpent.round(),
+            c.purchaseCount,
+            c.lastPurchaseAt?.toIso8601String().split('T').first ?? '',
+          ]),
+    ];
+    // addBom: Excel abre el CSV con la codificación correcta (acentos).
+    final csv = const CsvEncoder(addBom: true).convert(rows);
+    final bytes = Uint8List.fromList(utf8.encode(csv));
+    final file = XFile.fromData(
+      bytes,
+      name: 'mis_clientes.csv',
+      mimeType: 'text/csv',
+    );
+    await Share.shareXFiles([file], text: 'Mis clientes — VendIA');
+  }
+
+  /// Lleva al flujo de difusión (Lista de Difusión de WhatsApp) con los
+  /// clientes que tienen teléfono y un mensaje base editable con el link
+  /// del catálogo público.
+  Future<void> _openDifusion() async {
+    HapticFeedback.lightImpact();
+    final withPhone =
+        _customers.where((c) => c.phone.trim().isNotEmpty).toList();
+    if (withPhone.isEmpty) {
+      _snack('Sus clientes aún no tienen teléfono para difundir.');
+      return;
+    }
+    final auth = AuthService();
+    final business = (await auth.getBusinessName())?.trim() ?? '';
+    final slug = (await auth.getStoreSlug())?.trim() ?? '';
+    final link = slug.isEmpty ? '' : ApiConfig.publicCatalogUrlFor(slug);
+    final saludo = business.isEmpty
+        ? '¡Hola! 👋 Tenemos novedades para usted.'
+        : '¡Hola! 👋 Le saluda $business. Tenemos novedades para usted.';
+    final message = link.isEmpty ? saludo : '$saludo\n\nVea el catálogo: $link';
+    if (!mounted) return;
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => BroadcastListHelperScreen(
+          customers: withPhone,
+          message: message,
+        ),
+      ),
+    );
+  }
+
   Future<void> _openDetail(Customer customer) async {
     HapticFeedback.lightImpact();
     await Navigator.of(context).push(
@@ -145,6 +221,37 @@ class _CustomersListScreenState extends State<CustomersListScreen> {
                 color: AppTheme.primary, size: 26),
             tooltip: 'Importar desde Excel/CSV',
             onPressed: _openImporter,
+          ),
+          PopupMenuButton<String>(
+            key: const Key('customers_more_menu'),
+            icon: const Icon(Icons.more_vert_rounded,
+                color: AppTheme.primary, size: 26),
+            tooltip: 'Más opciones',
+            onSelected: (v) {
+              if (v == 'export') _exportCsv();
+              if (v == 'difusion') _openDifusion();
+            },
+            itemBuilder: (_) => const [
+              PopupMenuItem(
+                key: Key('customers_difusion_item'),
+                value: 'difusion',
+                child: ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: Icon(Icons.campaign_rounded, color: AppTheme.primary),
+                  title: Text('Difundir por WhatsApp',
+                      style: TextStyle(fontSize: 16)),
+                ),
+              ),
+              PopupMenuItem(
+                key: Key('customers_export_item'),
+                value: 'export',
+                child: ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: Icon(Icons.download_rounded, color: AppTheme.primary),
+                  title: Text('Exportar (CSV)', style: TextStyle(fontSize: 16)),
+                ),
+              ),
+            ],
           ),
         ],
       ),

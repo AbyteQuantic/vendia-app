@@ -82,6 +82,51 @@ void main() {
     expect(tapped, isTrue);
   });
 
+  testWidgets('onRemove ausente → no se pinta el botón quitar', (tester) async {
+    final cards = [
+      KpiCardData(
+        title: 'Ventas hoy',
+        value: r'$0',
+        photoUrl: '',
+        fallbackIcon: Icons.trending_up_rounded,
+        accentColor: Colors.blue,
+        onTap: () {},
+      ),
+    ];
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(body: KpiCarousel(cards: cards)),
+    ));
+    await tester.pump();
+    // Los KPIs no traen onRemove → sin ícono de cerrar.
+    expect(find.byIcon(Icons.close_rounded), findsNothing);
+  });
+
+  testWidgets('onRemove presente → botón quitar visible y dispara la acción',
+      (tester) async {
+    var removed = false;
+    final cards = [
+      KpiCardData(
+        title: 'Eventos',
+        value: 'Activo',
+        photoUrl: '',
+        fallbackIcon: Icons.event_rounded,
+        accentColor: Colors.indigo,
+        onTap: () {},
+        onRemove: () => removed = true,
+      ),
+    ];
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(body: KpiCarousel(cards: cards)),
+    ));
+    await tester.pump();
+
+    final removeBtn = find.byIcon(Icons.close_rounded);
+    expect(removeBtn, findsOneWidget);
+    await tester.tap(removeBtn);
+    await tester.pump();
+    expect(removed, isTrue);
+  });
+
   testWidgets('Subtitle opcional se renderea cuando viene', (tester) async {
     final cards = [
       KpiCardData(

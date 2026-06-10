@@ -40,6 +40,12 @@ class KpiCardData {
   /// Callback al tocar la card. Suele navegar a la pantalla detallada.
   final VoidCallback onTap;
 
+  /// Acción opcional para "quitar del inicio" (desactivar la capacidad).
+  /// Solo la traen las cards de capacidades activas — los KPIs la dejan
+  /// en null. Cuando está presente, la card muestra un botón "quitar" y
+  /// responde al pulsado largo.
+  final VoidCallback? onRemove;
+
   const KpiCardData({
     required this.title,
     required this.value,
@@ -48,6 +54,7 @@ class KpiCardData {
     required this.accentColor,
     required this.onTap,
     this.subtitle,
+    this.onRemove,
   });
 }
 
@@ -240,6 +247,12 @@ class _KpiCard extends StatelessWidget {
                 HapticFeedback.lightImpact();
                 data.onTap();
               },
+              onLongPress: data.onRemove == null
+                  ? null
+                  : () {
+                      HapticFeedback.mediumImpact();
+                      data.onRemove!();
+                    },
               child: Container(
                 decoration: BoxDecoration(
                   color: Colors.white,
@@ -279,6 +292,30 @@ class _KpiCard extends StatelessWidget {
                                 return _placeholder(accent, data.fallbackIcon);
                               },
                             ),
+                            // Botón "quitar del inicio" — solo en capacidades
+                            // activas. Desactiva la capacidad y la regresa al
+                            // listado de "Descubre más opciones".
+                            if (data.onRemove != null)
+                              Positioned(
+                                top: 8,
+                                right: 8,
+                                child: Material(
+                                  color: Colors.black.withValues(alpha: 0.45),
+                                  shape: const CircleBorder(),
+                                  child: InkWell(
+                                    customBorder: const CircleBorder(),
+                                    onTap: () {
+                                      HapticFeedback.mediumImpact();
+                                      data.onRemove!();
+                                    },
+                                    child: const Padding(
+                                      padding: EdgeInsets.all(7),
+                                      child: Icon(Icons.close_rounded,
+                                          size: 18, color: Colors.white),
+                                    ),
+                                  ),
+                                ),
+                              ),
                           ],
                         ),
                       ),

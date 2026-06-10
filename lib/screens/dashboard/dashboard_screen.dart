@@ -34,6 +34,7 @@ import '../../widgets/kpi_carousel.dart';
 import '../../widgets/business_types_bar.dart';
 import '../../config/dashboard_modules.dart';
 import '../../screens/capabilities/capabilities_registry.dart';
+import '../../screens/capabilities/capability_scaffold.dart';
 import '../../utils/credit_labels.dart';
 import 'business_profile_screen.dart';
 import 'financial_dashboard_screen.dart';
@@ -566,9 +567,76 @@ class _DashboardScreenState extends State<DashboardScreen> {
           );
           if (mounted) _loadCapabilityFlags();
         },
+        // Quitar del inicio: desactiva la capacidad → vuelve al reel
+        // "Descubre más opciones". Solo si la capacidad tiene configKey.
+        onRemove: meta == null ? null : () => _deactivateCapability(m, meta),
       ));
     }
     return cards;
+  }
+
+  /// Desactiva una capacidad opcional desde el carrusel (pedido del dueño:
+  /// cada módulo activo debe poder apagarse y regresar al listado horizontal
+  /// de "Descubre más opciones"). Pide confirmación, persiste el flag en
+  /// `config.<configKey> = false` y refresca: al quedar el flag en false el
+  /// módulo sale del carrusel/grilla y reaparece en el reel.
+  Future<void> _deactivateCapability(
+      DashboardModule m, CapabilityMetadata meta) async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape:
+            RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Text('¿Quitar ${m.title} del inicio?',
+            style: const TextStyle(fontSize: 21)),
+        content: const Text(
+          'El módulo volverá a "Descubre más opciones" y podrá activarlo de '
+          'nuevo cuando quiera. Sus datos no se borran.',
+          style: TextStyle(fontSize: 16),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('Cancelar', style: TextStyle(fontSize: 18)),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            style: TextButton.styleFrom(foregroundColor: AppTheme.error),
+            child: const Text('Quitar', style: TextStyle(fontSize: 18)),
+          ),
+        ],
+      ),
+    );
+    if (confirm != true) return;
+    try {
+      final auth = AuthService();
+      final api = ApiService(auth);
+      final updated = await api.updateBusinessProfile({
+        'config': {meta.configKey: false},
+      });
+      await auth.saveFeatureFlagsFromProfile(updated);
+      if (mounted) await _loadCapabilityFlags();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('${m.title} se quitó del inicio',
+                style: const TextStyle(fontSize: 16)),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('No se pudo quitar: $e',
+                style: const TextStyle(fontSize: 16)),
+            backgroundColor: AppTheme.error,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    }
   }
 
   /// IDs de capacidades opcionales activas — se muestran en el carrusel, así
