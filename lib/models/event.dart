@@ -250,6 +250,7 @@ class EventRegistrationView {
   final int balance;
   final bool checkedIn;
   final bool checkedOut;
+  final int? seatNumber;
   final bool certificateEligible;
   final bool certificateIssued;
 
@@ -263,9 +264,26 @@ class EventRegistrationView {
     this.balance = 0,
     this.checkedIn = false,
     this.checkedOut = false,
+    this.seatNumber,
     this.certificateEligible = false,
     this.certificateIssued = false,
   });
+
+  /// Copia con una silla distinta (para refrescar la UI tras asignar/liberar).
+  EventRegistrationView copyWithSeat(int? seat) => EventRegistrationView(
+        id: id,
+        customerName: customerName,
+        customerPhone: customerPhone,
+        paymentStatus: paymentStatus,
+        amountPaid: amountPaid,
+        price: price,
+        balance: balance,
+        checkedIn: checkedIn,
+        checkedOut: checkedOut,
+        seatNumber: seat,
+        certificateEligible: certificateEligible,
+        certificateIssued: certificateIssued,
+      );
 
   bool get isConfirmed => paymentStatus == 'confirmed';
 
@@ -283,6 +301,7 @@ class EventRegistrationView {
       balance: (json['balance'] as num? ?? 0).toInt(),
       checkedIn: json['checked_in'] == true,
       checkedOut: json['checked_out'] == true,
+      seatNumber: (json['seat_number'] as num?)?.toInt(),
       certificateEligible: json['certificate_eligible'] == true,
       certificateIssued: json['certificate_issued'] == true,
     );

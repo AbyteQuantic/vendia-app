@@ -1288,6 +1288,22 @@ class ApiService {
     }
   }
 
+  /// Asigna, mueve o libera la silla de un asistente (mapa de sillas, F042).
+  /// `seat` null libera la silla; un número la asigna/mueve.
+  Future<Map<String, dynamic>> assignEventSeat(
+      String eventId, String regId, int? seat) async {
+    try {
+      final response = await _dio.put(
+        '/api/v1/events/$eventId/registrations/$regId/seat',
+        data: {'seat_number': seat},
+      );
+      return (response.data as Map<String, dynamic>)['data']
+          as Map<String, dynamic>;
+    } on DioException catch (e) {
+      throw AppError.fromDioException(e);
+    }
+  }
+
   /// Marca la inscripción como pagada en su totalidad (carné activado).
   Future<Map<String, dynamic>> confirmEventPayment(
       String eventId, String regId) async {

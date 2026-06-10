@@ -13,17 +13,20 @@ import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:share_plus/share_plus.dart';
 
 import '../../config/api_config.dart';
+import '../../models/customer.dart';
 import '../../models/event.dart';
 import '../../services/api_service.dart';
 import '../../services/auth_service.dart';
 import '../../utils/event_money.dart';
 import '../../utils/markdown_plain.dart';
+import '../promotions/broadcast_list_helper_screen.dart';
 import 'create_event_screen.dart';
 import 'event_broadcast_screen.dart';
 import 'event_checkin_scan_screen.dart';
 import 'event_description_editor.dart';
 import 'event_design_screen.dart';
 import 'event_feedback.dart';
+import 'event_seat_map_sheet.dart';
 
 /// Acento del módulo de Eventos (mismo cian del catálogo / ícono).
 const _eventAccent = Color(0xFF0EA5E9);
@@ -85,6 +88,49 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
       if (!mounted) return;
       setState(() => _loading = false);
     }
+  }
+
+  /// Abre el mapa de sillas; al volver refresca por si hubo cambios.
+  Future<void> _openSeatMap() async {
+    HapticFeedback.lightImpact();
+    final changed = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(
+        builder: (_) => EventSeatMapSheet(
+          eventId: _event.id,
+          capacity: _event.capacity,
+          registrations: _regs,
+        ),
+      ),
+    );
+    if (changed == true) _loadRegs();
+  }
+
+  /// Difusión masiva por WhatsApp a los inscritos del evento: arma la Lista de
+  /// Difusión (vCard + mensaje) reutilizando el módulo de F033, que ayuda a
+  /// administrar envíos dentro del límite gratuito de WhatsApp.
+  void _openAttendeeBroadcast() {
+    HapticFeedback.lightImpact();
+    final withPhone = _regs
+        .where((r) => r.customerPhone.trim().isNotEmpty)
+        .map((r) => Customer(id: r.id, name: r.customerName, phone: r.customerPhone))
+        .toList();
+    if (withPhone.isEmpty) {
+      _snack('Sus inscritos aún no tienen teléfono para difundir.',
+          kind: EventSnackKind.error);
+      return;
+    }
+    final link = _catalogUrl;
+    final base =
+        '¡Hola! 👋 Le recordamos el evento "${_event.title}". ¡Le esperamos!';
+    final message = link == null ? base : '$base\n\nMás info: $link';
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => BroadcastListHelperScreen(
+          customers: withPhone,
+          message: message,
+        ),
+      ),
+    );
   }
 
   Future<void> _approvePayment(EventPaymentView p) async {
@@ -276,6 +322,38 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
                         fontSize: 18, fontWeight: FontWeight.bold)),
               ],
             ),
+            if (_regs.isNotEmpty) ...[
+              const SizedBox(height: 10),
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      key: const Key('event_seat_map_btn'),
+                      onPressed: _openSeatMap,
+                      icon: const Icon(Icons.event_seat_rounded, size: 20),
+                      label: const Text('Mapa de sillas',
+                          style: TextStyle(fontSize: 15)),
+                      style: OutlinedButton.styleFrom(
+                          foregroundColor: _eventAccent,
+                          side: const BorderSide(color: _eventAccent)),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      key: const Key('event_attendee_broadcast_btn'),
+                      onPressed: _openAttendeeBroadcast,
+                      icon: const Icon(Icons.campaign_rounded, size: 20),
+                      label: const Text('Difusión masiva',
+                          style: TextStyle(fontSize: 15)),
+                      style: OutlinedButton.styleFrom(
+                          foregroundColor: const Color(0xFF25D366),
+                          side: const BorderSide(color: Color(0xFF25D366))),
+                    ),
+                  ),
+                ],
+              ),
+            ],
             const SizedBox(height: 10),
             if (_loading)
               const Center(
@@ -1039,6 +1117,30 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
                     ],
                   ),
                 ),
+                if (r.seatNumber != null) ...[
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 8, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: _eventAccent.withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(Icons.event_seat_rounded,
+                            size: 14, color: _eventAccent),
+                        const SizedBox(width: 3),
+                        Text('${r.seatNumber}',
+                            style: const TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.bold,
+                                color: _eventAccent)),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                ],
                 _PaymentBadge(reg: r),
               ],
             ),
