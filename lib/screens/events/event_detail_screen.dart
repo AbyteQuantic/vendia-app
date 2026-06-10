@@ -20,6 +20,7 @@ import '../../utils/business_capability_map.dart';
 import '../../utils/event_money.dart';
 import 'event_broadcast_screen.dart';
 import 'event_checkin_scan_screen.dart';
+import 'event_description_editor.dart';
 import 'event_design_screen.dart';
 import 'event_feedback.dart';
 
@@ -43,6 +44,7 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
   List<EventPaymentView> _pendingPayments = [];
   String? _slug; // slug de la tienda para armar el link del catálogo
   bool _promotionsActive = false; // capacidad de difusión activa
+  bool _descExpanded = false; // descripción colapsada por defecto
   bool _loading = true;
 
   @override
@@ -355,9 +357,7 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
             ),
             const SizedBox(height: 4),
             if (hasDesc)
-              Text(e.description,
-                  style: const TextStyle(
-                      fontSize: 15, height: 1.45, color: Colors.black87))
+              _collapsibleDescription(e.description)
             else
               Text(
                 'Cuente de qué trata: temario, horas, requisitos, a quién va '
@@ -372,42 +372,66 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
     );
   }
 
-  /// Edita la descripción pública. Envía el evento COMPLETO porque el PATCH
-  /// del backend reemplaza los campos enviados (un body parcial borraría
-  /// fecha/precio/cupo/lugar).
-  Future<void> _editDescription() async {
-    final controller = TextEditingController(text: _event.description);
-    final saved = await showDialog<String>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Descripción del evento'),
-        content: SizedBox(
-          width: double.maxFinite,
-          child: TextField(
-            controller: controller,
-            autofocus: true,
-            minLines: 5,
-            maxLines: 12,
-            textCapitalization: TextCapitalization.sentences,
-            decoration: const InputDecoration(
-              alignLabelWithHint: true,
-              hintText:
-                  'De qué trata, qué incluye, duración/horas, temario, '
-                  'requisitos previos, a quién va dirigido…',
-              border: OutlineInputBorder(),
+  /// Descripción comprimida: muestra unas pocas líneas con degradado y "Ver
+  /// más" para no ocupar toda la pantalla. Solo colapsa si el texto es largo.
+  Widget _collapsibleDescription(String description) {
+    // Umbral: descripciones cortas se muestran completas sin botón.
+    final isLong = description.length > 220 || '\n'.allMatches(description).length > 3;
+    const style =
+        TextStyle(fontSize: 15, height: 1.45, color: Colors.black87);
+
+    if (!isLong) return Text(description, style: style);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        AnimatedSize(
+          duration: const Duration(milliseconds: 180),
+          alignment: Alignment.topCenter,
+          child: ConstrainedBox(
+            constraints: BoxConstraints(
+                maxHeight: _descExpanded ? double.infinity : 120),
+            child: ShaderMask(
+              // Degradado de desvanecido solo cuando está colapsada.
+              shaderCallback: (rect) {
+                if (_descExpanded) {
+                  return const LinearGradient(colors: [Colors.black, Colors.black])
+                      .createShader(rect);
+                }
+                return const LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [Colors.black, Colors.black, Colors.transparent],
+                  stops: [0.0, 0.75, 1.0],
+                ).createShader(rect);
+              },
+              blendMode: BlendMode.dstIn,
+              child: Text(description, style: style),
             ),
           ),
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(),
-            child: const Text('Cancelar'),
+        TextButton(
+          onPressed: () => setState(() => _descExpanded = !_descExpanded),
+          style: TextButton.styleFrom(
+            foregroundColor: _eventAccent,
+            padding: const EdgeInsets.symmetric(vertical: 4),
+            minimumSize: const Size(0, 32),
+            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
           ),
-          FilledButton(
-            onPressed: () => Navigator.of(ctx).pop(controller.text.trim()),
-            child: const Text('Guardar'),
-          ),
-        ],
+          child: Text(_descExpanded ? 'Ver menos' : 'Ver más'),
+        ),
+      ],
+    );
+  }
+
+  /// Edita la descripción pública en un editor a pantalla completa (mobile).
+  /// Envía el evento COMPLETO porque el PATCH del backend reemplaza los campos
+  /// enviados (un body parcial borraría fecha/precio/cupo/lugar).
+  Future<void> _editDescription() async {
+    final saved = await Navigator.of(context).push<String>(
+      MaterialPageRoute(
+        builder: (_) =>
+            EventDescriptionEditorScreen(initialText: _event.description),
       ),
     );
     if (saved == null) return; // cancelado
