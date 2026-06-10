@@ -118,6 +118,131 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
     super.dispose();
   }
 
+  Widget _agentField(TextEditingController c, String label, String hint) =>
+      Padding(
+        padding: const EdgeInsets.only(bottom: 10),
+        child: TextField(
+          controller: c,
+          minLines: 1,
+          maxLines: 2,
+          textCapitalization: TextCapitalization.sentences,
+          decoration: InputDecoration(
+              labelText: label, hintText: hint, isDense: true),
+        ),
+      );
+
+  /// Asistente IA: pregunta sobre el evento y redacta la descripción. Si ya
+  /// hay texto, lo mejora. Llena _descCtrl con el resultado (editable).
+  Future<void> _openDescriptionAgent() async {
+    if (_titleCtrl.text.trim().length < 2) {
+      showEventSnack(context, 'Primero ponle un nombre al evento.',
+          kind: EventSnackKind.error);
+      return;
+    }
+    final audience = TextEditingController();
+    final includes = TextEditingController();
+    final level = TextEditingController();
+    final extra = TextEditingController();
+    var generating = false;
+
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (ctx) => StatefulBuilder(builder: (ctx, setSheet) {
+        Future<void> generate() async {
+          setSheet(() => generating = true);
+          try {
+            final text = await _api.generateEventDescription(
+              title: _titleCtrl.text.trim(),
+              type: _type,
+              modality: _modality,
+              audience: audience.text.trim(),
+              includes: includes.text.trim(),
+              level: level.text.trim(),
+              extra: extra.text.trim(),
+              current: _descCtrl.text.trim(),
+            );
+            if (!mounted) return;
+            setState(() => _descCtrl.text = text);
+            if (ctx.mounted) Navigator.pop(ctx);
+            showEventSnack(context, 'Descripción lista. Puedes editarla.',
+                kind: EventSnackKind.success);
+          } catch (_) {
+            setSheet(() => generating = false);
+            if (ctx.mounted) {
+              ScaffoldMessenger.of(ctx).showSnackBar(const SnackBar(
+                  content: Text('No pudimos generar. Intenta de nuevo.')));
+            }
+          }
+        }
+
+        final hasCurrent = _descCtrl.text.trim().isNotEmpty;
+        return Padding(
+          padding: EdgeInsets.only(bottom: MediaQuery.of(ctx).viewInsets.bottom),
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Row(children: [
+                  Icon(Icons.auto_awesome_rounded, color: Color(0xFF6C4CE0)),
+                  SizedBox(width: 8),
+                  Expanded(
+                    child: Text('Asistente de descripción',
+                        style: TextStyle(
+                            fontSize: 18, fontWeight: FontWeight.bold)),
+                  ),
+                ]),
+                const SizedBox(height: 4),
+                Text(
+                    'Cuéntame del evento y te armo una descripción atractiva '
+                    'para el catálogo.',
+                    style:
+                        TextStyle(color: Colors.grey.shade600, fontSize: 13)),
+                const SizedBox(height: 14),
+                _agentField(audience, '¿Para quién es?',
+                    'Ej: estilistas que quieren dominar el tono ámbar'),
+                _agentField(includes, '¿Qué incluye o qué aprenderán?',
+                    'Ej: teoría del color, práctica y kit de muestras'),
+                _agentField(level, 'Nivel (opcional)',
+                    'Ej: principiante / intermedio'),
+                _agentField(extra, '¿Algo más a destacar? (opcional)',
+                    'Ej: certificado, refrigerio, cupos limitados'),
+                const SizedBox(height: 6),
+                SizedBox(
+                  width: double.infinity,
+                  height: 52,
+                  child: FilledButton.icon(
+                    key: const Key('event_desc_ai_generate'),
+                    onPressed: generating ? null : generate,
+                    icon: generating
+                        ? const SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(
+                                strokeWidth: 2, color: Colors.white))
+                        : const Icon(Icons.auto_awesome_rounded),
+                    label: Text(generating
+                        ? 'Generando…'
+                        : (hasCurrent
+                            ? 'Mejorar la actual'
+                            : 'Generar descripción')),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      }),
+    );
+    audience.dispose();
+    includes.dispose();
+    level.dispose();
+    extra.dispose();
+  }
+
   /// Sube el QR de un método y guarda su URL para incluirla al guardar.
   Future<void> _pickPayQr(String method) async {
     final picked = await ImagePicker()
@@ -606,6 +731,30 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
             const SizedBox(height: 16),
             // Descripción — se muestra en el catálogo (detalle del evento) y
             // alimenta a la IA como contexto. Admite texto largo y estructurado.
+            Row(
+              children: [
+                const Expanded(
+                  child: Text('Descripción del evento',
+                      style: TextStyle(
+                          fontSize: 13.5,
+                          fontWeight: FontWeight.w600,
+                          color: Color(0xFF555555))),
+                ),
+                TextButton.icon(
+                  key: const Key('event_desc_ai'),
+                  onPressed: _openDescriptionAgent,
+                  icon: const Icon(Icons.auto_awesome_rounded,
+                      size: 18, color: Color(0xFF6C4CE0)),
+                  label: const Text('Asistente IA',
+                      style: TextStyle(
+                          color: Color(0xFF6C4CE0),
+                          fontWeight: FontWeight.w700)),
+                  style: TextButton.styleFrom(
+                      padding:
+                          const EdgeInsets.symmetric(horizontal: 8, vertical: 0)),
+                ),
+              ],
+            ),
             TextFormField(
               key: const Key('event_description'),
               controller: _descCtrl,

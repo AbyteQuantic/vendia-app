@@ -1492,6 +1492,37 @@ class ApiService {
     }
   }
 
+  /// Agente IA que redacta la descripción del evento a partir de lo que el
+  /// organizador respondió. Devuelve el texto sugerido (markdown ligero).
+  Future<String> generateEventDescription({
+    required String title,
+    String type = '',
+    String modality = '',
+    String audience = '',
+    String includes = '',
+    String level = '',
+    String extra = '',
+    String current = '',
+  }) async {
+    try {
+      final response = await _dio.post('/api/v1/event-description-ai', data: {
+        'title': title,
+        'type': type,
+        'modality': modality,
+        'audience': audience,
+        'includes': includes,
+        'level': level,
+        'extra': extra,
+        'current': current,
+      });
+      final data = (response.data as Map<String, dynamic>)['data']
+          as Map<String, dynamic>;
+      return (data['description'] as String?) ?? '';
+    } on DioException catch (e) {
+      throw AppError.fromDioException(e);
+    }
+  }
+
   /// Sube la imagen del QR de un medio de pago y devuelve su URL, para
   /// incluirla en payment_details al guardar el evento (sirve al crear y
   /// editar — no requiere id del evento).
