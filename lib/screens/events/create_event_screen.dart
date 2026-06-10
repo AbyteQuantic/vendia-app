@@ -1,9 +1,9 @@
 // Spec: specs/042-modulo-eventos/spec.md
 //
-// Pantalla "Crear evento" (F042). El organizador configura su evento:
-// nombre, tipo, modalidad, fecha, lugar/enlace, descripción, cupo y precio.
-// La descripción alimenta a la IA que genera la escarapela/certificado y se
-// muestra en el catálogo público. Precio múltiplo de $50 (Art. VII). 360dp.
+// Pantalla "Crear / Editar evento" (F042). El organizador configura su evento:
+// nombre, tipo, modalidad, fecha, lugar/enlace, descripción, cupo, precio,
+// moneda, métodos de pago y cuotas. Con [existing] entra en modo edición
+// (precarga los campos y hace PATCH). Precio múltiplo de $50 en COP. 360dp.
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -19,7 +19,10 @@ class CreateEventScreen extends StatefulWidget {
   /// Inyectable para tests — en producción usa el ApiService default.
   final ApiService? apiOverride;
 
-  const CreateEventScreen({super.key, this.apiOverride});
+  /// Cuando viene, la pantalla edita ese evento (PATCH) en vez de crear uno.
+  final Event? existing;
+
+  const CreateEventScreen({super.key, this.apiOverride, this.existing});
 
   @override
   State<CreateEventScreen> createState() => _CreateEventScreenState();
@@ -48,10 +51,31 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
   bool _installments = false;
   int _installmentsCount = 2;
 
+  bool get _isEdit => widget.existing != null;
+
   @override
   void initState() {
     super.initState();
     _api = widget.apiOverride ?? ApiService(AuthService());
+    final e = widget.existing;
+    if (e != null) {
+      _titleCtrl.text = e.title;
+      _descCtrl.text = e.description;
+      _locationCtrl.text = e.locationOrLink;
+      _priceCtrl.text = e.price.toString();
+      _capacityCtrl.text = e.capacity.toString();
+      _type = e.type;
+      _modality = e.modality;
+      _currency = EventCurrency.normalize(e.currency);
+      _startAt = e.startAt?.toLocal();
+      _installments = e.installmentsEnabled;
+      if (e.installmentsCount >= 2) _installmentsCount = e.installmentsCount;
+      if (e.enabledPaymentMethods.isNotEmpty) {
+        _methods
+          ..clear()
+          ..addAll(e.enabledPaymentMethods);
+      }
+    }
   }
 
   @override
@@ -106,9 +130,11 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
         'installments_count': _installments ? _installmentsCount : 0,
         if (_startAt != null) 'start_at': _startAt!.toUtc().toIso8601String(),
       };
-      final created = await _api.createEvent(body);
+      final result = _isEdit
+          ? await _api.updateEvent(widget.existing!.id, body)
+          : await _api.createEvent(body);
       if (!mounted) return;
-      Navigator.of(context).pop(Event.fromJson(created));
+      Navigator.of(context).pop(Event.fromJson(result));
     } catch (e) {
       if (!mounted) return;
       setState(() => _saving = false);
@@ -121,7 +147,9 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
   String _friendlyError(Object e) {
     final msg = e is AppError ? e.message : e.toString();
     if (msg.trim().isEmpty || msg.contains('Exception')) {
-      return 'No pudimos crear el evento. Intente de nuevo.';
+      return _isEdit
+          ? 'No pudimos guardar los cambios. Intente de nuevo.'
+          : 'No pudimos crear el evento. Intente de nuevo.';
     }
     return msg;
   }
@@ -208,7 +236,7 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Crear evento')),
+      appBar: AppBar(title: Text(_isEdit ? 'Editar evento' : 'Crear evento')),
       body: Form(
         key: _formKey,
         child: ListView(
@@ -377,17 +405,18 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
                         width: 20,
                         child: CircularProgressIndicator(strokeWidth: 2),
                       )
-                    : const Text('Guardar evento',
-                        style: TextStyle(fontSize: 17)),
+                    : Text(_isEdit ? 'Guardar cambios' : 'Guardar evento',
+                        style: const TextStyle(fontSize: 17)),
               ),
             ),
             const SizedBox(height: 12),
-            Text(
-              'Después de guardarlo podrá publicarlo, diseñar la escarapela y el '
-              'certificado con IA, y ver a sus inscritos.',
-              style: TextStyle(fontSize: 13, color: Colors.grey.shade600),
-              textAlign: TextAlign.center,
-            ),
+            if (!_isEdit)
+              Text(
+                'Después de guardarlo podrá publicarlo, diseñar la escarapela y '
+                'el certificado con IA, y ver a sus inscritos.',
+                style: TextStyle(fontSize: 13, color: Colors.grey.shade600),
+                textAlign: TextAlign.center,
+              ),
           ],
         ),
       ),

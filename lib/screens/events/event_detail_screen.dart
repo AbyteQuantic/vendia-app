@@ -16,6 +16,7 @@ import '../../models/event.dart';
 import '../../services/api_service.dart';
 import '../../services/auth_service.dart';
 import '../../utils/event_money.dart';
+import 'create_event_screen.dart';
 import 'event_broadcast_screen.dart';
 import 'event_checkin_scan_screen.dart';
 import 'event_description_editor.dart';
@@ -162,6 +163,22 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
     }
   }
 
+  /// Abre la edición completa del evento (fecha, precio, cupo, moneda, métodos
+  /// de pago, cuotas, etc.) reusando la pantalla de crear en modo edición.
+  Future<void> _editEvent() async {
+    final updated = await Navigator.of(context).push<Event>(
+      MaterialPageRoute(
+        builder: (_) => CreateEventScreen(
+          existing: _event,
+          apiOverride: widget.apiOverride,
+        ),
+      ),
+    );
+    if (updated == null || !mounted) return;
+    setState(() => _event = updated);
+    _snack('Evento actualizado', kind: EventSnackKind.success);
+  }
+
   Future<void> _openDesigner(EventDesignKind kind) async {
     await Navigator.of(context).push(
       MaterialPageRoute(
@@ -185,7 +202,17 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
     final e = _event;
     final confirmed = _regs.where((r) => r.isConfirmed).length;
     return Scaffold(
-      appBar: AppBar(title: Text(e.title)),
+      appBar: AppBar(
+        title: Text(e.title),
+        actions: [
+          IconButton(
+            key: const Key('detail_edit_event'),
+            tooltip: 'Editar evento',
+            onPressed: _editEvent,
+            icon: const Icon(Icons.edit_rounded),
+          ),
+        ],
+      ),
       body: RefreshIndicator(
         onRefresh: _loadRegs,
         child: ListView(
