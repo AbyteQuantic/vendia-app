@@ -1492,6 +1492,24 @@ class ApiService {
     }
   }
 
+  /// Sube la imagen del QR de un medio de pago y devuelve su URL, para
+  /// incluirla en payment_details al guardar el evento (sirve al crear y
+  /// editar — no requiere id del evento).
+  Future<String> uploadEventPaymentQR(XFile image) async {
+    try {
+      final formData = FormData.fromMap({
+        'image': await imageMultipart(image, prefix: 'payqr'),
+      });
+      final response =
+          await _dio.post('/api/v1/event-payment-qr', data: formData);
+      final data = (response.data as Map<String, dynamic>)['data']
+          as Map<String, dynamic>;
+      return (data['url'] as String?) ?? '';
+    } on DioException catch (e) {
+      throw AppError.fromDioException(e);
+    }
+  }
+
   /// Historial de compras de un cliente: registro base + summary
   /// (gastado, compras, primera/última visita) + lista de ventas.
   ///

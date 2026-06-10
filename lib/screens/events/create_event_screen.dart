@@ -5,8 +5,11 @@
 // moneda, métodos de pago y cuotas. Con [existing] entra en modo edición
 // (precarga los campos y hace PATCH). Precio múltiplo de $50 en COP. 360dp.
 
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:image_picker/image_picker.dart';
 
 import '../../models/event.dart';
 import '../../services/api_service.dart';
@@ -58,6 +61,13 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
   bool _installments = false;
   int _installmentsCount = 2;
 
+  // Datos de pago por método: instrucciones (texto) + QR (URL ya subida).
+  final Map<String, TextEditingController> _payInstrCtrls = {
+    for (final m in EventPaymentMethod.all) m: TextEditingController(),
+  };
+  final Map<String, String> _payQrUrls = {};
+  String? _qrUploadingMethod;
+
   bool get _isEdit => widget.existing != null;
 
   @override
@@ -86,6 +96,10 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
           ..clear()
           ..addAll(e.enabledPaymentMethods);
       }
+      for (final d in e.paymentDetails) {
+        _payInstrCtrls[d.method]?.text = d.instructions;
+        if (d.qrImageUrl.isNotEmpty) _payQrUrls[d.method] = d.qrImageUrl;
+      }
     }
   }
 
@@ -98,7 +112,31 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
     _notesCtrl.dispose();
     _priceCtrl.dispose();
     _capacityCtrl.dispose();
+    for (final c in _payInstrCtrls.values) {
+      c.dispose();
+    }
     super.dispose();
+  }
+
+  /// Sube el QR de un método y guarda su URL para incluirla al guardar.
+  Future<void> _pickPayQr(String method) async {
+    final picked = await ImagePicker()
+        .pickImage(source: ImageSource.gallery, imageQuality: 85);
+    if (picked == null) return;
+    setState(() => _qrUploadingMethod = method);
+    try {
+      final url = await _api.uploadEventPaymentQR(picked);
+      if (!mounted) return;
+      setState(() {
+        _payQrUrls[method] = url;
+        _qrUploadingMethod = null;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _qrUploadingMethod = null);
+      showEventSnack(context, 'No pudimos subir el QR. Intente con otra imagen.',
+          kind: EventSnackKind.error);
+    }
   }
 
   /// Precio actual como entero (el campo lleva separadores de miles).
@@ -212,6 +250,7 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
         'capacity': int.parse(_capacityCtrl.text.trim()),
         // El pago solo aplica a eventos con precio.
         'enabled_payment_methods': price > 0 ? _methods.toList() : <String>[],
+        'payment_details': price > 0 ? _buildPaymentDetails() : <Map<String, dynamic>>[],
         'installments_enabled': price > 0 && _installments,
         'installments_count': _installments ? _installmentsCount : 0,
         if (_startAt != null) 'start_at': _startAt!.toUtc().toIso8601String(),
@@ -244,6 +283,94 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
   // Configuración de cobro (solo eventos con precio). El cobro ocurre por
   // fuera (VendIA conecta); aquí el organizador declara qué acepta y si
   // permite pagar en cuotas.
+  /// Arma payment_details solo con los métodos seleccionados que tengan
+  /// instrucciones o QR.
+  List<Map<String, dynamic>> _buildPaymentDetails() {
+    final out = <Map<String, dynamic>>[];
+    for (final m in _methods) {
+      final instr = _payInstrCtrls[m]?.text.trim() ?? '';
+      final qr = _payQrUrls[m] ?? '';
+      if (instr.isNotEmpty || qr.isNotEmpty) {
+        out.add({'method': m, 'instructions': instr, 'qr_image_url': qr});
+      }
+    }
+    return out;
+  }
+
+  /// Miniatura del QR — soporta data URL (recién subido) o URL http (R2).
+  Widget _qrThumb(String url) {
+    const size = 52.0;
+    if (url.startsWith('data:')) {
+      final b64 = url.substring(url.indexOf(',') + 1);
+      return Image.memory(base64Decode(b64),
+          width: size, height: size, fit: BoxFit.cover);
+    }
+    return Image.network(url, width: size, height: size, fit: BoxFit.cover);
+  }
+
+  /// Bloque por método: instrucciones (número/cuenta) + QR opcional.
+  Widget _payMethodDetails(String m) {
+    final qr = _payQrUrls[m] ?? '';
+    final uploading = _qrUploadingMethod == m;
+    return Container(
+      margin: const EdgeInsets.only(top: 10),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.grey.shade50,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.grey.shade200),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(EventPaymentMethod.label(m),
+              style:
+                  const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+          const SizedBox(height: 6),
+          TextField(
+            key: Key('pay_instr_$m'),
+            controller: _payInstrCtrls[m],
+            minLines: 1,
+            maxLines: 3,
+            style: const TextStyle(fontSize: 14),
+            decoration: const InputDecoration(
+              isDense: true,
+              hintText:
+                  'Datos: número de cuenta, Nequi/Daviplata, a nombre de…',
+            ),
+          ),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              if (qr.isNotEmpty) ...[
+                ClipRRect(
+                    borderRadius: BorderRadius.circular(8),
+                    child: _qrThumb(qr)),
+                const SizedBox(width: 10),
+                TextButton.icon(
+                  onPressed: () => setState(() => _payQrUrls.remove(m)),
+                  icon: const Icon(Icons.delete_outline_rounded, size: 18),
+                  label: const Text('Quitar QR'),
+                ),
+              ] else
+                OutlinedButton.icon(
+                  key: Key('pay_qr_$m'),
+                  onPressed: uploading ? null : () => _pickPayQr(m),
+                  icon: uploading
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2))
+                      : const Icon(Icons.qr_code_2_rounded, size: 18),
+                  label: Text(uploading ? 'Subiendo…' : 'Adjuntar QR de pago'),
+                ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _paymentConfig() {
     return Padding(
       padding: const EdgeInsets.only(top: 20),
@@ -274,6 +401,20 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
                 ),
             ],
           ),
+          // Datos de pago por cada método seleccionado (lo verá el asistente
+          // para saber a dónde pagar antes de reportar su comprobante).
+          if (_methods.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            Text('Datos de pago por método',
+                style: TextStyle(
+                    fontSize: 13.5,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.grey.shade800)),
+            Text('El asistente verá estos datos/QR para pagarte.',
+                style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
+            for (final m in EventPaymentMethod.all)
+              if (_methods.contains(m)) _payMethodDetails(m),
+          ],
           const SizedBox(height: 8),
           SwitchListTile(
             contentPadding: EdgeInsets.zero,
@@ -538,8 +679,7 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
             AnimatedBuilder(
               animation: _priceCtrl,
               builder: (context, _) {
-                final price = int.tryParse(_priceCtrl.text.trim()) ?? 0;
-                if (price <= 0) return const SizedBox(height: 8);
+                if (_priceValue <= 0) return const SizedBox(height: 8);
                 return _paymentConfig();
               },
             ),

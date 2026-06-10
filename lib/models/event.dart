@@ -91,6 +91,9 @@ class Event {
   /// estables: efectivo/transferencia/tarjeta/otro). Se muestran al asistente.
   final List<String> enabledPaymentMethods;
 
+  /// Datos de pago por método (instrucciones + QR) que ve el asistente.
+  final List<EventPaymentDetail> paymentDetails;
+
   const Event({
     required this.id,
     this.type = EventType.otro,
@@ -109,6 +112,7 @@ class Event {
     this.installmentsEnabled = false,
     this.installmentsCount = 0,
     this.enabledPaymentMethods = const [],
+    this.paymentDetails = const [],
     this.posterUrl = '',
     this.badgeUrl = '',
     this.certificateUrl = '',
@@ -142,6 +146,10 @@ class Event {
           (json['enabled_payment_methods'] as List<dynamic>? ?? const [])
               .map((e) => e.toString())
               .toList(growable: false),
+      paymentDetails: (json['payment_details'] as List<dynamic>? ?? const [])
+          .whereType<Map<String, dynamic>>()
+          .map(EventPaymentDetail.fromJson)
+          .toList(growable: false),
       posterUrl: _templateUrl(json['poster_template']),
       badgeUrl: _templateUrl(json['badge_template']),
       certificateUrl: _templateUrl(json['certificate_template']),
@@ -186,6 +194,7 @@ class Event {
     bool? installmentsEnabled,
     int? installmentsCount,
     List<String>? enabledPaymentMethods,
+    List<EventPaymentDetail>? paymentDetails,
     String? posterUrl,
     String? badgeUrl,
     String? certificateUrl,
@@ -209,11 +218,40 @@ class Event {
       installmentsCount: installmentsCount ?? this.installmentsCount,
       enabledPaymentMethods:
           enabledPaymentMethods ?? this.enabledPaymentMethods,
+      paymentDetails: paymentDetails ?? this.paymentDetails,
       posterUrl: posterUrl ?? this.posterUrl,
       badgeUrl: badgeUrl ?? this.badgeUrl,
       certificateUrl: certificateUrl ?? this.certificateUrl,
     );
   }
+}
+
+/// Datos de pago de UN método: instrucciones (número/cuenta) + QR opcional.
+class EventPaymentDetail {
+  final String method;
+  final String instructions;
+  final String qrImageUrl;
+
+  const EventPaymentDetail({
+    required this.method,
+    this.instructions = '',
+    this.qrImageUrl = '',
+  });
+
+  factory EventPaymentDetail.fromJson(Map<String, dynamic> json) =>
+      EventPaymentDetail(
+        method: (json['method'] as String?) ?? '',
+        instructions: (json['instructions'] as String?) ?? '',
+        qrImageUrl: (json['qr_image_url'] as String?) ?? '',
+      );
+
+  Map<String, dynamic> toJson() => {
+        'method': method,
+        'instructions': instructions,
+        'qr_image_url': qrImageUrl,
+      };
+
+  bool get isEmpty => instructions.trim().isEmpty && qrImageUrl.isEmpty;
 }
 
 /// Extrae `image_url` de una plantilla (badge/certificate/poster) del JSON.
