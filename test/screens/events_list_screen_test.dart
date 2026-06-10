@@ -72,7 +72,7 @@ void main() {
 
       expect(find.text('Curso de repostería'), findsOneWidget);
       expect(find.text('Publicado'), findsOneWidget);
-      expect(find.text('\$50000'), findsOneWidget);
+      expect(find.text('\$50.000'), findsOneWidget);
       expect(find.text('Hackatón gratis'), findsOneWidget);
       expect(find.text('Gratis'), findsOneWidget);
       expect(find.text('Sin límite'), findsOneWidget);

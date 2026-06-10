@@ -24,6 +24,12 @@ class _FakeApi extends ApiService {
       const [];
 
   @override
+  Future<Map<String, dynamic>> fetchStoreConfig() async => const {
+        'store_slug': 'mi-tienda',
+        'enable_promotions': false,
+      };
+
+  @override
   Future<void> issueEventCertificate(String eventId, String regId) async {
     certifiedRegId = regId;
   }

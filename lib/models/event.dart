@@ -67,12 +67,18 @@ class Event {
   /// Cupo máximo. 0 = sin límite.
   final int capacity;
 
-  /// Precio de inscripción en COP (entero, múltiplo de $50). 0 = gratis.
+  /// Precio de inscripción (entero en la moneda). 0 = gratis.
   final int price;
+
+  /// Moneda del precio: 'COP' (default) o 'USD'.
+  final String currency;
 
   final String status;
   final bool installmentsEnabled;
   final int installmentsCount;
+
+  /// URL del afiche publicitario (poster_template.image_url) para el preview.
+  final String posterUrl;
 
   /// Métodos de pago que el organizador acepta para este evento (claves
   /// estables: efectivo/transferencia/tarjeta/otro). Se muestran al asistente.
@@ -89,10 +95,12 @@ class Event {
     this.locationOrLink = '',
     this.capacity = 0,
     this.price = 0,
+    this.currency = 'COP',
     this.status = EventStatus.borrador,
     this.installmentsEnabled = false,
     this.installmentsCount = 0,
     this.enabledPaymentMethods = const [],
+    this.posterUrl = '',
   });
 
   /// True cuando el evento es gratuito.
@@ -113,6 +121,7 @@ class Event {
       locationOrLink: (json['location_or_link'] as String?) ?? '',
       capacity: (json['capacity'] as num? ?? 0).toInt(),
       price: (json['price'] as num? ?? 0).toInt(),
+      currency: (json['currency'] as String?) ?? 'COP',
       status: (json['status'] as String?) ?? EventStatus.borrador,
       installmentsEnabled: json['installments_enabled'] == true,
       installmentsCount: (json['installments_count'] as num? ?? 0).toInt(),
@@ -120,6 +129,9 @@ class Event {
           (json['enabled_payment_methods'] as List<dynamic>? ?? const [])
               .map((e) => e.toString())
               .toList(growable: false),
+      posterUrl: (json['poster_template']
+              as Map<String, dynamic>?)?['image_url'] as String? ??
+          '',
     );
   }
 
@@ -134,6 +146,7 @@ class Event {
         'location_or_link': locationOrLink,
         'capacity': capacity,
         'price': price,
+        'currency': currency,
         'status': status,
         'installments_enabled': installmentsEnabled,
         'installments_count': installmentsCount,
@@ -151,10 +164,12 @@ class Event {
     String? locationOrLink,
     int? capacity,
     int? price,
+    String? currency,
     String? status,
     bool? installmentsEnabled,
     int? installmentsCount,
     List<String>? enabledPaymentMethods,
+    String? posterUrl,
   }) {
     return Event(
       id: id ?? this.id,
@@ -167,11 +182,13 @@ class Event {
       locationOrLink: locationOrLink ?? this.locationOrLink,
       capacity: capacity ?? this.capacity,
       price: price ?? this.price,
+      currency: currency ?? this.currency,
       status: status ?? this.status,
       installmentsEnabled: installmentsEnabled ?? this.installmentsEnabled,
       installmentsCount: installmentsCount ?? this.installmentsCount,
       enabledPaymentMethods:
           enabledPaymentMethods ?? this.enabledPaymentMethods,
+      posterUrl: posterUrl ?? this.posterUrl,
     );
   }
 }

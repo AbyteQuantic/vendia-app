@@ -10,6 +10,7 @@ import 'package:flutter/material.dart';
 import '../../models/event.dart';
 import '../../services/api_service.dart';
 import '../../services/auth_service.dart';
+import '../../utils/event_money.dart';
 import 'create_event_screen.dart';
 import 'event_detail_screen.dart';
 import 'event_feedback.dart';
@@ -185,7 +186,7 @@ class _EventCard extends StatelessWidget {
                       size: 18, color: Colors.grey.shade700),
                   const SizedBox(width: 6),
                   Text(
-                    event.isFree ? 'Gratis' : '\$${event.price}',
+                    formatEventPrice(event.price, event.currency),
                     style: const TextStyle(fontSize: 15),
                   ),
                   const SizedBox(width: 16),

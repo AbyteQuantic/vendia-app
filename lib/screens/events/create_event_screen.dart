@@ -12,6 +12,7 @@ import '../../models/event.dart';
 import '../../services/api_service.dart';
 import '../../services/app_error.dart';
 import '../../services/auth_service.dart';
+import '../../utils/event_money.dart';
 import 'event_feedback.dart';
 
 class CreateEventScreen extends StatefulWidget {
@@ -35,6 +36,7 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
 
   String _type = EventType.curso;
   String _modality = EventModality.presencial;
+  String _currency = EventCurrency.cop;
   DateTime? _startAt;
   bool _saving = false;
 
@@ -65,7 +67,10 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
   String? _validatePrice(String? raw) {
     final v = int.tryParse((raw ?? '').trim());
     if (v == null || v < 0) return 'Ingrese un precio válido (0 si es gratis)';
-    if (v % 50 != 0) return 'El precio debe ser múltiplo de \$50';
+    // La regla del múltiplo de $50 es propia del peso colombiano.
+    if (_currency == EventCurrency.cop && v % 50 != 0) {
+      return 'El precio debe ser múltiplo de \$50';
+    }
     return null;
   }
 
@@ -93,6 +98,7 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
         'modality': _modality,
         'location_or_link': _locationCtrl.text.trim(),
         'price': price,
+        'currency': _currency,
         'capacity': int.parse(_capacityCtrl.text.trim()),
         // El pago solo aplica a eventos con precio.
         'enabled_payment_methods': price > 0 ? _methods.toList() : <String>[],
@@ -302,16 +308,33 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
               ),
             ),
             const SizedBox(height: 16),
+            // Moneda del precio (peso colombiano o dólar).
+            SegmentedButton<String>(
+              key: const Key('event_currency'),
+              segments: const [
+                ButtonSegment(value: EventCurrency.cop, label: Text('Peso COP')),
+                ButtonSegment(value: EventCurrency.usd, label: Text('Dólar USD')),
+              ],
+              selected: {_currency},
+              showSelectedIcon: false,
+              onSelectionChanged: (s) => setState(() {
+                _currency = s.first;
+                _formKey.currentState?.validate();
+              }),
+            ),
+            const SizedBox(height: 16),
             Row(
               children: [
                 Expanded(
                   child: TextFormField(
                     key: const Key('event_price'),
                     controller: _priceCtrl,
-                    decoration: const InputDecoration(
-                      labelText: 'Precio (COP)',
+                    decoration: InputDecoration(
+                      labelText:
+                          'Precio (${_currency == EventCurrency.usd ? 'USD' : 'COP'})',
                       hintText: '0 = gratis',
-                      prefixText: '\$ ',
+                      prefixText:
+                          _currency == EventCurrency.usd ? 'US\$ ' : '\$ ',
                     ),
                     keyboardType: TextInputType.number,
                     inputFormatters: [FilteringTextInputFormatter.digitsOnly],

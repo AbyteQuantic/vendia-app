@@ -8,10 +8,16 @@
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:share_plus/share_plus.dart';
 
+import '../../config/api_config.dart';
 import '../../models/event.dart';
+import '../../screens/dashboard/business_capabilities_screen.dart';
 import '../../services/api_service.dart';
 import '../../services/auth_service.dart';
+import '../../utils/business_capability_map.dart';
+import '../../utils/event_money.dart';
 import 'event_checkin_scan_screen.dart';
 import 'event_design_screen.dart';
 import 'event_feedback.dart';
@@ -34,6 +40,8 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
   late Event _event;
   List<EventRegistrationView> _regs = [];
   List<EventPaymentView> _pendingPayments = [];
+  String? _slug; // slug de la tienda para armar el link del catálogo
+  bool _promotionsActive = false; // capacidad de difusión activa
   bool _loading = true;
 
   @override
@@ -42,6 +50,20 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
     _api = widget.apiOverride ?? ApiService(AuthService());
     _event = widget.event;
     _loadRegs();
+    _loadStore();
+  }
+
+  /// Carga el slug del catálogo y si la difusión (promociones) está activa.
+  /// Fire-and-forget: si falla, la sección de catálogo muestra su estado vacío.
+  Future<void> _loadStore() async {
+    try {
+      final config = await _api.fetchStoreConfig();
+      if (!mounted) return;
+      setState(() {
+        _slug = (config['store_slug'] as String?)?.trim();
+        _promotionsActive = config['enable_promotions'] == true;
+      });
+    } catch (_) {/* ignore */}
   }
 
   Future<void> _loadRegs() async {
@@ -197,6 +219,8 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
             const SizedBox(height: 16),
             _aiDesignCard(),
             const SizedBox(height: 16),
+            _catalogSection(e),
+            const SizedBox(height: 16),
             _attendanceCard(),
             if (_pendingPayments.isNotEmpty) ...[
               const SizedBox(height: 16),
@@ -258,7 +282,7 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
             ],
             const Divider(height: 20),
             _infoRow(Icons.payments_rounded, 'Inscripción',
-                e.isFree ? 'Gratis' : '\$${e.price}'),
+                formatEventPrice(e.price, e.currency)),
             const Divider(height: 20),
             _infoRow(
               Icons.people_rounded,
@@ -503,6 +527,216 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
     );
   }
 
+  // ── Catálogo en línea + difusión ──────────────────────────────────────
+  String? get _catalogUrl =>
+      (_slug == null || _slug!.isEmpty) ? null : ApiConfig.publicCatalogUrlFor(_slug!);
+
+  String _shareMessage(Event e) {
+    final priceLine = e.isFree ? 'Gratis' : formatEventMoney(e.price, e.currency);
+    final url = _catalogUrl;
+    return '🎫 ${e.title}\n'
+        '${EventType.label(e.type)} · ${EventModality.label(e.modality)}'
+        '${e.startAt != null ? ' · ${_formatDate(e.startAt!)}' : ''}\n'
+        'Inscripción: $priceLine\n'
+        '${e.description.trim().isEmpty ? '' : '\n${e.description.trim()}\n'}'
+        '${url != null ? '\nInscríbete aquí: $url' : ''}';
+  }
+
+  Future<void> _shareEvent(Event e) async {
+    await Share.share(_shareMessage(e), subject: e.title);
+  }
+
+  void _copyLink() {
+    final url = _catalogUrl;
+    if (url == null) {
+      _snack('Configure el enlace de su tienda en Perfil del negocio.',
+          kind: EventSnackKind.info);
+      return;
+    }
+    Clipboard.setData(ClipboardData(text: url));
+    _snack('Link copiado: $url', kind: EventSnackKind.success);
+  }
+
+  void _openDifusion() {
+    if (_promotionsActive) {
+      // Tiene la difusión activa: comparte el evento por WhatsApp/redes.
+      _shareEvent(_event);
+      return;
+    }
+    // No la tiene: llévalo al módulo de capacidades para activarla.
+    Navigator.of(context).push(MaterialPageRoute(
+      builder: (_) => const BusinessCapabilitiesScreen(
+        highlightCapability: OptionalCapability.promotions,
+      ),
+    ));
+  }
+
+  Widget _catalogSection(Event e) {
+    final published = e.status == EventStatus.publicado;
+    return Container(
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(16),
+        color: Colors.white,
+        border: Border.all(color: Colors.grey.shade200),
+      ),
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Row(
+            children: [
+              Icon(Icons.storefront_rounded, color: _eventAccent),
+              SizedBox(width: 8),
+              Text('Catálogo y difusión',
+                  style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold)),
+            ],
+          ),
+          const SizedBox(height: 4),
+          Text(
+            published
+                ? 'Así se ve tu evento en el catálogo. Compártelo con tus '
+                    'clientes.'
+                : 'Publícalo para que aparezca en tu catálogo en línea.',
+            style: TextStyle(fontSize: 13, color: Colors.grey.shade600),
+          ),
+          const SizedBox(height: 14),
+          _catalogPreview(e),
+          const SizedBox(height: 14),
+          // Link del catálogo
+          if (_catalogUrl != null)
+            InkWell(
+              onTap: _copyLink,
+              borderRadius: BorderRadius.circular(10),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                decoration: BoxDecoration(
+                  color: Colors.grey.shade50,
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: Colors.grey.shade200),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.link_rounded,
+                        size: 18, color: _eventAccent),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                          _catalogUrl!.replaceFirst('https://', ''),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                              fontSize: 13.5, fontWeight: FontWeight.w500)),
+                    ),
+                    const Icon(Icons.copy_rounded, size: 16, color: Colors.grey),
+                  ],
+                ),
+              ),
+            ),
+          const SizedBox(height: 12),
+          // Difundir por WhatsApp / redes (acción principal).
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton.icon(
+              key: const Key('detail_share_whatsapp'),
+              style: FilledButton.styleFrom(
+                backgroundColor: const Color(0xFF25D366),
+                padding: const EdgeInsets.symmetric(vertical: 13),
+              ),
+              onPressed: () => _shareEvent(e),
+              icon: const Icon(Icons.share_rounded, size: 20),
+              label: const Text('Difundir por WhatsApp',
+                  style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
+            ),
+          ),
+          const SizedBox(height: 8),
+          // Acceso a difusión masiva (gateado por capacidad).
+          TextButton.icon(
+            onPressed: _openDifusion,
+            style: TextButton.styleFrom(foregroundColor: _eventAccent),
+            icon: Icon(
+                _promotionsActive
+                    ? Icons.campaign_rounded
+                    : Icons.lock_open_rounded,
+                size: 18),
+            label: Text(_promotionsActive
+                ? 'Difusión a mis clientes'
+                : 'Activar difusión a mis clientes'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Mini-tarjeta que espeja cómo se ve el evento en el catálogo público.
+  Widget _catalogPreview(Event e) {
+    return Container(
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.grey.shade200),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            height: 130,
+            width: double.infinity,
+            child: e.posterUrl.isNotEmpty
+                ? (e.posterUrl.startsWith('data:image')
+                    ? Image.memory(
+                        base64Decode(
+                            e.posterUrl.substring(e.posterUrl.indexOf(',') + 1)),
+                        fit: BoxFit.cover)
+                    : Image.network(e.posterUrl, fit: BoxFit.cover))
+                : Container(
+                    alignment: Alignment.center,
+                    decoration: const BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                        colors: [Color(0xFF0EA5E9), Color(0xFF1E3A8A)],
+                      ),
+                    ),
+                    child: const Text('🎫', style: TextStyle(fontSize: 40)),
+                  ),
+          ),
+          Padding(
+            padding: const EdgeInsets.all(12),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(e.title,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                        fontSize: 15, fontWeight: FontWeight.bold)),
+                const SizedBox(height: 2),
+                Text(
+                  '${EventType.label(e.type)} · ${EventModality.label(e.modality)}',
+                  style: const TextStyle(fontSize: 12, color: Colors.black54),
+                ),
+                const SizedBox(height: 6),
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: _eventAccent.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Text(formatEventPrice(e.price, e.currency),
+                      style: const TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.bold,
+                          color: _eventAccent)),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   // ── Bandeja de comprobantes por revisar (pago manual con comprobante) ──
   Widget _paymentsInbox() {
     return Container(
@@ -572,7 +806,8 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
               children: [
                 Text(p.customerName.isEmpty ? 'Asistente' : p.customerName,
                     style: const TextStyle(fontWeight: FontWeight.w600)),
-                Text('Reportó \$${p.amount}${p.note.isEmpty ? '' : ' · ${p.note}'}',
+                Text(
+                    'Reportó ${formatEventMoney(p.amount, _event.currency)}${p.note.isEmpty ? '' : ' · ${p.note}'}',
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(fontSize: 13, color: Colors.black54)),
@@ -797,7 +1032,10 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
           ),
         ),
         const SizedBox(height: 4),
-        Text('Pagó \$${r.amountPaid} de \$${r.price} · faltan \$${r.balance}',
+        Text(
+            'Pagó ${formatEventMoney(r.amountPaid, _event.currency)} de '
+            '${formatEventMoney(r.price, _event.currency)} · faltan '
+            '${formatEventMoney(r.balance, _event.currency)}',
             style: const TextStyle(fontSize: 12.5, color: Colors.black54)),
       ],
     );
@@ -814,7 +1052,8 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('${r.customerName} debe \$${r.balance}.',
+            Text(
+                '${r.customerName} debe ${formatEventMoney(r.balance, _event.currency)}.',
                 style: const TextStyle(fontSize: 14)),
             const SizedBox(height: 12),
             TextField(
