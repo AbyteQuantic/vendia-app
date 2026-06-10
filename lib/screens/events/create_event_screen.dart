@@ -34,6 +34,8 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
   final _titleCtrl = TextEditingController();
   final _descCtrl = TextEditingController();
   final _locationCtrl = TextEditingController();
+  final _cityCtrl = TextEditingController();
+  final _notesCtrl = TextEditingController();
   final _priceCtrl = TextEditingController(text: '0');
   final _capacityCtrl = TextEditingController(text: '0');
 
@@ -62,6 +64,8 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
       _titleCtrl.text = e.title;
       _descCtrl.text = e.description;
       _locationCtrl.text = e.locationOrLink;
+      _cityCtrl.text = e.city;
+      _notesCtrl.text = e.locationNotes;
       _priceCtrl.text = e.price.toString();
       _capacityCtrl.text = e.capacity.toString();
       _type = e.type;
@@ -83,6 +87,8 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
     _titleCtrl.dispose();
     _descCtrl.dispose();
     _locationCtrl.dispose();
+    _cityCtrl.dispose();
+    _notesCtrl.dispose();
     _priceCtrl.dispose();
     _capacityCtrl.dispose();
     super.dispose();
@@ -121,6 +127,9 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
         'description': _descCtrl.text.trim(),
         'modality': _modality,
         'location_or_link': _locationCtrl.text.trim(),
+        'city': _modality == EventModality.virtual ? '' : _cityCtrl.text.trim(),
+        'location_notes':
+            _modality == EventModality.virtual ? '' : _notesCtrl.text.trim(),
         'price': price,
         'currency': _currency,
         'capacity': int.parse(_capacityCtrl.text.trim()),
@@ -226,7 +235,7 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
   }
 
   String get _locationLabel =>
-      _modality == EventModality.virtual ? 'Enlace de la reunión' : 'Lugar';
+      _modality == EventModality.virtual ? 'Enlace de la reunión' : 'Dirección';
 
   String get _dateLabel => _startAt == null
       ? 'Elegir fecha del evento'
@@ -306,9 +315,14 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
               ),
             ),
             const SizedBox(height: 16),
+            // Ubicación: enlace (virtual) o dirección+ciudad+indicaciones
+            // (presencial/híbrido).
             TextFormField(
               key: const Key('event_location'),
               controller: _locationCtrl,
+              textCapitalization: _modality == EventModality.virtual
+                  ? TextCapitalization.none
+                  : TextCapitalization.sentences,
               decoration: InputDecoration(
                 labelText: _locationLabel,
                 hintText: _modality == EventModality.virtual
@@ -316,6 +330,33 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
                     : 'Ej: Calle 8 No 28-14',
               ),
             ),
+            if (_modality != EventModality.virtual) ...[
+              const SizedBox(height: 16),
+              TextFormField(
+                key: const Key('event_city'),
+                controller: _cityCtrl,
+                textCapitalization: TextCapitalization.words,
+                decoration: const InputDecoration(
+                  labelText: 'Ciudad',
+                  hintText: 'Ej: Medellín',
+                ),
+              ),
+              const SizedBox(height: 16),
+              TextFormField(
+                key: const Key('event_location_notes'),
+                controller: _notesCtrl,
+                minLines: 2,
+                maxLines: 4,
+                textCapitalization: TextCapitalization.sentences,
+                decoration: InputDecoration(
+                  labelText: 'Indicaciones / edificio',
+                  alignLabelWithHint: true,
+                  hintText: _modality == EventModality.hibrido
+                      ? 'Edificio, piso, cómo llegar… y el enlace virtual.'
+                      : 'Edificio, piso, punto de referencia, cómo llegar…',
+                ),
+              ),
+            ],
             const SizedBox(height: 16),
             // Descripción — se muestra en el catálogo (detalle del evento) y
             // alimenta a la IA como contexto. Admite texto largo y estructurado.

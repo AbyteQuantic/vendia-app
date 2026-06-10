@@ -64,6 +64,10 @@ class Event {
   final String modality;
   final String locationOrLink;
 
+  /// Ubicación física (eventos presenciales): ciudad e indicaciones/edificio.
+  final String city;
+  final String locationNotes;
+
   /// Cupo máximo. 0 = sin límite.
   final int capacity;
 
@@ -96,6 +100,8 @@ class Event {
     this.endAt,
     this.modality = EventModality.presencial,
     this.locationOrLink = '',
+    this.city = '',
+    this.locationNotes = '',
     this.capacity = 0,
     this.price = 0,
     this.currency = 'COP',
@@ -124,6 +130,8 @@ class Event {
       endAt: _parseDate(json['end_at']),
       modality: (json['modality'] as String?) ?? EventModality.presencial,
       locationOrLink: (json['location_or_link'] as String?) ?? '',
+      city: (json['city'] as String?) ?? '',
+      locationNotes: (json['location_notes'] as String?) ?? '',
       capacity: (json['capacity'] as num? ?? 0).toInt(),
       price: (json['price'] as num? ?? 0).toInt(),
       currency: (json['currency'] as String?) ?? 'COP',
@@ -149,6 +157,8 @@ class Event {
         if (endAt != null) 'end_at': endAt!.toIso8601String(),
         'modality': modality,
         'location_or_link': locationOrLink,
+        'city': city,
+        'location_notes': locationNotes,
         'capacity': capacity,
         'price': price,
         'currency': currency,
@@ -167,6 +177,8 @@ class Event {
     DateTime? endAt,
     String? modality,
     String? locationOrLink,
+    String? city,
+    String? locationNotes,
     int? capacity,
     int? price,
     String? currency,
@@ -187,6 +199,8 @@ class Event {
       endAt: endAt ?? this.endAt,
       modality: modality ?? this.modality,
       locationOrLink: locationOrLink ?? this.locationOrLink,
+      city: city ?? this.city,
+      locationNotes: locationNotes ?? this.locationNotes,
       capacity: capacity ?? this.capacity,
       price: price ?? this.price,
       currency: currency ?? this.currency,

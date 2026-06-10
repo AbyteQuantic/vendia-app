@@ -316,9 +316,20 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
                 e.modality == EventModality.virtual
                     ? Icons.link_rounded
                     : Icons.place_rounded,
-                e.modality == EventModality.virtual ? 'Enlace' : 'Lugar',
+                e.modality == EventModality.virtual ? 'Enlace' : 'Dirección',
                 e.locationOrLink,
               ),
+            ],
+            if (e.modality != EventModality.virtual &&
+                e.city.trim().isNotEmpty) ...[
+              const Divider(height: 20),
+              _infoRow(Icons.location_city_rounded, 'Ciudad', e.city),
+            ],
+            if (e.modality != EventModality.virtual &&
+                e.locationNotes.trim().isNotEmpty) ...[
+              const Divider(height: 20),
+              _infoRow(Icons.info_outline_rounded, 'Indicaciones',
+                  e.locationNotes),
             ],
             const Divider(height: 20),
             _infoRow(Icons.payments_rounded, 'Inscripción',
