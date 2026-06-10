@@ -44,6 +44,7 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
   String _modality = EventModality.presencial;
   String _currency = EventCurrency.cop;
   DateTime? _startAt;
+  DateTime? _endAt;
   bool _saving = false;
 
   // Tasa USD→COP para convertir el precio al cambiar de moneda (fallback).
@@ -77,6 +78,7 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
       _modality = e.modality;
       _currency = EventCurrency.normalize(e.currency);
       _startAt = e.startAt?.toLocal();
+      _endAt = e.endAt?.toLocal();
       _installments = e.installmentsEnabled;
       if (e.installmentsCount >= 2) _installmentsCount = e.installmentsCount;
       if (e.enabledPaymentMethods.isNotEmpty) {
@@ -133,16 +135,62 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
     return null;
   }
 
-  Future<void> _pickDate() async {
+  /// Selector combinado fecha + hora. Devuelve null si el usuario cancela la
+  /// fecha. `firstDate` limita hacia atrás; al editar un evento ya pasado se
+  /// ajusta para no romper showDatePicker (initialDate < firstDate).
+  Future<DateTime?> _pickDateTime({
+    required DateTime? current,
+    required String dateHelp,
+    DateTime? firstDate,
+  }) async {
     final now = DateTime.now();
-    final picked = await showDatePicker(
+    final base = current ?? now.add(const Duration(days: 7));
+    final lower = firstDate ?? now;
+    final safeFirst = base.isBefore(lower) ? base : lower;
+    final date = await showDatePicker(
       context: context,
-      initialDate: _startAt ?? now.add(const Duration(days: 7)),
-      firstDate: now,
+      initialDate: base,
+      firstDate: safeFirst,
       lastDate: now.add(const Duration(days: 365 * 2)),
-      helpText: 'Fecha del evento',
+      helpText: dateHelp,
     );
-    if (picked != null) setState(() => _startAt = picked);
+    if (date == null || !mounted) return null;
+    final time = await showTimePicker(
+      context: context,
+      initialTime: TimeOfDay.fromDateTime(current ?? base),
+      helpText: 'Hora',
+    );
+    final t = time ?? TimeOfDay.fromDateTime(current ?? base);
+    return DateTime(date.year, date.month, date.day, t.hour, t.minute);
+  }
+
+  Future<void> _pickStart() async {
+    final picked =
+        await _pickDateTime(current: _startAt, dateHelp: 'Inicio del evento');
+    if (picked == null) return;
+    setState(() {
+      _startAt = picked;
+      // Si el fin quedó antes del nuevo inicio, lo limpiamos.
+      if (_endAt != null && _endAt!.isBefore(picked)) _endAt = null;
+    });
+  }
+
+  Future<void> _pickEnd() async {
+    final picked = await _pickDateTime(
+      current: _endAt ?? _startAt,
+      dateHelp: 'Finalización del evento',
+      firstDate: _startAt,
+    );
+    if (picked == null) return;
+    if (_startAt != null && picked.isBefore(_startAt!)) {
+      if (mounted) {
+        showEventSnack(context,
+            'La finalización no puede ser antes del inicio.',
+            kind: EventSnackKind.error);
+      }
+      return;
+    }
+    setState(() => _endAt = picked);
   }
 
   Future<void> _submit() async {
@@ -167,6 +215,7 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
         'installments_enabled': price > 0 && _installments,
         'installments_count': _installments ? _installmentsCount : 0,
         if (_startAt != null) 'start_at': _startAt!.toUtc().toIso8601String(),
+        if (_endAt != null) 'end_at': _endAt!.toUtc().toIso8601String(),
       };
       final result = _isEdit
           ? await _api.updateEvent(widget.existing!.id, body)
@@ -266,10 +315,17 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
   String get _locationLabel =>
       _modality == EventModality.virtual ? 'Enlace de la reunión' : 'Dirección';
 
-  String get _dateLabel => _startAt == null
-      ? 'Elegir fecha del evento'
-      : '${_startAt!.day.toString().padLeft(2, '0')}/'
-          '${_startAt!.month.toString().padLeft(2, '0')}/${_startAt!.year}';
+  String _fmtDateTime(DateTime d) =>
+      '${d.day.toString().padLeft(2, '0')}/'
+      '${d.month.toString().padLeft(2, '0')}/${d.year}  '
+      '${d.hour.toString().padLeft(2, '0')}:${d.minute.toString().padLeft(2, '0')}';
+
+  String get _startLabel =>
+      _startAt == null ? 'Elegir fecha y hora de inicio' : _fmtDateTime(_startAt!);
+
+  String get _endLabel => _endAt == null
+      ? 'Elegir fecha y hora de fin (opcional)'
+      : _fmtDateTime(_endAt!);
 
   @override
   Widget build(BuildContext context) {
@@ -325,20 +381,40 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
               ],
             ),
             const SizedBox(height: 16),
-            // Fecha
+            // Inicio (fecha + hora)
             InkWell(
               key: const Key('event_date'),
-              onTap: _pickDate,
+              onTap: _pickStart,
               borderRadius: BorderRadius.circular(8),
               child: InputDecorator(
                 decoration: const InputDecoration(
-                  labelText: 'Fecha',
-                  suffixIcon: Icon(Icons.calendar_today_rounded, size: 20),
+                  labelText: 'Inicio',
+                  suffixIcon: Icon(Icons.event_rounded, size: 20),
                 ),
-                child: Text(_dateLabel,
+                child: Text(_startLabel,
                     style: TextStyle(
                         fontSize: 16,
                         color: _startAt == null
+                            ? Colors.grey.shade600
+                            : Colors.black87)),
+              ),
+            ),
+            const SizedBox(height: 16),
+            // Finalización (fecha + hora) — opcional. Alimenta el countdown
+            // del asistente: en curso entre inicio y fin, finalizado después.
+            InkWell(
+              key: const Key('event_end_date'),
+              onTap: _pickEnd,
+              borderRadius: BorderRadius.circular(8),
+              child: InputDecorator(
+                decoration: const InputDecoration(
+                  labelText: 'Finalización',
+                  suffixIcon: Icon(Icons.event_available_rounded, size: 20),
+                ),
+                child: Text(_endLabel,
+                    style: TextStyle(
+                        fontSize: 16,
+                        color: _endAt == null
                             ? Colors.grey.shade600
                             : Colors.black87)),
               ),
