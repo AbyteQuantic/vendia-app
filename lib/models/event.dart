@@ -77,8 +77,11 @@ class Event {
   final bool installmentsEnabled;
   final int installmentsCount;
 
-  /// URL del afiche publicitario (poster_template.image_url) para el preview.
+  /// URLs de las piezas diseñadas (image_url de cada plantilla). Sirven para
+  /// el preview del catálogo y para precargar el editor con la imagen actual.
   final String posterUrl;
+  final String badgeUrl;
+  final String certificateUrl;
 
   /// Métodos de pago que el organizador acepta para este evento (claves
   /// estables: efectivo/transferencia/tarjeta/otro). Se muestran al asistente.
@@ -101,6 +104,8 @@ class Event {
     this.installmentsCount = 0,
     this.enabledPaymentMethods = const [],
     this.posterUrl = '',
+    this.badgeUrl = '',
+    this.certificateUrl = '',
   });
 
   /// True cuando el evento es gratuito.
@@ -129,9 +134,9 @@ class Event {
           (json['enabled_payment_methods'] as List<dynamic>? ?? const [])
               .map((e) => e.toString())
               .toList(growable: false),
-      posterUrl: (json['poster_template']
-              as Map<String, dynamic>?)?['image_url'] as String? ??
-          '',
+      posterUrl: _templateUrl(json['poster_template']),
+      badgeUrl: _templateUrl(json['badge_template']),
+      certificateUrl: _templateUrl(json['certificate_template']),
     );
   }
 
@@ -170,6 +175,8 @@ class Event {
     int? installmentsCount,
     List<String>? enabledPaymentMethods,
     String? posterUrl,
+    String? badgeUrl,
+    String? certificateUrl,
   }) {
     return Event(
       id: id ?? this.id,
@@ -189,9 +196,15 @@ class Event {
       enabledPaymentMethods:
           enabledPaymentMethods ?? this.enabledPaymentMethods,
       posterUrl: posterUrl ?? this.posterUrl,
+      badgeUrl: badgeUrl ?? this.badgeUrl,
+      certificateUrl: certificateUrl ?? this.certificateUrl,
     );
   }
 }
+
+/// Extrae `image_url` de una plantilla (badge/certificate/poster) del JSON.
+String _templateUrl(dynamic template) =>
+    (template as Map<String, dynamic>?)?['image_url'] as String? ?? '';
 
 /// Métodos de pago que el organizador puede habilitar para un evento. Claves
 /// estables que espejan el backend; el cobro ocurre por fuera (VendIA conecta).

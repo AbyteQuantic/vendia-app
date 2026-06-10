@@ -67,6 +67,23 @@ void main() {
     expect(find.text('Subir mi imagen'), findsOneWidget);
   });
 
+  testWidgets('precarga la imagen actual (currentImageUrl) al abrir',
+      (tester) async {
+    await tester.pumpWidget(_wrap(EventDesignScreen(
+      eventId: 'e1',
+      kind: EventDesignKind.poster,
+      currentImageUrl:
+          'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==',
+      apiOverride: _FakeApi(),
+    )));
+    await tester.pump();
+
+    // Ya hay imagen → no muestra el estado vacío; ofrece usar/mejorar.
+    expect(find.byKey(const Key('design_use')), findsOneWidget);
+    expect(find.byKey(const Key('design_enhance')), findsOneWidget);
+    expect(find.text('Generar otra'), findsOneWidget);
+  });
+
   testWidgets('campo de indicaciones visible y precargado con la descripción',
       (tester) async {
     await tester.pumpWidget(_wrap(EventDesignScreen(

@@ -453,16 +453,17 @@ class _EventBroadcastScreenState extends State<EventBroadcastScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          SizedBox(
-            height: 150,
+          Container(
+            height: 180,
             width: double.infinity,
+            color: const Color(0xFFF1F5F9),
             child: e.posterUrl.isNotEmpty
                 ? (e.posterUrl.startsWith('data:image')
                     ? Image.memory(
                         base64Decode(
                             e.posterUrl.substring(e.posterUrl.indexOf(',') + 1)),
-                        fit: BoxFit.cover)
-                    : Image.network(e.posterUrl, fit: BoxFit.cover))
+                        fit: BoxFit.contain)
+                    : Image.network(e.posterUrl, fit: BoxFit.contain))
                 : Container(
                     alignment: Alignment.center,
                     decoration: const BoxDecoration(

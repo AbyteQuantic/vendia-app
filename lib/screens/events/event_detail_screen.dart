@@ -182,11 +182,18 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
   }
 
   Future<void> _openDesigner(EventDesignKind kind) async {
-    await Navigator.of(context).push(
+    final current = switch (kind) {
+      EventDesignKind.poster => _event.posterUrl,
+      EventDesignKind.badge => _event.badgeUrl,
+      EventDesignKind.certificate => _event.certificateUrl,
+    };
+    final url = await Navigator.of(context).push<String>(
       MaterialPageRoute(
         builder: (_) => EventDesignScreen(
           eventId: _event.id,
           kind: kind,
+          // Precarga la imagen actual (si existe) para verla/modificarla.
+          currentImageUrl: current.isEmpty ? null : current,
           // Pre-carga el brief con la descripción para que la IA tenga
           // contexto desde el primer intento.
           initialBrief: _event.description,
@@ -194,6 +201,14 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
         ),
       ),
     );
+    if (url == null || !mounted) return;
+    setState(() {
+      _event = switch (kind) {
+        EventDesignKind.poster => _event.copyWith(posterUrl: url),
+        EventDesignKind.badge => _event.copyWith(badgeUrl: url),
+        EventDesignKind.certificate => _event.copyWith(certificateUrl: url),
+      };
+    });
   }
 
   void _snack(String m, {EventSnackKind kind = EventSnackKind.info}) =>
@@ -731,16 +746,17 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          SizedBox(
-            height: 130,
+          Container(
+            height: 180,
             width: double.infinity,
+            color: const Color(0xFFF1F5F9),
             child: e.posterUrl.isNotEmpty
                 ? (e.posterUrl.startsWith('data:image')
                     ? Image.memory(
                         base64Decode(
                             e.posterUrl.substring(e.posterUrl.indexOf(',') + 1)),
-                        fit: BoxFit.cover)
-                    : Image.network(e.posterUrl, fit: BoxFit.cover))
+                        fit: BoxFit.contain)
+                    : Image.network(e.posterUrl, fit: BoxFit.contain))
                 : Container(
                     alignment: Alignment.center,
                     decoration: const BoxDecoration(
