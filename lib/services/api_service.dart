@@ -1421,13 +1421,20 @@ class ApiService {
   /// Mejora/transforma con IA la imagen ACTUAL de una pieza del evento
   /// ([asset] = 'poster' | 'badge' | 'certificate'). Si se envía [brief], la IA
   /// RECREA la escena siguiendo esas indicaciones usando la foto como
-  /// referencia; sin brief, solo retoca. Devuelve la nueva URL.
+  /// referencia; sin brief, solo retoca. [faceReference] (opcional) es una foto
+  /// clara del rostro para anclar la identidad. Devuelve la nueva URL.
   Future<String> enhanceEventAsset(String eventId, String asset,
-      {String? brief}) async {
+      {String? brief, XFile? faceReference}) async {
     try {
+      final form = <String, dynamic>{};
+      final b = brief?.trim() ?? '';
+      if (b.isNotEmpty) form['brief'] = b;
+      if (faceReference != null) {
+        form['reference'] = await imageMultipart(faceReference, prefix: 'face');
+      }
       final response = await _dio.post(
         '/api/v1/events/$eventId/$asset/ai-enhance',
-        data: _briefBody(brief),
+        data: FormData.fromMap(form),
       );
       final data = (response.data as Map<String, dynamic>)['data']
           as Map<String, dynamic>;

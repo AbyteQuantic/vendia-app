@@ -66,6 +66,7 @@ dependencies:
 
   # Utilidades
   intl: ^0.19.0
+  flutter_markdown: ^0.7.4 # render de descripción de eventos (negritas/títulos)
   geolocator: ^14.0.2
   geocoding: ^4.0.0
   record: ^6.0.0

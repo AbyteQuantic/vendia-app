@@ -45,6 +45,7 @@ class _EventDesignScreenState extends State<EventDesignScreen> {
   late final ApiService _api;
   late final TextEditingController _briefCtrl;
   String? _imageUrl;
+  XFile? _faceRef; // foto de rostro opcional para anclar la identidad
   bool _generating = false;
   bool _uploading = false;
   bool _enhancing = false;
@@ -88,6 +89,15 @@ class _EventDesignScreenState extends State<EventDesignScreen> {
     super.dispose();
   }
 
+  /// Elige una foto clara de rostro para anclar la identidad en el "Mejorar".
+  Future<void> _pickFaceRef() async {
+    final picked = await ImagePicker().pickImage(
+      source: ImageSource.gallery,
+      imageQuality: 90,
+    );
+    if (picked != null) setState(() => _faceRef = picked);
+  }
+
   /// Camino B: el organizador sube su propia imagen para la pieza.
   Future<void> _upload() async {
     final XFile? picked = await ImagePicker().pickImage(
@@ -123,7 +133,7 @@ class _EventDesignScreenState extends State<EventDesignScreen> {
     });
     try {
       final url = await _api.enhanceEventAsset(widget.eventId, _assetSlug,
-          brief: _briefCtrl.text.trim());
+          brief: _briefCtrl.text.trim(), faceReference: _faceRef);
       if (!mounted) return;
       setState(() {
         _imageUrl = url;
@@ -252,6 +262,47 @@ class _EventDesignScreenState extends State<EventDesignScreen> {
             ),
             if (hasImage) ...[
               const SizedBox(height: 10),
+              // Foto de rostro opcional: ancla la identidad al "Mejorar con IA".
+              InkWell(
+                key: const Key('design_face_ref'),
+                onTap: _busy ? null : _pickFaceRef,
+                borderRadius: BorderRadius.circular(10),
+                child: Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF5F3FF),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: const Color(0xFFDDD6FE)),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(
+                          _faceRef == null
+                              ? Icons.face_retouching_natural_rounded
+                              : Icons.check_circle_rounded,
+                          size: 18,
+                          color: const Color(0xFF7C3AED)),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          _faceRef == null
+                              ? 'Foto de rostro (opcional, mejor parecido)'
+                              : 'Rostro adjunto — la IA lo respetará',
+                          style: const TextStyle(fontSize: 12.5),
+                        ),
+                      ),
+                      if (_faceRef != null)
+                        GestureDetector(
+                          onTap: () => setState(() => _faceRef = null),
+                          child: const Icon(Icons.close_rounded,
+                              size: 16, color: Colors.grey),
+                        ),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 8),
               // Mejorar con IA la imagen actual (generada o subida), como el
               // "mejorar foto" del inventario.
               SizedBox(

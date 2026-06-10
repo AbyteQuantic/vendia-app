@@ -46,4 +46,21 @@ void main() {
         tester.widget<TextField>(find.byKey(const Key('desc_editor_field')));
     expect(field.controller!.text.contains('•'), isTrue);
   });
+
+  testWidgets('"Negrita" envuelve en ** y "Título" inserta ##', (tester) async {
+    await tester.pumpWidget(const MaterialApp(
+      home: EventDescriptionEditorScreen(initialText: ''),
+    ));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const Key('desc_editor_bold')));
+    await tester.pump();
+    await tester.tap(find.byKey(const Key('desc_editor_title')));
+    await tester.pump();
+
+    final field =
+        tester.widget<TextField>(find.byKey(const Key('desc_editor_field')));
+    expect(field.controller!.text.contains('**'), isTrue);
+    expect(field.controller!.text.contains('## '), isTrue);
+  });
 }

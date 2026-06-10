@@ -19,6 +19,7 @@ import '../../models/event.dart';
 import '../../services/api_service.dart';
 import '../../services/auth_service.dart';
 import '../../utils/event_money.dart';
+import '../../utils/markdown_plain.dart';
 import 'event_feedback.dart';
 
 const _eventAccent = Color(0xFF0EA5E9);
@@ -98,7 +99,9 @@ class _EventBroadcastScreenState extends State<EventBroadcastScreen> {
     final price = e.isFree ? 'Gratis' : formatEventMoney(e.price, e.currency);
     final when =
         e.startAt != null ? ' · ${_formatDate(e.startAt!)}' : '';
-    final desc = e.description.trim().isEmpty ? '' : '\n${e.description.trim()}';
+    final desc = e.description.trim().isEmpty
+        ? ''
+        : '\n${markdownToWhatsApp(e.description.trim())}';
     final link = _catalogLink.isEmpty ? '' : '\n\nInscríbete aquí: $_catalogLink';
     return '$hi 👋\n'
         'Te invito a *${e.title}* en $_businessName.\n'

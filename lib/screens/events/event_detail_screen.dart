@@ -9,6 +9,7 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:share_plus/share_plus.dart';
 
 import '../../config/api_config.dart';
@@ -16,6 +17,7 @@ import '../../models/event.dart';
 import '../../services/api_service.dart';
 import '../../services/auth_service.dart';
 import '../../utils/event_money.dart';
+import '../../utils/markdown_plain.dart';
 import 'create_event_screen.dart';
 import 'event_broadcast_screen.dart';
 import 'event_checkin_scan_screen.dart';
@@ -397,39 +399,52 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
   Widget _collapsibleDescription(String description) {
     // Umbral: descripciones cortas se muestran completas sin botón.
     final isLong = description.length > 220 || '\n'.allMatches(description).length > 3;
-    const style =
-        TextStyle(fontSize: 15, height: 1.45, color: Colors.black87);
+    // Render markdown (negritas, títulos, viñetas) — la descripción admite
+    // formato desde el editor.
+    final md = MarkdownBody(
+      data: description,
+      shrinkWrap: true,
+      styleSheet: MarkdownStyleSheet(
+        p: const TextStyle(fontSize: 15, height: 1.45, color: Colors.black87),
+        h1: const TextStyle(
+            fontSize: 17, fontWeight: FontWeight.bold, color: Colors.black87),
+        h2: const TextStyle(
+            fontSize: 16, fontWeight: FontWeight.bold, color: Colors.black87),
+        listBullet:
+            const TextStyle(fontSize: 15, height: 1.45, color: Colors.black87),
+        strong: const TextStyle(fontWeight: FontWeight.bold),
+      ),
+    );
 
-    if (!isLong) return Text(description, style: style);
+    if (!isLong) return md;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        AnimatedSize(
-          duration: const Duration(milliseconds: 180),
-          alignment: Alignment.topCenter,
-          child: ConstrainedBox(
-            constraints: BoxConstraints(
-                maxHeight: _descExpanded ? double.infinity : 120),
-            child: ShaderMask(
-              // Degradado de desvanecido solo cuando está colapsada.
-              shaderCallback: (rect) {
-                if (_descExpanded) {
-                  return const LinearGradient(colors: [Colors.black, Colors.black])
-                      .createShader(rect);
-                }
-                return const LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  colors: [Colors.black, Colors.black, Colors.transparent],
-                  stops: [0.0, 0.75, 1.0],
-                ).createShader(rect);
-              },
-              blendMode: BlendMode.dstIn,
-              child: Text(description, style: style),
+        if (_descExpanded)
+          md
+        else
+          // Colapsada: clip a 120px con degradado de desvanecido. OverflowBox
+          // deja que el markdown se mida sin restricción y ClipRect lo recorta.
+          ShaderMask(
+            shaderCallback: (rect) => const LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: [Colors.black, Colors.black, Colors.transparent],
+              stops: [0.0, 0.75, 1.0],
+            ).createShader(rect),
+            blendMode: BlendMode.dstIn,
+            child: SizedBox(
+              height: 120,
+              child: ClipRect(
+                child: OverflowBox(
+                  alignment: Alignment.topCenter,
+                  maxHeight: double.infinity,
+                  child: md,
+                ),
+              ),
             ),
           ),
-        ),
         TextButton(
           onPressed: () => setState(() => _descExpanded = !_descExpanded),
           style: TextButton.styleFrom(
@@ -583,7 +598,7 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
         '${EventType.label(e.type)} · ${EventModality.label(e.modality)}'
         '${e.startAt != null ? ' · ${_formatDate(e.startAt!)}' : ''}\n'
         'Inscripción: $priceLine\n'
-        '${e.description.trim().isEmpty ? '' : '\n${e.description.trim()}\n'}'
+        '${e.description.trim().isEmpty ? '' : '\n${markdownToWhatsApp(e.description.trim())}\n'}'
         '${url != null ? '\nInscríbete aquí: $url' : ''}';
   }
 

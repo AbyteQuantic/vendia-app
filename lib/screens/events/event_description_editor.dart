@@ -42,6 +42,26 @@ class _EventDescriptionEditorScreenState
     setState(() => _fontSize = (_fontSize + delta).clamp(13.0, 26.0));
   }
 
+  /// Envuelve la selección con [wrapper] (p. ej. "**" para negrita). Sin
+  /// selección, inserta el par y deja el cursor en el medio para escribir.
+  void _wrapSelection(String wrapper) {
+    final sel = _ctrl.selection;
+    final text = _ctrl.text;
+    final start = sel.start >= 0 ? sel.start : text.length;
+    final end = sel.end >= 0 ? sel.end : start;
+    final selected = text.substring(start, end);
+    final wrapped = '$wrapper$selected$wrapper';
+    final newText = text.replaceRange(start, end, wrapped);
+    final cursor =
+        selected.isEmpty ? start + wrapper.length : start + wrapped.length;
+    _ctrl.value = _ctrl.value.copyWith(
+      text: newText,
+      selection: TextSelection.collapsed(offset: cursor),
+      composing: TextRange.empty,
+    );
+    _focus.requestFocus();
+  }
+
   /// Inserta [snippet] en la posición del cursor (o al final) y mantiene el
   /// foco para seguir escribiendo.
   void _insert(String snippet) {
@@ -49,10 +69,11 @@ class _EventDescriptionEditorScreenState
     final text = _ctrl.text;
     final start = sel.start >= 0 ? sel.start : text.length;
     final end = sel.end >= 0 ? sel.end : start;
-    // Si vamos a iniciar una viñeta y no estamos al inicio de línea, anteponer
-    // un salto para que quede en su propio renglón.
+    // Las viñetas y títulos van al inicio de su renglón: si no estamos al
+    // inicio de línea, anteponer un salto.
     var s = snippet;
-    if (snippet.startsWith('• ') && start > 0 && text[start - 1] != '\n') {
+    final isLinePrefix = snippet.startsWith('• ') || snippet.startsWith('## ');
+    if (isLinePrefix && start > 0 && text[start - 1] != '\n') {
       s = '\n$snippet';
     }
     final newText = text.replaceRange(start, end, s);
@@ -138,15 +159,22 @@ class _EventDescriptionEditorScreenState
           ),
           const _ToolDivider(),
           _toolChip(
+            key: const Key('desc_editor_bold'),
+            icon: Icons.format_bold_rounded,
+            label: 'Negrita',
+            onTap: () => _wrapSelection('**'),
+          ),
+          _toolChip(
+            key: const Key('desc_editor_title'),
+            icon: Icons.title_rounded,
+            label: 'Título',
+            onTap: () => _insert('## '),
+          ),
+          _toolChip(
             key: const Key('desc_editor_bullet'),
             icon: Icons.format_list_bulleted_rounded,
             label: 'Viñeta',
             onTap: () => _insert('• '),
-          ),
-          _toolChip(
-            icon: Icons.title_rounded,
-            label: 'Sección',
-            onTap: () => _insert('\n\n'),
           ),
         ],
       ),
