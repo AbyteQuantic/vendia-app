@@ -18,6 +18,7 @@ import '../../services/api_service.dart';
 import '../../services/auth_service.dart';
 import '../../utils/business_capability_map.dart';
 import '../../utils/event_money.dart';
+import 'event_broadcast_screen.dart';
 import 'event_checkin_scan_screen.dart';
 import 'event_design_screen.dart';
 import 'event_feedback.dart';
@@ -559,8 +560,15 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
 
   void _openDifusion() {
     if (_promotionsActive) {
-      // Tiene la difusión activa: comparte el evento por WhatsApp/redes.
-      _shareEvent(_event);
+      // Tiene la difusión activa: abre la difusión específica del evento
+      // (lista de clientes, un toque por contacto + copiar/compartir).
+      Navigator.of(context).push(MaterialPageRoute(
+        builder: (_) => EventBroadcastScreen(
+          event: _event,
+          slug: _slug,
+          apiOverride: widget.apiOverride,
+        ),
+      ));
       return;
     }
     // No la tiene: llévalo al módulo de capacidades para activarla.
