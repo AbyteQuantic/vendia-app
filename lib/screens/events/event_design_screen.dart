@@ -47,9 +47,10 @@ class _EventDesignScreenState extends State<EventDesignScreen> {
   String? _imageUrl;
   bool _generating = false;
   bool _uploading = false;
+  bool _enhancing = false;
   String? _error;
 
-  bool get _busy => _generating || _uploading;
+  bool get _busy => _generating || _uploading || _enhancing;
 
   /// Segmento de ruta del backend para esta pieza.
   String get _assetSlug => switch (widget.kind) {
@@ -113,6 +114,28 @@ class _EventDesignScreenState extends State<EventDesignScreen> {
     }
   }
 
+  /// Mejora con IA la imagen actual (la generada o la subida).
+  Future<void> _enhance() async {
+    setState(() {
+      _enhancing = true;
+      _error = null;
+    });
+    try {
+      final url = await _api.enhanceEventAsset(widget.eventId, _assetSlug);
+      if (!mounted) return;
+      setState(() {
+        _imageUrl = url;
+        _enhancing = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _enhancing = false;
+        _error = 'No pudimos mejorar la imagen. Intente de nuevo.';
+      });
+    }
+  }
+
   Future<void> _generate() async {
     setState(() {
       _generating = true;
@@ -168,7 +191,9 @@ class _EventDesignScreenState extends State<EventDesignScreen> {
                           Text(
                             _uploading
                                 ? 'Subiendo tu imagen…'
-                                : 'Generando el diseño con IA…',
+                                : _enhancing
+                                    ? 'Mejorando la imagen con IA…'
+                                    : 'Generando el diseño con IA…',
                             style: const TextStyle(fontSize: 16),
                           ),
                         ],
@@ -224,6 +249,22 @@ class _EventDesignScreenState extends State<EventDesignScreen> {
               ],
             ),
             if (hasImage) ...[
+              const SizedBox(height: 10),
+              // Mejorar con IA la imagen actual (generada o subida), como el
+              // "mejorar foto" del inventario.
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  key: const Key('design_enhance'),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: const Color(0xFF7C3AED),
+                    side: const BorderSide(color: Color(0xFF7C3AED)),
+                  ),
+                  onPressed: _busy ? null : _enhance,
+                  icon: const Icon(Icons.auto_fix_high_rounded),
+                  label: const Text('Mejorar con IA'),
+                ),
+              ),
               const SizedBox(height: 10),
               SizedBox(
                 width: double.infinity,

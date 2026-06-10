@@ -44,9 +44,12 @@ void main() {
     await tester.pump(const Duration(milliseconds: 50)); // resuelve future
 
     expect(api.badgeCalls, 1);
-    // Ahora hay preview → aparece "Usar este diseño" y "Generar otra".
+    // Ahora hay preview → aparece "Usar este diseño", "Generar otra" y
+    // "Mejorar con IA" (retoca la imagen actual).
     expect(find.byKey(const Key('design_use')), findsOneWidget);
     expect(find.text('Generar otra'), findsOneWidget);
+    expect(find.byKey(const Key('design_enhance')), findsOneWidget);
+    expect(find.text('Mejorar con IA'), findsOneWidget);
   });
 
   testWidgets('ofrece ambos caminos: generar con IA y subir imagen propia',

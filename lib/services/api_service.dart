@@ -1418,6 +1418,21 @@ class ApiService {
     }
   }
 
+  /// Mejora con IA la imagen ACTUAL de una pieza del evento ([asset] =
+  /// 'poster' | 'badge' | 'certificate') — retoca la que se generó o subió,
+  /// como el "mejorar foto" del inventario. Devuelve la nueva URL.
+  Future<String> enhanceEventAsset(String eventId, String asset) async {
+    try {
+      final response =
+          await _dio.post('/api/v1/events/$eventId/$asset/ai-enhance');
+      final data = (response.data as Map<String, dynamic>)['data']
+          as Map<String, dynamic>;
+      return (data['image_url'] as String?) ?? '';
+    } on DioException catch (e) {
+      throw AppError.fromDioException(e);
+    }
+  }
+
   /// Sube la imagen propia del organizador para una pieza del evento
   /// ([asset] = 'poster' | 'badge' | 'certificate') como alternativa a la IA
   /// (F042 FR-11/13). Devuelve la URL persistida en la plantilla del evento.
