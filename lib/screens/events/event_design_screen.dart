@@ -62,9 +62,10 @@ class _EventDesignScreenState extends State<EventDesignScreen> {
   /// Pista del campo de indicaciones según la pieza.
   String get _briefHint => switch (widget.kind) {
         EventDesignKind.poster =>
-          'Cuente de qué trata y qué quiere ver. Ej: "Curso de repostería; '
-              'muestre manos decorando un pastel, colores pastel, ambiente '
-              'cálido y profesional".',
+          'Describa la escena que quiere. Si sube una foto y toca "Mejorar con '
+              'IA", la IA usará a la persona de la foto y recreará la escena '
+              'según esto. Ej: "La docente enseñando a un grupo de alumnas a '
+              'aplicar tinte color ámbar a una modelo, salón profesional".',
         EventDesignKind.badge =>
           'Estilo y colores de la escarapela. Ej: "Elegante, azul y dorado, '
               'logo del curso de repostería".',
@@ -121,7 +122,8 @@ class _EventDesignScreenState extends State<EventDesignScreen> {
       _error = null;
     });
     try {
-      final url = await _api.enhanceEventAsset(widget.eventId, _assetSlug);
+      final url = await _api.enhanceEventAsset(widget.eventId, _assetSlug,
+          brief: _briefCtrl.text.trim());
       if (!mounted) return;
       setState(() {
         _imageUrl = url;

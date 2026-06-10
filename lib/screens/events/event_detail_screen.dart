@@ -13,10 +13,8 @@ import 'package:share_plus/share_plus.dart';
 
 import '../../config/api_config.dart';
 import '../../models/event.dart';
-import '../../screens/dashboard/business_capabilities_screen.dart';
 import '../../services/api_service.dart';
 import '../../services/auth_service.dart';
-import '../../utils/business_capability_map.dart';
 import '../../utils/event_money.dart';
 import 'event_broadcast_screen.dart';
 import 'event_checkin_scan_screen.dart';
@@ -43,7 +41,6 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
   List<EventRegistrationView> _regs = [];
   List<EventPaymentView> _pendingPayments = [];
   String? _slug; // slug de la tienda para armar el link del catálogo
-  bool _promotionsActive = false; // capacidad de difusión activa
   bool _descExpanded = false; // descripción colapsada por defecto
   bool _loading = true;
 
@@ -56,16 +53,12 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
     _loadStore();
   }
 
-  /// Carga el slug del catálogo y si la difusión (promociones) está activa.
-  /// Fire-and-forget: si falla, la sección de catálogo muestra su estado vacío.
+  /// Carga el slug del catálogo para armar el link público. Fire-and-forget.
   Future<void> _loadStore() async {
     try {
       final config = await _api.fetchStoreConfig();
       if (!mounted) return;
-      setState(() {
-        _slug = (config['store_slug'] as String?)?.trim();
-        _promotionsActive = config['enable_promotions'] == true;
-      });
+      setState(() => _slug = (config['store_slug'] as String?)?.trim());
     } catch (_) {/* ignore */}
   }
 
@@ -583,22 +576,13 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
   }
 
   void _openDifusion() {
-    if (_promotionsActive) {
-      // Tiene la difusión activa: abre la difusión específica del evento
-      // (lista de clientes, un toque por contacto + copiar/compartir).
-      Navigator.of(context).push(MaterialPageRoute(
-        builder: (_) => EventBroadcastScreen(
-          event: _event,
-          slug: _slug,
-          apiOverride: widget.apiOverride,
-        ),
-      ));
-      return;
-    }
-    // No la tiene: llévalo al módulo de capacidades para activarla.
+    // La difusión del evento es su propio módulo (no depende de otra
+    // capacidad): lista de clientes + redes sociales + un toque por contacto.
     Navigator.of(context).push(MaterialPageRoute(
-      builder: (_) => const BusinessCapabilitiesScreen(
-        highlightCapability: OptionalCapability.promotions,
+      builder: (_) => EventBroadcastScreen(
+        event: _event,
+        slug: _slug,
+        apiOverride: widget.apiOverride,
       ),
     ));
   }
@@ -681,18 +665,13 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
             ),
           ),
           const SizedBox(height: 8),
-          // Acceso a difusión masiva (gateado por capacidad).
+          // Difusión específica del evento (clientes + redes sociales).
           TextButton.icon(
+            key: const Key('detail_open_difusion'),
             onPressed: _openDifusion,
             style: TextButton.styleFrom(foregroundColor: _eventAccent),
-            icon: Icon(
-                _promotionsActive
-                    ? Icons.campaign_rounded
-                    : Icons.lock_open_rounded,
-                size: 18),
-            label: Text(_promotionsActive
-                ? 'Difusión a mis clientes'
-                : 'Activar difusión a mis clientes'),
+            icon: const Icon(Icons.campaign_rounded, size: 18),
+            label: const Text('Difusión a mis clientes y redes'),
           ),
         ],
       ),

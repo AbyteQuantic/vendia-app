@@ -52,15 +52,16 @@ void main() {
         EventBroadcastScreen(event: ev, slug: 'tienda-ana', apiOverride: api)));
     await tester.pumpAndSettle();
 
-    // El mensaje (arriba) incluye el evento y el link del catálogo.
+    // Arriba: el mensaje incluye el evento y el link, y las opciones de redes.
     expect(find.textContaining('Curso de color'), findsWidgets);
     expect(find.textContaining('tienda-ana'), findsWidgets);
-    expect(find.text('Enviar a mis clientes (1)'), findsOneWidget);
+    expect(find.text('Compartir en redes'), findsOneWidget);
 
     // La lista de clientes vive más abajo (ListView perezoso) → desplazar.
     final scrollable = find.byType(Scrollable).first;
     await tester.scrollUntilVisible(find.text('Ana'), 250, scrollable: scrollable);
     expect(find.text('Ana'), findsOneWidget);
+    expect(find.text('Enviar a mis clientes (1)'), findsOneWidget);
     // El cliente sin consentimiento queda fuera.
     expect(find.text('Beto'), findsNothing);
   });
@@ -72,8 +73,14 @@ void main() {
         EventBroadcastScreen(event: ev, slug: 'tienda-ana', apiOverride: api)));
     await tester.pumpAndSettle();
 
-    // Compartir sigue disponible siempre (arriba), y no hay clientes (0).
-    expect(find.text('Compartir por WhatsApp o redes'), findsOneWidget);
+    // Las opciones de redes sociales siguen disponibles (arriba).
+    expect(find.text('Compartir en redes'), findsOneWidget);
+    expect(find.byKey(const Key('social_whatsapp')), findsOneWidget);
+    expect(find.byKey(const Key('social_more')), findsOneWidget);
+    // El encabezado (0) vive más abajo → desplazar.
+    final scrollable = find.byType(Scrollable).first;
+    await tester.scrollUntilVisible(
+        find.text('Enviar a mis clientes (0)'), 250, scrollable: scrollable);
     expect(find.text('Enviar a mis clientes (0)'), findsOneWidget);
   });
 }

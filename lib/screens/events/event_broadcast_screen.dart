@@ -138,6 +138,41 @@ class _EventBroadcastScreenState extends State<EventBroadcastScreen> {
     Share.share(_message(null), subject: widget.event.title);
   }
 
+  Future<void> _openUrl(String url) async {
+    final ok = await launchUrl(Uri.parse(url),
+        mode: LaunchMode.externalApplication);
+    if (!ok && mounted) {
+      showEventSnack(context, 'No pudimos abrir la app.',
+          kind: EventSnackKind.error);
+    }
+  }
+
+  void _shareWhatsApp() =>
+      _openUrl('https://wa.me/?text=${Uri.encodeComponent(_message(null))}');
+
+  void _shareFacebook() {
+    if (_catalogLink.isEmpty) {
+      _shareToSocial();
+      return;
+    }
+    _openUrl(
+        'https://www.facebook.com/sharer/sharer.php?u=${Uri.encodeComponent(_catalogLink)}');
+  }
+
+  void _shareX() => _openUrl(
+      'https://twitter.com/intent/tweet?text=${Uri.encodeComponent(_message(null))}');
+
+  void _copyLink() {
+    if (_catalogLink.isEmpty) {
+      showEventSnack(context,
+          'Configura el enlace de tu tienda en Perfil del negocio.',
+          kind: EventSnackKind.info);
+      return;
+    }
+    Clipboard.setData(ClipboardData(text: _catalogLink));
+    showEventSnack(context, 'Link copiado', kind: EventSnackKind.success);
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -150,22 +185,8 @@ class _EventBroadcastScreenState extends State<EventBroadcastScreen> {
                 _preview(widget.event),
                 const SizedBox(height: 16),
                 _messageCard(),
-                const SizedBox(height: 12),
-                // Compartir a redes (sheet nativo) — siempre disponible.
-                SizedBox(
-                  width: double.infinity,
-                  child: FilledButton.icon(
-                    style: FilledButton.styleFrom(
-                      backgroundColor: const Color(0xFF25D366),
-                      padding: const EdgeInsets.symmetric(vertical: 13),
-                    ),
-                    onPressed: _shareToSocial,
-                    icon: const Icon(Icons.share_rounded),
-                    label: const Text('Compartir por WhatsApp o redes',
-                        style: TextStyle(
-                            fontSize: 15, fontWeight: FontWeight.bold)),
-                  ),
-                ),
+                const SizedBox(height: 16),
+                _socialSection(),
                 const SizedBox(height: 24),
                 Row(
                   children: [
@@ -191,6 +212,91 @@ class _EventBroadcastScreenState extends State<EventBroadcastScreen> {
                 ],
               ],
             ),
+    );
+  }
+
+  // Compartir el evento en redes sociales (cada una abre su app/sitio).
+  Widget _socialSection() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Row(
+          children: [
+            Icon(Icons.public_rounded, color: _eventAccent),
+            SizedBox(width: 8),
+            Text('Compartir en redes',
+                style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold)),
+          ],
+        ),
+        const SizedBox(height: 12),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            _socialBtn(
+                key: const Key('social_whatsapp'),
+                icon: Icons.chat_rounded,
+                color: const Color(0xFF25D366),
+                label: 'WhatsApp',
+                onTap: _shareWhatsApp),
+            _socialBtn(
+                icon: Icons.facebook_rounded,
+                color: const Color(0xFF1877F2),
+                label: 'Facebook',
+                onTap: _shareFacebook),
+            _socialBtn(
+                icon: Icons.alternate_email_rounded,
+                color: Colors.black,
+                label: 'X',
+                onTap: _shareX),
+            _socialBtn(
+                icon: Icons.link_rounded,
+                color: Colors.blueGrey,
+                label: 'Copiar link',
+                onTap: _copyLink),
+            _socialBtn(
+                key: const Key('social_more'),
+                icon: Icons.ios_share_rounded,
+                color: _eventAccent,
+                label: 'Más',
+                onTap: _shareToSocial),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _socialBtn({
+    Key? key,
+    required IconData icon,
+    required Color color,
+    required String label,
+    required VoidCallback onTap,
+  }) {
+    return InkWell(
+      key: key,
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(12),
+      child: SizedBox(
+        width: 58,
+        child: Column(
+          children: [
+            Container(
+              width: 48,
+              height: 48,
+              decoration: BoxDecoration(
+                color: color.withValues(alpha: 0.12),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(icon, color: color, size: 24),
+            ),
+            const SizedBox(height: 4),
+            Text(label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(fontSize: 11, color: Colors.black87)),
+          ],
+        ),
+      ),
     );
   }
 

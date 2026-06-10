@@ -1418,13 +1418,17 @@ class ApiService {
     }
   }
 
-  /// Mejora con IA la imagen ACTUAL de una pieza del evento ([asset] =
-  /// 'poster' | 'badge' | 'certificate') — retoca la que se generó o subió,
-  /// como el "mejorar foto" del inventario. Devuelve la nueva URL.
-  Future<String> enhanceEventAsset(String eventId, String asset) async {
+  /// Mejora/transforma con IA la imagen ACTUAL de una pieza del evento
+  /// ([asset] = 'poster' | 'badge' | 'certificate'). Si se envía [brief], la IA
+  /// RECREA la escena siguiendo esas indicaciones usando la foto como
+  /// referencia; sin brief, solo retoca. Devuelve la nueva URL.
+  Future<String> enhanceEventAsset(String eventId, String asset,
+      {String? brief}) async {
     try {
-      final response =
-          await _dio.post('/api/v1/events/$eventId/$asset/ai-enhance');
+      final response = await _dio.post(
+        '/api/v1/events/$eventId/$asset/ai-enhance',
+        data: _briefBody(brief),
+      );
       final data = (response.data as Map<String, dynamic>)['data']
           as Map<String, dynamic>;
       return (data['image_url'] as String?) ?? '';
