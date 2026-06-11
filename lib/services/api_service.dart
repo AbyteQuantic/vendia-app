@@ -1576,6 +1576,23 @@ class ApiService {
     }
   }
 
+  /// Quita SOLO el fondo del logo actual (recuadro blanco exterior) sin tocar
+  /// los colores ni los blancos internos del diseño, y devuelve la URL del PNG
+  /// transparente liviano. Recibe la URL del logo ya cargado (no un archivo).
+  Future<String> removeEventLogoBackground(String url) async {
+    try {
+      final formData = FormData.fromMap({'url': url});
+      final response = await _dio.post('/api/v1/event-logo-remove-bg',
+          data: formData,
+          options: Options(receiveTimeout: const Duration(seconds: 40)));
+      final data = (response.data as Map<String, dynamic>)['data']
+          as Map<String, dynamic>;
+      return (data['url'] as String?) ?? '';
+    } on DioException catch (e) {
+      throw AppError.fromDioException(e);
+    }
+  }
+
   /// Sube la imagen del QR de un medio de pago y devuelve su URL, para
   /// incluirla en payment_details al guardar el evento (sirve al crear y
   /// editar — no requiere id del evento).

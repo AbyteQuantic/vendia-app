@@ -261,6 +261,29 @@ class _EventCertificateDesignerScreenState
     });
   }
 
+  // Quita SOLO el fondo del logo (recuadro blanco exterior) sin tocar sus
+  // colores ni los blancos internos. El backend lo recorta con flood-fill y
+  // devuelve un PNG transparente liviano (como la firma limpia).
+  Future<void> _removeLogoBg() async {
+    if (_logoUrl.isEmpty) return;
+    setState(() => _logoBusy = true);
+    try {
+      final url = await _api.removeEventLogoBackground(_logoUrl);
+      if (mounted && url.isNotEmpty) {
+        setState(() {
+          _logoUrl = url;
+          _logoCleared = false;
+        });
+        _snack('Listo, le quitamos el fondo al logo.', ok: true);
+      }
+    } catch (_) {
+      _snack('No pudimos quitar el fondo del logo. Intenta de nuevo.',
+          error: true);
+    } finally {
+      if (mounted) setState(() => _logoBusy = false);
+    }
+  }
+
   Future<void> _save() async {
     setState(() => _saving = true);
     try {
@@ -532,6 +555,16 @@ class _EventCertificateDesignerScreenState
             url: _logoUrl,
             busy: _logoBusy,
             onRemove: _removeLogo,
+            extra: TextButton.icon(
+              onPressed: _logoBusy ? null : _removeLogoBg,
+              icon: _logoBusy
+                  ? const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2))
+                  : const Icon(Icons.auto_fix_high_rounded, size: 18),
+              label: const Text('Quitar fondo'),
+            ),
             buttons: [
               if (_businessLogoUrl.isNotEmpty)
                 ('Logo del negocio', Icons.storefront_rounded, _useBusinessLogo),
