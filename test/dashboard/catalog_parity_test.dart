@@ -108,6 +108,28 @@ void main() {
     'events on': const FeatureFlags(enableEvents: true),
   };
 
+  // Regresión: el reel del catálogo debe conservar la `capability` de cada
+  // card. Sin esto, tocar "Eventos" (y demás) caía a la pantalla general en
+  // vez de su pantalla dedicada (_routeFor → capabilitiesRegistry[null]).
+  test('reel del catálogo conserva la capability de cada card', () {
+    final reel = buildCatalogDashboard(
+      catalog,
+      businessTypes: const ['tienda_barrio'],
+      flags: const FeatureFlags(), // todo apagado → opcionales caen al reel
+      isPro: true,
+    ).reel;
+
+    final events = reel.where((m) => m.capability == OptionalCapability.events);
+    expect(events, isNotEmpty,
+        reason: 'Eventos debe estar en el reel con su capability seteada');
+
+    for (final m in reel) {
+      expect(m.capability, isNotNull,
+          reason: 'cada card opcional del reel necesita su capability para '
+              'rutear a su pantalla dedicada');
+    }
+  });
+
   for (final bt in businessTypes) {
     for (final entry in flagSets.entries) {
       test('paridad grilla — tipo=$bt, flags=${entry.key}', () {

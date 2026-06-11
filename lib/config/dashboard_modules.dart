@@ -383,3 +383,27 @@ bool capabilityEnabled(OptionalCapability? cap, FeatureFlags flags) {
     null => false,
   };
 }
+
+/// Mapea la `capability_key` del catálogo dinámico (F041, p. ej.
+/// 'enable_events') a su [OptionalCapability]. Inverso de la metadata de cada
+/// módulo. Lo usa `catalog_merge` para poblar `DashboardModule.capability` en
+/// el camino del catálogo — sin esto, el reel pierde la capacidad y tocar una
+/// card cae a la pantalla general en vez de su pantalla dedicada.
+OptionalCapability? capabilityFromConfigKey(String? key) {
+  return switch (key) {
+    'enable_services' => OptionalCapability.services,
+    'enable_fractional_units' => OptionalCapability.fractionalUnits,
+    'enable_tables' => OptionalCapability.tables,
+    'enable_price_tiers' => OptionalCapability.priceTiers,
+    'enable_customer_management' => OptionalCapability.customerManagement,
+    'enable_quotes' => OptionalCapability.quotes,
+    'enable_promotions' => OptionalCapability.promotions,
+    'enable_marketing_hub' => OptionalCapability.marketingHub,
+    'enable_recipes' => OptionalCapability.recipes,
+    'enable_supplies' => OptionalCapability.supplies,
+    'enable_furniture_jobs' => OptionalCapability.furnitureJobs,
+    'enable_purchase_orders' => OptionalCapability.purchaseOrders,
+    'enable_events' => OptionalCapability.events,
+    _ => null,
+  };
+}

@@ -90,6 +90,10 @@ DashboardModule _toModule(CatalogModule cm, Map<String, DashboardModule> bundleB
     color: _parseColor(cm.color) ?? compiled?.color ?? AppTheme.primary,
     category: _mapCategory(cm.category),
     layer: ModuleLayer.core,
+    // Mapea la capability_key del catálogo → OptionalCapability, para que el
+    // reel del Dashboard rutee a la pantalla DEDICADA de la capacidad (F040)
+    // en vez de caer a la pantalla general. Sin esto el campo quedaba null.
+    capability: capabilityFromConfigKey(cm.capabilityKey),
     destination: compiled?.destination ?? (() => buildModuleScreen(cm)),
   );
 }
