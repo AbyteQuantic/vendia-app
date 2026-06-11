@@ -397,6 +397,49 @@ class EventPaymentMethod {
 }
 
 /// Una fila del panel de inscritos del organizador (F042).
+/// Resumen del cronograma de cuotas de un inscrito (derivado por el backend:
+/// 1ª al inscribirse, resto hasta el inicio). El organizador lo ve en el panel
+/// de inscritos para saber a quién se le vence o se le venció una cuota.
+class EventInstallmentPlan {
+  final int count;
+  final int paidCount;
+  final int remainingCount;
+  final int overdueCount;
+  final int overdueAmount;
+  final int nextDueNumber;
+  final DateTime? nextDueDate;
+  final int nextDueAmount;
+  final DateTime? finalDueDate;
+
+  const EventInstallmentPlan({
+    this.count = 0,
+    this.paidCount = 0,
+    this.remainingCount = 0,
+    this.overdueCount = 0,
+    this.overdueAmount = 0,
+    this.nextDueNumber = 0,
+    this.nextDueDate,
+    this.nextDueAmount = 0,
+    this.finalDueDate,
+  });
+
+  bool get hasOverdue => overdueCount > 0;
+
+  factory EventInstallmentPlan.fromJson(Map<String, dynamic> json) {
+    return EventInstallmentPlan(
+      count: (json['count'] as num? ?? 0).toInt(),
+      paidCount: (json['paid_count'] as num? ?? 0).toInt(),
+      remainingCount: (json['remaining_count'] as num? ?? 0).toInt(),
+      overdueCount: (json['overdue_count'] as num? ?? 0).toInt(),
+      overdueAmount: (json['overdue_amount'] as num? ?? 0).toInt(),
+      nextDueNumber: (json['next_due_number'] as num? ?? 0).toInt(),
+      nextDueDate: _parseDate(json['next_due_date']),
+      nextDueAmount: (json['next_due_amount'] as num? ?? 0).toInt(),
+      finalDueDate: _parseDate(json['final_due_date']),
+    );
+  }
+}
+
 class EventRegistrationView {
   final String id;
   final String customerName;
@@ -411,6 +454,10 @@ class EventRegistrationView {
   final bool certificateEligible;
   final bool certificateIssued;
 
+  /// Cronograma de cuotas del inscrito (null si el evento no admite cuotas o ya
+  /// no queda saldo).
+  final EventInstallmentPlan? installments;
+
   const EventRegistrationView({
     required this.id,
     this.customerName = '',
@@ -424,6 +471,7 @@ class EventRegistrationView {
     this.seatNumber,
     this.certificateEligible = false,
     this.certificateIssued = false,
+    this.installments,
   });
 
   /// Copia con una silla distinta (para refrescar la UI tras asignar/liberar).
@@ -440,6 +488,7 @@ class EventRegistrationView {
         seatNumber: seat,
         certificateEligible: certificateEligible,
         certificateIssued: certificateIssued,
+        installments: installments,
       );
 
   bool get isConfirmed => paymentStatus == 'confirmed';
@@ -461,6 +510,10 @@ class EventRegistrationView {
       seatNumber: (json['seat_number'] as num?)?.toInt(),
       certificateEligible: json['certificate_eligible'] == true,
       certificateIssued: json['certificate_issued'] == true,
+      installments: json['installments'] is Map<String, dynamic>
+          ? EventInstallmentPlan.fromJson(
+              json['installments'] as Map<String, dynamic>)
+          : null,
     );
   }
 }

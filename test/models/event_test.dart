@@ -99,6 +99,38 @@ void main() {
       expect(e.displayStatus, EventStatus.publicado);
     });
 
+    test('EventRegistrationView parsea el plan de cuotas (installments)', () {
+      final v = EventRegistrationView.fromJson({
+        'id': 'r1',
+        'customer_name': 'Vivi',
+        'amount_paid': 20000,
+        'price': 60000,
+        'balance': 40000,
+        'installments': {
+          'count': 3,
+          'paid_count': 1,
+          'remaining_count': 2,
+          'overdue_count': 1,
+          'overdue_amount': 20000,
+          'next_due_number': 2,
+          'next_due_date': '2026-06-16T12:00:00Z',
+          'next_due_amount': 20000,
+          'final_due_date': '2026-07-01T12:00:00Z',
+        },
+      });
+      expect(v.installments, isNotNull);
+      expect(v.installments!.count, 3);
+      expect(v.installments!.paidCount, 1);
+      expect(v.installments!.hasOverdue, isTrue);
+      expect(v.installments!.nextDueNumber, 2);
+      expect(v.installments!.nextDueDate, isNotNull);
+    });
+
+    test('EventRegistrationView sin installments → null', () {
+      final v = EventRegistrationView.fromJson({'id': 'r2'});
+      expect(v.installments, isNull);
+    });
+
     test('isFinished es false sin endAt o si no está publicado', () {
       // Publicado pero sin fecha de fin → no se considera finalizado.
       expect(

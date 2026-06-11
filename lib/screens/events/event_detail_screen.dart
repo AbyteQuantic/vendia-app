@@ -1322,8 +1322,70 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
             '${formatEventMoney(r.price, _event.currency)} · faltan '
             '${formatEventMoney(r.balance, _event.currency)}',
             style: const TextStyle(fontSize: 12.5, color: Colors.black54)),
+        if (r.installments != null) ...[
+          const SizedBox(height: 4),
+          _installmentSummary(r.installments!),
+        ],
       ],
     );
+  }
+
+  /// Resumen del cronograma de cuotas del inscrito: cuotas vencidas (rojo),
+  /// próxima cuota con su vencimiento y progreso pagadas/total. Lo ve el
+  /// organizador para saber a quién recordarle el pago.
+  Widget _installmentSummary(EventInstallmentPlan p) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (p.hasOverdue)
+          Padding(
+            padding: const EdgeInsets.only(top: 2),
+            child: Row(
+              children: [
+                const Icon(Icons.warning_amber_rounded,
+                    size: 15, color: Color(0xFFDC2626)),
+                const SizedBox(width: 4),
+                Expanded(
+                  child: Text(
+                    '${p.overdueCount} ${p.overdueCount == 1 ? "cuota vencida" : "cuotas vencidas"} · '
+                    '${formatEventMoney(p.overdueAmount, _event.currency)}',
+                    style: const TextStyle(
+                        fontSize: 12,
+                        color: Color(0xFFDC2626),
+                        fontWeight: FontWeight.w600),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        if (p.nextDueDate != null)
+          Padding(
+            padding: const EdgeInsets.only(top: 2),
+            child: Text(
+              'Próxima cuota: ${formatEventMoney(p.nextDueAmount, _event.currency)} · '
+              'vence ${_shortDate(p.nextDueDate!)}',
+              style: const TextStyle(fontSize: 12, color: Colors.black54),
+            ),
+          ),
+        Padding(
+          padding: const EdgeInsets.only(top: 2),
+          child: Text(
+            'Cuotas: ${p.paidCount}/${p.count} pagadas',
+            style: TextStyle(fontSize: 11.5, color: Colors.grey.shade600),
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// Fecha corta en español ("10 jun"), en zona local del dispositivo.
+  String _shortDate(DateTime d) {
+    const months = [
+      'ene', 'feb', 'mar', 'abr', 'may', 'jun',
+      'jul', 'ago', 'sep', 'oct', 'nov', 'dic',
+    ];
+    final l = d.toLocal();
+    return '${l.day} ${months[l.month - 1]}';
   }
 
   /// Registra un abono (cuota). El organizador escribe el monto recibido.
