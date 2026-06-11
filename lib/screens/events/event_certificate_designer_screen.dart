@@ -78,6 +78,7 @@ class EventCertificateDesignerScreen extends StatefulWidget {
 class _EventCertificateDesignerScreenState
     extends State<EventCertificateDesignerScreen> {
   late final ApiService _api;
+  final AuthService _auth = AuthService();
   late String _bgUrl;
 
   final _titleCtrl = TextEditingController();
@@ -88,6 +89,8 @@ class _EventCertificateDesignerScreenState
 
   String _signatureUrl = '';
   String _logoUrl = '';
+  String _businessLogoUrl = ''; // logo del negocio (default y botón "usar")
+  bool _logoCleared = false; // el organizador quitó el logo a propósito
   XFile? _sigFile;
 
   late Map<String, CertElementPos> _layout;
@@ -111,10 +114,28 @@ class _EventCertificateDesignerScreenState
     _footerCtrl.text = cc.footer;
     _signatureUrl = cc.signatureImage;
     _logoUrl = cc.logoImage;
+    _logoCleared = cc.logoCleared;
     _layout = {
       for (final k in _elementKeys)
         k: cc.layout[k] ?? _defaultLayout[k] ?? const CertElementPos(),
     };
+    _loadBusinessLogo();
+  }
+
+  // Trae el logo del negocio: lo deja disponible para el botón "Logo del
+  // negocio" y lo muestra por defecto si aún no hay logo y el organizador no
+  // lo quitó a propósito.
+  Future<void> _loadBusinessLogo() async {
+    try {
+      final logo = (await _auth.getLogoUrl())?.trim() ?? '';
+      if (!mounted || logo.isEmpty) return;
+      setState(() {
+        _businessLogoUrl = logo;
+        if (_logoUrl.isEmpty && !_logoCleared) _logoUrl = logo;
+      });
+    } catch (_) {
+      // Sin logo en caché: el organizador puede subir uno.
+    }
   }
 
   @override
@@ -198,12 +219,35 @@ class _EventCertificateDesignerScreenState
     setState(() => _logoBusy = true);
     try {
       final url = await _api.uploadEventImage(picked);
-      if (mounted) setState(() => _logoUrl = url);
+      if (mounted) {
+        setState(() {
+          _logoUrl = url;
+          _logoCleared = false;
+        });
+      }
     } catch (_) {
       _snack('No pudimos subir el logo.', error: true);
     } finally {
       if (mounted) setState(() => _logoBusy = false);
     }
+  }
+
+  // Usa el logotipo del negocio (ya cargado en el perfil) como logo del
+  // certificado. Reactiva el default si el organizador lo había quitado.
+  void _useBusinessLogo() {
+    if (_businessLogoUrl.isEmpty) return;
+    setState(() {
+      _logoUrl = _businessLogoUrl;
+      _logoCleared = false;
+    });
+  }
+
+  // Quita el logo del diseño y lo recuerda, para no reinyectar el del negocio.
+  void _removeLogo() {
+    setState(() {
+      _logoUrl = '';
+      _logoCleared = true;
+    });
   }
 
   Future<void> _save() async {
@@ -217,6 +261,7 @@ class _EventCertificateDesignerScreenState
         footer: _footerCtrl.text.trim(),
         signatureImage: _signatureUrl,
         logoImage: _logoUrl,
+        logoCleared: _logoCleared,
         layout: _layout,
       );
       final result =
@@ -475,8 +520,16 @@ class _EventCertificateDesignerScreenState
             title: 'Logo del negocio',
             url: _logoUrl,
             busy: _logoBusy,
-            onRemove: () => setState(() => _logoUrl = ''),
-            buttons: [('Subir logo', Icons.upload_rounded, _uploadLogo)],
+            onRemove: _removeLogo,
+            buttons: [
+              if (_businessLogoUrl.isNotEmpty)
+                ('Logo del negocio', Icons.storefront_rounded, _useBusinessLogo),
+              (
+                _businessLogoUrl.isEmpty ? 'Subir logo' : 'Subir otro',
+                Icons.upload_rounded,
+                _uploadLogo
+              ),
+            ],
           ),
           const SizedBox(height: 16),
           // ── Textos ─────────────────────────────────────────────

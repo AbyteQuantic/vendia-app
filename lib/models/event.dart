@@ -272,6 +272,10 @@ class EventCertificateConfig {
   final String signatureImage;
   final String logoImage;
 
+  /// Distingue "logo nunca configurado" (→ usar el del negocio por defecto) de
+  /// "el organizador lo quitó a propósito" (→ no reinyectarlo).
+  final bool logoCleared;
+
   /// Posición/tamaño de cada elemento (claves: title/intro/name/body/date/
   /// signatory/signature/logo/qr). Vacío → layout por defecto.
   final Map<String, CertElementPos> layout;
@@ -284,6 +288,7 @@ class EventCertificateConfig {
     this.footer = '',
     this.signatureImage = '',
     this.logoImage = '',
+    this.logoCleared = false,
     this.layout = const {},
   });
 
@@ -297,6 +302,7 @@ class EventCertificateConfig {
       footer: (json['footer'] as String?) ?? '',
       signatureImage: (json['signature_image'] as String?) ?? '',
       logoImage: (json['logo_image'] as String?) ?? '',
+      logoCleared: json['logo_cleared'] == true,
       layout: rawLayout.map((k, v) =>
           MapEntry(k, CertElementPos.fromJson((v as Map).cast<String, dynamic>()))),
     );
@@ -310,6 +316,7 @@ class EventCertificateConfig {
         'footer': footer,
         'signature_image': signatureImage,
         'logo_image': logoImage,
+        'logo_cleared': logoCleared,
         'layout': layout.map((k, v) => MapEntry(k, v.toJson())),
       };
 }
