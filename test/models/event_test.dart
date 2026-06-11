@@ -56,6 +56,25 @@ void main() {
       expect(e.copyWith(title: 'x').cost, 10000);
     });
 
+    test('badgeConfig: parseo desde badge_config', () {
+      final e = Event.fromJson({
+        'id': 'b1',
+        'badge_config': {
+          'title': 'Mi evento',
+          'intro': 'Mi negocio',
+          'layout': {
+            'name': {'x': 0.5, 'y': 0.42, 'scale': 0.07},
+            'qr': {'x': 0.5, 'y': 0.71, 'scale': 0.4},
+          },
+        },
+      });
+      expect(e.badgeConfig.title, 'Mi evento');
+      expect(e.badgeConfig.intro, 'Mi negocio');
+      expect(e.badgeConfig.layout.containsKey('qr'), isTrue);
+      // copyWith conserva el badgeConfig.
+      expect(e.copyWith(title: 'x').badgeConfig.title, 'Mi evento');
+    });
+
     test('isFree es true con precio 0', () {
       expect(const Event(id: 'x', price: 0).isFree, isTrue);
       expect(const Event(id: 'x', price: 50000).isFree, isFalse);

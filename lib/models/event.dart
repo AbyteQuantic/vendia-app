@@ -108,6 +108,10 @@ class Event {
   /// Texto editable del certificado (la app compone el resto con defaults).
   final EventCertificateConfig certificateConfig;
 
+  /// Diseño WYSIWYG del CARNÉ/escarapela (layout + textos), misma forma que el
+  /// certificado. Vacío → el carné usa el overlay por defecto.
+  final EventCertificateConfig badgeConfig;
+
   const Event({
     required this.id,
     this.type = EventType.otro,
@@ -129,6 +133,7 @@ class Event {
     this.enabledPaymentMethods = const [],
     this.paymentDetails = const [],
     this.certificateConfig = const EventCertificateConfig(),
+    this.badgeConfig = const EventCertificateConfig(),
     this.posterUrl = '',
     this.badgeUrl = '',
     this.certificateUrl = '',
@@ -182,6 +187,8 @@ class Event {
           .toList(growable: false),
       certificateConfig: EventCertificateConfig.fromJson(
           (json['certificate_config'] as Map<String, dynamic>?) ?? const {}),
+      badgeConfig: EventCertificateConfig.fromJson(
+          (json['badge_config'] as Map<String, dynamic>?) ?? const {}),
       posterUrl: _templateUrl(json['poster_template']),
       badgeUrl: _templateUrl(json['badge_template']),
       certificateUrl: _templateUrl(json['certificate_template']),
@@ -230,6 +237,7 @@ class Event {
     List<String>? enabledPaymentMethods,
     List<EventPaymentDetail>? paymentDetails,
     EventCertificateConfig? certificateConfig,
+    EventCertificateConfig? badgeConfig,
     String? posterUrl,
     String? badgeUrl,
     String? certificateUrl,
@@ -256,6 +264,7 @@ class Event {
           enabledPaymentMethods ?? this.enabledPaymentMethods,
       paymentDetails: paymentDetails ?? this.paymentDetails,
       certificateConfig: certificateConfig ?? this.certificateConfig,
+      badgeConfig: badgeConfig ?? this.badgeConfig,
       posterUrl: posterUrl ?? this.posterUrl,
       badgeUrl: badgeUrl ?? this.badgeUrl,
       certificateUrl: certificateUrl ?? this.certificateUrl,

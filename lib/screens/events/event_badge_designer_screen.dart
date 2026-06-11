@@ -1,0 +1,671 @@
+// Spec: specs/042-modulo-eventos/spec.md
+//
+// Diseñador WYSIWYG del CARNÉ/escarapela (F042) — mismas opciones que el
+// diseñador del certificado, adaptadas al carné: genera el FONDO con IA o lo
+// sube, sube/limpia con IA la FIRMA, usa el LOGO del negocio (o lo sube, con
+// "quitar fondo"), y arrastra/redimensiona cada elemento (título del evento,
+// organizador, nombre del asistente, firma, logo, QR) sobre un preview vertical
+// en vivo. El layout + textos se guardan en badge_config y el carné del
+// asistente lo renderiza idéntico.
+
+import 'dart:convert';
+
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:image_picker/image_picker.dart';
+
+import '../../models/event.dart';
+import '../../services/api_service.dart';
+import '../../services/auth_service.dart';
+import 'event_feedback.dart';
+
+const _accent = Color(0xFF0EA5E9);
+const _badgeAspect = 0.66; // vertical (escarapela retrato): ancho/alto
+
+// Elementos del carné, en orden de pintado.
+const _elementKeys = ['title', 'intro', 'logo', 'name', 'signature', 'qr'];
+
+const Map<String, CertElementPos> _defaultLayout = {
+  'title': CertElementPos(x: 0.5, y: 0.12, scale: 0.06),
+  'intro': CertElementPos(x: 0.5, y: 0.20, scale: 0.03),
+  'logo': CertElementPos(x: 0.5, y: 0.31, scale: 0.22),
+  'name': CertElementPos(x: 0.5, y: 0.42, scale: 0.07),
+  // La firma rara vez va en un carné → oculta por defecto, pero disponible.
+  'signature': CertElementPos(x: 0.5, y: 0.58, scale: 0.18, hidden: true),
+  'qr': CertElementPos(x: 0.5, y: 0.71, scale: 0.4),
+};
+
+String _elementLabel(String k) => switch (k) {
+      'title' => 'Título del evento',
+      'intro' => 'Organizador',
+      'name' => 'Nombre del asistente',
+      'signature' => 'Firma',
+      'logo' => 'Logo',
+      'qr' => 'QR',
+      _ => k,
+    };
+
+class EventBadgeDesignerScreen extends StatefulWidget {
+  final Event event;
+  final ApiService? apiOverride;
+
+  const EventBadgeDesignerScreen({
+    super.key,
+    required this.event,
+    this.apiOverride,
+  });
+
+  @override
+  State<EventBadgeDesignerScreen> createState() =>
+      _EventBadgeDesignerScreenState();
+}
+
+class _EventBadgeDesignerScreenState extends State<EventBadgeDesignerScreen> {
+  late final ApiService _api;
+  final AuthService _auth = AuthService();
+  late String _bgUrl;
+
+  final _titleCtrl = TextEditingController();
+  final _introCtrl = TextEditingController();
+
+  String _signatureUrl = '';
+  String _logoUrl = '';
+  String _businessLogoUrl = '';
+  bool _logoCleared = false;
+  XFile? _sigFile;
+
+  late Map<String, CertElementPos> _layout;
+  String? _selected;
+
+  bool _bgBusy = false;
+  bool _sigBusy = false;
+  bool _logoBusy = false;
+  bool _saving = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _api = widget.apiOverride ?? ApiService(AuthService());
+    _bgUrl = widget.event.badgeUrl;
+    final bc = widget.event.badgeConfig;
+    _titleCtrl.text = bc.title;
+    _introCtrl.text = bc.intro;
+    _signatureUrl = bc.signatureImage;
+    _logoUrl = bc.logoImage;
+    _logoCleared = bc.logoCleared;
+    _layout = {
+      for (final k in _elementKeys)
+        k: bc.layout[k] ?? _defaultLayout[k] ?? const CertElementPos(),
+    };
+    _loadBusinessLogo();
+  }
+
+  // Trae el logo del negocio (perfil del backend; caché local como respaldo) y,
+  // si aún no hay logo y no se quitó a propósito, lo usa por defecto.
+  Future<void> _loadBusinessLogo() async {
+    String logo = '';
+    try {
+      final data = await _api.fetchBusinessProfile();
+      logo = (data['logo_url'] as String?)?.trim() ?? '';
+    } catch (_) {
+      // sin red / sin permiso → caemos a la caché local.
+    }
+    if (logo.isEmpty) {
+      try {
+        logo = (await _auth.getLogoUrl())?.trim() ?? '';
+      } catch (_) {
+        // sin logo en caché → el organizador puede subir uno.
+      }
+    }
+    if (!mounted || logo.isEmpty) return;
+    setState(() {
+      _businessLogoUrl = logo;
+      if (_logoUrl.isEmpty && !_logoCleared) _logoUrl = logo;
+    });
+  }
+
+  @override
+  void dispose() {
+    _titleCtrl.dispose();
+    _introCtrl.dispose();
+    super.dispose();
+  }
+
+  // ── Fondo / firma / logo ──────────────────────────────────────────────
+  Future<void> _generateBg() async {
+    HapticFeedback.lightImpact();
+    setState(() => _bgBusy = true);
+    try {
+      final url = await _api.generateEventBadge(widget.event.id);
+      if (mounted) setState(() => _bgUrl = url);
+    } catch (_) {
+      _snack('No pudimos generar el fondo. Intenta de nuevo.', error: true);
+    } finally {
+      if (mounted) setState(() => _bgBusy = false);
+    }
+  }
+
+  Future<void> _uploadBg() async {
+    final picked = await ImagePicker()
+        .pickImage(source: ImageSource.gallery, imageQuality: 92);
+    if (picked == null) return;
+    setState(() => _bgBusy = true);
+    try {
+      final url = await _api.uploadEventAsset(widget.event.id, 'badge', picked);
+      if (mounted) setState(() => _bgUrl = url);
+    } catch (_) {
+      _snack('No pudimos subir el fondo.', error: true);
+    } finally {
+      if (mounted) setState(() => _bgBusy = false);
+    }
+  }
+
+  Future<void> _pickSignature(ImageSource source) async {
+    final picked =
+        await ImagePicker().pickImage(source: source, imageQuality: 92);
+    if (picked == null) return;
+    setState(() {
+      _sigFile = picked;
+      _sigBusy = true;
+    });
+    try {
+      final url = await _api.uploadEventImage(picked);
+      if (mounted) {
+        setState(() {
+          _signatureUrl = url;
+          // Al añadir firma, mostrarla (venía oculta por defecto).
+          final p = _layout['signature'];
+          if (p != null && p.hidden) {
+            _layout['signature'] = p.copyWith(hidden: false);
+          }
+        });
+      }
+    } catch (_) {
+      _snack('No pudimos subir la firma.', error: true);
+    } finally {
+      if (mounted) setState(() => _sigBusy = false);
+    }
+  }
+
+  Future<void> _cleanSignature() async {
+    if (_sigFile == null) {
+      _snack('Primero sube o toma la foto de la firma.');
+      return;
+    }
+    setState(() => _sigBusy = true);
+    try {
+      final url = await _api.cleanEventSignature(_sigFile!);
+      if (mounted) setState(() => _signatureUrl = url);
+      _snack('Firma limpiada con IA.', ok: true);
+    } catch (_) {
+      _snack('No pudimos limpiar la firma. Intenta con otra.', error: true);
+    } finally {
+      if (mounted) setState(() => _sigBusy = false);
+    }
+  }
+
+  Future<void> _uploadLogo() async {
+    final picked = await ImagePicker()
+        .pickImage(source: ImageSource.gallery, imageQuality: 92);
+    if (picked == null) return;
+    setState(() => _logoBusy = true);
+    try {
+      final url = await _api.uploadEventImage(picked);
+      if (mounted) {
+        setState(() {
+          _logoUrl = url;
+          _logoCleared = false;
+        });
+      }
+    } catch (_) {
+      _snack('No pudimos subir el logo.', error: true);
+    } finally {
+      if (mounted) setState(() => _logoBusy = false);
+    }
+  }
+
+  void _useBusinessLogo() {
+    if (_businessLogoUrl.isEmpty) return;
+    setState(() {
+      _logoUrl = _businessLogoUrl;
+      _logoCleared = false;
+    });
+  }
+
+  void _removeLogo() {
+    setState(() {
+      _logoUrl = '';
+      _logoCleared = true;
+    });
+  }
+
+  Future<void> _removeLogoBg() async {
+    if (_logoUrl.isEmpty) return;
+    setState(() => _logoBusy = true);
+    try {
+      final url = await _api.removeEventLogoBackground(_logoUrl);
+      if (mounted && url.isNotEmpty) {
+        setState(() {
+          _logoUrl = url;
+          _logoCleared = false;
+        });
+        _snack('Listo, le quitamos el fondo al logo.', ok: true);
+      }
+    } catch (_) {
+      _snack('No pudimos quitar el fondo del logo. Intenta de nuevo.',
+          error: true);
+    } finally {
+      if (mounted) setState(() => _logoBusy = false);
+    }
+  }
+
+  Future<void> _save() async {
+    setState(() => _saving = true);
+    try {
+      final config = EventCertificateConfig(
+        title: _titleCtrl.text.trim(),
+        intro: _introCtrl.text.trim(),
+        signatureImage: _signatureUrl,
+        logoImage: _logoUrl,
+        logoCleared: _logoCleared,
+        layout: _layout,
+      );
+      final result =
+          await _api.updateEventBadgeConfig(widget.event.id, config.toJson());
+      if (!mounted) return;
+      Navigator.of(context).pop(Event.fromJson(result));
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _saving = false);
+      _snack('No pudimos guardar el diseño.', error: true);
+    }
+  }
+
+  void _snack(String msg, {bool error = false, bool ok = false}) {
+    if (!mounted) return;
+    showEventSnack(context, msg,
+        kind: error
+            ? EventSnackKind.error
+            : ok
+                ? EventSnackKind.success
+                : EventSnackKind.info);
+  }
+
+  // ── Render de cada elemento ───────────────────────────────────────────
+  String _textFor(String key) => switch (key) {
+        'title' => _orEmpty(_titleCtrl.text, widget.event.title),
+        'intro' => _orEmpty(_introCtrl.text, 'Organizador'),
+        'name' => 'Nombre del Asistente',
+        _ => '',
+      };
+
+  String _orEmpty(String v, String fallback) =>
+      v.trim().isEmpty ? fallback : v.trim();
+
+  String _imageUrlFor(String key) =>
+      key == 'signature' ? _signatureUrl : (key == 'logo' ? _logoUrl : '');
+
+  Widget _imageWidget(String url, double width) {
+    if (url.startsWith('data:')) {
+      final b64 = url.substring(url.indexOf(',') + 1);
+      return Image.memory(base64Decode(b64), width: width, fit: BoxFit.contain);
+    }
+    return Image.network(url, width: width, fit: BoxFit.contain);
+  }
+
+  Widget _renderElement(String key, double w) {
+    final pos = _layout[key]!;
+    if (key == 'signature' || key == 'logo') {
+      final url = _imageUrlFor(key);
+      if (url.isEmpty) return const SizedBox.shrink();
+      return _imageWidget(url, pos.scale * w);
+    }
+    if (key == 'qr') {
+      final s = pos.scale * w;
+      return Container(
+        width: s,
+        height: s,
+        decoration: BoxDecoration(
+          color: Colors.white,
+          border: Border.all(color: Colors.black54),
+        ),
+        child: const Icon(Icons.qr_code_2_rounded, color: Colors.black54),
+      );
+    }
+    // Texto: blanco con contorno oscuro (legible sobre cualquier fondo).
+    final fontSize = (pos.scale * w).clamp(7.0, 80.0);
+    return ConstrainedBox(
+      constraints: BoxConstraints(maxWidth: w * 0.9),
+      child: Text(
+        _textFor(key),
+        textAlign: TextAlign.center,
+        style: TextStyle(
+          fontWeight: key == 'name' || key == 'title'
+              ? FontWeight.w800
+              : FontWeight.w600,
+          fontSize: fontSize,
+          height: 1.1,
+          color: Colors.white,
+          shadows: const [
+            Shadow(color: Colors.black, offset: Offset(-1.2, -1.2)),
+            Shadow(color: Colors.black, offset: Offset(1.2, -1.2)),
+            Shadow(color: Colors.black, offset: Offset(-1.2, 1.2)),
+            Shadow(color: Colors.black, offset: Offset(1.2, 1.2), blurRadius: 3),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _positioned(String key, double bw, double bh) {
+    final pos = _layout[key]!;
+    if (pos.hidden) return const SizedBox.shrink();
+    final child = _renderElement(key, bw);
+    if (child is SizedBox) return const SizedBox.shrink(); // imagen sin subir
+    final selected = _selected == key;
+    return Positioned(
+      left: pos.x * bw,
+      top: pos.y * bh,
+      child: FractionalTranslation(
+        translation: const Offset(-0.5, -0.5),
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: () => setState(() => _selected = key),
+          onPanStart: (_) => setState(() => _selected = key),
+          onPanUpdate: (d) => setState(() {
+            final p = _layout[key]!;
+            _layout[key] = p.copyWith(
+              x: (p.x + d.delta.dx / bw).clamp(0.02, 0.98),
+              y: (p.y + d.delta.dy / bh).clamp(0.02, 0.98),
+            );
+          }),
+          child: Container(
+            decoration: selected
+                ? BoxDecoration(
+                    border: Border.all(color: _accent, width: 1.5),
+                    color: _accent.withValues(alpha: 0.06),
+                  )
+                : null,
+            padding: const EdgeInsets.all(2),
+            child: child,
+          ),
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Diseñar carné'),
+        actions: [
+          TextButton(
+            onPressed: _saving ? null : _save,
+            child: Text(_saving ? 'Guardando…' : 'Guardar',
+                style: const TextStyle(
+                    fontWeight: FontWeight.bold, fontSize: 16)),
+          ),
+        ],
+      ),
+      body: ListView(
+        padding: const EdgeInsets.all(16),
+        children: [
+          // ── Fondo ──────────────────────────────────────────────
+          Row(
+            children: [
+              Expanded(
+                child: FilledButton.icon(
+                  onPressed: _bgBusy ? null : _generateBg,
+                  icon: _bgBusy
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(
+                              strokeWidth: 2, color: Colors.white))
+                      : const Icon(Icons.auto_awesome_rounded, size: 18),
+                  label: const Text('Fondo con IA'),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: _bgBusy ? null : _uploadBg,
+                  icon: const Icon(Icons.upload_rounded, size: 18),
+                  label: const Text('Subir fondo'),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          // ── Preview WYSIWYG (vertical) ─────────────────────────
+          Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 320),
+              child: LayoutBuilder(builder: (context, c) {
+                final bw = c.maxWidth;
+                final bh = bw / _badgeAspect;
+                return Container(
+                  width: bw,
+                  height: bh,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF1E293B),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: Colors.grey.shade300),
+                  ),
+                  clipBehavior: Clip.antiAlias,
+                  child: Stack(
+                    children: [
+                      if (_bgUrl.isNotEmpty)
+                        Positioned.fill(
+                          child: _bgUrl.startsWith('data:')
+                              ? Image.memory(
+                                  base64Decode(
+                                      _bgUrl.substring(_bgUrl.indexOf(',') + 1)),
+                                  fit: BoxFit.cover)
+                              : Image.network(_bgUrl, fit: BoxFit.cover),
+                        )
+                      else
+                        const Center(
+                          child: Padding(
+                            padding: EdgeInsets.all(20),
+                            child: Text(
+                              'Genera o sube el fondo de la escarapela',
+                              textAlign: TextAlign.center,
+                              style: TextStyle(color: Colors.white70),
+                            ),
+                          ),
+                        ),
+                      for (final k in _elementKeys) _positioned(k, bw, bh),
+                    ],
+                  ),
+                );
+              }),
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text('Toca un elemento para seleccionarlo y arrástralo. Usa el '
+              'control de abajo para el tamaño.',
+              style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
+          const SizedBox(height: 10),
+          if (_selected != null) _selectedControls(),
+          const SizedBox(height: 12),
+          // ── Firma (opcional) ───────────────────────────────────
+          _assetSection(
+            title: 'Firma (opcional)',
+            url: _signatureUrl,
+            busy: _sigBusy,
+            onRemove: () => setState(() {
+              _signatureUrl = '';
+              _sigFile = null;
+            }),
+            extra: _sigFile != null
+                ? TextButton.icon(
+                    onPressed: _sigBusy ? null : _cleanSignature,
+                    icon: const Icon(Icons.auto_fix_high_rounded, size: 18),
+                    label: const Text('Limpiar IA'),
+                  )
+                : null,
+            buttons: [
+              ('Tomar foto', Icons.photo_camera_rounded,
+                  () => _pickSignature(ImageSource.camera)),
+              ('Subir', Icons.upload_rounded,
+                  () => _pickSignature(ImageSource.gallery)),
+            ],
+          ),
+          const SizedBox(height: 12),
+          // ── Logo ───────────────────────────────────────────────
+          _assetSection(
+            title: 'Logo del negocio',
+            url: _logoUrl,
+            busy: _logoBusy,
+            onRemove: _removeLogo,
+            extra: TextButton.icon(
+              onPressed: _logoBusy ? null : _removeLogoBg,
+              icon: _logoBusy
+                  ? const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2))
+                  : const Icon(Icons.auto_fix_high_rounded, size: 18),
+              label: const Text('Quitar fondo'),
+            ),
+            buttons: [
+              if (_businessLogoUrl.isNotEmpty)
+                ('Logo del negocio', Icons.storefront_rounded, _useBusinessLogo),
+              (
+                _businessLogoUrl.isEmpty ? 'Subir logo' : 'Subir otro',
+                Icons.upload_rounded,
+                _uploadLogo
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          // ── Textos ─────────────────────────────────────────────
+          const Text('Textos del carné',
+              style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
+          const SizedBox(height: 8),
+          _field(_titleCtrl, 'Título del evento', widget.event.title),
+          _field(_introCtrl, 'Organizador', 'Nombre de tu negocio'),
+          const SizedBox(height: 24),
+        ],
+      ),
+    );
+  }
+
+  Widget _selectedControls() {
+    final key = _selected!;
+    final pos = _layout[key]!;
+    return Container(
+      padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
+      decoration: BoxDecoration(
+        color: _accent.withValues(alpha: 0.06),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: _accent.withValues(alpha: 0.25)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text('Tamaño · ${_elementLabel(key)}',
+                    style: const TextStyle(
+                        fontWeight: FontWeight.w700, fontSize: 14)),
+              ),
+              IconButton(
+                tooltip: pos.hidden ? 'Mostrar' : 'Ocultar',
+                onPressed: () => setState(
+                    () => _layout[key] = pos.copyWith(hidden: !pos.hidden)),
+                icon: Icon(
+                    pos.hidden
+                        ? Icons.visibility_off_rounded
+                        : Icons.visibility_rounded,
+                    color: _accent),
+              ),
+            ],
+          ),
+          Slider(
+            value: pos.scale.clamp(0.01, 0.5),
+            min: 0.01,
+            max: 0.5,
+            onChanged: (v) =>
+                setState(() => _layout[key] = pos.copyWith(scale: v)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _assetSection({
+    required String title,
+    required String url,
+    required bool busy,
+    required VoidCallback onRemove,
+    required List<(String, IconData, VoidCallback)> buttons,
+    Widget? extra,
+  }) {
+    final has = url.isNotEmpty;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(title,
+            style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700)),
+        const SizedBox(height: 6),
+        if (has)
+          Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              border: Border.all(color: Colors.grey.shade300),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Row(
+              children: [
+                Expanded(
+                    child: SizedBox(height: 48, child: _imageWidget(url, 120))),
+                if (extra != null) extra,
+                IconButton(
+                  onPressed: onRemove,
+                  icon: const Icon(Icons.delete_outline_rounded,
+                      color: Color(0xFFDC2626)),
+                ),
+              ],
+            ),
+          )
+        else
+          Row(
+            children: [
+              for (final b in buttons) ...[
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: busy ? null : b.$3,
+                    icon: busy
+                        ? const SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(strokeWidth: 2))
+                        : Icon(b.$2, size: 18),
+                    label: Text(b.$1),
+                  ),
+                ),
+                const SizedBox(width: 10),
+              ],
+            ],
+          ),
+      ],
+    );
+  }
+
+  Widget _field(TextEditingController c, String label, String hint) => Padding(
+        padding: const EdgeInsets.only(bottom: 10),
+        child: TextField(
+          controller: c,
+          minLines: 1,
+          maxLines: 1,
+          textCapitalization: TextCapitalization.sentences,
+          decoration:
+              InputDecoration(labelText: label, hintText: hint, isDense: true),
+        ),
+      );
+}

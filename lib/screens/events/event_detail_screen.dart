@@ -22,6 +22,7 @@ import '../../utils/markdown_plain.dart';
 import '../promotions/broadcast_list_helper_screen.dart';
 import 'create_event_screen.dart';
 import 'event_broadcast_screen.dart';
+import 'event_badge_designer_screen.dart';
 import 'event_certificate_designer_screen.dart';
 import 'event_checkin_scan_screen.dart';
 import 'event_description_editor.dart';
@@ -293,6 +294,21 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
     final updated = await Navigator.of(context).push<Event>(
       MaterialPageRoute(
         builder: (_) => EventCertificateDesignerScreen(
+          event: _event,
+          apiOverride: widget.apiOverride,
+        ),
+      ),
+    );
+    if (updated != null && mounted) setState(() => _event = updated);
+  }
+
+  /// Abre el diseñador WYSIWYG del CARNÉ/escarapela (mismas opciones que el del
+  /// certificado, adaptadas al carné). Devuelve el evento actualizado.
+  Future<void> _openBadgeDesigner() async {
+    HapticFeedback.lightImpact();
+    final updated = await Navigator.of(context).push<Event>(
+      MaterialPageRoute(
+        builder: (_) => EventBadgeDesignerScreen(
           event: _event,
           apiOverride: widget.apiOverride,
         ),
@@ -776,9 +792,11 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
                     done ? _designDone.withValues(alpha: 0.06) : null,
                 padding: const EdgeInsets.symmetric(vertical: 12),
               ),
-              onPressed: () => kind == EventDesignKind.certificate
-                  ? _openCertificateDesigner()
-                  : _openDesigner(kind),
+              onPressed: () => switch (kind) {
+                EventDesignKind.certificate => _openCertificateDesigner(),
+                EventDesignKind.badge => _openBadgeDesigner(),
+                EventDesignKind.poster => _openDesigner(kind),
+              },
               icon: Icon(done ? Icons.check_circle_rounded : icon, size: 20),
               label: Text(label),
             ),

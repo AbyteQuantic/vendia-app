@@ -1555,6 +1555,20 @@ class ApiService {
     }
   }
 
+  /// Guarda el diseño WYSIWYG del CARNÉ/escarapela (layout + textos), espejo de
+  /// updateEventCertificateConfig.
+  Future<Map<String, dynamic>> updateEventBadgeConfig(
+      String eventId, Map<String, dynamic> config) async {
+    try {
+      final response =
+          await _dio.put('/api/v1/events/$eventId/badge-config', data: config);
+      return (response.data as Map<String, dynamic>)['data']
+          as Map<String, dynamic>;
+    } on DioException catch (e) {
+      throw AppError.fromDioException(e);
+    }
+  }
+
   /// Sube una imagen genérica del evento (logo, etc.) y devuelve su URL.
   Future<String> uploadEventImage(XFile image) => uploadEventPaymentQR(image);
 
