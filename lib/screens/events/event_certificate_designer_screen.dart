@@ -124,18 +124,29 @@ class _EventCertificateDesignerScreenState
 
   // Trae el logo del negocio: lo deja disponible para el botón "Logo del
   // negocio" y lo muestra por defecto si aún no hay logo y el organizador no
-  // lo quitó a propósito.
+  // lo quitó a propósito. Fuente confiable = perfil del negocio en el backend
+  // (el logo pudo agregarse DESPUÉS del login, cuando la caché no se refrescó);
+  // la caché local queda como respaldo sin red.
   Future<void> _loadBusinessLogo() async {
+    String logo = '';
     try {
-      final logo = (await _auth.getLogoUrl())?.trim() ?? '';
-      if (!mounted || logo.isEmpty) return;
-      setState(() {
-        _businessLogoUrl = logo;
-        if (_logoUrl.isEmpty && !_logoCleared) _logoUrl = logo;
-      });
+      final data = await _api.fetchBusinessProfile();
+      logo = (data['logo_url'] as String?)?.trim() ?? '';
     } catch (_) {
-      // Sin logo en caché: el organizador puede subir uno.
+      // sin red / sin permiso: caemos a la caché local.
     }
+    if (logo.isEmpty) {
+      try {
+        logo = (await _auth.getLogoUrl())?.trim() ?? '';
+      } catch (_) {
+        // sin logo en caché: el organizador puede subir uno.
+      }
+    }
+    if (!mounted || logo.isEmpty) return;
+    setState(() {
+      _businessLogoUrl = logo;
+      if (_logoUrl.isEmpty && !_logoCleared) _logoUrl = logo;
+    });
   }
 
   @override
