@@ -41,6 +41,7 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
   final _cityCtrl = TextEditingController();
   final _notesCtrl = TextEditingController();
   final _priceCtrl = TextEditingController(text: '0');
+  final _costCtrl = TextEditingController(text: '0');
   final _capacityCtrl = TextEditingController(text: '0');
 
   String _type = EventType.curso;
@@ -83,6 +84,7 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
       _cityCtrl.text = e.city;
       _notesCtrl.text = e.locationNotes;
       _priceCtrl.text = CurrencyUtils.formatInt(e.price);
+      _costCtrl.text = CurrencyUtils.formatInt(e.cost);
       _capacityCtrl.text = e.capacity.toString();
       _type = e.type;
       _modality = e.modality;
@@ -111,6 +113,7 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
     _cityCtrl.dispose();
     _notesCtrl.dispose();
     _priceCtrl.dispose();
+    _costCtrl.dispose();
     _capacityCtrl.dispose();
     for (final c in _payInstrCtrls.values) {
       c.dispose();
@@ -333,6 +336,9 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
   /// Precio actual como entero (el campo lleva separadores de miles).
   int get _priceValue => CurrencyUtils.parseToDouble(_priceCtrl.text).round();
 
+  /// Costo por asistente como entero.
+  int get _costValue => CurrencyUtils.parseToDouble(_costCtrl.text).round();
+
   Future<void> _loadFxRate() async {
     final rate = await _api.fetchUsdCopRate();
     if (rate > 0 && mounted) setState(() => _copPerUsd = rate);
@@ -437,6 +443,8 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
         'location_notes':
             _modality == EventModality.virtual ? '' : _notesCtrl.text.trim(),
         'price': price,
+        // Costo por asistente (solo eventos de pago) → ganancia = precio − costo.
+        'cost': price > 0 ? _costValue : 0,
         'currency': _currency,
         'capacity': int.parse(_capacityCtrl.text.trim()),
         // El pago solo aplica a eventos con precio.
@@ -890,12 +898,33 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
                 ),
               ],
             ),
-            // Pago: solo aplica a eventos con precio. Reactivo al campo precio.
+            // Pago y costo: solo aplican a eventos con precio. Reactivo al campo.
             AnimatedBuilder(
               animation: _priceCtrl,
               builder: (context, _) {
                 if (_priceValue <= 0) return const SizedBox(height: 8);
-                return _paymentConfig();
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const SizedBox(height: 16),
+                    TextFormField(
+                      key: const Key('event_cost'),
+                      controller: _costCtrl,
+                      decoration: InputDecoration(
+                        labelText:
+                            'Costo por asistente (${_currency == EventCurrency.usd ? 'USD' : 'COP'})',
+                        hintText: 'Lo que te cuesta cada cupo (0 si no tiene)',
+                        prefixText:
+                            _currency == EventCurrency.usd ? 'US\$ ' : '\$ ',
+                        helperText:
+                            'Sirve para tu ganancia: se cuenta como venta (precio − costo).',
+                      ),
+                      keyboardType: TextInputType.number,
+                      inputFormatters: const [CurrencyInputFormatter()],
+                    ),
+                    _paymentConfig(),
+                  ],
+                );
               },
             ),
             const SizedBox(height: 28),

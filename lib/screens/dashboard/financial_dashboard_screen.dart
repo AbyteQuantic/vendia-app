@@ -557,6 +557,7 @@ String _channelLabel(String s) => switch (s) {
       'POS' => 'Mostrador',
       'TABLE' => 'Mesa',
       'WEB' => 'Tienda online',
+      'EVENT' => 'Eventos',
       _ => s.isEmpty ? 'Otro' : s,
     };
 
@@ -564,6 +565,7 @@ Color _channelColor(String s) => switch (s) {
       'POS' => AppTheme.primary,
       'TABLE' => const Color(0xFFEA580C),
       'WEB' => const Color(0xFF7C3AED),
+      'EVENT' => const Color(0xFF0EA5E9),
       _ => Colors.grey,
     };
 

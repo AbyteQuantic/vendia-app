@@ -80,6 +80,11 @@ class Event {
   /// Precio de inscripción (entero en la moneda). 0 = gratis.
   final int price;
 
+  /// Costo del organizador POR ASISTENTE (refrigerio, material, kit…). Sirve
+  /// para calcular la ganancia cuando la inscripción se contabiliza como venta
+  /// del negocio (ganancia = precio − costo). 0 = sin costo.
+  final int cost;
+
   /// Moneda del precio: 'COP' (default) o 'USD'.
   final String currency;
 
@@ -116,6 +121,7 @@ class Event {
     this.locationNotes = '',
     this.capacity = 0,
     this.price = 0,
+    this.cost = 0,
     this.currency = 'COP',
     this.status = EventStatus.borrador,
     this.installmentsEnabled = false,
@@ -161,6 +167,7 @@ class Event {
       locationNotes: (json['location_notes'] as String?) ?? '',
       capacity: (json['capacity'] as num? ?? 0).toInt(),
       price: (json['price'] as num? ?? 0).toInt(),
+      cost: (json['cost'] as num? ?? 0).toInt(),
       currency: (json['currency'] as String?) ?? 'COP',
       status: (json['status'] as String?) ?? EventStatus.borrador,
       installmentsEnabled: json['installments_enabled'] == true,
@@ -194,6 +201,7 @@ class Event {
         'location_notes': locationNotes,
         'capacity': capacity,
         'price': price,
+        'cost': cost,
         'currency': currency,
         'status': status,
         'installments_enabled': installmentsEnabled,
@@ -214,6 +222,7 @@ class Event {
     String? locationNotes,
     int? capacity,
     int? price,
+    int? cost,
     String? currency,
     String? status,
     bool? installmentsEnabled,
@@ -238,6 +247,7 @@ class Event {
       locationNotes: locationNotes ?? this.locationNotes,
       capacity: capacity ?? this.capacity,
       price: price ?? this.price,
+      cost: cost ?? this.cost,
       currency: currency ?? this.currency,
       status: status ?? this.status,
       installmentsEnabled: installmentsEnabled ?? this.installmentsEnabled,

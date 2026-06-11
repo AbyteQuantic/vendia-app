@@ -47,6 +47,15 @@ void main() {
       expect(round.isFree, isTrue);
     });
 
+    test('cost: parseo y round-trip', () {
+      final e = Event.fromJson({'id': 'c1', 'price': 60000, 'cost': 10000});
+      expect(e.cost, 10000);
+      expect(Event.fromJson(e.toJson()).cost, 10000);
+      // copyWith conserva/reemplaza el costo.
+      expect(e.copyWith(cost: 5000).cost, 5000);
+      expect(e.copyWith(title: 'x').cost, 10000);
+    });
+
     test('isFree es true con precio 0', () {
       expect(const Event(id: 'x', price: 0).isFree, isTrue);
       expect(const Event(id: 'x', price: 50000).isFree, isFalse);
