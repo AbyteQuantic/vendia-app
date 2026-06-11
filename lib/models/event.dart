@@ -44,11 +44,17 @@ class EventStatus {
   static const archivado = 'archivado';
   static const cancelado = 'cancelado';
 
+  /// Estado DERIVADO (no lo guarda el backend): un evento publicado cuyo fin ya
+  /// pasó. Se calcula en la app desde `endAt` para reflejar que concluyó, igual
+  /// que el catálogo público. Ver Event.displayStatus / Event.isFinished.
+  static const finalizado = 'finalizado';
+
   static String label(String value) => switch (value) {
         borrador => 'Borrador',
         publicado => 'Publicado',
         archivado => 'Archivado',
         cancelado => 'Cancelado',
+        finalizado => 'Finalizado',
         _ => value,
       };
 }
@@ -127,6 +133,19 @@ class Event {
 
   /// True cuando el evento está visible en el catálogo público.
   bool get isPublished => status == EventStatus.publicado;
+
+  /// True cuando el evento ya terminó: publicado y con `endAt` en el pasado.
+  /// Estado DERIVADO (no almacenado), calculado desde la fecha de fin, para
+  /// reflejar en la UI que concluyó — consistente con el catálogo público.
+  bool get isFinished {
+    if (status != EventStatus.publicado || endAt == null) return false;
+    return DateTime.now().isAfter(endAt!);
+  }
+
+  /// Estado a MOSTRAR en la UI: 'finalizado' si ya terminó; si no, el `status`
+  /// real del backend. Úsalo para el badge en vez de `status` crudo.
+  String get displayStatus =>
+      isFinished ? EventStatus.finalizado : status;
 
   factory Event.fromJson(Map<String, dynamic> json) {
     return Event(

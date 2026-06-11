@@ -171,7 +171,7 @@ class _EventCard extends StatelessWidget {
                           fontSize: 18, fontWeight: FontWeight.bold),
                     ),
                   ),
-                  _StatusBadge(status: event.status),
+                  _StatusBadge(status: event.displayStatus),
                 ],
               ),
               const SizedBox(height: 6),
@@ -231,6 +231,7 @@ class _StatusBadge extends StatelessWidget {
       EventStatus.publicado => Colors.green,
       EventStatus.cancelado => Colors.red,
       EventStatus.archivado => Colors.grey,
+      EventStatus.finalizado => Colors.blueGrey,
       _ => Colors.orange,
     };
     return Container(

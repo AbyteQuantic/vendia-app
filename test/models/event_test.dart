@@ -72,6 +72,47 @@ void main() {
       expect(EventType.label('hackaton'), 'Hackatón');
       expect(EventModality.label('hibrido'), 'Híbrido');
       expect(EventStatus.label('publicado'), 'Publicado');
+      expect(EventStatus.label('finalizado'), 'Finalizado');
+    });
+
+    test('isFinished/displayStatus: publicado con fin pasado → finalizado', () {
+      final past = DateTime.now().subtract(const Duration(hours: 2));
+      final e = Event(
+        id: 'f1',
+        status: EventStatus.publicado,
+        startAt: past.subtract(const Duration(hours: 3)),
+        endAt: past,
+      );
+      expect(e.isFinished, isTrue);
+      expect(e.displayStatus, EventStatus.finalizado);
+    });
+
+    test('isFinished es false si el fin aún no pasa', () {
+      final future = DateTime.now().add(const Duration(days: 1));
+      final e = Event(
+        id: 'f2',
+        status: EventStatus.publicado,
+        startAt: DateTime.now(),
+        endAt: future,
+      );
+      expect(e.isFinished, isFalse);
+      expect(e.displayStatus, EventStatus.publicado);
+    });
+
+    test('isFinished es false sin endAt o si no está publicado', () {
+      // Publicado pero sin fecha de fin → no se considera finalizado.
+      expect(
+        const Event(id: 'f3', status: EventStatus.publicado).isFinished,
+        isFalse,
+      );
+      // Borrador con fin pasado → sigue borrador (solo aplica a publicados).
+      final e = Event(
+        id: 'f4',
+        status: EventStatus.borrador,
+        endAt: DateTime.now().subtract(const Duration(days: 1)),
+      );
+      expect(e.isFinished, isFalse);
+      expect(e.displayStatus, EventStatus.borrador);
     });
   });
 }

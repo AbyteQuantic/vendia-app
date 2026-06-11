@@ -1451,7 +1451,7 @@ class _HeroHeader extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _StatusChip(status: event.status),
+          _StatusChip(status: event.displayStatus),
           const SizedBox(height: 12),
           Text(
             event.title,
@@ -1483,6 +1483,7 @@ class _StatusChip extends StatelessWidget {
       EventStatus.publicado => (const Color(0xFF059669), Icons.check_circle),
       EventStatus.cancelado => (const Color(0xFFDC2626), Icons.cancel),
       EventStatus.archivado => (Colors.grey, Icons.archive),
+      EventStatus.finalizado => (const Color(0xFF475569), Icons.event_available),
       _ => (const Color(0xFFD97706), Icons.edit_note),
     };
     return Container(
