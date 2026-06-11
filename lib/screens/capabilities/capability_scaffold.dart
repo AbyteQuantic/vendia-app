@@ -169,13 +169,17 @@ class _CapabilityScaffoldState extends State<CapabilityScaffold> {
     HapticFeedback.mediumImpact();
     setState(() => _toggling = true);
     try {
-      final updated = await _api.updateBusinessProfile({
+      await _api.updateBusinessProfile({
         'config': {widget.metadata.configKey: next},
       });
-      // Refrescar el cache local de feature_flags — el Dashboard
-      // lee de disco al volver y sin esto la capacidad recién
-      // activada no aparecía en el grid hasta el siguiente login.
-      await AuthService().saveFeatureFlagsFromProfile(updated);
+      // Refrescar el cache local de feature_flags — el Dashboard lee de disco
+      // al volver y sin esto la capacidad recién activada no aparece en el
+      // carrusel/grid hasta el siguiente login. OJO: el PATCH solo responde un
+      // mensaje (no trae los flags), así que releemos el perfil (GET) —fuente
+      // de verdad que SÍ incluye feature_flags.enable_events (no es columna
+      // top-level)— y guardamos ESO.
+      final profile = await _api.fetchBusinessProfile();
+      await AuthService().saveFeatureFlagsFromProfile(profile);
       if (!mounted) return;
       setState(() => _enabled = next);
       _snack(next
