@@ -1576,6 +1576,34 @@ class ApiService {
     }
   }
 
+  /// Redacta con IA los 5 textos del certificado (título, frase, cuerpo,
+  /// firmante, nota al pie) a partir de la info del evento. Devuelve un mapa
+  /// con esas claves; el organizador puede editarlos después.
+  Future<Map<String, String>> generateCertificateTexts({
+    required String title,
+    required String type,
+    required String modality,
+    required String description,
+  }) async {
+    try {
+      final response = await _dio.post(
+        '/api/v1/event-certificate-texts-ai',
+        data: {
+          'title': title,
+          'type': type,
+          'modality': modality,
+          'description': description,
+        },
+        options: Options(receiveTimeout: const Duration(seconds: 40)),
+      );
+      final data = (response.data as Map<String, dynamic>)['data']
+          as Map<String, dynamic>;
+      return data.map((k, v) => MapEntry(k, (v ?? '').toString()));
+    } on DioException catch (e) {
+      throw AppError.fromDioException(e);
+    }
+  }
+
   /// Quita SOLO el fondo del logo actual (recuadro blanco exterior) sin tocar
   /// los colores ni los blancos internos del diseño, y devuelve la URL del PNG
   /// transparente liviano. Recibe la URL del logo ya cargado (no un archivo).

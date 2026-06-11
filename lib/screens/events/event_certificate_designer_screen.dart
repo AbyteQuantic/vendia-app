@@ -99,6 +99,7 @@ class _EventCertificateDesignerScreenState
   bool _bgBusy = false;
   bool _sigBusy = false;
   bool _logoBusy = false;
+  bool _textsBusy = false;
   bool _saving = false;
 
   @override
@@ -281,6 +282,35 @@ class _EventCertificateDesignerScreenState
           error: true);
     } finally {
       if (mounted) setState(() => _logoBusy = false);
+    }
+  }
+
+  // Redacta los textos del certificado con IA según la info del evento y los
+  // vuelca en los campos. Quedan totalmente editables por el organizador.
+  Future<void> _fillTextsAI() async {
+    setState(() => _textsBusy = true);
+    try {
+      final t = await _api.generateCertificateTexts(
+        title: widget.event.title,
+        type: widget.event.type,
+        modality: widget.event.modality,
+        description: widget.event.description,
+      );
+      if (!mounted) return;
+      setState(() {
+        if ((t['title'] ?? '').isNotEmpty) _titleCtrl.text = t['title']!;
+        if ((t['intro'] ?? '').isNotEmpty) _introCtrl.text = t['intro']!;
+        if ((t['body'] ?? '').isNotEmpty) _bodyCtrl.text = t['body']!;
+        if ((t['signatory'] ?? '').isNotEmpty) {
+          _signatoryCtrl.text = t['signatory']!;
+        }
+        _footerCtrl.text = t['footer'] ?? _footerCtrl.text;
+      });
+      _snack('Listo, redactamos los textos. Puede editarlos.', ok: true);
+    } catch (_) {
+      _snack('No pudimos redactar los textos. Intenta de nuevo.', error: true);
+    } finally {
+      if (mounted) setState(() => _textsBusy = false);
     }
   }
 
@@ -577,8 +607,27 @@ class _EventCertificateDesignerScreenState
           ),
           const SizedBox(height: 16),
           // ── Textos ─────────────────────────────────────────────
-          const Text('Textos del certificado',
-              style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
+          Row(
+            children: [
+              const Expanded(
+                child: Text('Textos del certificado',
+                    style:
+                        TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
+              ),
+              TextButton.icon(
+                onPressed: _textsBusy ? null : _fillTextsAI,
+                icon: _textsBusy
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2))
+                    : const Icon(Icons.auto_awesome_rounded, size: 18),
+                label: Text(_textsBusy ? 'Redactando…' : 'Redactar con IA'),
+              ),
+            ],
+          ),
+          Text('La IA los propone según tu evento. Puedes ajustarlos.',
+              style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
           const SizedBox(height: 8),
           _field(_titleCtrl, 'Título', 'Certificado de Participación'),
           _field(_introCtrl, 'Frase', 'Se otorga el presente certificado a'),
