@@ -261,7 +261,9 @@ class _KpiCard extends StatelessWidget {
                 decoration: BoxDecoration(
                   color: Colors.white,
                   borderRadius: BorderRadius.circular(24),
-                  border: Border.all(color: DashUI.hairline, width: 1),
+                  // 0.05 explícito (ronda 1): sobre página blanca el token
+                  // compartido (0.02) dejaría la card sin contorno visible.
+                  border: Border.all(color: const Color(0x0D000000), width: 1),
                   boxShadow: [
                     BoxShadow(
                       color: Colors.black.withValues(alpha: 0.03 * opacity),

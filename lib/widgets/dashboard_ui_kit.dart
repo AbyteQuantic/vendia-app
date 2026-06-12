@@ -27,21 +27,25 @@ abstract final class DashUI {
   static const Color ink = Color(0xFF1F2937); // texto principal
   static const Color inkSoft = Color(0xFF6B7280); // subtítulos descriptivos
 
-  /// Borde sutil 1px — rgba(0,0,0,0.05).
-  static const Color hairline = Color(0x0D000000);
+  /// Fondo de los grupos (premium look): gris súper claro nítido sobre
+  /// página BLANCA (estilo GitHub: página blanca, paneles gris claro).
+  static const Color groupBg = Color(0xFFF8F9FA);
 
-  /// Divisor interno de listas agrupadas — gris clarísimo.
-  static const Color divider = Color(0xFFF3F4F6);
+  /// Borde extremadamente sutil 1px — rgba(0,0,0,0.02).
+  static const Color hairline = Color(0x05000000);
 
-  /// Sombra muy difuminada y amplia (blur 20, 3% de opacidad).
+  /// Divisor interno de listas agrupadas — apenas visible sobre groupBg.
+  static const Color divider = Color(0xFFEAEDF0);
+
+  /// Sombra casi invisible, difuminada y amplia (blur 24, 2% de opacidad).
   static const List<BoxShadow> softShadow = [
-    BoxShadow(color: Color(0x08000000), blurRadius: 20, offset: Offset(0, 6)),
+    BoxShadow(color: Color(0x05000000), blurRadius: 24, offset: Offset(0, 8)),
   ];
 
-  /// Decoración estándar de tarjeta/grupo: blanca, radius 16, borde
-  /// hairline + sombra suave. Reemplaza las sombras pesadas anteriores.
+  /// Decoración estándar de tarjeta/grupo: gris súper claro, radius 16,
+  /// borde hairline + sombra casi invisible.
   static BoxDecoration card({double radius = rCard}) => BoxDecoration(
-        color: Colors.white,
+        color: groupBg,
         borderRadius: BorderRadius.circular(radius),
         border: Border.all(color: hairline, width: 1),
         boxShadow: softShadow,

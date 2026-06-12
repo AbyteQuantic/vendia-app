@@ -79,14 +79,14 @@ class _CategorySection extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // ── Encabezado de categoría — con más aire ──────────────
+          // ── Encabezado de categoría — más presencia (SemiBold) ──
           Padding(
             padding: const EdgeInsets.only(left: DashUI.s8, bottom: 12),
             child: Text(
               category.label,
               style: const TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.w700,
+                fontSize: 15.5,
+                fontWeight: FontWeight.w600,
                 color: DashUI.inkSoft,
                 letterSpacing: 1.1,
               ),
@@ -140,17 +140,19 @@ class _FeaturedModuleCard extends StatelessWidget {
           key: Key('dashboard_module_${module.id}'),
           width: double.infinity,
           padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 18),
+          // Azul marino profundo con degradado EXTREMADAMENTE sutil —
+          // premium, no el azul sólido básico. Sin subtítulo: el título
+          // ya dice todo (cero redundancia).
           decoration: BoxDecoration(
             gradient: const LinearGradient(
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
-              colors: [Color(0xFF1E3A8A), Color(0xFF3B82F6)],
+              colors: [Color(0xFF101F4E), Color(0xFF1E3A8A)],
             ),
             borderRadius: BorderRadius.circular(DashUI.rCard),
-            // Sombra amplia y difuminada (no pesada) teñida del azul hero.
             boxShadow: [
               BoxShadow(
-                color: const Color(0xFF1E3A8A).withValues(alpha: 0.18),
+                color: const Color(0xFF101F4E).withValues(alpha: 0.18),
                 blurRadius: 20,
                 offset: const Offset(0, 8),
               ),
@@ -159,38 +161,25 @@ class _FeaturedModuleCard extends StatelessWidget {
           child: Row(
             children: [
               Container(
-                width: 56,
-                height: 56,
+                width: 52,
+                height: 52,
                 decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.18),
-                  borderRadius: BorderRadius.circular(16),
+                  color: Colors.white.withValues(alpha: 0.14),
+                  borderRadius: BorderRadius.circular(14),
                 ),
-                child: Icon(module.icon, color: Colors.white, size: 30),
+                child: Icon(module.icon, color: Colors.white, size: 28),
               ),
               const SizedBox(width: 16),
               Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      module.title,
-                      style: const TextStyle(
-                        fontSize: 21,
-                        fontWeight: FontWeight.w800,
-                        color: Colors.white,
-                      ),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      module.subtitle,
-                      style: TextStyle(
-                        fontSize: 14,
-                        color: Colors.white.withValues(alpha: 0.85),
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ],
+                child: Text(
+                  module.title,
+                  style: const TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.w700,
+                    color: Colors.white,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                 ),
               ),
               const Icon(Icons.chevron_right_rounded,

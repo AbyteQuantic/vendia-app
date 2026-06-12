@@ -733,7 +733,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
   Widget build(BuildContext context) {
     final topPad = MediaQuery.of(context).padding.top;
     return Scaffold(
-      backgroundColor: const Color(0xFFF8FAFC),
+      // Página BLANCA (estilo GitHub): los grupos gris claro (#F8F9FA)
+      // se leen nítidos contra ella — antes ambos eran casi el mismo gris.
+      backgroundColor: Colors.white,
       // El body se extiende DETRÁS de la barra inferior glass: así el
       // contenido se entrevé difuminado tras el botón al hacer scroll
       // (el spacer final del CustomScrollView evita que algo quede
@@ -990,12 +992,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
       // bordes, esquinas 14.
       bottomNavigationBar: ClipRect(
         child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 14, sigmaY: 14),
+          filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
           child: Container(
             padding: EdgeInsets.fromLTRB(
                 16, 12, 16, MediaQuery.of(context).padding.bottom + 12),
             decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.78),
+              // Vidrio de verdad: 0.62 de blanco — las "Últimas ventas"
+              // se entrevén difuminadas (visibles pero ilegibles) detrás.
+              color: Colors.white.withValues(alpha: 0.62),
               border: const Border(
                 top: BorderSide(color: Color(0x0D000000), width: 1),
               ),
@@ -1224,8 +1228,11 @@ class _HeroHeaderDelegate extends SliverPersistentHeaderDelegate {
     // texto blanco (nombre, "Abierta", fecha) conserve contraste absoluto.
     // El blur cuesta en Android de gama baja (Art. I), así que el
     // BackdropFilter solo se monta cuando ya hay scroll.
-    final bgAlpha = 0.94 - 0.26 * t; // 0.94 → 0.68
-    final blurSigma = 16.0 * t; // 0 → 16
+    // Glass PRONUNCIADO: al hacer scroll el carrusel pasa por debajo y se
+    // difumina con claridad tras el vidrio azul (0.60 de tinte + blur 18).
+    // El tinte azul mantiene el texto blanco nítido (contraste absoluto).
+    final bgAlpha = 0.92 - 0.32 * t; // 0.92 → 0.60
+    final blurSigma = 18.0 * t; // 0 → 18
     final gradient = LinearGradient(
       begin: Alignment.topLeft,
       end: Alignment.bottomRight,
