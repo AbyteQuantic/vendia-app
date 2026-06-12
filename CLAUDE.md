@@ -59,9 +59,14 @@ Adaptación a este repo (Flutter):
 - La plataforma web está habilitada; la app web se sirve en **`vendia.store`**
   (proyecto Vercel `vendia-app`).
 - ⚠️ **NO auto-despliega al mergear a `main`.** Hay que `flutter build web
-  --release --dart-define=API_BASE_URL=https://api.vendia.store` y
-  `vercel deploy --prod`. El workflow `.github/workflows/deploy-web.yml` lo
-  automatiza cuando se agregue el secret `VERCEL_TOKEN`. **Mergear ≠ desplegar.**
+  --release --no-wasm-dry-run
+  --dart-define=API_BASE_URL=https://api.vendia.store` y `vercel deploy --prod`.
+  El workflow `.github/workflows/deploy-web.yml` lo automatiza cuando se agregue
+  el secret `VERCEL_TOKEN`. **Mergear ≠ desplegar.**
+- ⚡ **`--no-wasm-dry-run` ~2.3× más rápido** (compilación dart2js de ~78 s a
+  ~34 s) y produce JS **byte-idéntico** — solo salta la pasada de análisis de
+  compatibilidad WebAssembly, que aquí es inútil (Isar usa `dart:ffi`, que no
+  compila a Wasm, y desplegamos a JS). También elimina los warnings de `dart:ffi`.
 - **Limitación offline:** Isar es **solo móvil**. En web `DatabaseService` es un
   stub en memoria (`database_service_web.dart`) — los datos locales se pierden
   al refrescar. Detalle en [`web/README_WEB.md`](web/README_WEB.md).
