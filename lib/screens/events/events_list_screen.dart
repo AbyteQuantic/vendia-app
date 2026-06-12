@@ -14,6 +14,7 @@ import '../../utils/event_money.dart';
 import 'create_event_screen.dart';
 import 'event_detail_screen.dart';
 import 'event_feedback.dart';
+import 'event_ui_kit.dart';
 
 class EventsListScreen extends StatefulWidget {
   /// Inyectable para tests — en producción usa el ApiService default.
@@ -120,9 +121,9 @@ class _EventsListScreenState extends State<EventsListScreen> {
     return RefreshIndicator(
       onRefresh: _load,
       child: ListView.separated(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(EventUI.s16),
         itemCount: _events.length,
-        separatorBuilder: (_, __) => const SizedBox(height: 12),
+        separatorBuilder: (_, __) => const SizedBox(height: EventUI.s16),
         itemBuilder: (_, i) => _EventCard(
           event: _events[i],
           onPublish: () => _publish(_events[i]),
@@ -153,67 +154,70 @@ class _EventCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Card(
+    // Tarjeta sin borde duro: sombra suave + radius unificado (kit del módulo).
+    return Material(
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(EventUI.rCard),
       clipBehavior: Clip.antiAlias,
-      child: InkWell(
-        onTap: onOpen,
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      event.title,
-                      style: const TextStyle(
-                          fontSize: 18, fontWeight: FontWeight.bold),
+      elevation: 0,
+      child: Ink(
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(EventUI.rCard),
+          boxShadow: EventUI.shadow,
+        ),
+        child: InkWell(
+          onTap: onOpen,
+          child: Padding(
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(child: Text(event.title, style: EventUI.title(17))),
+                    const SizedBox(width: EventUI.s8),
+                    _StatusBadge(status: event.displayStatus),
+                  ],
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  '${EventType.label(event.type)} · ${EventModality.label(event.modality)}',
+                  style: EventUI.body(),
+                ),
+                const SizedBox(height: EventUI.s16),
+                Row(
+                  children: [
+                    const Icon(Icons.payments_outlined,
+                        size: 18, color: EventUI.inkSoft),
+                    const SizedBox(width: 6),
+                    Text(formatEventPrice(event.price, event.currency),
+                        style: EventUI.value()),
+                    const SizedBox(width: EventUI.s16),
+                    const Icon(Icons.people_outline,
+                        size: 18, color: EventUI.inkSoft),
+                    const SizedBox(width: 6),
+                    Text(
+                      event.capacity > 0
+                          ? 'Cupo ${event.capacity}'
+                          : 'Sin límite',
+                      style: EventUI.value(),
                     ),
-                  ),
-                  _StatusBadge(status: event.displayStatus),
-                ],
-              ),
-              const SizedBox(height: 6),
-              Text(
-                '${EventType.label(event.type)} · ${EventModality.label(event.modality)}',
-                style: const TextStyle(fontSize: 15, color: Colors.black54),
-              ),
-              const SizedBox(height: 8),
-              Row(
-                children: [
-                  Icon(Icons.payments_outlined,
-                      size: 18, color: Colors.grey.shade700),
-                  const SizedBox(width: 6),
-                  Text(
-                    formatEventPrice(event.price, event.currency),
-                    style: const TextStyle(fontSize: 15),
-                  ),
-                  const SizedBox(width: 16),
-                  Icon(Icons.people_outline,
-                      size: 18, color: Colors.grey.shade700),
-                  const SizedBox(width: 6),
-                  Text(
-                    event.capacity > 0
-                        ? 'Cupo ${event.capacity}'
-                        : 'Sin límite',
-                    style: const TextStyle(fontSize: 15),
-                  ),
-                ],
-              ),
-              if (event.status == EventStatus.borrador) ...[
-                const SizedBox(height: 12),
-                SizedBox(
-                  width: double.infinity,
-                  child: FilledButton.icon(
+                  ],
+                ),
+                if (event.status == EventStatus.borrador) ...[
+                  const SizedBox(height: EventUI.s16),
+                  EventPrimaryButton(
                     key: Key('event_publish_${event.id}'),
                     onPressed: onPublish,
-                    icon: const Icon(Icons.publish_rounded),
-                    label: const Text('Publicar en mi catálogo'),
+                    icon: Icons.publish_rounded,
+                    label: 'Publicar en mi catálogo',
+                    height: 48,
                   ),
-                ),
+                ],
               ],
-            ],
+            ),
           ),
         ),
       ),
@@ -228,24 +232,13 @@ class _StatusBadge extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final color = switch (status) {
-      EventStatus.publicado => Colors.green,
-      EventStatus.cancelado => Colors.red,
-      EventStatus.archivado => Colors.grey,
-      EventStatus.finalizado => Colors.blueGrey,
-      _ => Colors.orange,
+      EventStatus.publicado => EventUI.success,
+      EventStatus.cancelado => EventUI.danger,
+      EventStatus.archivado => EventUI.inkSoft,
+      EventStatus.finalizado => const Color(0xFF475569),
+      _ => EventUI.warning,
     };
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.15),
-        borderRadius: BorderRadius.circular(20),
-      ),
-      child: Text(
-        EventStatus.label(status),
-        style:
-            TextStyle(color: color, fontSize: 13, fontWeight: FontWeight.w600),
-      ),
-    );
+    return EventBadge(label: EventStatus.label(status), color: color);
   }
 }
 
@@ -270,15 +263,28 @@ class _MessageState extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(icon, size: 64, color: Colors.grey.shade400),
-            const SizedBox(height: 16),
+            Icon(icon, size: 64, color: EventUI.inkSoft.withValues(alpha: 0.5)),
+            const SizedBox(height: EventUI.s16),
             Text(
               message,
               textAlign: TextAlign.center,
-              style: const TextStyle(fontSize: 17, color: Colors.black54),
+              style: const TextStyle(
+                  fontSize: 17, color: EventUI.inkSoft, height: 1.4),
             ),
-            const SizedBox(height: 20),
-            FilledButton(onPressed: onAction, child: Text(actionLabel)),
+            const SizedBox(height: EventUI.s24),
+            FilledButton(
+              style: FilledButton.styleFrom(
+                backgroundColor: EventUI.accent,
+                padding: const EdgeInsets.symmetric(
+                    horizontal: EventUI.s24, vertical: 14),
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(EventUI.rButton)),
+                textStyle: const TextStyle(
+                    fontSize: 15, fontWeight: FontWeight.w700),
+              ),
+              onPressed: onAction,
+              child: Text(actionLabel),
+            ),
           ],
         ),
       ),

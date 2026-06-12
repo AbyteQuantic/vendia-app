@@ -106,4 +106,38 @@ void main() {
     await tester.pump();
     expect(api.certifiedRegId, 'r2');
   });
+
+  testWidgets('sin overflow a 360dp (Art. I) tras el refactor UI', (tester) async {
+    // Lienzo angosto tipo Android de gama baja. Si algún Row/botón del
+    // rediseño no cabe, Flutter lanza un RenderFlex overflow y este test
+    // falla vía tester.takeException().
+    tester.view.physicalSize = const Size(360, 740);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+
+    final api = _FakeApi(regs: [
+      {
+        'id': 'r3',
+        'customer_name': 'Carolina Restrepo de la Espriella',
+        'customer_phone': '3001234567',
+        'payment_status': 'pending',
+        'amount_paid': 20000,
+        'checked_in': true,
+        'checked_out': true,
+        'certificate_eligible': true,
+        'certificate_issued': true,
+        'seat_number': 12,
+      },
+    ]);
+    await tester.pumpWidget(_wrap(EventDetailScreen(event: ev, apiOverride: api)));
+    await tester.pumpAndSettle();
+
+    // Recorre toda la pantalla para forzar el layout de cada sección.
+    final scrollable = find.byType(Scrollable).first;
+    await tester.scrollUntilVisible(
+        find.textContaining('Carolina'), 300, scrollable: scrollable);
+    await tester.pumpAndSettle();
+
+    expect(tester.takeException(), isNull);
+  });
 }

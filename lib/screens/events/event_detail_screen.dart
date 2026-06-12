@@ -29,12 +29,12 @@ import 'event_description_editor.dart';
 import 'event_design_screen.dart';
 import 'event_feedback.dart';
 import 'event_seat_map_sheet.dart';
+import 'event_ui_kit.dart';
 
 /// Acento del módulo de Eventos (mismo cian del catálogo / ícono).
-const _eventAccent = Color(0xFF0EA5E9);
-// Estado de las piezas de diseño: verde = ya generada; ámbar = falta generar.
-const _designDone = Color(0xFF059669);
-const _designPending = Color(0xFFD97706);
+const _eventAccent = EventUI.accent;
+// Verde = pieza de diseño ya generada.
+const _designDone = EventUI.success;
 
 class EventDetailScreen extends StatefulWidget {
   final Event event;
@@ -342,99 +342,77 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
           padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
           children: [
             _HeroHeader(event: e),
-            const SizedBox(height: 16),
+            const SizedBox(height: EventUI.s24),
             _infoCard(e, confirmed),
-            const SizedBox(height: 16),
+            const SizedBox(height: EventUI.s24),
             _descriptionCard(e),
-            const SizedBox(height: 16),
-            if (e.status == EventStatus.borrador)
-              SizedBox(
-                width: double.infinity,
-                child: FilledButton.icon(
-                  key: const Key('detail_publish'),
-                  style: FilledButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(vertical: 14),
-                    backgroundColor: _eventAccent,
-                  ),
-                  onPressed: _publish,
-                  icon: const Icon(Icons.publish_rounded),
-                  label: const Text('Publicar en mi catálogo',
-                      style: TextStyle(fontSize: 16)),
-                ),
+            if (e.status == EventStatus.borrador) ...[
+              const SizedBox(height: EventUI.s24),
+              EventPrimaryButton(
+                key: const Key('detail_publish'),
+                onPressed: _publish,
+                icon: Icons.publish_rounded,
+                label: 'Publicar en mi catálogo',
               ),
-            const SizedBox(height: 16),
+            ],
+            const SizedBox(height: EventUI.s24),
             _aiDesignCard(),
-            const SizedBox(height: 16),
+            const SizedBox(height: EventUI.s24),
             _catalogSection(e),
-            const SizedBox(height: 16),
+            const SizedBox(height: EventUI.s24),
             _attendanceCard(),
             if (_pendingPayments.isNotEmpty) ...[
-              const SizedBox(height: 16),
+              const SizedBox(height: EventUI.s24),
               _paymentsInbox(),
             ],
-            const SizedBox(height: 20),
+            const SizedBox(height: EventUI.s32),
             Row(
               children: [
                 const Icon(Icons.groups_rounded, color: _eventAccent),
-                const SizedBox(width: 8),
-                Text('Inscritos ($confirmed confirmados)',
-                    style: const TextStyle(
-                        fontSize: 18, fontWeight: FontWeight.bold)),
+                const SizedBox(width: EventUI.s8),
+                Expanded(
+                  child: Text('Inscritos ($confirmed confirmados)',
+                      style: EventUI.title(18)),
+                ),
               ],
             ),
             if (_regs.isNotEmpty) ...[
-              const SizedBox(height: 10),
+              const SizedBox(height: EventUI.s16),
               Row(
                 children: [
                   Expanded(
-                    child: OutlinedButton.icon(
+                    child: EventSecondaryButton(
                       key: const Key('event_seat_map_btn'),
                       onPressed: _openSeatMap,
-                      icon: const Icon(Icons.event_seat_rounded, size: 20),
-                      label: const Text('Mapa de sillas',
-                          style: TextStyle(fontSize: 15)),
-                      style: OutlinedButton.styleFrom(
-                          foregroundColor: _eventAccent,
-                          side: const BorderSide(color: _eventAccent)),
+                      icon: Icons.event_seat_rounded,
+                      label: 'Mapa de sillas',
                     ),
                   ),
-                  const SizedBox(width: 10),
+                  const SizedBox(width: EventUI.s8),
                   Expanded(
-                    child: OutlinedButton.icon(
+                    child: EventSecondaryButton(
                       key: const Key('event_attendee_broadcast_btn'),
                       onPressed: _openAttendeeBroadcast,
-                      icon: const Icon(Icons.campaign_rounded, size: 20),
-                      label: const Text('Difusión masiva',
-                          style: TextStyle(fontSize: 15)),
-                      style: OutlinedButton.styleFrom(
-                          foregroundColor: const Color(0xFF25D366),
-                          side: const BorderSide(color: Color(0xFF25D366))),
+                      icon: Icons.campaign_rounded,
+                      label: 'Difusión masiva',
+                      color: EventUI.whatsapp,
                     ),
                   ),
                 ],
               ),
-              const SizedBox(height: 8),
-              SizedBox(
-                width: double.infinity,
-                child: OutlinedButton.icon(
-                  key: const Key('event_issue_all_certs_btn'),
-                  onPressed: _issuingAllCerts ? null : _issueAllCertificates,
-                  icon: _issuingAllCerts
-                      ? const SizedBox(
-                          width: 16,
-                          height: 16,
-                          child: CircularProgressIndicator(strokeWidth: 2))
-                      : const Icon(Icons.workspace_premium_rounded, size: 20),
-                  label: Text(_issuingAllCerts
-                      ? 'Emitiendo…'
-                      : 'Emitir certificados (entrada + salida)'),
-                  style: OutlinedButton.styleFrom(
-                      foregroundColor: const Color(0xFF059669),
-                      side: const BorderSide(color: Color(0xFF059669))),
-                ),
+              const SizedBox(height: EventUI.s8),
+              EventSecondaryButton(
+                key: const Key('event_issue_all_certs_btn'),
+                onPressed: _issuingAllCerts ? null : _issueAllCertificates,
+                busy: _issuingAllCerts,
+                icon: Icons.workspace_premium_rounded,
+                label: _issuingAllCerts
+                    ? 'Emitiendo…'
+                    : 'Emitir certificados (entrada + salida)',
+                color: EventUI.success,
               ),
             ],
-            const SizedBox(height: 10),
+            const SizedBox(height: EventUI.s16),
             if (_loading)
               const Center(
                   child: Padding(
@@ -451,129 +429,92 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
   }
 
   // ── Tarjeta de datos clave ────────────────────────────────────────────
+  // Sin divisores duros: la separación entre filas es solo espacio (16px).
   Widget _infoCard(Event e, int confirmed) {
-    return Card(
-      elevation: 0,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(16),
-        side: BorderSide(color: Colors.grey.shade200),
+    final rows = <Widget>[
+      EventInfoRow(
+          icon: Icons.category_rounded,
+          label: 'Tipo',
+          value:
+              '${EventType.label(e.type)} · ${EventModality.label(e.modality)}'),
+      if (e.startAt != null)
+        EventInfoRow(
+            icon: Icons.event_rounded,
+            label: 'Fecha',
+            value: _formatDate(e.startAt!)),
+      if (e.locationOrLink.trim().isNotEmpty)
+        EventInfoRow(
+          icon: e.modality == EventModality.virtual
+              ? Icons.link_rounded
+              : Icons.place_rounded,
+          label: e.modality == EventModality.virtual ? 'Enlace' : 'Dirección',
+          value: e.locationOrLink,
+        ),
+      if (e.modality != EventModality.virtual && e.city.trim().isNotEmpty)
+        EventInfoRow(
+            icon: Icons.location_city_rounded, label: 'Ciudad', value: e.city),
+      if (e.modality != EventModality.virtual &&
+          e.locationNotes.trim().isNotEmpty)
+        EventInfoRow(
+            icon: Icons.info_outline_rounded,
+            label: 'Indicaciones',
+            value: e.locationNotes),
+      EventInfoRow(
+          icon: Icons.payments_rounded,
+          label: 'Inscripción',
+          value: formatEventPrice(e.price, e.currency)),
+      EventInfoRow(
+        icon: Icons.people_rounded,
+        label: 'Cupo',
+        value: e.capacity > 0
+            ? '$confirmed / ${e.capacity}'
+            : 'Sin límite ($confirmed inscritos)',
       ),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          children: [
-            _infoRow(Icons.category_rounded, 'Tipo',
-                '${EventType.label(e.type)} · ${EventModality.label(e.modality)}'),
-            if (e.startAt != null) ...[
-              const Divider(height: 20),
-              _infoRow(Icons.event_rounded, 'Fecha', _formatDate(e.startAt!)),
-            ],
-            if (e.locationOrLink.trim().isNotEmpty) ...[
-              const Divider(height: 20),
-              _infoRow(
-                e.modality == EventModality.virtual
-                    ? Icons.link_rounded
-                    : Icons.place_rounded,
-                e.modality == EventModality.virtual ? 'Enlace' : 'Dirección',
-                e.locationOrLink,
-              ),
-            ],
-            if (e.modality != EventModality.virtual &&
-                e.city.trim().isNotEmpty) ...[
-              const Divider(height: 20),
-              _infoRow(Icons.location_city_rounded, 'Ciudad', e.city),
-            ],
-            if (e.modality != EventModality.virtual &&
-                e.locationNotes.trim().isNotEmpty) ...[
-              const Divider(height: 20),
-              _infoRow(Icons.info_outline_rounded, 'Indicaciones',
-                  e.locationNotes),
-            ],
-            const Divider(height: 20),
-            _infoRow(Icons.payments_rounded, 'Inscripción',
-                formatEventPrice(e.price, e.currency)),
-            const Divider(height: 20),
-            _infoRow(
-              Icons.people_rounded,
-              'Cupo',
-              e.capacity > 0
-                  ? '$confirmed / ${e.capacity}'
-                  : 'Sin límite ($confirmed inscritos)',
-            ),
+    ];
+    return EventCard(
+      child: Column(
+        children: [
+          for (var i = 0; i < rows.length; i++) ...[
+            if (i > 0) const SizedBox(height: EventUI.s16),
+            rows[i],
           ],
-        ),
+        ],
       ),
-    );
-  }
-
-  Widget _infoRow(IconData icon, String label, String value) {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Icon(icon, size: 20, color: _eventAccent),
-        const SizedBox(width: 12),
-        SizedBox(
-          width: 92,
-          child: Text(label,
-              style: const TextStyle(fontSize: 14, color: Colors.black54)),
-        ),
-        Expanded(
-          child: Text(value,
-              style: const TextStyle(
-                  fontSize: 15, fontWeight: FontWeight.w600)),
-        ),
-      ],
     );
   }
 
   // ── Descripción pública (se muestra en el catálogo + contexto para la IA) ─
   Widget _descriptionCard(Event e) {
     final hasDesc = e.description.trim().isNotEmpty;
-    return Card(
-      elevation: 0,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(16),
-        side: BorderSide(color: Colors.grey.shade200),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                const Expanded(
-                  child: Text('Descripción para el catálogo',
-                      style:
-                          TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
-                ),
-                TextButton.icon(
-                  key: const Key('detail_edit_description'),
-                  onPressed: _editDescription,
-                  style: TextButton.styleFrom(
-                    foregroundColor: _eventAccent,
-                    padding: const EdgeInsets.symmetric(horizontal: 8),
-                    minimumSize: const Size(0, 36),
-                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                  ),
-                  icon: const Icon(Icons.edit_outlined, size: 18),
-                  label: Text(hasDesc ? 'Editar' : 'Agregar'),
-                ),
-              ],
-            ),
-            const SizedBox(height: 4),
-            if (hasDesc)
-              _collapsibleDescription(e.description)
-            else
-              Text(
-                'Cuente de qué trata: temario, horas, requisitos, a quién va '
-                'dirigido… Esto se muestra a sus clientes en el link del '
-                'catálogo.',
-                style: TextStyle(
-                    fontSize: 14, height: 1.4, color: Colors.grey.shade500),
+    return EventCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text('Descripción para el catálogo',
+                    style: EventUI.title(15)),
               ),
-          ],
-        ),
+              EventTertiaryButton(
+                key: const Key('detail_edit_description'),
+                onPressed: _editDescription,
+                icon: Icons.edit_outlined,
+                label: hasDesc ? 'Editar' : 'Agregar',
+              ),
+            ],
+          ),
+          const SizedBox(height: EventUI.s8),
+          if (hasDesc)
+            _collapsibleDescription(e.description)
+          else
+            Text(
+              'Cuente de qué trata: temario, horas, requisitos, a quién va '
+              'dirigido… Esto se muestra a sus clientes en el link del '
+              'catálogo.',
+              style: EventUI.body(),
+            ),
+        ],
       ),
     );
   }
@@ -679,88 +620,51 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
   }
 
   // ── Sección destacada: diseñar piezas con IA ──────────────────────────
+  // El estado de cada pieza vive EN el botón (color + ícono + label):
+  // verde con check = ya generada; acento = falta generar. Sin subtítulos
+  // redundantes debajo de los botones.
   Widget _aiDesignCard() {
-    return Container(
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(16),
-        gradient: const LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [Color(0xFFEFF6FF), Color(0xFFE0F2FE)],
-        ),
-        border: Border.all(color: _eventAccent.withValues(alpha: 0.25)),
+    final posterDone = _event.posterUrl.isNotEmpty;
+    return EventCard(
+      gradient: const LinearGradient(
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+        colors: [Color(0xFFEFF6FF), Color(0xFFE0F2FE)],
       ),
-      padding: const EdgeInsets.all(16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Row(
-            children: [
-              Icon(Icons.auto_awesome_rounded, color: _eventAccent),
-              SizedBox(width: 8),
-              Expanded(
-                child: Text('Diseñe sus piezas con IA',
-                    style:
-                        TextStyle(fontSize: 17, fontWeight: FontWeight.bold)),
-              ),
-            ],
+          const EventSectionHeader(
+            icon: Icons.auto_awesome_rounded,
+            title: 'Diseñe sus piezas con IA',
+            subtitle: 'La IA usa el nombre del evento y su descripción; '
+                'puede regenerar hasta que le guste.',
           ),
-          const SizedBox(height: 6),
-          const Text(
-            'La IA usa el nombre del evento y su descripción; puede regenerar '
-            'hasta que le guste.',
-            style: TextStyle(fontSize: 14, color: Colors.black54, height: 1.35),
-          ),
-          const SizedBox(height: 14),
+          const SizedBox(height: EventUI.s16),
           // Afiche — pieza principal: es la que aparece en el catálogo y viaja
-          // en el link que se comparte por WhatsApp. Verde = ya generado.
-          Builder(builder: (_) {
-            final done = _event.posterUrl.isNotEmpty;
-            return SizedBox(
-              width: double.infinity,
-              child: FilledButton.icon(
-                key: const Key('detail_design_poster'),
-                style: FilledButton.styleFrom(
-                  backgroundColor: done ? _designDone : _eventAccent,
-                  padding: const EdgeInsets.symmetric(vertical: 14),
-                ),
-                onPressed: () => _openDesigner(EventDesignKind.poster),
-                icon: Icon(
-                    done ? Icons.check_circle_rounded : Icons.campaign_rounded,
-                    size: 22),
-                label: Text(
-                    done
-                        ? 'Afiche listo · editar'
-                        : 'Generar afiche para el catálogo',
-                    style: const TextStyle(fontSize: 16)),
-              ),
-            );
-          }),
-          const SizedBox(height: 4),
-          Text(
-            _event.posterUrl.isNotEmpty
-                ? '✓ Generado. Es la imagen del catálogo y del link de WhatsApp; '
-                    'tócala para editarla.'
-                : '⚠ Falta generarlo. Es la imagen que verán sus clientes en el '
-                    'catálogo y en el link de WhatsApp.',
-            style: TextStyle(
-                fontSize: 12.5,
-                color: _event.posterUrl.isNotEmpty
-                    ? _designDone
-                    : _designPending,
-                fontWeight: FontWeight.w600),
+          // en el link que se comparte por WhatsApp.
+          EventPrimaryButton(
+            key: const Key('detail_design_poster'),
+            onPressed: () => _openDesigner(EventDesignKind.poster),
+            icon: posterDone
+                ? Icons.check_circle_rounded
+                : Icons.campaign_rounded,
+            label: posterDone
+                ? 'Afiche listo · editar'
+                : 'Generar afiche para el catálogo',
+            color: posterDone ? _designDone : _eventAccent,
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: EventUI.s8),
           Row(
             children: [
-              _secondaryDesignButton(
+              _designButton(
                   const Key('detail_design_badge'),
                   EventDesignKind.badge,
                   'Escarapela',
                   Icons.badge_outlined,
                   _event.badgeUrl.isNotEmpty),
-              const SizedBox(width: 12),
-              _secondaryDesignButton(
+              const SizedBox(width: EventUI.s8),
+              _designButton(
                   const Key('detail_design_cert'),
                   EventDesignKind.certificate,
                   'Certificado',
@@ -773,41 +677,21 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
     );
   }
 
-  /// Botón secundario (escarapela/certificado) con estado: verde "listo ·
-  /// editar" si ya se generó, o acento "falta generar" si aún no.
-  Widget _secondaryDesignButton(
+  /// Botón secundario (escarapela/certificado). El estado viaja en el propio
+  /// botón: check verde si ya se generó; acento si falta.
+  Widget _designButton(
       Key key, EventDesignKind kind, String label, IconData icon, bool done) {
-    final color = done ? _designDone : _eventAccent;
     return Expanded(
-      child: Column(
-        children: [
-          SizedBox(
-            width: double.infinity,
-            child: OutlinedButton.icon(
-              key: key,
-              style: OutlinedButton.styleFrom(
-                foregroundColor: color,
-                side: BorderSide(color: color),
-                backgroundColor:
-                    done ? _designDone.withValues(alpha: 0.06) : null,
-                padding: const EdgeInsets.symmetric(vertical: 12),
-              ),
-              onPressed: () => switch (kind) {
-                EventDesignKind.certificate => _openCertificateDesigner(),
-                EventDesignKind.badge => _openBadgeDesigner(),
-                EventDesignKind.poster => _openDesigner(kind),
-              },
-              icon: Icon(done ? Icons.check_circle_rounded : icon, size: 20),
-              label: Text(label),
-            ),
-          ),
-          const SizedBox(height: 4),
-          Text(done ? 'Listo · editar' : 'Falta generar',
-              style: TextStyle(
-                  fontSize: 11.5,
-                  fontWeight: FontWeight.w700,
-                  color: done ? _designDone : _designPending)),
-        ],
+      child: EventSecondaryButton(
+        key: key,
+        onPressed: () => switch (kind) {
+          EventDesignKind.certificate => _openCertificateDesigner(),
+          EventDesignKind.badge => _openBadgeDesigner(),
+          EventDesignKind.poster => _openDesigner(kind),
+        },
+        icon: done ? Icons.check_circle_rounded : icon,
+        label: label,
+        color: done ? _designDone : _eventAccent,
       ),
     );
   }
@@ -856,89 +740,71 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
 
   Widget _catalogSection(Event e) {
     final published = e.status == EventStatus.publicado;
-    return Container(
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(16),
-        color: Colors.white,
-        border: Border.all(color: Colors.grey.shade200),
-      ),
-      padding: const EdgeInsets.all(16),
+    return EventCard(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Row(
-            children: [
-              Icon(Icons.storefront_rounded, color: _eventAccent),
-              SizedBox(width: 8),
-              Text('Catálogo y difusión',
-                  style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold)),
-            ],
-          ),
-          const SizedBox(height: 4),
-          Text(
-            published
+          EventSectionHeader(
+            icon: Icons.storefront_rounded,
+            title: 'Catálogo y difusión',
+            subtitle: published
                 ? 'Así se ve tu evento en el catálogo. Compártelo con tus '
                     'clientes.'
                 : 'Publícalo para que aparezca en tu catálogo en línea.',
-            style: TextStyle(fontSize: 13, color: Colors.grey.shade600),
           ),
-          const SizedBox(height: 14),
+          const SizedBox(height: EventUI.s16),
           _catalogPreview(e),
-          const SizedBox(height: 14),
-          // Link del catálogo
+          const SizedBox(height: EventUI.s16),
+          // Link del catálogo — caja sutil, sin borde duro.
           if (_catalogUrl != null)
             InkWell(
               onTap: _copyLink,
-              borderRadius: BorderRadius.circular(10),
+              borderRadius: BorderRadius.circular(EventUI.rButton),
               child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
                 decoration: BoxDecoration(
-                  color: Colors.grey.shade50,
-                  borderRadius: BorderRadius.circular(10),
-                  border: Border.all(color: Colors.grey.shade200),
+                  color: EventUI.surface,
+                  borderRadius: BorderRadius.circular(EventUI.rButton),
                 ),
                 child: Row(
                   children: [
                     const Icon(Icons.link_rounded,
                         size: 18, color: _eventAccent),
-                    const SizedBox(width: 8),
+                    const SizedBox(width: EventUI.s8),
                     Expanded(
-                      child: Text(
-                          _catalogUrl!.replaceFirst('https://', ''),
+                      child: Text(_catalogUrl!.replaceFirst('https://', ''),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: const TextStyle(
-                              fontSize: 13.5, fontWeight: FontWeight.w500)),
+                              fontSize: 13.5,
+                              fontWeight: FontWeight.w500,
+                              color: EventUI.ink)),
                     ),
-                    const Icon(Icons.copy_rounded, size: 16, color: Colors.grey),
+                    const Icon(Icons.copy_rounded,
+                        size: 16, color: EventUI.inkSoft),
                   ],
                 ),
               ),
             ),
-          const SizedBox(height: 12),
-          // Difundir por WhatsApp / redes (acción principal).
-          SizedBox(
-            width: double.infinity,
-            child: FilledButton.icon(
-              key: const Key('detail_share_whatsapp'),
-              style: FilledButton.styleFrom(
-                backgroundColor: const Color(0xFF25D366),
-                padding: const EdgeInsets.symmetric(vertical: 13),
-              ),
-              onPressed: () => _shareEvent(e),
-              icon: const Icon(Icons.share_rounded, size: 20),
-              label: const Text('Difundir por WhatsApp',
-                  style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
-            ),
+          const SizedBox(height: EventUI.s16),
+          // Difundir por WhatsApp (acción principal — verde compartir).
+          EventPrimaryButton(
+            key: const Key('detail_share_whatsapp'),
+            onPressed: () => _shareEvent(e),
+            icon: Icons.share_rounded,
+            label: 'Difundir por WhatsApp',
+            color: EventUI.whatsapp,
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: EventUI.s8),
           // Difusión específica del evento (clientes + redes sociales).
-          TextButton.icon(
-            key: const Key('detail_open_difusion'),
-            onPressed: _openDifusion,
-            style: TextButton.styleFrom(foregroundColor: _eventAccent),
-            icon: const Icon(Icons.campaign_rounded, size: 18),
-            label: const Text('Difusión a mis clientes y redes'),
+          Center(
+            child: EventTertiaryButton(
+              key: const Key('detail_open_difusion'),
+              onPressed: _openDifusion,
+              icon: Icons.campaign_rounded,
+              label: 'Difusión a mis clientes y redes',
+            ),
           ),
         ],
       ),
@@ -946,11 +812,12 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
   }
 
   /// Mini-tarjeta que espeja cómo se ve el evento en el catálogo público.
+  /// Se diferencia del fondo de la tarjeta con un gris súper claro, sin borde.
   Widget _catalogPreview(Event e) {
     return Container(
       decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.grey.shade200),
+        borderRadius: BorderRadius.circular(EventUI.rCard),
+        color: EventUI.surface,
       ),
       clipBehavior: Clip.antiAlias,
       child: Column(
@@ -987,27 +854,16 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
                 Text(e.title,
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                        fontSize: 15, fontWeight: FontWeight.bold)),
+                    style: EventUI.title(15)),
                 const SizedBox(height: 2),
                 Text(
                   '${EventType.label(e.type)} · ${EventModality.label(e.modality)}',
-                  style: const TextStyle(fontSize: 12, color: Colors.black54),
+                  style: EventUI.body(12),
                 ),
-                const SizedBox(height: 6),
-                Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: _eventAccent.withValues(alpha: 0.1),
-                    borderRadius: BorderRadius.circular(20),
-                  ),
-                  child: Text(formatEventPrice(e.price, e.currency),
-                      style: const TextStyle(
-                          fontSize: 13,
-                          fontWeight: FontWeight.bold,
-                          color: _eventAccent)),
-                ),
+                const SizedBox(height: EventUI.s8),
+                EventBadge(
+                    label: formatEventPrice(e.price, e.currency),
+                    color: _eventAccent),
               ],
             ),
           ),
@@ -1018,34 +874,19 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
 
   // ── Bandeja de comprobantes por revisar (pago manual con comprobante) ──
   Widget _paymentsInbox() {
-    return Container(
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(16),
-        color: const Color(0xFFFFFBEB),
-        border: Border.all(color: const Color(0xFFFcd34d)),
-      ),
-      padding: const EdgeInsets.all(16),
+    return EventCard(
+      color: const Color(0xFFFFFBEB),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              const Icon(Icons.receipt_long_rounded, color: Color(0xFFD97706)),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text('Pagos por revisar (${_pendingPayments.length})',
-                    style: const TextStyle(
-                        fontSize: 16, fontWeight: FontWeight.bold)),
-              ),
-            ],
+          EventSectionHeader(
+            icon: Icons.receipt_long_rounded,
+            color: EventUI.warning,
+            title: 'Pagos por revisar (${_pendingPayments.length})',
+            subtitle: 'Comprobantes que enviaron tus asistentes. Apruébalos '
+                'para activar su carné.',
           ),
-          const SizedBox(height: 4),
-          const Text(
-            'Comprobantes que enviaron tus asistentes. Apruébalos para activar '
-            'su carné.',
-            style: TextStyle(fontSize: 12.5, color: Colors.black54),
-          ),
-          const SizedBox(height: 12),
+          const SizedBox(height: EventUI.s16),
           ..._pendingPayments.map(_proofTile),
         ],
       ),
@@ -1054,12 +895,11 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
 
   Widget _proofTile(EventPaymentView p) {
     return Container(
-      margin: const EdgeInsets.only(bottom: 8),
-      padding: const EdgeInsets.all(10),
+      margin: const EdgeInsets.only(bottom: EventUI.s8),
+      padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.grey.shade200),
+        borderRadius: BorderRadius.circular(EventUI.rButton),
       ),
       child: Row(
         children: [
@@ -1084,25 +924,29 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(p.customerName.isEmpty ? 'Asistente' : p.customerName,
-                    style: const TextStyle(fontWeight: FontWeight.w600)),
+                    style: EventUI.value(14.5)),
                 Text(
                     'Reportó ${formatEventMoney(p.amount, _event.currency)}${p.note.isEmpty ? '' : ' · ${p.note}'}',
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(fontSize: 13, color: Colors.black54)),
+                    style: EventUI.body(13)),
               ],
             ),
           ),
           if (p.hasProof)
-            TextButton(
+            EventTertiaryButton(
               onPressed: () => _viewProof(p),
-              child: const Text('Ver'),
+              label: 'Ver',
             ),
           FilledButton(
             style: FilledButton.styleFrom(
-              backgroundColor: const Color(0xFF059669),
+              backgroundColor: EventUI.success,
               padding: const EdgeInsets.symmetric(horizontal: 14),
-              minimumSize: const Size(0, 38),
+              minimumSize: const Size(0, 40),
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(EventUI.rButton)),
+              textStyle:
+                  const TextStyle(fontSize: 14, fontWeight: FontWeight.w700),
             ),
             onPressed: () => _approvePayment(p),
             child: const Text('Aprobar'),
@@ -1113,52 +957,39 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
   }
 
   // ── Control de asistencia (escáner QR) ────────────────────────────────
+  // Entrada/Salida son acciones primarias de operación en puerta: fondo
+  // sólido azul, texto blanco, sin bordes.
   Widget _attendanceCard() {
-    return Card(
-      elevation: 0,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(16),
-        side: BorderSide(color: Colors.grey.shade200),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Row(
-              children: [
-                Icon(Icons.qr_code_scanner_rounded, color: _eventAccent),
-                SizedBox(width: 8),
-                Text('Control de asistencia',
-                    style:
-                        TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-              ],
-            ),
-            const SizedBox(height: 4),
-            const Text('Escanee el QR de la escarapela en la puerta.',
-                style: TextStyle(fontSize: 13, color: Colors.black54)),
-            const SizedBox(height: 12),
-            Row(
-              children: [
-                Expanded(
-                  child: OutlinedButton.icon(
-                    onPressed: () => _openScanner(ScanType.checkIn),
-                    icon: const Icon(Icons.login_rounded),
-                    label: const Text('Entrada'),
-                  ),
+    return EventCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const EventSectionHeader(
+            icon: Icons.qr_code_scanner_rounded,
+            title: 'Control de asistencia',
+            subtitle: 'Escanee el QR de la escarapela en la puerta.',
+          ),
+          const SizedBox(height: EventUI.s16),
+          Row(
+            children: [
+              Expanded(
+                child: EventPrimaryButton(
+                  onPressed: () => _openScanner(ScanType.checkIn),
+                  icon: Icons.login_rounded,
+                  label: 'Entrada',
                 ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: OutlinedButton.icon(
-                    onPressed: () => _openScanner(ScanType.checkOut),
-                    icon: const Icon(Icons.logout_rounded),
-                    label: const Text('Salida'),
-                  ),
+              ),
+              const SizedBox(width: EventUI.s8),
+              Expanded(
+                child: EventPrimaryButton(
+                  onPressed: () => _openScanner(ScanType.checkOut),
+                  icon: Icons.logout_rounded,
+                  label: 'Salida',
                 ),
-              ],
-            ),
-          ],
-        ),
+              ),
+            ],
+          ),
+        ],
       ),
     );
   }
@@ -1166,26 +997,25 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
   Widget _emptyRegs() {
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.symmetric(vertical: 28, horizontal: 16),
+      padding: const EdgeInsets.symmetric(
+          vertical: EventUI.s32, horizontal: EventUI.s16),
       decoration: BoxDecoration(
-        color: Colors.grey.shade50,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.grey.shade200),
+        color: EventUI.surface,
+        borderRadius: BorderRadius.circular(EventUI.rCard),
       ),
       child: Column(
         children: [
-          Icon(Icons.person_add_alt_rounded,
-              size: 40, color: Colors.grey.shade400),
-          const SizedBox(height: 8),
-          const Text('Aún no hay inscritos.',
-              style: TextStyle(color: Colors.black54, fontSize: 15)),
+          const Icon(Icons.person_add_alt_rounded,
+              size: 40, color: EventUI.inkSoft),
+          const SizedBox(height: EventUI.s8),
+          Text('Aún no hay inscritos.', style: EventUI.value()),
           const SizedBox(height: 4),
           Text(
             _event.status == EventStatus.borrador
                 ? 'Publique el evento para recibir inscripciones.'
                 : 'Comparta su catálogo para que se inscriban.',
             textAlign: TextAlign.center,
-            style: TextStyle(color: Colors.grey.shade500, fontSize: 13),
+            style: EventUI.body(13),
           ),
         ],
       ),
@@ -1195,15 +1025,10 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
   Widget _regTile(EventRegistrationView r) {
     final attendance = (r.checkedIn ? ' · Entró' : '') +
         (r.checkedOut ? ' · Salió' : '');
-    return Card(
-      elevation: 0,
-      margin: const EdgeInsets.only(bottom: 10),
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(14),
-        side: BorderSide(color: Colors.grey.shade200),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(12),
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: EventCard(
+        padding: const EdgeInsets.all(EventUI.s16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -1217,7 +1042,7 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
                             : r.customerName.characters.first)
                         .toUpperCase(),
                     style: const TextStyle(
-                        color: _eventAccent, fontWeight: FontWeight.bold),
+                        color: _eventAccent, fontWeight: FontWeight.w700),
                   ),
                 ),
                 const SizedBox(width: 12),
@@ -1229,64 +1054,51 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
                           r.customerName.isEmpty
                               ? 'Asistente'
                               : r.customerName,
-                          style:
-                              const TextStyle(fontWeight: FontWeight.w600)),
+                          style: EventUI.value(14.5)),
                       if (r.customerPhone.isNotEmpty || attendance.isNotEmpty)
                         Text('${r.customerPhone}$attendance',
-                            style: const TextStyle(
-                                fontSize: 13, color: Colors.black54)),
+                            style: EventUI.body(13)),
                     ],
                   ),
                 ),
-                if (r.seatNumber != null) ...[
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 8, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: _eventAccent.withValues(alpha: 0.1),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        const Icon(Icons.event_seat_rounded,
-                            size: 14, color: _eventAccent),
-                        const SizedBox(width: 3),
-                        Text('${r.seatNumber}',
-                            style: const TextStyle(
-                                fontSize: 13,
-                                fontWeight: FontWeight.bold,
-                                color: _eventAccent)),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                ],
+              ],
+            ),
+            // Badges en su propia línea (Wrap): a 360dp un nombre largo +
+            // silla + estado de pago no caben en una sola fila.
+            const SizedBox(height: EventUI.s8),
+            Wrap(
+              spacing: EventUI.s8,
+              runSpacing: 4,
+              children: [
+                if (r.seatNumber != null)
+                  EventBadge(
+                      label: 'Silla ${r.seatNumber}', color: _eventAccent),
                 _PaymentBadge(reg: r),
               ],
             ),
             // Progreso de pago (solo eventos de pago con saldo pendiente).
             if (r.hasBalance) ...[
-              const SizedBox(height: 10),
+              const SizedBox(height: EventUI.s16),
               _paymentProgress(r),
-              const SizedBox(height: 8),
+              const SizedBox(height: EventUI.s8),
               Row(
                 children: [
                   Expanded(
-                    child: OutlinedButton.icon(
+                    child: EventSecondaryButton(
                       onPressed: () => _recordPayment(r),
-                      icon: const Icon(Icons.add_card_rounded, size: 18),
-                      label: const Text('Registrar abono'),
+                      icon: Icons.add_card_rounded,
+                      label: 'Registrar abono',
+                      height: 44,
                     ),
                   ),
-                  const SizedBox(width: 10),
+                  const SizedBox(width: EventUI.s8),
                   Expanded(
-                    child: FilledButton.icon(
-                      style: FilledButton.styleFrom(
-                          backgroundColor: const Color(0xFF059669)),
+                    child: EventPrimaryButton(
                       onPressed: () => _markPaid(r),
-                      icon: const Icon(Icons.check_rounded, size: 18),
-                      label: const Text('Pagado'),
+                      icon: Icons.check_rounded,
+                      label: 'Pagado',
+                      color: EventUI.success,
+                      height: 44,
                     ),
                   ),
                 ],
@@ -1294,23 +1106,15 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
             ],
             // Certificado (cuando es elegible y ya entró).
             if (r.certificateIssued || r.certificateEligible) ...[
-              const SizedBox(height: 6),
+              const SizedBox(height: EventUI.s8),
               Align(
                 alignment: Alignment.centerRight,
                 child: r.certificateIssued
-                    ? const Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(Icons.verified, color: Colors.green, size: 18),
-                          SizedBox(width: 4),
-                          Text('Certificado emitido',
-                              style: TextStyle(
-                                  color: Colors.green, fontSize: 13)),
-                        ],
-                      )
-                    : TextButton(
+                    ? const EventBadge(
+                        label: 'Certificado emitido', color: EventUI.success)
+                    : EventTertiaryButton(
                         onPressed: () => _issueCert(r),
-                        child: const Text('Emitir certificado'),
+                        label: 'Emitir certificado',
                       ),
               ),
             ],
@@ -1339,7 +1143,7 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
             'Pagó ${formatEventMoney(r.amountPaid, _event.currency)} de '
             '${formatEventMoney(r.price, _event.currency)} · faltan '
             '${formatEventMoney(r.balance, _event.currency)}',
-            style: const TextStyle(fontSize: 12.5, color: Colors.black54)),
+            style: EventUI.body(12.5)),
         if (r.installments != null) ...[
           const SizedBox(height: 4),
           _installmentSummary(r.installments!),
@@ -1382,14 +1186,14 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
             child: Text(
               'Próxima cuota: ${formatEventMoney(p.nextDueAmount, _event.currency)} · '
               'vence ${_shortDate(p.nextDueDate!)}',
-              style: const TextStyle(fontSize: 12, color: Colors.black54),
+              style: EventUI.body(12),
             ),
           ),
         Padding(
           padding: const EdgeInsets.only(top: 2),
           child: Text(
             'Cuotas: ${p.paidCount}/${p.count} pagadas',
-            style: TextStyle(fontSize: 11.5, color: Colors.grey.shade600),
+            style: EventUI.body(11.5),
           ),
         ),
       ],
@@ -1481,6 +1285,7 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
 }
 
 /// Insignia de estado de pago del inscrito (verde pagado / ámbar pendiente).
+/// Píldora semántica sin ícono — el color y el texto ya lo dicen todo.
 class _PaymentBadge extends StatelessWidget {
   final EventRegistrationView reg;
   const _PaymentBadge({required this.reg});
@@ -1488,24 +1293,9 @@ class _PaymentBadge extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final paid = reg.isConfirmed;
-    final color = paid ? const Color(0xFF059669) : const Color(0xFFD97706);
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.12),
-        borderRadius: BorderRadius.circular(20),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(paid ? Icons.verified_user_rounded : Icons.schedule_rounded,
-              size: 14, color: color),
-          const SizedBox(width: 4),
-          Text(paid ? 'Carné activo' : 'Pago pendiente',
-              style: TextStyle(
-                  color: color, fontSize: 12, fontWeight: FontWeight.w600)),
-        ],
-      ),
+    return EventBadge(
+      label: paid ? 'Carné activo' : 'Pago pendiente',
+      color: paid ? EventUI.success : EventUI.warning,
     );
   }
 }
@@ -1519,9 +1309,9 @@ class _HeroHeader extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.all(EventUI.s24),
       decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(EventUI.rCard),
         gradient: const LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
@@ -1532,13 +1322,13 @@ class _HeroHeader extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           _StatusChip(status: event.displayStatus),
-          const SizedBox(height: 12),
+          const SizedBox(height: EventUI.s16),
           Text(
             event.title,
             style: const TextStyle(
                 color: Colors.white,
                 fontSize: 24,
-                fontWeight: FontWeight.bold,
+                fontWeight: FontWeight.w700,
                 height: 1.2),
           ),
           const SizedBox(height: 6),
@@ -1559,29 +1349,23 @@ class _StatusChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final (Color bg, IconData icon) = switch (status) {
-      EventStatus.publicado => (const Color(0xFF059669), Icons.check_circle),
-      EventStatus.cancelado => (const Color(0xFFDC2626), Icons.cancel),
-      EventStatus.archivado => (Colors.grey, Icons.archive),
-      EventStatus.finalizado => (const Color(0xFF475569), Icons.event_available),
-      _ => (const Color(0xFFD97706), Icons.edit_note),
+    final Color color = switch (status) {
+      EventStatus.publicado => EventUI.success,
+      EventStatus.cancelado => EventUI.danger,
+      EventStatus.archivado => EventUI.inkSoft,
+      EventStatus.finalizado => const Color(0xFF475569),
+      _ => EventUI.warning,
     };
+    // Píldora blanca sobre el hero — texto semántico, sin ícono.
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(999),
       ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 16, color: bg),
-          const SizedBox(width: 6),
-          Text(EventStatus.label(status),
-              style: TextStyle(
-                  color: bg, fontSize: 13, fontWeight: FontWeight.bold)),
-        ],
-      ),
+      child: Text(EventStatus.label(status),
+          style: TextStyle(
+              color: color, fontSize: 13, fontWeight: FontWeight.w700)),
     );
   }
 }
