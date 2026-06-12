@@ -141,9 +141,13 @@ class _Html5QrcodeScannerWidgetState
     }).toJS;
     overlay.append(btn);
 
-    // Texto guía abajo (html5-qrcode ya dibuja el recuadro de escaneo).
+    // Guía visual: recuadro ancho (proporción EAN-13) + texto. La dibuja
+    // el overlay porque ya NO usamos `qrbox` (se escanea el cuadro
+    // completo — ver _start), así que la lib no pinta ningún marco.
+    // Es solo orientación: cualquier parte del video detecta.
     final guide = web.HTMLDivElement()
       ..innerHTML = '''
+<div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:min(86vw,380px);aspect-ratio:2/1;border:3px solid rgba(255,255,255,0.9);border-radius:16px;box-shadow:0 0 0 100vmax rgba(0,0,0,0.35)"></div>
 <div style="position:absolute;left:0;right:0;bottom:calc(env(safe-area-inset-bottom, 0px) + 56px);text-align:center;color:white;font-size:17px;font-weight:600;padding:0 24px;text-shadow:0 1px 3px rgba(0,0,0,0.7)">
   Centre el código de barras dentro del recuadro
 </div>
@@ -189,24 +193,25 @@ class _Html5QrcodeScannerWidgetState
       // cameraIdOrConfig: solo el selector de cámara.
       final cameraConfig = {'facingMode': 'environment'}.jsify()!;
 
-      // qrbox RECTANGULAR ANCHO: un EAN-13 es ancho y bajo. Un recuadro
-      // cuadrado (el bug anterior) recorta el código y ZXing no engancha.
-      // Se dimensiona al viewport para verse bien en cualquier pantalla.
-      final vw = web.window.innerWidth;
-      final boxW = (vw * 0.86).clamp(220, 380).toInt();
-      final boxH = (boxW * 0.52).clamp(120, 220).toInt();
-
+      // SIN `qrbox` → se escanea el CUADRO COMPLETO del video. Bug
+      // conocido de html5-qrcode en iOS: con qrbox, la región recortada
+      // se mapea sobre el video escalado (feed landscape mostrado
+      // portrait con object-fit cover) y cae FUERA de donde el usuario
+      // apunta — la cámara se ve perfecta pero jamás detecta. Sin
+      // recorte no hay mapeo que fallar. La guía visual la dibuja
+      // nuestro overlay (la lib ya no pinta el recuadro).
+      // fps 10 (antes 15) compensa el costo de decodificar el cuadro
+      // completo; para un humano apuntando sigue siendo inmediato.
       final scanConfig = {
-        'fps': 15,
-        'qrbox': {'width': boxW, 'height': boxH},
+        'fps': 10,
         'disableFlip': false,
-        // videoConstraints: alta resolución para que el motor tenga
-        // pixels suficientes para barras finas de EAN-13. iOS Safari por
-        // default da 640x480, que queda al límite y muchos no se leen.
+        // videoConstraints SOLO con `ideal` — un `min` rígido dispara
+        // OverconstrainedError en varios iPhone/cámaras y la cámara no
+        // arranca. `ideal` negocia la mejor resolución disponible.
         'videoConstraints': {
           'facingMode': 'environment',
-          'width': {'ideal': 1920, 'min': 1280},
-          'height': {'ideal': 1080, 'min': 720},
+          'width': {'ideal': 1920},
+          'height': {'ideal': 1080},
         },
       }.jsify() as JSObject;
 
