@@ -4,6 +4,7 @@ import 'package:image_picker/image_picker.dart';
 import '../../theme/app_theme.dart';
 import 'ia_loading_screen.dart';
 import 'create_product_screen.dart';
+import 'create_service_screen.dart';
 import 'manage_inventory_screen.dart';
 import 'product_import_screen.dart';
 import 'voice_inventory_screen.dart';
@@ -305,6 +306,29 @@ class AddMerchandiseScreen extends StatelessWidget {
                   },
                   icon: const Icon(Icons.edit_rounded, size: 24),
                   label: const Text('Agregar producto manualmente'),
+                ),
+              ),
+
+              const SizedBox(height: 12),
+
+              // F044 — Crear servicio (catálogo unificado para todo negocio).
+              // Un servicio se publica en el mismo link público que productos y
+              // platos; no lleva inventario.
+              SizedBox(
+                height: 64,
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  key: const Key('add_service_button'),
+                  onPressed: () {
+                    HapticFeedback.lightImpact();
+                    Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) => const CreateServiceScreen(),
+                      ),
+                    );
+                  },
+                  icon: const Icon(Icons.room_service_rounded, size: 24),
+                  label: const Text('Crear un servicio'),
                 ),
               ),
 

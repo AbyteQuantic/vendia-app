@@ -21,6 +21,11 @@ class Product {
   final String? portion;
   final bool isMenuItem;
 
+  /// F044 (catálogo unificado): marca un SERVICIO publicable (corte, reparación,
+  /// mano de obra…). Igual que un plato: sin inventario, pedible siempre que la
+  /// tienda esté abierta. Generaliza el catálogo público a todo tipo de negocio.
+  final bool isService;
+
   /// F029: precios opcionales por tier (depósito contado / crédito /
   /// cliente final, o los nombres custom del tenant). Cuando es null
   /// el POS hace fallback al [price] retail con nota visual.
@@ -44,6 +49,7 @@ class Product {
     this.description,
     this.portion,
     this.isMenuItem = false,
+    this.isService = false,
     this.priceTier1,
     this.priceTier2,
     this.priceTier3,
@@ -113,6 +119,7 @@ class Product {
       description: json['description'] as String?,
       portion: json['portion'] as String?,
       isMenuItem: json['is_menu_item'] as bool? ?? false,
+      isService: json['is_service'] as bool? ?? false,
       // F029: tier prices opcionales (nullable). Tenants pre-migración
       // o productos sin tier configurado entregan null aquí.
       priceTier1: (json['price_tier_1'] as num?)?.toDouble(),
@@ -140,6 +147,7 @@ class Product {
           'description': description,
         if (portion != null && portion!.isNotEmpty) 'portion': portion,
         if (isMenuItem) 'is_menu_item': isMenuItem,
+        if (isService) 'is_service': isService,
         // F029: serializamos los tiers solo cuando hay valor para no
         // sobreescribir un campo en el backend con null por accidente.
         if (priceTier1 != null) 'price_tier_1': priceTier1,

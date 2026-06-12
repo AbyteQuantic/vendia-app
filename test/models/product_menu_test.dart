@@ -22,7 +22,7 @@ void main() {
       expect(p.isMenuItem, isTrue);
     });
 
-    test('producto normal: campos de menú quedan vacíos / false', () {
+    test('producto normal: campos de menú/servicio quedan vacíos / false', () {
       final p = Product.fromJson({
         'id': 'uuid-1',
         'name': 'Gaseosa',
@@ -33,6 +33,25 @@ void main() {
       expect(p.description, isNull);
       expect(p.portion, isNull);
       expect(p.isMenuItem, isFalse);
+      expect(p.isService, isFalse);
+    });
+
+    test('F044: fromJson lee is_service y toJson lo serializa solo si aplica', () {
+      final svc = Product.fromJson({
+        'id': 9,
+        'name': 'Corte de cabello',
+        'price': 15000,
+        'stock': 0,
+        'category': 'Servicios',
+        'description': 'Corte clásico',
+        'is_service': true,
+      });
+      expect(svc.isService, isTrue);
+      expect(svc.isMenuItem, isFalse);
+      expect(svc.toJson()['is_service'], true);
+
+      const normal = Product(id: 0, name: 'Pan', price: 500, stock: 5);
+      expect(normal.toJson().containsKey('is_service'), isFalse);
     });
 
     test('toJson solo serializa los campos de menú cuando aplican', () {
