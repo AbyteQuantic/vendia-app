@@ -1,0 +1,80 @@
+# Auto-deploy de la app web Flutter a Vercel (proyecto `vendia-app` →
+# https://vendia.store) en cada push a main.
+#
+# Antes de esto el deploy era manual (`flutter build web` + `vercel deploy
+# --prod` desde build/web) — "mergeado ≠ desplegado" (Constitución Art. XII).
+# Este workflow cierra esa brecha: el push a main deja la web en producción.
+#
+# Secrets requeridos (Settings → Secrets and variables → Actions):
+#   VERCEL_TOKEN              token de Vercel con acceso al team
+#   SUPPORT_WHATSAPP_NUMBER   número del CTA de soporte (formato intl sin "+")
+#
+# VERCEL_ORG_ID / VERCEL_PROJECT_ID son identificadores (no secretos) y van
+# inline: con ellos el CLI despliega al proyecto correcto sin `.vercel/`
+# (la causa del incidente del proyecto huérfano "web" del 2026-06-12).
+name: deploy-web
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# Un deploy a la vez; un push nuevo cancela el build anterior en vuelo.
+concurrency:
+  group: deploy-web
+  cancel-in-progress: true
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+  # Proyecto Vercel `vendia-app` (team bryan-murcias-projects).
+  VERCEL_ORG_ID: team_jFQGwfMxTz7RzutYiySIQAmM
+  VERCEL_PROJECT_ID: prj_wsVEX73uGWLwzh7O5GESNulNZiop
+
+jobs:
+  deploy:
+    name: build + deploy a vendia.store
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          # Misma versión pineada que ci.yml — bump deliberado, juntos.
+          channel: stable
+          flutter-version: '3.41.6'
+          cache: true
+
+      - name: Restore pub cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.pub-cache
+            .dart_tool
+          key: pub-${{ runner.os }}-${{ hashFiles('pubspec.lock') }}
+          restore-keys: |
+            pub-${{ runner.os }}-
+
+      - name: Resolve dependencies
+        run: flutter pub get
+
+      - name: Generate code (Isar schemas, JSON)
+        run: dart run build_runner build --delete-conflicting-outputs
+
+      - name: Prepare .env
+        # El asset .env es obligatorio (pubspec) pero sus dos claves llegan
+        # por --dart-define abajo, así que el placeholder basta. El número
+        # de soporte real viaja como dart-define (NO en el asset del bundle).
+        run: cp .env.example .env
+
+      - name: Build web (release)
+        # --no-wasm-dry-run: ~2.3× más rápido, JS byte-idéntico (Isar usa
+        # dart:ffi que no compila a Wasm; desplegamos JS).
+        run: |
+          flutter build web --release --no-wasm-dry-run \
+            --dart-define=API_BASE_URL=https://api.vendia.store \
+            --dart-define=SUPPORT_WHATSAPP_NUMBER=${{ secrets.SUPPORT_WHATSAPP_NUMBER }}
+
+      - name: Deploy a Vercel (producción)
+        working-directory: build/web
+        run: npx vercel@latest deploy --prod --yes --token=${{ secrets.VERCEL_TOKEN }}
