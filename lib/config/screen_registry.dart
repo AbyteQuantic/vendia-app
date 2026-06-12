@@ -24,7 +24,7 @@ import '../screens/pos/pos_screen.dart';
 import '../screens/promotions/promotions_list_screen.dart';
 import '../screens/purchases/purchase_orders_screen.dart';
 import '../screens/quotes/quotes_list_screen.dart';
-import '../screens/recipes/recipe_step1_screen.dart';
+import '../screens/recipes/recipes_home_screen.dart';
 import '../screens/work_orders/work_orders_screen.dart';
 import '../screens/events/events_list_screen.dart';
 
@@ -41,7 +41,7 @@ final Map<String, ScreenBuilder> kScreenRegistry = {
   'inventory_report': InventoryReportScreen.new,
   'suppliers': SuppliersScreen.new,
   'ingredients': IngredientsScreen.new,
-  'recipes': RecipeStep1Screen.new,
+  'recipes': RecipesHomeScreen.new,
   'purchase_orders': PurchaseOrdersScreen.new,
   'work_orders': WorkOrdersScreen.new,
   'customers': CustomersListScreen.new,

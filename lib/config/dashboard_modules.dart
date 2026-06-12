@@ -48,7 +48,7 @@ import '../screens/pos/pos_screen.dart';
 import '../screens/promotions/promotions_list_screen.dart';
 import '../screens/purchases/purchase_orders_screen.dart';
 import '../screens/quotes/quotes_list_screen.dart';
-import '../screens/recipes/recipe_step1_screen.dart';
+import '../screens/recipes/recipes_home_screen.dart';
 import '../screens/work_orders/work_orders_screen.dart';
 import '../screens/events/events_list_screen.dart';
 
@@ -233,7 +233,9 @@ const List<DashboardModule> dashboardModules = [
     category: ModuleCategory.inventario,
     layer: ModuleLayer.optional,
     capability: OptionalCapability.recipes,
-    destination: RecipeStep1Screen.new,
+    // F043: el módulo abre la pantalla de 3 opciones (importar menú con cámara,
+    // crear plato/receta, dictar por voz) en vez del formulario manual directo.
+    destination: RecipesHomeScreen.new,
   ),
   DashboardModule(
     id: 'ordenes_compra',
