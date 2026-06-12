@@ -6,6 +6,7 @@
 // check-in/out y ver/gestionar a los inscritos (pago, asistencia, certificado).
 
 import 'dart:convert';
+import 'dart:ui' show ImageFilter;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -324,22 +325,43 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
   Widget build(BuildContext context) {
     final e = _event;
     final confirmed = _regs.where((r) => r.isConfirmed).length;
+    final topInset = MediaQuery.of(context).padding.top + kToolbarHeight;
     return Scaffold(
-      appBar: AppBar(
-        title: Text(e.title),
-        actions: [
-          IconButton(
-            key: const Key('detail_edit_event'),
-            tooltip: 'Editar evento',
-            onPressed: _editEvent,
-            icon: const Icon(Icons.edit_rounded),
+      // ── AppBar glass (vidrio esmerilado) ──────────────────────────────
+      // El body se extiende DETRÁS del AppBar: al hacer scroll las tarjetas
+      // pasan por debajo del título y se difuminan elegantemente tras el
+      // vidrio blanco translúcido. Texto oscuro = contraste absoluto.
+      extendBodyBehindAppBar: true,
+      appBar: PreferredSize(
+        preferredSize: const Size.fromHeight(kToolbarHeight),
+        child: ClipRect(
+          child: BackdropFilter(
+            filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
+            child: AppBar(
+              elevation: 0,
+              scrolledUnderElevation: 0,
+              backgroundColor: Colors.white.withValues(alpha: 0.72),
+              foregroundColor: EventUI.ink,
+              title: Text(e.title,
+                  style: const TextStyle(
+                      fontWeight: FontWeight.w700, color: EventUI.ink)),
+              actions: [
+                IconButton(
+                  key: const Key('detail_edit_event'),
+                  tooltip: 'Editar evento',
+                  onPressed: _editEvent,
+                  icon: const Icon(Icons.edit_rounded),
+                ),
+              ],
+            ),
           ),
-        ],
+        ),
       ),
       body: RefreshIndicator(
         onRefresh: _loadRegs,
+        edgeOffset: topInset,
         child: ListView(
-          padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
+          padding: EdgeInsets.fromLTRB(16, topInset + 16, 16, 32),
           children: [
             _HeroHeader(event: e),
             const SizedBox(height: EventUI.s24),
@@ -625,12 +647,8 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
   // redundantes debajo de los botones.
   Widget _aiDesignCard() {
     final posterDone = _event.posterUrl.isNotEmpty;
+    // Fondo blanco estándar, igual que las demás tarjetas (sin pastel).
     return EventCard(
-      gradient: const LinearGradient(
-        begin: Alignment.topLeft,
-        end: Alignment.bottomRight,
-        colors: [Color(0xFFEFF6FF), Color(0xFFE0F2FE)],
-      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -649,9 +667,8 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
             icon: posterDone
                 ? Icons.check_circle_rounded
                 : Icons.campaign_rounded,
-            label: posterDone
-                ? 'Afiche listo · editar'
-                : 'Generar afiche para el catálogo',
+            label:
+                posterDone ? 'Afiche listo' : 'Generar afiche para el catálogo',
             color: posterDone ? _designDone : _eventAccent,
           ),
           const SizedBox(height: EventUI.s8),
@@ -677,8 +694,9 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
     );
   }
 
-  /// Botón secundario (escarapela/certificado). El estado viaja en el propio
-  /// botón: check verde si ya se generó; acento si falta.
+  /// Botón secundario (escarapela/certificado) — siempre en el color
+  /// primario del módulo (tinte 10% + texto del color); el estado "ya
+  /// generada" lo dice solo el ícono de check, sin cambiar de color.
   Widget _designButton(
       Key key, EventDesignKind kind, String label, IconData icon, bool done) {
     return Expanded(
@@ -691,7 +709,6 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
         },
         icon: done ? Icons.check_circle_rounded : icon,
         label: label,
-        color: done ? _designDone : _eventAccent,
       ),
     );
   }
@@ -957,8 +974,9 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
   }
 
   // ── Control de asistencia (escáner QR) ────────────────────────────────
-  // Entrada/Salida son acciones primarias de operación en puerta: fondo
-  // sólido azul, texto blanco, sin bordes.
+  // Jerarquía: "Entrada" es LA acción principal al inicio del evento →
+  // primary (azul sólido). "Salida" la acompaña como secondary (tinte
+  // azul al 10%) — no compiten con el mismo peso visual.
   Widget _attendanceCard() {
     return EventCard(
       child: Column(
@@ -981,10 +999,11 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
               ),
               const SizedBox(width: EventUI.s8),
               Expanded(
-                child: EventPrimaryButton(
+                child: EventSecondaryButton(
                   onPressed: () => _openScanner(ScanType.checkOut),
                   icon: Icons.logout_rounded,
                   label: 'Salida',
+                  height: 52, // alineado con el primary de al lado
                 ),
               ),
             ],
@@ -1356,16 +1375,17 @@ class _StatusChip extends StatelessWidget {
       EventStatus.finalizado => const Color(0xFF475569),
       _ => EventUI.warning,
     };
-    // Píldora blanca sobre el hero — texto semántico, sin ícono.
+    // Píldora blanca sobre el hero — texto semántico contenido (12.5)
+    // para que nunca rompa el padding interno del badge.
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(999),
       ),
       child: Text(EventStatus.label(status),
           style: TextStyle(
-              color: color, fontSize: 13, fontWeight: FontWeight.w700)),
+              color: color, fontSize: 12.5, fontWeight: FontWeight.w700)),
     );
   }
 }

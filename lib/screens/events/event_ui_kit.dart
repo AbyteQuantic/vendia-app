@@ -22,8 +22,8 @@ abstract final class EventUI {
   static const double s24 = 24;
   static const double s32 = 32;
 
-  // ── Radius unificado ──
-  static const double rCard = 16;
+  // ── Radius unificado — 12 en TODO (tarjetas, botones, imágenes) ──
+  static const double rCard = 12;
   static const double rButton = 12;
 
   // ── Tipografía / contraste ──
