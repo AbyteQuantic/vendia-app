@@ -18,17 +18,18 @@ void main() {
       expect(find.text('Dictar receta desde el micrófono'), findsOneWidget);
     });
 
-    testWidgets('la cámara informa "pronto" sin navegar (Fase 2 pendiente)',
+    testWidgets('la cámara abre el selector de fuente (foto / galería)',
         (tester) async {
       await tester.pumpWidget(const MaterialApp(home: RecipesHomeScreen()));
       await tester.pump();
 
       await tester.tap(find.byKey(const Key('recipes_option_camera')));
-      await tester.pump(); // muestra el SnackBar
+      await tester.pumpAndSettle(); // anima el bottom sheet
 
-      expect(find.textContaining('Pronto'), findsOneWidget);
-      // No navegó: seguimos en la pantalla de opciones.
-      expect(find.byKey(const Key('recipes_option_manual')), findsOneWidget);
+      expect(find.byKey(const Key('menu_source_camera')), findsOneWidget);
+      expect(find.byKey(const Key('menu_source_gallery')), findsOneWidget);
+      expect(find.text('Tomar foto'), findsOneWidget);
+      expect(find.text('Elegir de la galería'), findsOneWidget);
     });
   });
 }

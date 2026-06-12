@@ -861,6 +861,38 @@ class ApiService {
     }
   }
 
+  /// Spec 043 (menú restaurante): envía una foto de la CARTA/MENÚ a Gemini y
+  /// recibe los platos extraídos `[{name, description, price, portion,
+  /// category}]` para que el tendero los revise/edite antes de publicarlos.
+  /// Igual que [voiceInventory], viaja como BYTES + [MultipartFile.fromBytes]
+  /// para que funcione también en Flutter web (sin `dart:io File`/`XFile.path`).
+  Future<List<Map<String, dynamic>>> scanMenuPhoto({
+    required Uint8List imageBytes,
+    String mimeType = 'image/jpeg',
+    String filename = 'menu.jpg',
+  }) async {
+    try {
+      final formData = FormData.fromMap({
+        'image': MultipartFile.fromBytes(
+          imageBytes,
+          filename: filename,
+          contentType: DioMediaType.parse(mimeType),
+        ),
+      });
+      final response = await _dio.post('/api/v1/menu/scan-photo',
+          data: formData,
+          options: Options(receiveTimeout: const Duration(seconds: 45)));
+      final data = _extractData(response);
+      final dishes = (data['dishes'] as List?) ?? const [];
+      return dishes
+          .whereType<Map>()
+          .map((d) => Map<String, dynamic>.from(d))
+          .toList();
+    } on DioException catch (e) {
+      throw AppError.fromDioException(e);
+    }
+  }
+
   /// Phase-4 Voice-to-Catalog: ships the tendero's recorded note to
   /// Gemini multimodal and returns the parsed `[{name, quantity,
   /// price}]` array. The backend gates the endpoint behind

@@ -13,6 +13,14 @@ class Product {
   final String? presentation;
   final String? content;
 
+  /// F043 (menú restaurante): descripción/ingredientes del plato, porción
+  /// (texto libre: "Personal", "Para compartir", "12 oz") y bandera que marca
+  /// el producto como ítem del menú del restaurante. Para productos normales
+  /// quedan vacíos/false — son aditivos y no afectan el POS.
+  final String? description;
+  final String? portion;
+  final bool isMenuItem;
+
   /// F029: precios opcionales por tier (depósito contado / crédito /
   /// cliente final, o los nombres custom del tenant). Cuando es null
   /// el POS hace fallback al [price] retail con nota visual.
@@ -33,6 +41,9 @@ class Product {
     this.barcode,
     this.presentation,
     this.content,
+    this.description,
+    this.portion,
+    this.isMenuItem = false,
     this.priceTier1,
     this.priceTier2,
     this.priceTier3,
@@ -98,6 +109,10 @@ class Product {
       barcode: json['barcode'] as String?,
       presentation: json['presentation'] as String?,
       content: json['content'] as String?,
+      // F043: campos del menú restaurante (aditivos, opcionales).
+      description: json['description'] as String?,
+      portion: json['portion'] as String?,
+      isMenuItem: json['is_menu_item'] as bool? ?? false,
       // F029: tier prices opcionales (nullable). Tenants pre-migración
       // o productos sin tier configurado entregan null aquí.
       priceTier1: (json['price_tier_1'] as num?)?.toDouble(),
@@ -119,6 +134,12 @@ class Product {
         'barcode': barcode,
         'presentation': presentation,
         'content': content,
+        // F043: solo serializamos los campos del menú cuando aplican, para no
+        // pisar con null productos normales.
+        if (description != null && description!.isNotEmpty)
+          'description': description,
+        if (portion != null && portion!.isNotEmpty) 'portion': portion,
+        if (isMenuItem) 'is_menu_item': isMenuItem,
         // F029: serializamos los tiers solo cuando hay valor para no
         // sobreescribir un campo en el backend con null por accidente.
         if (priceTier1 != null) 'price_tier_1': priceTier1,
