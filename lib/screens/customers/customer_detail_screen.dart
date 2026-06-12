@@ -82,20 +82,22 @@ class _CustomerDetailScreenState extends State<CustomerDetailScreen> {
 
   void _openSale(CustomerSale sale) {
     HapticFeedback.lightImpact();
-    // ReceiptDetailScreen consume el Sale como Map — le pasamos lo que
-    // tenemos del historial. El detalle re-renderiza con esos campos.
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => ReceiptDetailScreen(
-          sale: {
+    // Pasamos el mapa CRUDO de la venta (incluye `items`, receipt_number, etc.),
+    // igual que el historial de ventas normal. Antes se reconstruía un mapa
+    // parcial SIN `items` y el detalle mostraba "Sin items registrados".
+    final raw = sale.raw.isNotEmpty
+        ? sale.raw
+        : <String, dynamic>{
             'id': sale.id,
             'uuid': sale.id,
             'total': sale.total,
             'created_at': sale.createdAt?.toIso8601String(),
             'payment_method': sale.paymentMethod,
             'items_count': sale.itemsCount,
-          },
-        ),
+          };
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => ReceiptDetailScreen(sale: raw),
       ),
     );
   }

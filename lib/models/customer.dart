@@ -104,21 +104,32 @@ class CustomerSale {
   final int itemsCount;
   final String paymentMethod;
 
+  /// Mapa CRUDO de la venta tal cual lo devuelve el backend (incluye `items`,
+  /// `receipt_number`, etc.). Se conserva para abrir el detalle (ReceiptDetail)
+  /// con TODOS los campos — antes se reconstruía un mapa parcial sin `items`,
+  /// por eso el detalle mostraba "Sin items registrados".
+  final Map<String, dynamic> raw;
+
   const CustomerSale({
     required this.id,
     this.total = 0,
     this.createdAt,
     this.itemsCount = 0,
     this.paymentMethod = '',
+    this.raw = const {},
   });
 
   factory CustomerSale.fromJson(Map<String, dynamic> json) {
+    // El backend (GetCustomerHistory) devuelve la venta con su array `items`
+    // (Preload). Derivamos el conteo de ahí; `items_count` queda como respaldo.
+    final items = (json['items'] as List?) ?? const [];
     return CustomerSale(
       id: (json['id'] ?? json['uuid'] ?? '').toString(),
       total: (json['total'] as num? ?? 0).toDouble(),
       createdAt: _parseDate(json['created_at']),
-      itemsCount: (json['items_count'] as num? ?? 0).toInt(),
+      itemsCount: (json['items_count'] as num?)?.toInt() ?? items.length,
       paymentMethod: (json['payment_method'] as String?) ?? '',
+      raw: json,
     );
   }
 }
