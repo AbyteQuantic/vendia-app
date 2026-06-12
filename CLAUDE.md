@@ -58,11 +58,13 @@ Adaptación a este repo (Flutter):
 
 - La plataforma web está habilitada; la app web se sirve en **`vendia.store`**
   (proyecto Vercel `vendia-app`).
-- ⚠️ **NO auto-despliega al mergear a `main`.** Hay que `flutter build web
-  --release --no-wasm-dry-run
-  --dart-define=API_BASE_URL=https://api.vendia.store` y `vercel deploy --prod`.
-  El workflow `.github/workflows/deploy-web.yml` lo automatiza cuando se agregue
-  el secret `VERCEL_TOKEN`. **Mergear ≠ desplegar.**
+- ✅ **Auto-despliega al pushear a `main`** (desde 2026-06-12): el workflow
+  `.github/workflows/deploy-web.yml` compila (`flutter build web --release
+  --no-wasm-dry-run` + dart-defines de `API_BASE_URL` y
+  `SUPPORT_WHATSAPP_NUMBER`) y hace `vercel deploy --prod` al proyecto
+  `vendia-app` (IDs inline, sin depender de `.vercel/`). Fallback manual:
+  mismo build + `vercel deploy --prod` desde `build/web`. La verificación
+  sigue siendo en `vendia.store` desplegado (Art. XII).
 - ⚡ **`--no-wasm-dry-run` ~2.3× más rápido** (compilación dart2js de ~78 s a
   ~34 s) y produce JS **byte-idéntico** — solo salta la pasada de análisis de
   compatibilidad WebAssembly, que aquí es inútil (Isar usa `dart:ffi`, que no
