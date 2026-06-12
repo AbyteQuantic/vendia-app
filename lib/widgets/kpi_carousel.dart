@@ -16,6 +16,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../theme/app_theme.dart';
+import 'dashboard_ui_kit.dart';
 
 /// Datos para una card del carrusel de KPIs.
 class KpiCardData {
@@ -242,7 +243,7 @@ class _KpiCard extends StatelessWidget {
             elevation: 0,
             color: Colors.transparent,
             child: InkWell(
-              borderRadius: BorderRadius.circular(28),
+              borderRadius: BorderRadius.circular(24),
               onTap: () {
                 HapticFeedback.lightImpact();
                 data.onTap();
@@ -254,24 +255,24 @@ class _KpiCard extends StatelessWidget {
                       data.onRemove!();
                     },
               child: Container(
+                // Tarjeta limpia: borde hairline 1px + UNA sombra muy
+                // difuminada y amplia (blur 20, ~3%) — fuera las sombras
+                // pesadas dobles que ensuciaban el carrusel.
                 decoration: BoxDecoration(
                   color: Colors.white,
-                  borderRadius: BorderRadius.circular(28),
+                  borderRadius: BorderRadius.circular(24),
+                  border: Border.all(color: DashUI.hairline, width: 1),
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.15 * opacity),
-                      blurRadius: 24,
-                      offset: const Offset(0, 12),
-                    ),
-                    BoxShadow(
-                      color: accent.withValues(alpha: 0.12 * opacity),
-                      blurRadius: 16,
-                      offset: const Offset(0, 6),
+                      color: Colors.black.withValues(alpha: 0.03 * opacity),
+                      blurRadius: 20,
+                      offset: const Offset(0, 8),
                     ),
                   ],
                 ),
                 child: ClipRRect(
-                  borderRadius: BorderRadius.circular(28),
+                  // -1 para que la imagen no se asome por fuera del borde 1px.
+                  borderRadius: BorderRadius.circular(23),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
@@ -338,8 +339,8 @@ class _KpiCard extends StatelessWidget {
                                     data.title,
                                     style: const TextStyle(
                                       fontSize: 20,
-                                      fontWeight: FontWeight.w800,
-                                      color: AppTheme.textPrimary,
+                                      fontWeight: FontWeight.w700,
+                                      color: DashUI.ink,
                                       height: 1.15,
                                       letterSpacing: -0.3,
                                     ),
@@ -359,8 +360,8 @@ class _KpiCard extends StatelessWidget {
                                             data.subtitle!,
                                             style: const TextStyle(
                                               fontSize: 13,
-                                              fontWeight: FontWeight.w600,
-                                              color: AppTheme.textSecondary,
+                                              fontWeight: FontWeight.w500,
+                                              color: DashUI.inkSoft,
                                             ),
                                             maxLines: 1,
                                             overflow: TextOverflow.ellipsis,
@@ -371,33 +372,41 @@ class _KpiCard extends StatelessWidget {
                                   ],
                                 ],
                               ),
-                              // Valor grande + botón circular (zona
-                              // "precio + play" del estilo de
-                              // referencia).
+                              // Zona inferior. Para KPIs: valor grande.
+                              // Para capacidades activas (onRemove != null):
+                              // el estado ("Activo") es un badge semántico
+                              // pequeño y alineado — no un texto suelto
+                              // gigante compitiendo con el título.
                               Row(
                                 crossAxisAlignment: CrossAxisAlignment.end,
                                 children: [
                                   Expanded(
-                                    child: Text(
-                                      data.value,
-                                      style: TextStyle(
-                                        fontSize: 28,
-                                        fontWeight: FontWeight.w900,
-                                        color: accent,
-                                        height: 1.0,
-                                        letterSpacing: -0.5,
-                                      ),
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                    ),
+                                    child: data.onRemove != null
+                                        ? Align(
+                                            alignment: Alignment.centerLeft,
+                                            child: DashStatusBadge(
+                                              label: data.value,
+                                              color: const Color(0xFF059669),
+                                            ),
+                                          )
+                                        : Text(
+                                            data.value,
+                                            style: TextStyle(
+                                              fontSize: 28,
+                                              fontWeight: FontWeight.w900,
+                                              color: accent,
+                                              height: 1.0,
+                                              letterSpacing: -0.5,
+                                            ),
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                          ),
                                   ),
                                   const SizedBox(width: 12),
                                   Material(
                                     color: accent,
                                     shape: const CircleBorder(),
-                                    elevation: 6,
-                                    shadowColor:
-                                        accent.withValues(alpha: 0.5),
+                                    elevation: 0,
                                     child: InkWell(
                                       customBorder: const CircleBorder(),
                                       onTap: () {

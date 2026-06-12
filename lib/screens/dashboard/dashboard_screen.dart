@@ -16,6 +16,7 @@ import '../../services/catalog_service.dart';
 import '../../config/catalog_merge.dart';
 import '../../services/role_manager.dart';
 import '../../theme/app_theme.dart';
+import '../../widgets/dashboard_ui_kit.dart';
 import '../../widgets/online_orders_bell.dart';
 import '../../widgets/profile_photo_avatar.dart';
 import '../../widgets/profile_photo_picker.dart';
@@ -733,6 +734,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
     final topPad = MediaQuery.of(context).padding.top;
     return Scaffold(
       backgroundColor: const Color(0xFFF8FAFC),
+      // El body se extiende DETRÁS de la barra inferior glass: así el
+      // contenido se entrevé difuminado tras el botón al hacer scroll
+      // (el spacer final del CustomScrollView evita que algo quede
+      // permanentemente oculto).
+      extendBody: true,
       body: Column(
         children: [
           const SyncStatusBanner(),
@@ -917,12 +923,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 // ── Recent Sales Header ─────────────────────────────
                 const SliverToBoxAdapter(
                   child: Padding(
-                    padding: EdgeInsets.fromLTRB(22, 20, 22, 4),
+                    padding: EdgeInsets.fromLTRB(24, 32, 24, 8),
                     child: Text('Últimas ventas',
                         style: TextStyle(
                             fontSize: 20,
-                            fontWeight: FontWeight.bold,
-                            color: AppTheme.textPrimary)),
+                            fontWeight: FontWeight.w700,
+                            color: Color(0xFF1F2937))),
                   ),
                 ),
 
@@ -942,12 +948,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
                           ),
                         )
                       : Container(
+                          // Mismo lenguaje que las listas agrupadas de
+                          // módulos: tarjeta blanca, borde hairline,
+                          // sombra suave y divisores clarísimos.
                           margin:
-                              const EdgeInsets.fromLTRB(24, 12, 24, 24),
-                          decoration: BoxDecoration(
-                            color: AppTheme.surfaceGrey,
-                            borderRadius: BorderRadius.circular(24),
-                          ),
+                              const EdgeInsets.fromLTRB(16, 8, 16, 16),
+                          decoration: DashUI.card(),
+                          clipBehavior: Clip.antiAlias,
                           child: ListView.separated(
                             physics:
                                 const NeverScrollableScrollPhysics(),
@@ -955,8 +962,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
                             itemCount: _data.recentSales.length,
                             separatorBuilder: (_, __) => const Divider(
                               height: 1,
+                              thickness: 1,
                               indent: 76,
-                              color: AppTheme.borderColor,
+                              color: DashUI.divider,
                             ),
                             itemBuilder: (_, i) =>
                                 _buildSaleTile(_data.recentSales[i]),
@@ -964,37 +972,56 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         ),
                 ),
 
-                const SliverToBoxAdapter(child: SizedBox(height: 16)),
+                // Spacer final: con `extendBody` el scroll pasa por detrás
+                // de la barra glass — esta altura garantiza que "Últimas
+                // ventas" pueda desplazarse por ENCIMA del botón y nunca
+                // quede permanentemente oculto.
+                const SliverToBoxAdapter(child: SizedBox(height: 104)),
               ],
             ),
           ),
         )),
         ],
       ),
-      bottomNavigationBar: Container(
-        padding: EdgeInsets.fromLTRB(
-            18, 12, 18, MediaQuery.of(context).padding.bottom + 12),
-        decoration: BoxDecoration(
-          color: const Color(0xFFF8FAFC),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.06),
-              blurRadius: 12,
-              offset: const Offset(0, -2),
+      // ── Barra inferior glass (Glassmorphism funcional) ──────────────
+      // Vidrio translúcido con blur: el contenido que queda detrás al
+      // hacer scroll se difumina elegantemente en vez de cortarse contra
+      // un fondo sólido. El botón es azul sólido de alto contraste, sin
+      // bordes, esquinas 14.
+      bottomNavigationBar: ClipRect(
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 14, sigmaY: 14),
+          child: Container(
+            padding: EdgeInsets.fromLTRB(
+                16, 12, 16, MediaQuery.of(context).padding.bottom + 12),
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.78),
+              border: const Border(
+                top: BorderSide(color: Color(0x0D000000), width: 1),
+              ),
             ),
-          ],
-        ),
-        child: SizedBox(
-          height: 60,
-          child: ElevatedButton.icon(
-            onPressed: () async {
-              HapticFeedback.lightImpact();
-              await Navigator.of(context).push(MaterialPageRoute(
-                builder: (_) => const PosScreen(),
-              ));
-            },
-            icon: const Icon(Icons.add_rounded, size: 26),
-            label: const Text('Registrar nueva venta'),
+            child: SizedBox(
+              height: 56,
+              child: ElevatedButton.icon(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppTheme.primary,
+                  foregroundColor: Colors.white,
+                  elevation: 0,
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14)),
+                  textStyle: const TextStyle(
+                      fontSize: 17, fontWeight: FontWeight.w700),
+                ),
+                onPressed: () async {
+                  HapticFeedback.lightImpact();
+                  await Navigator.of(context).push(MaterialPageRoute(
+                    builder: (_) => const PosScreen(),
+                  ));
+                },
+                icon: const Icon(Icons.add_rounded, size: 26),
+                label: const Text('Registrar nueva venta'),
+              ),
+            ),
           ),
         ),
       ),
@@ -1189,14 +1216,16 @@ class _HeroHeaderDelegate extends SliverPersistentHeaderDelegate {
     final t = range <= 0 ? 0.0 : (shrinkOffset / range).clamp(0.0, 1.0);
     final detailsOpacity = (1.0 - t * 1.8).clamp(0.0, 1.0);
 
-    // ── Glass al hacer scroll ────────────────────────────────────────
-    // En reposo (t=0) el header es el gradiente sólido de siempre. Al
-    // desplazar el contenido (t→1) el gradiente se vuelve translúcido y
-    // se aplica un desenfoque que deja ver el contenido pasar detrás
-    // (efecto vidrio). El blur cuesta en Android de gama baja (Art. I),
-    // así que el BackdropFilter solo se monta cuando ya hay scroll.
-    final bgAlpha = 1.0 - 0.24 * t; // 1.0 → 0.76
-    final blurSigma = 14.0 * t; // 0 → 14
+    // ── Glassmorphism funcional ──────────────────────────────────────
+    // Material translúcido en vez del gradiente sólido y abrupto: en
+    // reposo (t=0) el tinte azul ya es levemente translúcido (0.94) y al
+    // desplazar (t→1) baja a 0.68 + blur — el contenido se entrevé
+    // sutilmente detrás del vidrio, pero el TINTE azul garantiza que el
+    // texto blanco (nombre, "Abierta", fecha) conserve contraste absoluto.
+    // El blur cuesta en Android de gama baja (Art. I), así que el
+    // BackdropFilter solo se monta cuando ya hay scroll.
+    final bgAlpha = 0.94 - 0.26 * t; // 0.94 → 0.68
+    final blurSigma = 16.0 * t; // 0 → 16
     final gradient = LinearGradient(
       begin: Alignment.topLeft,
       end: Alignment.bottomRight,
@@ -1214,12 +1243,14 @@ class _HeroHeaderDelegate extends SliverPersistentHeaderDelegate {
           bottomLeft: Radius.circular(24),
           bottomRight: Radius.circular(24),
         ),
+        // Sombra amplia y muy difuminada — separa el vidrio del contenido
+        // sin la sombra dura anterior.
         boxShadow: t > 0.3
             ? [
                 BoxShadow(
-                  color: const Color(0xFF1E3A8A).withValues(alpha: 0.3),
-                  blurRadius: 12,
-                  offset: const Offset(0, 4),
+                  color: const Color(0xFF1E3A8A).withValues(alpha: 0.14),
+                  blurRadius: 20,
+                  offset: const Offset(0, 6),
                 ),
               ]
             : null,

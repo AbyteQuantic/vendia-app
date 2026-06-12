@@ -14,7 +14,7 @@ import 'package:flutter/services.dart';
 
 import '../config/dashboard_modules.dart';
 import '../services/auth_service.dart';
-import '../theme/app_theme.dart';
+import 'dashboard_ui_kit.dart';
 
 class DashboardModuleGrid extends StatelessWidget {
   /// Tipo de negocio del tenant — gatea los módulos `byType`.
@@ -57,7 +57,9 @@ class DashboardModuleGrid extends StatelessWidget {
   }
 }
 
-/// Una sección con encabezado + las tarjetas de sus módulos.
+/// Una sección con encabezado + sus módulos en una LISTA AGRUPADA
+/// (inset grouped, estilo Ajustes de iOS): un solo contenedor blanco con
+/// bordes redondeados y divisores internos sutiles — sin sombra por ítem.
 class _CategorySection extends StatelessWidget {
   final ModuleCategory category;
   final List<DashboardModule> modules;
@@ -73,31 +75,47 @@ class _CategorySection extends StatelessWidget {
     final rest = modules.where((m) => m.id != 'registrar_venta').toList();
 
     return Padding(
-      padding: const EdgeInsets.fromLTRB(18, 16, 18, 0),
+      padding: const EdgeInsets.fromLTRB(DashUI.s16, DashUI.s24, DashUI.s16, 0),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // ── Encabezado de categoría ──────────────────────────────
+          // ── Encabezado de categoría — con más aire ──────────────
           Padding(
-            padding: const EdgeInsets.only(left: 4, bottom: 10),
+            padding: const EdgeInsets.only(left: DashUI.s8, bottom: 12),
             child: Text(
               category.label,
               style: const TextStyle(
-                fontSize: 17,
-                fontWeight: FontWeight.w800,
-                color: AppTheme.textSecondary,
-                letterSpacing: 0.6,
+                fontSize: 14,
+                fontWeight: FontWeight.w700,
+                color: DashUI.inkSoft,
+                letterSpacing: 1.1,
               ),
             ),
           ),
           for (final m in featured) ...[
             _FeaturedModuleCard(module: m),
-            const SizedBox(height: 10),
+            const SizedBox(height: 12),
           ],
-          for (final m in rest) ...[
-            _ModuleCard(module: m),
-            const SizedBox(height: 10),
-          ],
+          // ── Grupo: una sola tarjeta con divisores internos ──────
+          if (rest.isNotEmpty)
+            Container(
+              decoration: DashUI.card(),
+              clipBehavior: Clip.antiAlias,
+              child: Column(
+                children: [
+                  for (var i = 0; i < rest.length; i++) ...[
+                    if (i > 0)
+                      const Divider(
+                        height: 1,
+                        thickness: 1,
+                        indent: 70, // alinea con el texto, pasado el ícono
+                        color: DashUI.divider,
+                      ),
+                    _ModuleRow(module: rest[i]),
+                  ],
+                ],
+              ),
+            ),
         ],
       ),
     );
@@ -128,12 +146,13 @@ class _FeaturedModuleCard extends StatelessWidget {
               end: Alignment.bottomRight,
               colors: [Color(0xFF1E3A8A), Color(0xFF3B82F6)],
             ),
-            borderRadius: BorderRadius.circular(20),
+            borderRadius: BorderRadius.circular(DashUI.rCard),
+            // Sombra amplia y difuminada (no pesada) teñida del azul hero.
             boxShadow: [
               BoxShadow(
-                color: const Color(0xFF1E3A8A).withValues(alpha: 0.3),
-                blurRadius: 14,
-                offset: const Offset(0, 6),
+                color: const Color(0xFF1E3A8A).withValues(alpha: 0.18),
+                blurRadius: 20,
+                offset: const Offset(0, 8),
               ),
             ],
           ),
@@ -184,11 +203,13 @@ class _FeaturedModuleCard extends StatelessWidget {
   }
 }
 
-/// Tarjeta estándar de módulo.
-class _ModuleCard extends StatelessWidget {
+/// Fila de módulo dentro del grupo (estilo Ajustes de iOS): sin tarjeta ni
+/// sombra propia — el contenedor agrupado las aporta. Ícono con fondo al
+/// 10% de su color; título #1F2937 y subtítulo #6B7280.
+class _ModuleRow extends StatelessWidget {
   final DashboardModule module;
 
-  const _ModuleCard({required this.module});
+  const _ModuleRow({required this.module});
 
   @override
   Widget build(BuildContext context) {
@@ -199,60 +220,20 @@ class _ModuleCard extends StatelessWidget {
         color: Colors.transparent,
         child: InkWell(
           key: Key('dashboard_module_${module.id}'),
-          borderRadius: BorderRadius.circular(20),
           onTap: () => _navigate(context, module),
-          child: Container(
-            width: double.infinity,
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(20),
-              border: Border.all(
-                color: module.color.withValues(alpha: 0.10),
-                width: 1,
-              ),
-              boxShadow: [
-                // Sombra teñida con el color del módulo — da profundidad
-                // y refuerza la identidad de cada categoría sin saturar.
-                BoxShadow(
-                  color: module.color.withValues(alpha: 0.10),
-                  blurRadius: 18,
-                  offset: const Offset(0, 6),
-                ),
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.025),
-                  blurRadius: 4,
-                  offset: const Offset(0, 1),
-                ),
-              ],
-            ),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(
+                horizontal: DashUI.s16, vertical: 14),
             child: Row(
               children: [
-                // Ícono dentro de un container con gradient diagonal
-                // del color del módulo — más vivo que el flat color
-                // y consistente con el hero del Welcome modernizado.
                 Container(
-                  width: 52,
-                  height: 52,
+                  width: 44,
+                  height: 44,
                   decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                      colors: [
-                        module.color.withValues(alpha: 0.18),
-                        module.color.withValues(alpha: 0.32),
-                      ],
-                    ),
-                    borderRadius: BorderRadius.circular(16),
-                    boxShadow: [
-                      BoxShadow(
-                        color: module.color.withValues(alpha: 0.25),
-                        blurRadius: 8,
-                        offset: const Offset(0, 3),
-                      ),
-                    ],
+                    color: module.color.withValues(alpha: 0.10),
+                    borderRadius: BorderRadius.circular(12),
                   ),
-                  child: Icon(module.icon, color: module.color, size: 26),
+                  child: Icon(module.icon, color: module.color, size: 24),
                 ),
                 const SizedBox(width: 14),
                 Expanded(
@@ -262,9 +243,9 @@ class _ModuleCard extends StatelessWidget {
                       Text(
                         module.title,
                         style: const TextStyle(
-                          fontSize: 17,
-                          fontWeight: FontWeight.w700,
-                          color: AppTheme.textPrimary,
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                          color: DashUI.ink,
                           height: 1.2,
                         ),
                         maxLines: 1,
@@ -275,7 +256,7 @@ class _ModuleCard extends StatelessWidget {
                         module.subtitle,
                         style: const TextStyle(
                           fontSize: 13,
-                          color: AppTheme.textSecondary,
+                          color: DashUI.inkSoft,
                           height: 1.3,
                         ),
                         maxLines: 2,
@@ -284,11 +265,8 @@ class _ModuleCard extends StatelessWidget {
                     ],
                   ),
                 ),
-                // Chevron más sutil — el color del módulo solo en hover
-                // visual de la sombra. El gris suave no compite con el
-                // ícono coloreado.
                 Icon(Icons.chevron_right_rounded,
-                    color: Colors.grey.shade400, size: 22),
+                    color: Colors.grey.shade300, size: 22),
               ],
             ),
           ),
