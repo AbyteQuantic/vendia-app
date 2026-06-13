@@ -15,6 +15,7 @@ import '../../services/image_normalizer.dart' show ImageNormalizationException;
 import '../../theme/app_theme.dart';
 import '../../utils/barcode_validator.dart';
 import '../../utils/currency_input.dart';
+import '../../widgets/dashboard_ui_kit.dart';
 import '../../widgets/picked_image_preview.dart';
 import '../pos/scan_screen.dart';
 
@@ -32,6 +33,10 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
   final _nameCtrl = TextEditingController();
   final _nameFocus = FocusNode();
   final _nameLayerLink = LayerLink();
+  // Cierre diferido del autocomplete al perder el foco (ver initState):
+  // evita que el blur mate el overlay antes de que el tap en una
+  // sugerencia se registre (bug "no me deja seleccionar" en iOS web).
+  Timer? _blurConfirmTimer;
   final _buyPriceCtrl = TextEditingController();
   final _sellPriceCtrl = TextEditingController();
   final _quantityCtrl = TextEditingController(text: '1');
@@ -106,8 +111,20 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
     super.initState();
     _nameFocus.addListener(() {
       if (!_nameFocus.hasFocus) {
-        _confirmNameField(unfocus: false);
+        // NO cerramos el autocomplete de inmediato al perder el foco.
+        // En web (iOS Safari) tocar una sugerencia hace que el campo
+        // pierda el foco ANTES de que el `onTap` del item alcance a
+        // dispararse — si aquí cerráramos el overlay, el tap caería al
+        // vacío y "no se podía seleccionar nada". Diferimos el cierre:
+        // si el blur fue por tocar una sugerencia, su `onTap` corre
+        // primero (cierra el overlay él mismo) y cancela este timer.
+        _blurConfirmTimer?.cancel();
+        _blurConfirmTimer = Timer(const Duration(milliseconds: 220), () {
+          if (!mounted || _nameFocus.hasFocus || _overlayEntry == null) return;
+          _confirmNameField(unfocus: false);
+        });
       } else {
+        _blurConfirmTimer?.cancel();
         // FR-02: when the name field gains focus the iOS keyboard slides
         // up and covers the suggestion list. Scroll the form so the field
         // — and the suggestions rendered right under it — stay visible.
@@ -177,6 +194,7 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
   void dispose() {
     _removeOverlay();
     _debounce?.cancel();
+    _blurConfirmTimer?.cancel();
     _nameCtrl.dispose();
     _nameFocus.dispose();
     _buyPriceCtrl.dispose();
@@ -259,6 +277,13 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
                                 : 'Sin especificar');
 
                         return InkWell(
+                          // `canRequestFocus: false`: tocar la sugerencia NO
+                          // le roba el foco al campo de texto → el teclado no
+                          // se cierra y la lista no se desplaza a mitad del
+                          // toque (esa era la otra causa del "no me deja
+                          // seleccionar"). `excludeFromSemantics`+translucent
+                          // para que el gesto siempre enganche.
+                          canRequestFocus: false,
                           onTap: () => _selectSuggestion(s),
                           child: Padding(
                             padding: const EdgeInsets.symmetric(
@@ -636,6 +661,7 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
   }
 
   void _selectSuggestion(_ProductSuggestion s) {
+    _blurConfirmTimer?.cancel(); // ganamos la carrera contra el cierre por blur
     final fullName = s.brand.isNotEmpty ? '${s.name} (${s.brand})' : s.name;
     _nameCtrl.text = fullName;
     _removeOverlay();
@@ -1225,13 +1251,17 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
         if (shouldPop && context.mounted) Navigator.of(context).pop();
       },
       child: Scaffold(
-        backgroundColor: const Color(0xFFF5F7FA),
+        // Página gris súper claro (estilo iOS): las tarjetas blancas flotan
+        // nítidas encima.
+        backgroundColor: DashUI.groupBg,
         appBar: AppBar(
-          backgroundColor: const Color(0xFFF5F7FA),
+          backgroundColor: DashUI.groupBg,
+          surfaceTintColor: DashUI.groupBg,
           elevation: 0,
+          scrolledUnderElevation: 0,
           leading: IconButton(
             icon: const Icon(Icons.arrow_back_rounded,
-                color: AppTheme.textPrimary, size: 28),
+                color: DashUI.ink, size: 28),
             tooltip: 'Volver',
             onPressed: () async {
               final shouldPop = await _confirmDiscard();
@@ -1241,9 +1271,9 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
           title: const Text(
             'Nuevo Producto',
             style: TextStyle(
-              fontSize: 22,
-              fontWeight: FontWeight.bold,
-              color: AppTheme.textPrimary,
+              fontSize: 20,
+              fontWeight: FontWeight.w700,
+              color: DashUI.ink,
             ),
           ),
         ),
@@ -1266,10 +1296,10 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
                         }
                       },
                       style: OutlinedButton.styleFrom(
-                        foregroundColor: AppTheme.textSecondary,
-                        side: const BorderSide(color: AppTheme.borderColor),
+                        foregroundColor: DashUI.inkSoft,
+                        side: const BorderSide(color: Color(0x14000000)),
                         shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(16)),
+                            borderRadius: BorderRadius.circular(14)),
                       ),
                       child: const Text('Cancelar',
                           style: TextStyle(
@@ -1283,45 +1313,32 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
                   flex: 3,
                   child: SizedBox(
                     height: 56,
-                    child: DecoratedBox(
-                      decoration: BoxDecoration(
-                        gradient: const LinearGradient(
-                          colors: [Color(0xFF667EEA), Color(0xFF764BA2)],
-                        ),
-                        borderRadius: BorderRadius.circular(16),
-                        boxShadow: [
-                          BoxShadow(
-                            color:
-                                const Color(0xFF667EEA).withValues(alpha: 0.3),
-                            blurRadius: 10,
-                            offset: const Offset(0, 4),
-                          ),
-                        ],
+                    // Acción primaria: azul sólido de alto contraste, sin
+                    // bordes ni el degradado morado anterior.
+                    child: ElevatedButton.icon(
+                      onPressed: _saving ? null : _save,
+                      icon: _saving
+                          ? const SizedBox(
+                              width: 20,
+                              height: 20,
+                              child: CircularProgressIndicator(
+                                  color: Colors.white, strokeWidth: 2.5))
+                          : const Icon(Icons.save_rounded,
+                              size: 20, color: Colors.white),
+                      label: Text(
+                        _saving ? 'Guardando...' : 'Guardar',
+                        style: const TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.w700,
+                            color: Colors.white),
                       ),
-                      child: ElevatedButton.icon(
-                        onPressed: _saving ? null : _save,
-                        icon: _saving
-                            ? const SizedBox(
-                                width: 20,
-                                height: 20,
-                                child: CircularProgressIndicator(
-                                    color: Colors.white, strokeWidth: 2.5))
-                            : const Icon(Icons.save_rounded,
-                                size: 20, color: Colors.white),
-                        label: Text(
-                          _saving ? 'Guardando...' : 'Guardar',
-                          style: const TextStyle(
-                              fontSize: 19,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.white),
-                        ),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.transparent,
-                          shadowColor: Colors.transparent,
-                          minimumSize: const Size(0, 56),
-                          shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(16)),
-                        ),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: AppTheme.primary,
+                        foregroundColor: Colors.white,
+                        elevation: 0,
+                        minimumSize: const Size(0, 56),
+                        shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(14)),
                       ),
                     ),
                   ),
@@ -1344,15 +1361,19 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
                   child: Container(
                     height: 64,
                     decoration: BoxDecoration(
+                      // Azul marino con degradado sutil — mismo hero que el
+                      // dashboard, en vez del índigo/morado anterior.
                       gradient: const LinearGradient(
-                        colors: [Color(0xFF667EEA), Color(0xFF5A67D8)],
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                        colors: [Color(0xFF1E3A8A), Color(0xFF3B82F6)],
                       ),
-                      borderRadius: BorderRadius.circular(20),
+                      borderRadius: BorderRadius.circular(16),
                       boxShadow: [
                         BoxShadow(
-                          color: const Color(0xFF667EEA).withValues(alpha: 0.3),
-                          blurRadius: 12,
-                          offset: const Offset(0, 4),
+                          color: const Color(0xFF1E3A8A).withValues(alpha: 0.18),
+                          blurRadius: 20,
+                          offset: const Offset(0, 8),
                         ),
                       ],
                     ),
@@ -1980,18 +2001,16 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
   // ── Helpers ────────────────────────────────────────────────────────────────
 
   Widget _card({required List<Widget> children}) {
+    // Tarjeta limpia: blanca sobre la página gris claro, borde hairline
+    // (rgba 0,0,0,.05) y sombra amplia casi invisible — mismo lenguaje que
+    // el dashboard/eventos, sin sombras pesadas.
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.05),
-            blurRadius: 10,
-            offset: const Offset(0, 2),
-          ),
-        ],
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0x0D000000), width: 1),
+        boxShadow: DashUI.softShadow,
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,

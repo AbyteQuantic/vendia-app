@@ -76,6 +76,39 @@ void main() {
       await tester.pump(const Duration(seconds: 5)); // drain the 4s timer
     });
 
+    testWidgets('suggestion stays selectable after the field loses focus',
+        (tester) async {
+      // Reproduce el bug de iOS web: al tocar una sugerencia el campo
+      // pierde el foco ANTES de que el tap se registre. Antes el blur
+      // cerraba el overlay de inmediato y el tap caía al vacío. Ahora el
+      // cierre por blur está diferido, así que la selección gana.
+      final nameField = await _openScreenAndFindNameField(tester);
+      await tester.tap(nameField);
+      await tester.pump();
+      await tester.enterText(nameField, 'coca');
+      await tester.pump(const Duration(milliseconds: 60));
+
+      final suggestion = find.text('Coca Cola (Coca-Cola)');
+      expect(suggestion, findsWidgets);
+
+      // Simula la pérdida de foco que provoca el tap en web ANTES del tap.
+      FocusManager.instance.primaryFocus?.unfocus();
+      await tester.pump(); // el listener de blur arma el timer diferido
+
+      // El overlay sigue vivo y la sugerencia se puede seleccionar.
+      expect(suggestion, findsWidgets,
+          reason: 'el blur no debe cerrar el overlay de inmediato');
+      await tester.tap(suggestion.first);
+      await tester.pump();
+
+      final filled =
+          (tester.widget(nameField) as TextFormField).controller!.text;
+      expect(filled, 'Coca Cola (Coca-Cola)',
+          reason: 'la sugerencia se selecciona aunque el campo perdió el foco');
+
+      await tester.pump(const Duration(seconds: 5)); // drena timers pendientes
+    });
+
     testWidgets('suggestions render with the soft keyboard up', (tester) async {
       // A phone-sized viewport with the soft keyboard raised.
       tester.view.physicalSize = const Size(390 * 3, 760 * 3);
