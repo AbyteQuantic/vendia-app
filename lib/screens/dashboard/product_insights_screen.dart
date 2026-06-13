@@ -4,7 +4,18 @@ import 'package:flutter/services.dart';
 import '../../services/api_service.dart';
 import '../../services/auth_service.dart';
 import '../../theme/app_theme.dart';
+import '../../widgets/dashboard_ui_kit.dart';
 import '../online_store/promo_management_screen.dart';
+
+/// Tarjeta limpia del módulo — mismo lenguaje que el dashboard: blanca,
+/// radius 14, borde hairline (rgba 0,0,0,.05) y sombra casi invisible y
+/// amplia. Reemplaza los bordes grises pesados que metían ruido visual.
+BoxDecoration _insightCard({Color? color, Color? border}) => BoxDecoration(
+      color: color ?? Colors.white,
+      borderRadius: BorderRadius.circular(14),
+      border: Border.all(color: border ?? const Color(0x0D000000), width: 1),
+      boxShadow: DashUI.softShadow,
+    );
 
 /// Inteligencia de productos — what to act on.
 ///
@@ -72,18 +83,27 @@ class _ProductInsightsScreenState extends State<ProductInsightsScreen> {
     return DefaultTabController(
       length: 3,
       child: Scaffold(
-        backgroundColor: AppTheme.background,
+        backgroundColor: Colors.white,
         appBar: AppBar(
+          backgroundColor: Colors.white,
+          surfaceTintColor: Colors.white,
+          elevation: 0,
+          scrolledUnderElevation: 0,
+          foregroundColor: DashUI.ink,
           title: const Text('Inteligencia de productos',
-              style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
+              style: TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.w700,
+                  color: DashUI.ink)),
           bottom: const TabBar(
             isScrollable: true,
             labelColor: AppTheme.primary,
-            unselectedLabelColor: AppTheme.textSecondary,
+            unselectedLabelColor: DashUI.inkSoft,
             indicatorColor: AppTheme.primary,
             indicatorWeight: 3,
+            dividerColor: DashUI.divider,
             labelStyle:
-                TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
+                TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
             tabs: [
               Tab(icon: Icon(Icons.trending_up_rounded), text: 'Más vendidos'),
               Tab(icon: Icon(Icons.trending_down_rounded), text: 'Casi no salen'),
@@ -208,13 +228,9 @@ class _TopSellerTile extends StatelessWidget {
                 ? '🥉'
                 : '#$rank';
     return Container(
-      margin: const EdgeInsets.only(bottom: 10),
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: AppTheme.borderColor.withValues(alpha: 0.5)),
-      ),
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(14),
+      decoration: _insightCard(),
       child: Row(children: [
         SizedBox(
           width: 32,
@@ -232,7 +248,7 @@ class _TopSellerTile extends StatelessWidget {
             children: [
               Text(name,
                   style: const TextStyle(
-                      fontSize: 16, fontWeight: FontWeight.bold),
+                      fontSize: 16, fontWeight: FontWeight.w700, color: DashUI.ink),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis),
               const SizedBox(height: 4),
@@ -309,13 +325,9 @@ class _SlowMoverTile extends StatelessWidget {
     final lastSaleStr = _lastSaleLabel(lastSale);
 
     return Container(
-      margin: const EdgeInsets.only(bottom: 10),
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: AppTheme.borderColor.withValues(alpha: 0.5)),
-      ),
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(14),
+      decoration: _insightCard(),
       child: Row(children: [
         _ProductThumbnail(imageUrl: imageUrl),
         const SizedBox(width: 12),
@@ -325,7 +337,7 @@ class _SlowMoverTile extends StatelessWidget {
             children: [
               Text(name,
                   style: const TextStyle(
-                      fontSize: 16, fontWeight: FontWeight.bold),
+                      fontSize: 16, fontWeight: FontWeight.w700, color: DashUI.ink),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis),
               const SizedBox(height: 4),
@@ -411,17 +423,11 @@ class _ExpiringTile extends StatelessWidget {
     final urgent = daysLeft <= 7;
     final loss = cost > 0 ? cost * stock : 0;
     return Container(
-      margin: const EdgeInsets.only(bottom: 10),
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: urgent
-            ? AppTheme.error.withValues(alpha: 0.05)
-            : Colors.white,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(
-            color: urgent
-                ? AppTheme.error.withValues(alpha: 0.4)
-                : AppTheme.borderColor.withValues(alpha: 0.5)),
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(14),
+      decoration: _insightCard(
+        color: urgent ? AppTheme.error.withValues(alpha: 0.05) : Colors.white,
+        border: urgent ? AppTheme.error.withValues(alpha: 0.25) : null,
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -435,7 +441,7 @@ class _ExpiringTile extends StatelessWidget {
                 children: [
                   Text(name,
                       style: const TextStyle(
-                          fontSize: 16, fontWeight: FontWeight.bold),
+                      fontSize: 16, fontWeight: FontWeight.w700, color: DashUI.ink),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis),
                   const SizedBox(height: 4),
@@ -544,8 +550,8 @@ class _ActionBanner extends StatelessWidget {
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
         color: color.withValues(alpha: 0.08),
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: color.withValues(alpha: 0.3)),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: color.withValues(alpha: 0.18)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
