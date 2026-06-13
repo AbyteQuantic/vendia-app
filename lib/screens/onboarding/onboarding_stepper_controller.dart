@@ -37,6 +37,11 @@ class OnboardingStepperController extends ChangeNotifier {
   String phone = '';
   String pin = '';
 
+  // Spec 045 — confirmación de PIN. NO se persiste ni viaja en el payload:
+  // es solo un gate de validación (pin == confirmPin). Vive aquí para que el
+  // getter canRegister sea la única fuente de verdad del onboarding agéntico.
+  String confirmPin = '';
+
   // ── Paso 2: Tienda ────────────────────────────────────────────────────────
   String businessName = '';
   String razonSocial = '';
@@ -165,6 +170,15 @@ class OnboardingStepperController extends ChangeNotifier {
   /// CTAs). We write a 1-element array so the wire format stays
   /// stable.
   void setPrimaryBusinessType(String type) {
+    _setPrimaryBusinessTypeCore(type);
+    notifyListeners();
+  }
+
+  /// Núcleo sin notify (Spec 045): aplica el tipo + sus side-effects de
+  /// feature-flags (hasTables food, limpia capacidades implícitas) sin
+  /// disparar notifyListeners — para que applyParseResult notifique una sola
+  /// vez (INV-4). setPrimaryBusinessType lo envuelve y notifica.
+  void _setPrimaryBusinessTypeCore(String type) {
     businessTypes = [type];
     // enable_tables in the backend fires when the type is in the food
     // stack — mirror it here so the branches/config step defaults are
@@ -177,8 +191,6 @@ class OnboardingStepperController extends ChangeNotifier {
     if (implied.contains(OptionalCapability.services)) offersServices = false;
     if (implied.contains(OptionalCapability.fractionalUnits)) sellsByWeight = false;
     // hasTables se maneja arriba (el tipo food ya lo activa implícitamente)
-
-    notifyListeners();
   }
 
   void setMultipleBranches(bool value) {
@@ -187,9 +199,195 @@ class OnboardingStepperController extends ChangeNotifier {
   }
 
   void setHasEmployees(bool value) {
+    _setHasEmployeesCore(value);
+    notifyListeners();
+  }
+
+  /// Núcleo sin notify (Spec 045) — ver _setPrimaryBusinessTypeCore.
+  void _setHasEmployeesCore(bool value) {
     hasEmployees = value;
     // Bar con mesas: sugerencia automática de has_tables
     if (businessType == 'bar') hasTables = true;
+  }
+
+  // ── Setters de texto (Spec 045) ───────────────────────────────────────────
+  // El onboarding agéntico edita los campos en mini-formularios y necesita que
+  // canRegister + los resúmenes de las Smart Cards se refresquen en vivo. Los
+  // Form del wizard clásico siguen escribiendo el campo directo (sin notify),
+  // así que estos setters no rompen nada — solo añaden el notify que la UI
+  // reactiva necesita.
+  void setOwnerName(String v) {
+    ownerName = v;
+    notifyListeners();
+  }
+
+  void setOwnerLastName(String v) {
+    ownerLastName = v;
+    notifyListeners();
+  }
+
+  void setPhone(String v) {
+    phone = v;
+    notifyListeners();
+  }
+
+  void setPin(String v) {
+    pin = v;
+    notifyListeners();
+  }
+
+  void setConfirmPin(String v) {
+    confirmPin = v;
+    notifyListeners();
+  }
+
+  void setBusinessName(String v) {
+    businessName = v;
+    notifyListeners();
+  }
+
+  void setRazonSocial(String v) {
+    razonSocial = v;
+    notifyListeners();
+  }
+
+  void setNit(String v) {
+    nit = v;
+    notifyListeners();
+  }
+
+  void setAddress(String v) {
+    address = v;
+    notifyListeners();
+  }
+
+  // ── Validación re-alojada + gate de registro (Spec 045) ───────────────────
+  // Estos predicados eran reglas dispersas en los Form de step_owner/
+  // step_business y en los gates de _onNext. El onboarding agéntico no usa
+  // esos widgets, así que la validación vive aquí como única fuente de verdad.
+
+  /// Tipos de negocio válidos (whitelist espejo de models.ValidBusinessTypes).
+  static const Set<String> validBusinessTypes = {
+    'tienda_barrio',
+    'minimercado',
+    'deposito_construccion',
+    'restaurante',
+    'comidas_rapidas',
+    'bar',
+    'manufactura',
+    'reparacion_muebles',
+    'emprendimiento_general',
+    'academias_instituciones',
+  };
+
+  bool get ownerValid =>
+      ownerName.trim().isNotEmpty && ownerLastName.trim().isNotEmpty;
+
+  /// Teléfono: al menos 7 dígitos (regla original de step_owner).
+  bool get phoneValid =>
+      phone.replaceAll(RegExp(r'\D'), '').length >= 7;
+
+  /// PIN: 4-8 dígitos numéricos (regla original de step_owner).
+  bool get pinValid {
+    final p = pin.trim();
+    return p.length >= 4 && p.length <= 8 && RegExp(r'^\d+$').hasMatch(p);
+  }
+
+  bool get pinConfirmed => pin.isNotEmpty && pin == confirmPin;
+
+  bool get businessNameValid => businessName.trim().isNotEmpty;
+
+  /// Dirección requerida (Spec 045 — aprobado por el fundador 2026-06-13).
+  bool get addressValid => address.trim().isNotEmpty;
+
+  bool get businessTypeSelected => businessTypes.isNotEmpty;
+
+  bool get logoSelected => logoUrl.trim().isNotEmpty;
+
+  /// Gate único del botón "Crear mi cuenta": AND de todos los requeridos.
+  /// Replica exactamente los gates dispersos de _onNext + validators.
+  bool get canRegister =>
+      ownerValid &&
+      phoneValid &&
+      pinValid &&
+      pinConfirmed &&
+      businessNameValid &&
+      addressValid &&
+      businessTypeSelected &&
+      logoSelected;
+
+  // ── Integración IA (Spec 045) ─────────────────────────────────────────────
+
+  /// Sugerencia de origen del logo devuelta por la IA ('generar'|'subir'|
+  /// 'omitir'). SOLO enruta la Smart Card de logo (D11); NUNCA escribe
+  /// logoUrl directo — eso lo resuelven los endpoints preview-logo*.
+  String? suggestedLogoIntent;
+
+  /// Aplica el resultado del parseo IA (POST /auth/onboarding-parse) al estado.
+  ///
+  /// Reglas (Spec 045):
+  ///  - merge PARCIAL: solo escribe campos no-null y FUERA de needs_confirmation;
+  ///    los ausentes/null no pisan lo ya escrito a mano (D7).
+  ///  - escribe SIEMPRE por setter/núcleo (conserva side-effects de
+  ///    business_type y has_employees) (D2).
+  ///  - IGNORA el PIN aunque venga (dato sensible, D10).
+  ///  - business_type fuera de la whitelist → se descarta (defensa, D9).
+  ///  - logo_intent NO escribe logoUrl, solo expone suggestedLogoIntent (D11).
+  ///  - notifyListeners() UNA sola vez al final (INV-4).
+  void applyParseResult(Map<String, dynamic> result) {
+    final fields = (result['fields'] as Map?)?.cast<String, dynamic>() ?? {};
+    final needs = ((result['needs_confirmation'] as List?) ?? const [])
+        .map((e) => e.toString())
+        .toSet();
+
+    bool present(String k) =>
+        fields.containsKey(k) && fields[k] != null && !needs.contains(k);
+
+    String? text(String k) => present(k) ? fields[k].toString().trim() : null;
+    bool? flag(String k) => present(k) ? fields[k] == true : null;
+
+    final on = text('owner_name');
+    if (on != null && on.isNotEmpty) ownerName = on;
+    final ol = text('owner_last_name');
+    if (ol != null && ol.isNotEmpty) ownerLastName = ol;
+
+    final ph = text('phone');
+    if (ph != null) {
+      final digits = ph.replaceAll(RegExp(r'\D'), '');
+      if (digits.isNotEmpty) phone = digits;
+    }
+
+    final bn = text('business_name');
+    if (bn != null && bn.isNotEmpty) businessName = bn;
+    final rs = text('razon_social');
+    if (rs != null && rs.isNotEmpty) razonSocial = rs;
+    final nt = text('nit');
+    if (nt != null && nt.isNotEmpty) nit = nt;
+    final ad = text('address');
+    if (ad != null && ad.isNotEmpty) address = ad;
+
+    final bt = text('business_type');
+    if (bt != null && validBusinessTypes.contains(bt)) {
+      _setPrimaryBusinessTypeCore(bt);
+    }
+
+    final mb = flag('has_multiple_branches');
+    if (mb != null) hasMultipleBranches = mb;
+    final os = flag('offers_services');
+    if (os != null) offersServices = os;
+    final sw = flag('sells_by_weight');
+    if (sw != null) sellsByWeight = sw;
+    final ht = flag('has_tables');
+    if (ht != null) hasTables = ht;
+    final he = flag('has_employees');
+    if (he != null) _setHasEmployeesCore(he);
+
+    final li = text('logo_intent');
+    if (li != null && const {'generar', 'subir', 'omitir'}.contains(li)) {
+      suggestedLogoIntent = li;
+    }
+    // PIN y captcha: intencionalmente ignorados (D10).
+
     notifyListeners();
   }
 

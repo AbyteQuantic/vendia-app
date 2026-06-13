@@ -9,6 +9,7 @@ import '../../widgets/turnstile_captcha.dart';
 import '../auth/login_screen.dart';
 import 'post_login_gate.dart';
 import 'onboarding_stepper_controller.dart';
+import 'agentic/onboarding_agentic_view.dart';
 import 'steps/step_owner.dart';
 import 'steps/step_business.dart';
 import 'steps/step_branches.dart';
@@ -73,7 +74,11 @@ class OnboardingStepperScreen extends StatelessWidget {
           }
         },
       ),
-      child: const OnboardingStepper(),
+      // Spec 045 — la cara del onboarding es ahora la Agentic UI (premium,
+      // conversacional, Smart Cards). Reusa este MISMO controller y submit;
+      // el wizard de 6 pasos clásico (OnboardingStepper) queda disponible
+      // como referencia/regresión pero ya no es el punto de entrada.
+      child: const OnboardingAgenticView(),
     );
   }
 }

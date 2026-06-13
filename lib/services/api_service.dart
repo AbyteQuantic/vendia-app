@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 import 'package:dio/dio.dart';
@@ -974,6 +975,51 @@ class ApiService {
           .toList();
     } on DioException catch (e) {
       throw AppError.fromDioException(e);
+    }
+  }
+
+  /// Spec 045 — onboarding agéntico. Manda el texto escrito/dictado (y opcional
+  /// una nota de voz) + el estado ya capturado (`current`) al endpoint PÚBLICO
+  /// POST /api/v1/auth/onboarding-parse y devuelve el mapa
+  /// `{fields, confidence, needs_confirmation, clarify_prompt, degraded, reason}`.
+  ///
+  /// La IA es un acelerador OPCIONAL: ante cualquier fallo se devuelve un mapa
+  /// `degraded:true` (nunca lanza) para que el onboarding caiga a edición manual
+  /// sin bloquear el registro. Web-safe: el audio viaja como BYTES
+  /// (MultipartFile.fromBytes), nunca dart:io File ni XFile.path.
+  Future<Map<String, dynamic>> parseOnboarding({
+    String text = '',
+    Uint8List? audioBytes,
+    String mimeType = 'audio/webm',
+    String filename = 'onboarding.webm',
+    Map<String, dynamic>? current,
+  }) async {
+    try {
+      final form = <String, dynamic>{
+        if (text.isNotEmpty) 'text': text,
+        if (current != null && current.isNotEmpty) 'current': jsonEncode(current),
+        if (audioBytes != null)
+          'audio': MultipartFile.fromBytes(
+            audioBytes,
+            filename: filename,
+            contentType: DioMediaType.parse(mimeType),
+          ),
+      };
+      final response = await _dio.post(
+        '/api/v1/auth/onboarding-parse',
+        data: FormData.fromMap(form),
+        options: Options(receiveTimeout: const Duration(seconds: 50)),
+      );
+      final data = _extractData(response);
+      return Map<String, dynamic>.from(data);
+    } catch (_) {
+      // Degradación elegante: la IA nunca bloquea el registro (Art. I + II).
+      return {
+        'fields': <String, dynamic>{},
+        'needs_confirmation': <String>[],
+        'degraded': true,
+        'reason': 'network',
+      };
     }
   }
 
