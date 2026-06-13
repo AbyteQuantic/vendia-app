@@ -176,6 +176,59 @@ class _OnboardingAgenticAnimatedViewState
     });
   }
 
+  /// ¿Hay algo que valga la pena descartar? (oculta el botón en el arranque
+  /// limpio para no añadir ruido cuando no hay nada que limpiar).
+  bool get _hasAnyData =>
+      _ctrl.ownerName.isNotEmpty ||
+      _ctrl.ownerLastName.isNotEmpty ||
+      _ctrl.phone.isNotEmpty ||
+      _ctrl.businessName.isNotEmpty ||
+      _ctrl.address.isNotEmpty ||
+      _ctrl.businessTypeSelected ||
+      _ctrl.logoSelected ||
+      _answered.isNotEmpty ||
+      _trail.isNotEmpty;
+
+  /// "Empezar de nuevo" — borra la persistencia y resetea TODO el estado
+  /// (controlador + navegación) para descartar datos de una sesión anterior.
+  Future<void> _confirmReset() async {
+    final yes = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('¿Empezar de nuevo?'),
+        content: const Text(
+            'Se borrarán los datos que ingresó hasta ahora. Esta acción no se puede deshacer.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('Cancelar', style: TextStyle(fontSize: 16)),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            style: TextButton.styleFrom(foregroundColor: AppTheme.error),
+            child: const Text('Empezar de nuevo', style: TextStyle(fontSize: 16)),
+          ),
+        ],
+      ),
+    );
+    if (yes == true) await _resetAll();
+  }
+
+  Future<void> _resetAll() async {
+    await _clearPersisted();
+    _ctrl.reset();
+    _answered.clear();
+    _trail.clear();
+    _inputCtrl.clear();
+    if (!mounted) return;
+    setState(() {
+      _qIndex = 0;
+      _degraded = false;
+    });
+    if (_animReady) _anim.reflect(hasType: false, hasLogo: false);
+    HapticFeedback.selectionClick();
+  }
+
   void _onAdvanceText() {
     if (_question.isResolved(_ctrl, _answered)) {
       FocusScope.of(context).unfocus();
@@ -480,12 +533,20 @@ class _OnboardingAgenticAnimatedViewState
             const SizedBox(width: 12),
           const Spacer(),
           if (!_ctrl.canRegister)
-            Padding(
-              padding: const EdgeInsets.only(right: 16),
-              child: Text('Paso $step de $total',
-                  style: const TextStyle(
-                      fontSize: 13, color: AppTheme.textSecondary)),
-            ),
+            Text('Paso $step de $total',
+                style: const TextStyle(
+                    fontSize: 13, color: AppTheme.textSecondary)),
+          if (_hasAnyData)
+            IconButton(
+              key: const Key('agentic_reset'),
+              onPressed: _confirmReset,
+              tooltip: 'Empezar de nuevo',
+              visualDensity: VisualDensity.compact,
+              color: AppTheme.textSecondary,
+              icon: const Icon(Icons.refresh_rounded, size: 22),
+            )
+          else
+            const SizedBox(width: 8),
         ],
       ),
     );

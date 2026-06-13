@@ -150,6 +150,61 @@ void main() {
     expect(c.hasTables, isTrue); // side-effect intacto
   });
 
+  testWidgets('"Empezar de nuevo" borra los datos y vuelve al paso 1',
+      (tester) async {
+    await tester.binding.setSurfaceSize(const Size(360, 720));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    final c = _ctrl();
+    // Datos restaurados de una sesión anterior → arranca en PIN.
+    c.setOwnerName('Pedro');
+    c.setOwnerLastName('Ruiz');
+    c.setPhone('3009998877');
+    c.setBusinessName('Carnitas Al Vapor');
+    c.setPrimaryBusinessType('comidas_rapidas');
+    await tester.pumpWidget(_wrap(c, _FakeApi(const {})));
+    await tester.pump();
+
+    // El botón aparece porque hay datos que descartar.
+    expect(find.byKey(const Key('agentic_reset')), findsOneWidget);
+    await tester.tap(find.byKey(const Key('agentic_reset')));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+
+    // Confirmación → "Empezar de nuevo".
+    expect(find.text('¿Empezar de nuevo?'), findsOneWidget);
+    await tester.tap(find.widgetWithText(TextButton, 'Empezar de nuevo'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+
+    // Estado limpio: vuelve a la 1ª pregunta y el botón desaparece.
+    expect(c.businessName, '');
+    expect(c.ownerName, '');
+    expect(c.businessType, '');
+    expect(find.text('¿Cómo se llama usted?'), findsOneWidget);
+    expect(find.byKey(const Key('agentic_reset')), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('header sin overflow con Atrás + reset + paso a 360dp',
+      (tester) async {
+    await tester.binding.setSurfaceSize(const Size(360, 720));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    final c = _ctrl();
+    // owner+phone resueltos → arranca en PIN: canBack + _hasAnyData + paso.
+    c.setOwnerName('Pedro');
+    c.setOwnerLastName('Ruiz');
+    c.setPhone('3009998877');
+    await tester.pumpWidget(_wrap(c, _FakeApi(const {})));
+    await tester.pump();
+
+    expect(find.byKey(const Key('agentic_back')), findsOneWidget);
+    expect(find.byKey(const Key('agentic_reset')), findsOneWidget);
+    expect(find.textContaining('Paso '), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('cuando canRegister es true muestra el CTA "Crear mi cuenta"',
       (tester) async {
     await tester.binding.setSurfaceSize(const Size(360, 800));

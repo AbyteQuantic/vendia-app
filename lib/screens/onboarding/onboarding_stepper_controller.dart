@@ -216,6 +216,38 @@ class OnboardingStepperController extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Spec 045 — "Empezar de nuevo": limpia TODO el estado del onboarding para
+  /// que el usuario pueda descartar datos restaurados de una sesión anterior.
+  /// La vista agéntica también borra la persistencia (SharedPreferences) y su
+  /// propio estado de navegación (_answered/_trail/_qIndex). Notifica una sola
+  /// vez al final (INV-4). El PIN/confirmPin también se limpian: nunca se
+  /// persisten, pero un reset debe dejar el formulario en blanco real.
+  void reset() {
+    _currentStep = 0;
+    _status = StepperStatus.idle;
+    _errorMessage = '';
+    ownerName = '';
+    ownerLastName = '';
+    phone = '';
+    pin = '';
+    confirmPin = '';
+    businessName = '';
+    razonSocial = '';
+    nit = '';
+    address = '';
+    hasMultipleBranches = false;
+    businessTypes = [];
+    saleTypes = ['products'];
+    hasShowcases = false;
+    hasTables = false;
+    offersServices = false;
+    sellsByWeight = false;
+    logoUrl = '';
+    logoDescription = '';
+    hasEmployees = null;
+    notifyListeners();
+  }
+
   /// Núcleo sin notify (Spec 045) — ver _setPrimaryBusinessTypeCore.
   void _setHasEmployeesCore(bool value) {
     hasEmployees = value;
