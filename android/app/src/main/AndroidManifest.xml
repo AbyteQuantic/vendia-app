@@ -32,6 +32,13 @@
          enough for the system to surface the toggle. -->
     <uses-permission android:name="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE"/>
 
+    <!-- Impresora térmica por USB (SAT N140 all-in-one + DigitalPOS DIG-E200I).
+         required=false para que el APK siga instalándose en equipos sin USB
+         host (teléfonos de los tenderos, web). El permiso USB es en runtime
+         (UsbManager); el intent-filter + device_filter de abajo lo auto-conceden
+         al conectar la impresora para una experiencia "conectar y usar". -->
+    <uses-feature android:name="android.hardware.usb.host" android:required="false"/>
+
     <application
         android:label="VendIA"
         android:name="${applicationName}"
@@ -59,6 +66,15 @@
                 <action android:name="android.intent.action.MAIN"/>
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
+            <!-- USB printer auto-attach: cuando se conecta una impresora USB
+                 que matchea res/xml/device_filter.xml, el sistema concede el
+                 permiso USB sin popup y abre la app (connect & use). -->
+            <intent-filter>
+                <action android:name="android.hardware.usb.action.USB_DEVICE_ATTACHED"/>
+            </intent-filter>
+            <meta-data
+                android:name="android.hardware.usb.action.USB_DEVICE_ATTACHED"
+                android:resource="@xml/device_filter"/>
         </activity>
         <!-- image_cropper (uCrop) — required so the QR cropper screen
              can launch from the payment-methods upload flow. The

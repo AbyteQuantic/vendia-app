@@ -1,10 +1,19 @@
+// Spec: specs/046-impresora-usb-lan-escpos/spec.md
 import 'dart:async';
 
+import 'package:esc_pos_utils_plus/esc_pos_utils_plus.dart';
 import 'package:flutter/foundation.dart';
-import 'package:flutter_bluetooth_serial/flutter_bluetooth_serial.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'printer_config.dart';
+import 'printer_transport.dart';
+import 'printer_transports.dart';
 import 'receipt_builder.dart';
+
+// Re-export so call sites (and existing tests) can keep importing the
+// transport seam + config model straight from hardware_service.dart.
+export 'printer_transport.dart';
+export 'printer_config.dart';
 
 /// State machine for the printer connection. The UI reads this enum to
 /// render the right indicator (badge color, retry button, etc.).
@@ -27,128 +36,31 @@ enum HardwareConnectionStatus {
   error,
 }
 
-/// Thin abstraction over the Bluetooth radio so the service is unit-testable
-/// without the platform plugin. The real implementation just delegates to
-/// flutter_bluetooth_serial; tests inject a fake that records calls and can
-/// be configured to throw or succeed.
-abstract class BluetoothTransport {
-  /// Open a socket to the device with the given MAC. Returns true on
-  /// success. Implementations MUST swallow any plugin error and return
-  /// false — the caller decides how to surface failure.
-  Future<bool> connect(String address);
-
-  /// Close the live socket. Returns true if the close succeeded OR if
-  /// there was nothing to close.
-  Future<bool> disconnect();
-
-  /// Cheap probe of "do we have an open output sink?". No round-trip
-  /// to the radio.
-  Future<bool> isConnected();
-
-  /// Enumerate paired/bonded devices the user has already trusted in
-  /// the system Bluetooth settings. We never trigger discovery here —
-  /// pairing happens in the OS settings, not in our app.
-  Future<List<({String name, String address})>> bondedDevices();
-
-  /// Push raw bytes down the open socket. Throws if the socket is not
-  /// open; the service catches and translates to a bool.
-  Future<void> write(List<int> bytes);
-}
-
-/// Production transport — wraps flutter_bluetooth_serial. Holds a single
-/// BluetoothConnection at a time. The library itself is happy to leak
-/// stale sockets if you forget to close them, so we are strict about
-/// nulling _connection on every disconnect/error path.
-class FlutterBluetoothSerialTransport implements BluetoothTransport {
-  BluetoothConnection? _connection;
-
-  @override
-  Future<bool> connect(String address) async {
-    // If we already have a live socket to *this* device, reuse it.
-    if (_connection?.isConnected == true) {
-      return true;
-    }
-    // If we have a stale (closed) connection object, drop it before
-    // opening a new one.
-    if (_connection != null) {
-      try {
-        await _connection!.close();
-      } catch (_) {
-        // already closed — ignore
-      }
-      _connection = null;
-    }
-    _connection = await BluetoothConnection.toAddress(address);
-    return _connection?.isConnected == true;
-  }
-
-  @override
-  Future<bool> disconnect() async {
-    final c = _connection;
-    _connection = null;
-    if (c == null) return true;
-    try {
-      await c.close();
-      return true;
-    } catch (_) {
-      return false;
-    }
-  }
-
-  @override
-  Future<bool> isConnected() async {
-    return _connection?.isConnected == true;
-  }
-
-  @override
-  Future<List<({String name, String address})>> bondedDevices() async {
-    final devices = await FlutterBluetoothSerial.instance.getBondedDevices();
-    return devices
-        .map((d) => (
-              name: (d.name ?? '').isEmpty ? d.address : d.name!,
-              address: d.address,
-            ))
-        .toList(growable: false);
-  }
-
-  @override
-  Future<void> write(List<int> bytes) async {
-    final c = _connection;
-    if (c == null || !c.isConnected) {
-      throw StateError('Bluetooth socket is not open');
-    }
-    c.output.add(Uint8List.fromList(bytes));
-    await c.output.allSent;
-  }
-}
-
 /// Singleton in charge of:
-///   - persisting the user's "use printer" master switch + selected device,
-///   - opening/closing the Bluetooth socket on demand,
+///   - persisting the user's "use printer" master switch + selected printer
+///     ([PrinterConfig]: transport + address + paper size),
+///   - opening/closing the connection on demand over **Bluetooth, USB, or
+///     TCP/LAN (port 9100)** — whichever the chosen [PrinterConfig.type] is,
 ///   - building ESC/POS bytes via [ReceiptBuilder] and writing them out,
-///   - kicking the cash drawer.
+///   - kicking the cash drawer (ESC p — RJ11/RJ12 wired through the printer).
 ///
 /// **Invariant — sale flow safety**: every public method catches its own
-/// exceptions and returns a bool. The caller (POS checkout) MUST be able
-/// to fire-and-forget; printing failure must NEVER block or roll back a
-/// sale. If anything throws, [lastErrorMessage] is populated, status is
-/// flipped to [HardwareConnectionStatus.error], listeners are notified,
-/// and the method returns false.
+/// exceptions and returns a bool. The caller (POS checkout) MUST be able to
+/// fire-and-forget; printing failure must NEVER block or roll back a sale. If
+/// anything throws, [lastErrorMessage] is populated, status is flipped to
+/// [HardwareConnectionStatus.error], listeners are notified, and the method
+/// returns false.
 class HardwareService extends ChangeNotifier {
-  HardwareService._({BluetoothTransport? transport})
-      : _transport = transport ?? FlutterBluetoothSerialTransport();
+  HardwareService._() : _buildTransport = buildTransport;
 
-  /// Test-only constructor — accepts an injected transport so unit
-  /// tests can drive the service without spinning up the real
-  /// flutter_bluetooth_serial plugin (which is not available under
-  /// `flutter test`).
+  /// Test-only constructor — injects a single transport used for ALL
+  /// connection types so unit tests can drive the service without the real
+  /// dart:io sockets / native plugins (unavailable under `flutter test`).
   @visibleForTesting
-  HardwareService.test(BluetoothTransport transport) : _transport = transport;
+  HardwareService.test(PrinterTransport transport)
+      : _buildTransport = ((_) => transport);
 
-  // Singleton with a test override seam. Tests call
-  // `HardwareService.debugOverrideInstance(...)` from setUp() to inject
-  // a fake transport + clean state, then `debugResetInstance()` from
-  // tearDown() to drop their override.
+  // Singleton with a test override seam.
   static HardwareService _instance = HardwareService._();
   static HardwareService get instance => _instance;
 
@@ -162,44 +74,76 @@ class HardwareService extends ChangeNotifier {
     _instance = HardwareService._();
   }
 
-  // SharedPreferences keys — kept private + namespaced so we can grep
-  // for them when we add the Hardware Settings screen later.
+  // SharedPreferences keys.
   static const String _kEnabled = 'hardware_enabled';
+  static const String _kConfig = 'hardware_printer_config';
+  // Legacy keys (BT-only era) — read for migration, written for back-compat.
   static const String _kDeviceMac = 'hardware_device_mac';
   static const String _kDeviceName = 'hardware_device_name';
 
-  final BluetoothTransport _transport;
+  /// Builds a transport for a given config. Production → real BT/USB/TCP
+  /// (web → no-op stubs). Tests → a fixed injected fake.
+  final PrinterTransport Function(PrinterConfig) _buildTransport;
+
+  // Active transport, lazily built from [_config] and rebuilt when the
+  // selected printer's transport type changes.
+  PrinterTransport? _activeTransport;
+  PrinterConfig? _activeFor;
 
   bool _isEnabled = false;
   HardwareConnectionStatus _status = HardwareConnectionStatus.disabled;
-  String? _selectedDeviceMac;
-  String? _selectedDeviceName;
+  PrinterConfig? _config;
   String? _lastErrorMessage;
   bool _prefsLoaded = false;
 
   bool get isEnabled => _isEnabled;
   HardwareConnectionStatus get status => _status;
-  String? get selectedDeviceMac => _selectedDeviceMac;
-  String? get selectedDeviceName => _selectedDeviceName;
+  PrinterConfig? get selectedConfig => _config;
   String? get lastErrorMessage => _lastErrorMessage;
 
-  @visibleForTesting
-  BluetoothTransport get debugTransport => _transport;
+  /// Back-compat getters (BT-only era). [selectedDeviceMac] now returns the
+  /// generic transport address (MAC for BT, "ip:port" for network, "vid:pid"
+  /// for USB).
+  String? get selectedDeviceMac => _config?.address;
+  String? get selectedDeviceName => _config?.name;
 
-  /// Hydrate from SharedPreferences. Idempotent — calling twice is cheap
-  /// and yields the same state. Always succeeds (returns void) — a prefs
-  /// failure leaves us with the default-disabled state.
+  @visibleForTesting
+  bool get debugPrefsLoaded => _prefsLoaded;
+
+  /// Resolve (and cache) the active transport for the current config.
+  PrinterTransport? _transport() {
+    final cfg = _config;
+    if (cfg == null) return null;
+    if (_activeTransport == null || _activeFor != cfg) {
+      _activeTransport = _buildTransport(cfg);
+      _activeFor = cfg;
+    }
+    return _activeTransport;
+  }
+
+  /// Hydrate from SharedPreferences. Idempotent. Always succeeds (void) — a
+  /// prefs failure leaves us with the default-disabled state.
   Future<void> loadFromPrefs() async {
     try {
       final prefs = await SharedPreferences.getInstance();
       _isEnabled = prefs.getBool(_kEnabled) ?? false;
-      _selectedDeviceMac = prefs.getString(_kDeviceMac);
-      _selectedDeviceName = prefs.getString(_kDeviceName);
+      _config = PrinterConfig.decode(prefs.getString(_kConfig));
+      // Migrate the legacy BT-only selection if no new config exists.
+      if (_config == null) {
+        final mac = prefs.getString(_kDeviceMac);
+        if (mac != null && mac.isNotEmpty) {
+          _config = PrinterConfig(
+            type: PrinterConnectionType.bluetooth,
+            address: mac,
+            name: prefs.getString(_kDeviceName) ?? mac,
+            paperSize: PaperSize.mm58, // pocket BT printers are usually 58mm
+          );
+        }
+      }
       _status = _isEnabled
           ? HardwareConnectionStatus.disconnected
           : HardwareConnectionStatus.disabled;
     } catch (e) {
-      // Prefs not available — keep defaults, don't crash the app.
       _lastErrorMessage = 'No se pudo leer la configuración local: $e';
     } finally {
       _prefsLoaded = true;
@@ -211,45 +155,45 @@ class HardwareService extends ChangeNotifier {
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setBool(_kEnabled, _isEnabled);
-      if (_selectedDeviceMac != null) {
-        await prefs.setString(_kDeviceMac, _selectedDeviceMac!);
+      final cfg = _config;
+      if (cfg != null) {
+        await prefs.setString(_kConfig, cfg.encode());
+        await prefs.setString(_kDeviceName, cfg.name);
+        if (cfg.isBluetooth) {
+          await prefs.setString(_kDeviceMac, cfg.address);
+        } else {
+          await prefs.remove(_kDeviceMac);
+        }
       } else {
+        await prefs.remove(_kConfig);
         await prefs.remove(_kDeviceMac);
-      }
-      if (_selectedDeviceName != null) {
-        await prefs.setString(_kDeviceName, _selectedDeviceName!);
-      } else {
         await prefs.remove(_kDeviceName);
       }
     } catch (e) {
-      // Prefs write failed — log via lastErrorMessage but never throw.
       _lastErrorMessage = 'No se pudo guardar la configuración: $e';
     }
   }
 
-  /// Flip the master switch ON. If a device is already remembered, try
-  /// to (re)connect — but a connect failure is fine, we just sit in
-  /// `disconnected`/`error` until the user retries from the Settings UI.
+  /// Flip the master switch ON. If a printer is already remembered, try to
+  /// (re)connect — best-effort; a failure just sits in disconnected/error.
   Future<void> enable() async {
     _isEnabled = true;
     _status = HardwareConnectionStatus.disconnected;
     _lastErrorMessage = null;
     await _persistPrefs();
     notifyListeners();
-    if ((_selectedDeviceMac ?? '').isNotEmpty) {
-      // Don't await — auto-connect is best-effort.
+    if ((_config?.address ?? '').isNotEmpty) {
       unawaited(tryReconnect());
     }
   }
 
-  /// Flip the master switch OFF. Tear down any live socket — we don't
-  /// want a forgotten connection chewing battery.
+  /// Flip the master switch OFF. Tear down any live connection.
   Future<void> disable() async {
     _isEnabled = false;
     try {
-      await _transport.disconnect();
+      await _activeTransport?.disconnect();
     } catch (_) {
-      // Disconnect best-effort; we're tearing down anyway.
+      // best-effort; tearing down anyway
     }
     _status = HardwareConnectionStatus.disabled;
     _lastErrorMessage = null;
@@ -257,11 +201,21 @@ class HardwareService extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// List devices the user has already paired in the OS settings.
-  /// Returns [] on any failure — never throws.
-  Future<List<({String name, String address})>> listPairedDevices() async {
+  /// List paired Bluetooth devices (trusted in OS settings).
+  Future<List<PrinterDeviceInfo>> listPairedDevices() =>
+      _listDevices(PrinterConnectionType.bluetooth);
+
+  /// List currently attached USB devices.
+  Future<List<PrinterDeviceInfo>> listUsbDevices() =>
+      _listDevices(PrinterConnectionType.usb);
+
+  Future<List<PrinterDeviceInfo>> _listDevices(
+      PrinterConnectionType type) async {
     try {
-      return await _transport.bondedDevices();
+      final probe = _buildTransport(
+        PrinterConfig(type: type, address: '_probe', name: ''),
+      );
+      return await probe.bondedDevices();
     } catch (e) {
       _lastErrorMessage = 'No se pudieron listar los dispositivos: $e';
       _status = HardwareConnectionStatus.error;
@@ -270,22 +224,79 @@ class HardwareService extends ChangeNotifier {
     }
   }
 
-  /// Remember the chosen printer. Does NOT auto-connect — call
+  /// Remember the chosen printer (full config). Does NOT auto-connect — call
   /// [tryReconnect] explicitly so the UI can show a spinner.
-  Future<void> selectDevice(String address, String name) async {
-    _selectedDeviceMac = address;
-    _selectedDeviceName = name;
+  Future<void> selectPrinter(PrinterConfig config) async {
+    // If the transport type changed, drop the old live connection.
+    if (_activeFor != null && _activeFor!.type != config.type) {
+      try {
+        await _activeTransport?.disconnect();
+      } catch (_) {}
+      _activeTransport = null;
+      _activeFor = null;
+    }
+    _config = config;
     await _persistPrefs();
     notifyListeners();
   }
 
-  /// Attempt to (re)open the socket to the saved device. Returns false
-  /// if no device is selected, the master switch is off, or the radio
-  /// throws. NEVER throws.
+  /// Back-compat: remember a Bluetooth printer by MAC.
+  Future<void> selectDevice(String address, String name) => selectPrinter(
+        PrinterConfig(
+          type: PrinterConnectionType.bluetooth,
+          address: address,
+          name: name,
+          paperSize: _config?.paperSize ?? PaperSize.mm58,
+        ),
+      );
+
+  /// Remember a USB printer by "vid:pid".
+  Future<void> selectUsbDevice(String address, String name) => selectPrinter(
+        PrinterConfig(
+          type: PrinterConnectionType.usb,
+          address: address,
+          name: name,
+          paperSize: _config?.paperSize ?? PaperSize.mm80,
+        ),
+      );
+
+  /// Remember a network printer (raw TCP, default port 9100).
+  Future<void> selectNetworkPrinter(String host,
+      {int port = kDefaultPrinterPort, String? name}) {
+    final h = host.trim();
+    return selectPrinter(
+      PrinterConfig(
+        type: PrinterConnectionType.network,
+        address: '$h:$port',
+        name: (name ?? '').trim().isNotEmpty ? name!.trim() : 'Impresora $h',
+        paperSize: _config?.paperSize ?? PaperSize.mm80,
+      ),
+    );
+  }
+
+  /// Change the receipt paper width for the selected printer.
+  Future<void> setPaperSize(PaperSize size) async {
+    final cfg = _config;
+    if (cfg == null || cfg.paperSize == size) return;
+    _config = cfg.copyWith(paperSize: size);
+    await _persistPrefs();
+    notifyListeners();
+  }
+
+  /// Attempt to (re)open the connection to the saved printer. Returns false
+  /// if nothing is selected, the master switch is off, or the transport
+  /// fails. NEVER throws.
   Future<bool> tryReconnect() async {
     if (!_isEnabled) return false;
-    final mac = _selectedDeviceMac;
-    if (mac == null || mac.isEmpty) {
+    final cfg = _config;
+    if (cfg == null || cfg.address.isEmpty) {
+      _lastErrorMessage = 'No hay impresora seleccionada.';
+      _status = HardwareConnectionStatus.error;
+      notifyListeners();
+      return false;
+    }
+    final t = _transport();
+    if (t == null) {
       _lastErrorMessage = 'No hay impresora seleccionada.';
       _status = HardwareConnectionStatus.error;
       notifyListeners();
@@ -295,7 +306,7 @@ class HardwareService extends ChangeNotifier {
     _lastErrorMessage = null;
     notifyListeners();
     try {
-      final ok = await _transport.connect(mac);
+      final ok = await t.connect(cfg.address);
       _status = ok
           ? HardwareConnectionStatus.connected
           : HardwareConnectionStatus.error;
@@ -306,24 +317,14 @@ class HardwareService extends ChangeNotifier {
       return ok;
     } catch (e) {
       _status = HardwareConnectionStatus.error;
-      _lastErrorMessage = 'Error de conexión Bluetooth: $e';
+      _lastErrorMessage = 'Error de conexión: $e';
       notifyListeners();
       return false;
     }
   }
 
-  /// Build + send a sale receipt. Wraps every step in try/catch:
-  ///   - master switch off  → return true (silent no-op).
-  ///   - connect failure    → return false, status=error.
-  ///   - build failure      → return false, status=error (very rare —
-  ///                          ReceiptBuilder catches its own logo
-  ///                          decode errors).
-  ///   - write failure      → return false, status=error.
-  ///
-  /// `openDrawer` is wired to the receipt itself (the drawer kick is
-  /// part of the same byte stream the printer eats). If the cashier
-  /// wants the drawer without the receipt — e.g. for change — call
-  /// [openCashDrawer] instead.
+  /// Build + send a sale receipt. See class doc for the error contract.
+  /// `openDrawer` is wired into the same byte stream the printer eats.
   Future<bool> printSaleReceipt(
     ReceiptTenantInfo tenant,
     List<ReceiptLine> lines,
@@ -331,15 +332,17 @@ class HardwareService extends ChangeNotifier {
     String paymentMethod, {
     bool openDrawer = true,
   }) async {
-    // Silent no-op when the master switch is off. We return TRUE on
-    // purpose: from the caller's perspective there's nothing to handle.
-    if (!_isEnabled) return true;
+    if (!_isEnabled) return true; // silent no-op (see class doc)
 
     try {
-      // Make sure we have an open socket. If the radio dropped between
-      // sales (very common — the printer turns off when idle), reconnect
-      // transparently before writing.
-      if (!await _transport.isConnected()) {
+      final t = _transport();
+      if (t == null) {
+        _lastErrorMessage = 'No hay impresora seleccionada.';
+        _status = HardwareConnectionStatus.error;
+        notifyListeners();
+        return false;
+      }
+      if (!await t.isConnected()) {
         final reconnected = await tryReconnect();
         if (!reconnected) return false;
       }
@@ -349,10 +352,11 @@ class HardwareService extends ChangeNotifier {
         lines: lines,
         total: total,
         paymentMethod: paymentMethod,
+        paperSize: _config?.paperSize ?? PaperSize.mm80,
         openDrawer: openDrawer,
       ).build();
 
-      await _transport.write(bytes);
+      await t.write(bytes);
       _status = HardwareConnectionStatus.connected;
       _lastErrorMessage = null;
       notifyListeners();
@@ -365,17 +369,24 @@ class HardwareService extends ChangeNotifier {
     }
   }
 
-  /// Send ONLY the drawer-kick command, no receipt. Useful when the
-  /// cashier needs to open the drawer for change without printing.
-  /// Pin 2, 25ms on, 250ms off — same RJ11 wiring as the receipt path.
+  /// Send ONLY the drawer-kick command, no receipt. ESC p m=0 t1=25 t2=250
+  /// (0x1B 0x70 0x00 0x19 0xFA) — the standard RJ11/RJ12 pulse the DIG-KR410
+  /// answers to. If a printer needs the alternate pin, swap m=0 → m=1.
   Future<bool> openCashDrawer() async {
-    if (!_isEnabled) return true; // silent no-op, see printSaleReceipt
+    if (!_isEnabled) return true; // silent no-op
     try {
-      if (!await _transport.isConnected()) {
+      final t = _transport();
+      if (t == null) {
+        _lastErrorMessage = 'No hay impresora seleccionada.';
+        _status = HardwareConnectionStatus.error;
+        notifyListeners();
+        return false;
+      }
+      if (!await t.isConnected()) {
         final reconnected = await tryReconnect();
         if (!reconnected) return false;
       }
-      await _transport.write(const [27, 112, 0, 25, 250]);
+      await t.write(const [27, 112, 0, 25, 250]);
       _status = HardwareConnectionStatus.connected;
       _lastErrorMessage = null;
       notifyListeners();
@@ -387,7 +398,4 @@ class HardwareService extends ChangeNotifier {
       return false;
     }
   }
-
-  @visibleForTesting
-  bool get debugPrefsLoaded => _prefsLoaded;
 }

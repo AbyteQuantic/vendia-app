@@ -110,6 +110,14 @@ void main() {
     HardwareService.debugResetInstance();
   });
 
+  // The screen now has more cards (transport selector + paper size); give the
+  // test a tall viewport so the lazily-built ListView renders the test/drawer
+  // buttons that live below the fold.
+  Future<void> tallSurface(WidgetTester tester) async {
+    await tester.binding.setSurfaceSize(const Size(440, 1600));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+  }
+
   testWidgets(
       'when isEnabled=false: shows master switch + description, hides device picker and tests',
       (tester) async {
@@ -121,10 +129,10 @@ void main() {
     expect(find.byKey(const Key('hardware_master_switch')), findsOneWidget);
     expect(find.text('Activar impresión y cajón'), findsOneWidget);
 
-    // Off-state hint copy:
+    // Off-state hint copy (now lists all supported transports):
     expect(
       find.text(
-          'Cuando lo active le pediremos permiso de Bluetooth.'),
+          'Funciona con impresoras Bluetooth, USB o de Red (Wi-Fi/LAN).'),
       findsOneWidget,
     );
 
@@ -142,6 +150,7 @@ void main() {
     final svc = _installFakeService(t);
 
     // Drive the service into `connected` via its public API.
+    await tallSurface(tester);
     await svc.enable();
     await svc.selectDevice('00:11:22:33:44:55', 'Printer A');
     await svc.tryReconnect();
@@ -172,6 +181,7 @@ void main() {
     final t = _FakeTransport()..throwOnConnect = true;
     final svc = _installFakeService(t);
 
+    await tallSurface(tester);
     await svc.enable();
     await svc.selectDevice('00:11:22:33:44:55', 'Printer A');
     await svc.tryReconnect(); // triggers throw → status=error
@@ -196,6 +206,7 @@ void main() {
       ..isConnectedValue = true; // skip auto-reconnect path
     final svc = _installFakeService(t);
 
+    await tallSurface(tester);
     await svc.enable();
     await svc.selectDevice('00:11:22:33:44:55', 'Printer A');
     await svc.tryReconnect();
@@ -221,6 +232,7 @@ void main() {
     final svc = _installFakeService(t);
 
     // Start enabled+connected so the switch is ON.
+    await tallSurface(tester);
     await svc.enable();
     await svc.selectDevice('00:11:22:33:44:55', 'Printer A');
     await svc.tryReconnect();
@@ -236,5 +248,50 @@ void main() {
 
     expect(svc.isEnabled, isFalse);
     expect(svc.status, HardwareConnectionStatus.disabled);
+  });
+
+  testWidgets('selecting "Red" + entering an IP saves a network printer',
+      (tester) async {
+    final svc = _installFakeService(_FakeTransport());
+
+    await tallSurface(tester);
+    await svc.enable();
+
+    await tester.pumpWidget(_wrap(const HardwareSettingsScreen()));
+    await tester.pumpAndSettle();
+
+    // Switch transport to Red (network).
+    await tester.tap(find.byKey(const Key('hardware_transport_net')));
+    await tester.pumpAndSettle();
+
+    // The IP/port fields now appear.
+    expect(find.byKey(const Key('hardware_net_ip')), findsOneWidget);
+    expect(find.byKey(const Key('hardware_net_port')), findsOneWidget);
+
+    await tester.enterText(
+        find.byKey(const Key('hardware_net_ip')), '192.168.1.77');
+    await tester.tap(find.byKey(const Key('hardware_change_device_button')));
+    await tester.pumpAndSettle();
+
+    expect(svc.selectedConfig?.type, PrinterConnectionType.network);
+    expect(svc.selectedConfig?.address, '192.168.1.77:9100');
+  });
+
+  testWidgets('transport selector exposes the three connection types',
+      (tester) async {
+    final svc = _installFakeService(_FakeTransport());
+
+    await tallSurface(tester);
+    await svc.enable();
+
+    await tester.pumpWidget(_wrap(const HardwareSettingsScreen()));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('hardware_transport_bt')), findsOneWidget);
+    expect(find.byKey(const Key('hardware_transport_usb')), findsOneWidget);
+    expect(find.byKey(const Key('hardware_transport_net')), findsOneWidget);
+    // Paper-size toggle present too.
+    expect(find.byKey(const Key('hardware_paper_80')), findsOneWidget);
+    expect(find.byKey(const Key('hardware_paper_58')), findsOneWidget);
   });
 }

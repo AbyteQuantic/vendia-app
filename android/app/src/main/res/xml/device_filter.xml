@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  USB devices that should auto-grant permission + launch VendIA on attach.
+  Entries are OR'd. We match:
+    1. The USB Printer class (7) — many ESC/POS printers, incl. the
+       DigitalPOS DIG-E200I USB variant, enumerate here.
+    2. Common USB-serial bridge chips used by cheap thermal printers
+       (CH340, FTDI, Prolific, Silicon Labs, QinHeng) — these expose a
+       CDC/serial interface that usb_serial can open.
+  vendor-id / product-id are DECIMAL. If your printer still prompts, add
+  its exact VID/PID here (see it via `lsusb` or Ajustes → USB on the SAT).
+-->
+<resources>
+    <!-- USB Printer class -->
+    <usb-device class="7" />
+
+    <!-- QinHeng CH340/CH341 (0x1A86) -->
+    <usb-device vendor-id="6790" />
+    <!-- FTDI (0x0403) -->
+    <usb-device vendor-id="1027" />
+    <!-- Prolific PL2303 (0x067B) -->
+    <usb-device vendor-id="1659" />
+    <!-- Silicon Labs CP210x (0x10C4) -->
+    <usb-device vendor-id="4292" />
+</resources>

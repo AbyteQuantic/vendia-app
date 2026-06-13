@@ -74,6 +74,7 @@ dependencies:
   esc_pos_utils_plus: ^2.0.4
   image: ^4.8.0
   flutter_bluetooth_serial: ^0.4.0
+  usb_serial: ^0.5.2 # impresora térmica por USB (SAT N140 + DIG-E200I)
   permission_handler: ^12.0.1
   http: ^1.6.0
 

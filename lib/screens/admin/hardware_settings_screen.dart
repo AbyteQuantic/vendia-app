@@ -1,5 +1,7 @@
+// Spec: specs/046-impresora-usb-lan-escpos/spec.md
 import 'dart:async';
 
+import 'package:esc_pos_utils_plus/esc_pos_utils_plus.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_bluetooth_serial/flutter_bluetooth_serial.dart';
@@ -11,14 +13,14 @@ import '../../theme/app_theme.dart';
 
 /// Hardware y Facturación — Owner-facing screen to:
 ///   1. flip the master switch for receipt printing + cash drawer
-///   2. pick which paired Bluetooth printer the app should talk to
-///   3. test the connection (print a sample ticket / kick the drawer)
-///   4. recover from connection errors
+///   2. choose the transport (Bluetooth / USB / Red) and the printer
+///   3. set the paper width (58mm / 80mm)
+///   4. test the connection (print a sample ticket / kick the drawer)
+///   5. recover from connection errors
 ///
-/// The screen is a *thin* view over [HardwareService] (a ChangeNotifier).
-/// We never own UI state that duplicates the service's state — the service
-/// is the single source of truth, the widget just renders it. This keeps
-/// the screen safe for hot-reload and decouples it from the radio.
+/// The screen is a *thin* view over [HardwareService] (a ChangeNotifier);
+/// the service is the single source of truth. Only the transport currently
+/// being configured + a busy flag are widget-local.
 class HardwareSettingsScreen extends StatefulWidget {
   const HardwareSettingsScreen({super.key});
 
@@ -27,43 +29,56 @@ class HardwareSettingsScreen extends StatefulWidget {
 }
 
 class _HardwareSettingsScreenState extends State<HardwareSettingsScreen> {
-  // We track only widget-local concerns here (a busy flag for buttons that
-  // run async work). Connection/device/error state lives in HardwareService.
   bool _busy = false;
+  PrinterConnectionType? _pendingType;
+  final _ipCtrl = TextEditingController();
+  final _portCtrl = TextEditingController(text: '$kDefaultPrinterPort');
 
   HardwareService get _service => HardwareService.instance;
 
-  // ─────────────────────────── Permission flow ─────────────────────────
+  PrinterConnectionType get _activeType =>
+      _pendingType ??
+      _service.selectedConfig?.type ??
+      PrinterConnectionType.bluetooth;
 
-  /// Returns true if the user granted both BLUETOOTH_CONNECT and
-  /// BLUETOOTH_SCAN. Shows an explanatory dialog if not.
-  Future<bool> _ensurePermissions() async {
-    // The same Permission objects are no-ops on iOS/older Android — the
-    // plugin reports `granted` automatically there, so we don't need a
-    // platform check.
+  @override
+  void initState() {
+    super.initState();
+    final cfg = _service.selectedConfig;
+    if (cfg != null && cfg.isNetwork) {
+      _ipCtrl.text = cfg.networkEndpoint.host;
+      _portCtrl.text = '${cfg.networkEndpoint.port}';
+    }
+  }
+
+  @override
+  void dispose() {
+    _ipCtrl.dispose();
+    _portCtrl.dispose();
+    super.dispose();
+  }
+
+  // ─────────────────────────── Permission flow (BT) ────────────────────────
+
+  Future<bool> _ensureBtPermissions() async {
     final results = await [
       Permission.bluetoothConnect,
       Permission.bluetoothScan,
     ].request();
-
-    final allGranted =
-        results.values.every((s) => s.isGranted || s.isLimited);
+    final allGranted = results.values.every((s) => s.isGranted || s.isLimited);
     if (allGranted) return true;
 
     if (!mounted) return false;
     await showDialog<void>(
       context: context,
       builder: (ctx) => AlertDialog(
-        shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(20)),
-        title: const Text(
-          'Necesitamos Bluetooth',
-          style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
-        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Text('Necesitamos Bluetooth',
+            style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
         content: const Text(
-          'Para conectarse con la impresora térmica y el cajón de '
-          'monedas, VendIA necesita permiso de Bluetooth. Active el '
-          'permiso desde los ajustes del sistema y vuelva a intentar.',
+          'Para conectarse con una impresora Bluetooth, VendIA necesita el '
+          'permiso de Bluetooth. Actívelo desde los ajustes del sistema y '
+          'vuelva a intentar.',
           style: TextStyle(fontSize: 17),
         ),
         actions: [
@@ -85,26 +100,87 @@ class _HardwareSettingsScreenState extends State<HardwareSettingsScreen> {
     return false;
   }
 
-  // ─────────────────────────── Switch handling ─────────────────────────
+  // ─────────────────────────── Switch handling ─────────────────────────────
 
   Future<void> _onMasterSwitch(bool wantOn) async {
     HapticFeedback.lightImpact();
     if (wantOn) {
-      final ok = await _ensurePermissions();
-      if (!ok) return; // leave service disabled — switch snaps back to off
+      // USB/LAN don't need Bluetooth; enable unconditionally and request BT
+      // permission lazily, only when the user opens the Bluetooth picker.
       await _service.enable();
     } else {
       await _service.disable();
     }
   }
 
-  // ─────────────────────────── Device picker ───────────────────────────
+  void _onTransportChanged(PrinterConnectionType type) {
+    HapticFeedback.selectionClick();
+    setState(() => _pendingType = type);
+  }
 
-  Future<void> _showDevicePicker() async {
+  // ─────────────────────────── Device pickers ──────────────────────────────
+
+  Future<void> _onPrimaryDeviceAction() async {
+    switch (_activeType) {
+      case PrinterConnectionType.bluetooth:
+        await _showBluetoothPicker();
+      case PrinterConnectionType.usb:
+        await _showUsbPicker();
+      case PrinterConnectionType.network:
+        await _saveNetworkPrinter();
+    }
+  }
+
+  Future<void> _showBluetoothPicker() async {
     HapticFeedback.lightImpact();
+    final ok = await _ensureBtPermissions();
+    if (!ok) return;
     final devices = await _service.listPairedDevices();
     if (!mounted) return;
+    await _showDeviceSheet(
+      title: 'Dispositivos Bluetooth pareados',
+      subtitle: 'Solo aparecen los equipos pareados desde los ajustes de '
+          'Bluetooth del sistema.',
+      icon: Icons.bluetooth_rounded,
+      devices: devices,
+      onTap: (d) => _service.selectDevice(d.address, d.name),
+    );
+  }
 
+  Future<void> _showUsbPicker() async {
+    HapticFeedback.lightImpact();
+    final devices = await _service.listUsbDevices();
+    if (!mounted) return;
+    await _showDeviceSheet(
+      title: 'Impresoras USB conectadas',
+      subtitle: 'Conecte la impresora por cable USB a la terminal. Si no '
+          'aparece, revise el cable o pruebe la conexión por Red.',
+      icon: Icons.usb_rounded,
+      devices: devices,
+      onTap: (d) => _service.selectUsbDevice(d.address, d.name),
+    );
+  }
+
+  Future<void> _saveNetworkPrinter() async {
+    HapticFeedback.lightImpact();
+    final ip = _ipCtrl.text.trim();
+    if (ip.isEmpty) {
+      _showSnack('Escriba la dirección IP de la impresora.', AppTheme.error);
+      return;
+    }
+    final port = int.tryParse(_portCtrl.text.trim()) ?? kDefaultPrinterPort;
+    await _service.selectNetworkPrinter(ip, port: port);
+    unawaited(_service.tryReconnect());
+    if (mounted) _showSnack('Impresora de red guardada.', AppTheme.success);
+  }
+
+  Future<void> _showDeviceSheet({
+    required String title,
+    required String subtitle,
+    required IconData icon,
+    required List<PrinterDeviceInfo> devices,
+    required Future<void> Function(PrinterDeviceInfo) onTap,
+  }) async {
     await showModalBottomSheet<void>(
       context: context,
       backgroundColor: Colors.transparent,
@@ -130,35 +206,28 @@ class _HardwareSettingsScreenState extends State<HardwareSettingsScreen> {
                 ),
               ),
             ),
-            const Text(
-              'Dispositivos pareados',
-              style: TextStyle(
-                  fontSize: 22,
-                  fontWeight: FontWeight.bold,
-                  color: AppTheme.textPrimary),
-            ),
+            Text(title,
+                style: const TextStyle(
+                    fontSize: 22,
+                    fontWeight: FontWeight.bold,
+                    color: AppTheme.textPrimary)),
             const SizedBox(height: 8),
-            const Text(
-              'Solo aparecen los equipos pareados desde los ajustes '
-              'de Bluetooth del sistema.',
-              style: TextStyle(fontSize: 15, color: AppTheme.textSecondary),
-            ),
+            Text(subtitle,
+                style: const TextStyle(
+                    fontSize: 15, color: AppTheme.textSecondary)),
             const SizedBox(height: 16),
             if (devices.isEmpty)
               const Padding(
                 padding: EdgeInsets.symmetric(vertical: 20),
-                child: Text(
-                  'No se encontraron dispositivos pareados.',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                      fontSize: 17, color: AppTheme.textSecondary),
-                ),
+                child: Text('No se encontraron dispositivos.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                        fontSize: 17, color: AppTheme.textSecondary)),
               )
             else
               ConstrainedBox(
                 constraints: BoxConstraints(
-                  maxHeight: MediaQuery.of(ctx).size.height * 0.5,
-                ),
+                    maxHeight: MediaQuery.of(ctx).size.height * 0.5),
                 child: ListView.separated(
                   shrinkWrap: true,
                   itemCount: devices.length,
@@ -167,30 +236,23 @@ class _HardwareSettingsScreenState extends State<HardwareSettingsScreen> {
                     final d = devices[i];
                     final selected = d.address == _service.selectedDeviceMac;
                     return ListTile(
-                      leading: Icon(
-                        selected
-                            ? Icons.bluetooth_connected_rounded
-                            : Icons.bluetooth_rounded,
-                        color: selected ? AppTheme.success : AppTheme.primary,
-                        size: 28,
-                      ),
+                      leading: Icon(icon,
+                          color: selected ? AppTheme.success : AppTheme.primary,
+                          size: 28),
                       title: Text(d.name,
                           style: const TextStyle(
                               fontSize: 18, fontWeight: FontWeight.w600)),
                       subtitle: Text(d.address,
                           style: const TextStyle(
-                              fontSize: 14,
-                              color: AppTheme.textSecondary)),
+                              fontSize: 14, color: AppTheme.textSecondary)),
                       trailing: selected
                           ? const Icon(Icons.check_rounded,
                               color: AppTheme.success)
                           : null,
                       onTap: () async {
                         HapticFeedback.selectionClick();
-                        await _service.selectDevice(d.address, d.name);
+                        await onTap(d);
                         if (ctx.mounted) Navigator.of(ctx).pop();
-                        // Auto-attempt a connection so the user sees
-                        // the result (success/error) right away.
                         unawaited(_service.tryReconnect());
                       },
                     );
@@ -203,7 +265,7 @@ class _HardwareSettingsScreenState extends State<HardwareSettingsScreen> {
     );
   }
 
-  // ─────────────────────────── Test actions ────────────────────────────
+  // ─────────────────────────── Test actions ────────────────────────────────
 
   Future<void> _runWithBusy(Future<void> Function() action) async {
     if (_busy) return;
@@ -225,13 +287,8 @@ class _HardwareSettingsScreenState extends State<HardwareSettingsScreen> {
       const lines = [
         ReceiptLine(name: 'Prueba de impresion', quantity: 1, unitPrice: 0),
       ];
-      final ok = await _service.printSaleReceipt(
-        tenant,
-        lines,
-        0,
-        'PRUEBA',
-        openDrawer: false,
-      );
+      final ok = await _service.printSaleReceipt(tenant, lines, 0, 'PRUEBA',
+          openDrawer: false);
       if (!mounted) return;
       _showSnack(
           ok ? 'Recibo de prueba enviado.' : 'No se pudo imprimir el recibo.',
@@ -244,17 +301,19 @@ class _HardwareSettingsScreenState extends State<HardwareSettingsScreen> {
     await _runWithBusy(() async {
       final ok = await _service.openCashDrawer();
       if (!mounted) return;
-      _showSnack(
-          ok ? 'Cajón abierto.' : 'No se pudo abrir el cajón.',
+      _showSnack(ok ? 'Cajón abierto.' : 'No se pudo abrir el cajón.',
           ok ? AppTheme.success : AppTheme.error);
     });
   }
 
   Future<void> _reconnect() async {
     HapticFeedback.lightImpact();
-    await _runWithBusy(() async {
-      await _service.tryReconnect();
-    });
+    await _runWithBusy(() async => _service.tryReconnect());
+  }
+
+  Future<void> _setPaper(PaperSize size) async {
+    HapticFeedback.selectionClick();
+    await _service.setPaperSize(size);
   }
 
   void _showSnack(String message, Color color) {
@@ -263,8 +322,7 @@ class _HardwareSettingsScreenState extends State<HardwareSettingsScreen> {
         content: Text(message, style: const TextStyle(fontSize: 16)),
         backgroundColor: color,
         behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12)),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       ),
     );
   }
@@ -274,13 +332,11 @@ class _HardwareSettingsScreenState extends State<HardwareSettingsScreen> {
     try {
       await FlutterBluetoothSerial.instance.openSettings();
     } catch (_) {
-      // Fall back to app-level settings if the system call is not
-      // supported on this OS version.
       await openAppSettings();
     }
   }
 
-  // ─────────────────────────── Build ───────────────────────────────────
+  // ─────────────────────────── Build ───────────────────────────────────────
 
   @override
   Widget build(BuildContext context) {
@@ -294,27 +350,23 @@ class _HardwareSettingsScreenState extends State<HardwareSettingsScreen> {
               color: AppTheme.textPrimary, size: 28),
           onPressed: () => Navigator.of(context).pop(),
         ),
-        title: const Text(
-          'Hardware y Facturación',
-          style: TextStyle(
-              fontSize: 22,
-              fontWeight: FontWeight.w800,
-              color: AppTheme.textPrimary),
-        ),
+        title: const Text('Hardware y Facturación',
+            style: TextStyle(
+                fontSize: 22,
+                fontWeight: FontWeight.w800,
+                color: AppTheme.textPrimary)),
       ),
       body: SafeArea(
         child: ListenableBuilder(
           listenable: _service,
           builder: (context, _) {
             final isOn = _service.isEnabled;
+            final cfg = _service.selectedConfig;
             return ListView(
-              padding: const EdgeInsets.symmetric(
-                  horizontal: 20, vertical: 12),
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
               children: [
-                _PrinterMasterCard(
-                  isEnabled: isOn,
-                  onChanged: _onMasterSwitch,
-                ),
+                _PrinterMasterCard(isEnabled: isOn, onChanged: _onMasterSwitch),
                 if (isOn) ...[
                   const SizedBox(height: 16),
                   _StatusCard(
@@ -325,10 +377,25 @@ class _HardwareSettingsScreenState extends State<HardwareSettingsScreen> {
                     busy: _busy,
                   ),
                   const SizedBox(height: 16),
+                  _TransportSelectorCard(
+                    selected: _activeType,
+                    onChanged: _onTransportChanged,
+                  ),
+                  const SizedBox(height: 16),
                   _DeviceCard(
+                    type: _activeType,
                     selectedName: _service.selectedDeviceName,
-                    selectedMac: _service.selectedDeviceMac,
-                    onPick: _showDevicePicker,
+                    selectedAddress: _service.selectedDeviceMac,
+                    selectedType: cfg?.type,
+                    ipController: _ipCtrl,
+                    portController: _portCtrl,
+                    onPrimaryAction: _onPrimaryDeviceAction,
+                  ),
+                  const SizedBox(height: 16),
+                  _PaperSizeCard(
+                    current: cfg?.paperSize ?? PaperSize.mm80,
+                    enabled: cfg != null,
+                    onChanged: _setPaper,
                   ),
                   const SizedBox(height: 16),
                   _TestActionsCard(
@@ -338,9 +405,7 @@ class _HardwareSettingsScreenState extends State<HardwareSettingsScreen> {
                   ),
                 ],
                 const SizedBox(height: 20),
-                _PairingHelpCard(
-                  onOpenSettings: _openSystemBluetoothSettings,
-                ),
+                _PairingHelpCard(onOpenSettings: _openSystemBluetoothSettings),
                 const SizedBox(height: 24),
               ],
             );
@@ -351,7 +416,7 @@ class _HardwareSettingsScreenState extends State<HardwareSettingsScreen> {
   }
 }
 
-// ────────────────────────────── Cards ──────────────────────────────────
+// ────────────────────────────── Cards ──────────────────────────────────────
 
 class _PrinterMasterCard extends StatelessWidget {
   final bool isEnabled;
@@ -369,28 +434,98 @@ class _PrinterMasterCard extends StatelessWidget {
             value: isEnabled,
             onChanged: onChanged,
             contentPadding: EdgeInsets.zero,
-            title: const Text(
-              'Activar impresión y cajón',
-              style: TextStyle(
-                  fontSize: 19,
-                  fontWeight: FontWeight.bold,
-                  color: AppTheme.textPrimary),
-            ),
+            title: const Text('Activar impresión y cajón',
+                style: TextStyle(
+                    fontSize: 19,
+                    fontWeight: FontWeight.bold,
+                    color: AppTheme.textPrimary)),
             subtitle: const Text(
-              'Imprime recibos y abre el cajón de monedas al cobrar.',
-              style: TextStyle(fontSize: 14, color: AppTheme.textSecondary),
-            ),
+                'Imprime recibos y abre el cajón de monedas al cobrar.',
+                style: TextStyle(fontSize: 14, color: AppTheme.textSecondary)),
           ),
           if (!isEnabled)
             Padding(
               padding: const EdgeInsets.only(top: 4),
               child: Text(
-                'Cuando lo active le pediremos permiso de Bluetooth.',
-                style: TextStyle(
-                    fontSize: 14, color: Colors.grey.shade600),
+                'Funciona con impresoras Bluetooth, USB o de Red (Wi-Fi/LAN).',
+                style: TextStyle(fontSize: 14, color: Colors.grey.shade600),
               ),
             ),
         ],
+      ),
+    );
+  }
+}
+
+class _TransportSelectorCard extends StatelessWidget {
+  final PrinterConnectionType selected;
+  final ValueChanged<PrinterConnectionType> onChanged;
+  const _TransportSelectorCard(
+      {required this.selected, required this.onChanged});
+
+  @override
+  Widget build(BuildContext context) {
+    return _Card(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text('Tipo de conexión',
+              style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  color: AppTheme.textPrimary)),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              _seg(PrinterConnectionType.bluetooth, Icons.bluetooth_rounded,
+                  'Bluetooth', const Key('hardware_transport_bt')),
+              const SizedBox(width: 8),
+              _seg(PrinterConnectionType.usb, Icons.usb_rounded, 'USB',
+                  const Key('hardware_transport_usb')),
+              const SizedBox(width: 8),
+              _seg(PrinterConnectionType.network, Icons.wifi_rounded, 'Red',
+                  const Key('hardware_transport_net')),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _seg(
+      PrinterConnectionType type, IconData icon, String label, Key key) {
+    final active = type == selected;
+    return Expanded(
+      child: InkWell(
+        key: key,
+        onTap: () => onChanged(type),
+        borderRadius: BorderRadius.circular(14),
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 12),
+          decoration: BoxDecoration(
+            color: active
+                ? AppTheme.primary.withValues(alpha: 0.10)
+                : Colors.transparent,
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(
+                color: active ? AppTheme.primary : AppTheme.borderColor,
+                width: active ? 1.8 : 1),
+          ),
+          child: Column(
+            children: [
+              Icon(icon,
+                  color: active ? AppTheme.primary : AppTheme.textSecondary,
+                  size: 26),
+              const SizedBox(height: 6),
+              Text(label,
+                  style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w700,
+                      color:
+                          active ? AppTheme.primary : AppTheme.textSecondary)),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -437,20 +572,16 @@ class _StatusCard extends StatelessWidget {
                   key: Key('hardware_status_dot_${ui.statusKey}'),
                   width: 14,
                   height: 14,
-                  decoration: BoxDecoration(
-                    color: ui.color,
-                    shape: BoxShape.circle,
-                  ),
+                  decoration:
+                      BoxDecoration(color: ui.color, shape: BoxShape.circle),
                 ),
               const SizedBox(width: 12),
               Expanded(
-                child: Text(
-                  ui.label,
-                  style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.w700,
-                      color: ui.color),
-                ),
+                child: Text(ui.label,
+                    style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w700,
+                        color: ui.color)),
               ),
             ],
           ),
@@ -463,12 +594,12 @@ class _StatusCard extends StatelessWidget {
                 onPressed: busy ? null : onReconnect,
                 icon: const Icon(Icons.refresh_rounded),
                 label: const Text('Reconectar',
-                    style: TextStyle(
-                        fontSize: 17, fontWeight: FontWeight.w700)),
+                    style:
+                        TextStyle(fontSize: 17, fontWeight: FontWeight.w700)),
                 style: TextButton.styleFrom(
                   foregroundColor: AppTheme.primary,
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 14, vertical: 10),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                   shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(12)),
                 ),
@@ -482,49 +613,112 @@ class _StatusCard extends StatelessWidget {
 }
 
 class _DeviceCard extends StatelessWidget {
+  final PrinterConnectionType type;
   final String? selectedName;
-  final String? selectedMac;
-  final VoidCallback onPick;
-  const _DeviceCard(
-      {required this.selectedName,
-      required this.selectedMac,
-      required this.onPick});
+  final String? selectedAddress;
+  final PrinterConnectionType? selectedType;
+  final TextEditingController ipController;
+  final TextEditingController portController;
+  final VoidCallback onPrimaryAction;
+
+  const _DeviceCard({
+    required this.type,
+    required this.selectedName,
+    required this.selectedAddress,
+    required this.selectedType,
+    required this.ipController,
+    required this.portController,
+    required this.onPrimaryAction,
+  });
 
   @override
   Widget build(BuildContext context) {
-    final hasDevice = (selectedMac ?? '').isNotEmpty;
+    final hasDevice = (selectedAddress ?? '').isNotEmpty;
+    final isNet = type == PrinterConnectionType.network;
+    final (icon, cta) = switch (type) {
+      PrinterConnectionType.bluetooth => (
+          Icons.bluetooth_searching_rounded,
+          hasDevice ? 'Cambiar dispositivo' : 'Seleccionar dispositivo'
+        ),
+      PrinterConnectionType.usb => (
+          Icons.usb_rounded,
+          hasDevice ? 'Cambiar dispositivo USB' : 'Seleccionar dispositivo USB'
+        ),
+      PrinterConnectionType.network => (
+          Icons.save_rounded,
+          'Guardar impresora de red'
+        ),
+    };
+
     return _Card(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
-            'Dispositivo',
-            style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-                color: AppTheme.textPrimary),
-          ),
+          const Text('Dispositivo',
+              style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  color: AppTheme.textPrimary)),
           const SizedBox(height: 4),
           Text(
             hasDevice
-                ? (selectedName ?? selectedMac ?? '')
+                ? '${selectedName ?? selectedAddress} · ${(selectedType ?? type).label}'
                 : 'Aún no ha seleccionado una impresora.',
-            style: const TextStyle(
-                fontSize: 15, color: AppTheme.textSecondary),
+            style: const TextStyle(fontSize: 15, color: AppTheme.textSecondary),
           ),
+          if (isNet) ...[
+            const SizedBox(height: 14),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(
+                  flex: 3,
+                  child: TextField(
+                    key: const Key('hardware_net_ip'),
+                    controller: ipController,
+                    keyboardType: TextInputType.number,
+                    style: const TextStyle(fontSize: 17),
+                    decoration: const InputDecoration(
+                      labelText: 'Dirección IP',
+                      hintText: '192.168.1.50',
+                      border: OutlineInputBorder(),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  flex: 1,
+                  child: TextField(
+                    key: const Key('hardware_net_port'),
+                    controller: portController,
+                    keyboardType: TextInputType.number,
+                    style: const TextStyle(fontSize: 17),
+                    decoration: const InputDecoration(
+                      labelText: 'Puerto',
+                      border: OutlineInputBorder(),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 6),
+            Text(
+              'La IP aparece en la página de autoprueba de la impresora. '
+              'Puerto estándar: $kDefaultPrinterPort.',
+              style: TextStyle(fontSize: 13, color: Colors.grey.shade600),
+            ),
+          ],
           const SizedBox(height: 12),
           SizedBox(
             width: double.infinity,
             height: 52,
             child: ElevatedButton.icon(
               key: const Key('hardware_change_device_button'),
-              onPressed: onPick,
-              icon: const Icon(Icons.bluetooth_searching_rounded),
-              label: Text(
-                hasDevice ? 'Cambiar dispositivo' : 'Seleccionar dispositivo',
-                style: const TextStyle(
-                    fontSize: 17, fontWeight: FontWeight.bold),
-              ),
+              onPressed: onPrimaryAction,
+              icon: Icon(icon),
+              label: Text(cta,
+                  style: const TextStyle(
+                      fontSize: 17, fontWeight: FontWeight.bold)),
               style: ElevatedButton.styleFrom(
                 backgroundColor: AppTheme.primary,
                 foregroundColor: Colors.white,
@@ -534,6 +728,67 @@ class _DeviceCard extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _PaperSizeCard extends StatelessWidget {
+  final PaperSize current;
+  final bool enabled;
+  final ValueChanged<PaperSize> onChanged;
+  const _PaperSizeCard(
+      {required this.current, required this.enabled, required this.onChanged});
+
+  @override
+  Widget build(BuildContext context) {
+    return _Card(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text('Ancho del papel',
+              style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  color: AppTheme.textPrimary)),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              _opt(PaperSize.mm80, '80 mm', const Key('hardware_paper_80')),
+              const SizedBox(width: 8),
+              _opt(PaperSize.mm58, '58 mm', const Key('hardware_paper_58')),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _opt(PaperSize size, String label, Key key) {
+    final active = size == current;
+    return Expanded(
+      child: InkWell(
+        key: key,
+        onTap: enabled ? () => onChanged(size) : null,
+        borderRadius: BorderRadius.circular(14),
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 14),
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: active
+                ? AppTheme.primary.withValues(alpha: 0.10)
+                : Colors.transparent,
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(
+                color: active ? AppTheme.primary : AppTheme.borderColor,
+                width: active ? 1.8 : 1),
+          ),
+          child: Text(label,
+              style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w700,
+                  color: active ? AppTheme.primary : AppTheme.textSecondary)),
+        ),
       ),
     );
   }
@@ -555,18 +810,15 @@ class _TestActionsCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
-            'Probar conexión',
-            style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-                color: AppTheme.textPrimary),
-          ),
+          const Text('Probar conexión',
+              style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  color: AppTheme.textPrimary)),
           const SizedBox(height: 4),
           const Text(
-            'Verifique que la impresora y el cajón responden correctamente.',
-            style: TextStyle(fontSize: 14, color: AppTheme.textSecondary),
-          ),
+              'Verifique que la impresora y el cajón responden correctamente.',
+              style: TextStyle(fontSize: 14, color: AppTheme.textSecondary)),
           const SizedBox(height: 12),
           Row(
             children: [
@@ -581,8 +833,7 @@ class _TestActionsCard extends StatelessWidget {
                   style: OutlinedButton.styleFrom(
                     foregroundColor: AppTheme.primary,
                     padding: const EdgeInsets.symmetric(vertical: 14),
-                    side: const BorderSide(
-                        color: AppTheme.primary, width: 1.5),
+                    side: const BorderSide(color: AppTheme.primary, width: 1.5),
                     shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(14)),
                   ),
@@ -600,8 +851,7 @@ class _TestActionsCard extends StatelessWidget {
                   style: OutlinedButton.styleFrom(
                     foregroundColor: AppTheme.primary,
                     padding: const EdgeInsets.symmetric(vertical: 14),
-                    side: const BorderSide(
-                        color: AppTheme.primary, width: 1.5),
+                    side: const BorderSide(color: AppTheme.primary, width: 1.5),
                     shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(14)),
                   ),
@@ -626,8 +876,7 @@ class _PairingHelpCard extends StatelessWidget {
       decoration: BoxDecoration(
         color: AppTheme.primary.withValues(alpha: 0.06),
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(
-            color: AppTheme.primary.withValues(alpha: 0.15)),
+        border: Border.all(color: AppTheme.primary.withValues(alpha: 0.15)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -638,21 +887,20 @@ class _PairingHelpCard extends StatelessWidget {
                   color: AppTheme.primary, size: 22),
               SizedBox(width: 8),
               Expanded(
-                child: Text(
-                  '¿No tiene impresora pareada?',
-                  style: TextStyle(
-                      fontSize: 17,
-                      fontWeight: FontWeight.bold,
-                      color: AppTheme.primary),
-                ),
+                child: Text('¿Cómo conecto mi impresora?',
+                    style: TextStyle(
+                        fontSize: 17,
+                        fontWeight: FontWeight.bold,
+                        color: AppTheme.primary)),
               ),
             ],
           ),
           const SizedBox(height: 8),
           const Text(
-            'Primero debe parearla desde los ajustes de Bluetooth del '
-            'sistema. Después regrese a esta pantalla y selecciónela en '
-            'la lista.',
+            'USB: conecte el cable a la terminal y elija "USB". '
+            'Red (Wi-Fi/LAN): escriba la IP de la impresora y el puerto '
+            '$_help9100. Bluetooth: primero parée la impresora desde los '
+            'ajustes del sistema.',
             style: TextStyle(fontSize: 15, color: AppTheme.textSecondary),
           ),
           const SizedBox(height: 12),
@@ -662,14 +910,12 @@ class _PairingHelpCard extends StatelessWidget {
               key: const Key('hardware_open_bt_settings_button'),
               onPressed: onOpenSettings,
               icon: const Icon(Icons.settings_bluetooth_rounded),
-              label: const Text(
-                'Abrir ajustes de Bluetooth',
-                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
-              ),
+              label: const Text('Abrir ajustes de Bluetooth',
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
               style: TextButton.styleFrom(
                 foregroundColor: AppTheme.primary,
-                padding: const EdgeInsets.symmetric(
-                    horizontal: 14, vertical: 10),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                 shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(12)),
               ),
@@ -680,6 +926,8 @@ class _PairingHelpCard extends StatelessWidget {
     );
   }
 }
+
+const String _help9100 = '9100';
 
 class _Card extends StatelessWidget {
   final Widget child;
@@ -705,17 +953,14 @@ class _Card extends StatelessWidget {
   }
 }
 
-// ───────────────────────── Status → UI mapping ─────────────────────────
+// ───────────────────────── Status → UI mapping ─────────────────────────────
 
 class _StatusUi {
   final Color color;
   final String label;
   final String statusKey;
-  const _StatusUi({
-    required this.color,
-    required this.label,
-    required this.statusKey,
-  });
+  const _StatusUi(
+      {required this.color, required this.label, required this.statusKey});
 }
 
 _StatusUi _statusUi(
@@ -744,12 +989,9 @@ _StatusUi _statusUi(
           label: 'Conectado a $name',
           statusKey: 'connected');
     case HardwareConnectionStatus.error:
-      final msg = (errorMessage ?? '').isEmpty
-          ? 'Error desconocido'
-          : errorMessage!;
+      final msg =
+          (errorMessage ?? '').isEmpty ? 'Error desconocido' : errorMessage!;
       return _StatusUi(
-          color: AppTheme.error,
-          label: 'Error: $msg',
-          statusKey: 'error');
+          color: AppTheme.error, label: 'Error: $msg', statusKey: 'error');
   }
 }
