@@ -379,7 +379,8 @@ class _DishCardState extends State<_DishCard> {
       return;
     }
     final presentation = await _askPresentation();
-    if (!mounted || presentation == _kPresentationCancelled) return;
+    // null = el tendero cerró la hoja sin decidir → no generamos.
+    if (!mounted || presentation == null) return;
 
     setState(() => _generatingSample = true);
     try {
@@ -468,12 +469,10 @@ class _DishCardState extends State<_DishCard> {
     }
   }
 
-  /// Centinela: el usuario canceló la hoja de presentación (≠ "sin presentación").
-  static const String _kPresentationCancelled = ' cancelled';
-
   /// Pregunta OPCIONAL por cómo se sirve el plato, para que la muestra IA sea
-  /// más certera. Devuelve '' si el tendero omite, o el centinela si cancela.
-  Future<String> _askPresentation() async {
+  /// más certera. Devuelve '' si el tendero omite la presentación, o `null` si
+  /// cierra la hoja sin decidir (en cuyo caso no se genera nada).
+  Future<String?> _askPresentation() async {
     final controller = TextEditingController();
     const chips = ['En plato', 'Para llevar', 'En vaso', 'En bandeja'];
     final result = await showModalBottomSheet<String>(
@@ -550,7 +549,7 @@ class _DishCardState extends State<_DishCard> {
       ),
     );
     controller.dispose();
-    return result ?? _kPresentationCancelled;
+    return result;
   }
 
   /// Genera la descripción del plato con IA a partir del nombre + categoría
