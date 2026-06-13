@@ -1,6 +1,7 @@
 // Spec: specs/001-insumos-recetas/spec.md
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:image_picker/image_picker.dart';
 import '../../services/api_service.dart';
 import '../../theme/app_theme.dart';
 import 'recipe_step2_screen.dart';
@@ -24,8 +25,23 @@ class RecipeStep1Screen extends StatefulWidget {
 class _RecipeStep1ScreenState extends State<RecipeStep1Screen> {
   final _nameCtrl = TextEditingController();
   final _priceCtrl = TextEditingController();
+  final _descCtrl = TextEditingController();
   String _selectedCategory = 'Comidas';
   String? _nameError;
+
+  // F043 slice manual: foto + descripción + porción. La foto se guarda como
+  // XFile (web-safe: se sube con readAsBytes, nunca con XFile.path) y sus
+  // bytes para la previsualización. La porción es un atajo por chips para
+  // reducir fricción (Art. I); vacía = sin porción.
+  XFile? _photo;
+  Uint8List? _photoBytes;
+  String? _selectedPortion;
+
+  static const List<String> _portions = [
+    'Personal',
+    'Para compartir',
+    'Familiar',
+  ];
 
   // Categorías por defecto del menú. No son parte del contrato de
   // Feature 001 (la receta guarda un texto libre); se ofrecen como
@@ -42,6 +58,7 @@ class _RecipeStep1ScreenState extends State<RecipeStep1Screen> {
   void dispose() {
     _nameCtrl.dispose();
     _priceCtrl.dispose();
+    _descCtrl.dispose();
     super.dispose();
   }
 
@@ -57,13 +74,64 @@ class _RecipeStep1ScreenState extends State<RecipeStep1Screen> {
     return int.tryParse(raw) ?? 0;
   }
 
-  void _takePhoto() {
+  /// Toma o escoge la foto del plato. Web-safe: guarda el XFile y sus
+  /// bytes (con `readAsBytes`, nunca `XFile.path`, que en web es un blob).
+  Future<void> _takePhoto() async {
     HapticFeedback.lightImpact();
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Abriendo camara...', style: TextStyle(fontSize: 18)),
-        backgroundColor: AppTheme.primary,
-        duration: Duration(seconds: 1),
+    final source = await _pickSource();
+    if (source == null || !mounted) return;
+
+    final picker = ImagePicker();
+    final XFile? photo = await picker.pickImage(
+      source: source,
+      imageQuality: 75,
+      maxWidth: 1600,
+      maxHeight: 1600,
+    );
+    if (photo == null || !mounted) return;
+
+    final bytes = await photo.readAsBytes();
+    if (!mounted) return;
+    setState(() {
+      _photo = photo;
+      _photoBytes = bytes;
+    });
+  }
+
+  /// Hoja inferior cámara/galería con objetivos táctiles grandes (Art. I).
+  Future<ImageSource?> _pickSource() {
+    return showModalBottomSheet<ImageSource>(
+      context: context,
+      backgroundColor: AppTheme.background,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+      ),
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const SizedBox(height: 12),
+            ListTile(
+              key: const Key('recipe_photo_camera'),
+              leading: const Icon(Icons.camera_alt_rounded,
+                  size: 32, color: AppTheme.primary),
+              title: const Text('Tomar foto',
+                  style: TextStyle(
+                      fontSize: 20, color: AppTheme.textPrimary)),
+              onTap: () => Navigator.of(ctx).pop(ImageSource.camera),
+            ),
+            ListTile(
+              key: const Key('recipe_photo_gallery'),
+              leading: const Icon(Icons.photo_library_rounded,
+                  size: 32, color: AppTheme.primary),
+              title: const Text('Escoger de la galería',
+                  style: TextStyle(
+                      fontSize: 20, color: AppTheme.textPrimary)),
+              onTap: () => Navigator.of(ctx).pop(ImageSource.gallery),
+            ),
+            const SizedBox(height: 12),
+          ],
+        ),
       ),
     );
   }
@@ -95,9 +163,79 @@ class _RecipeStep1ScreenState extends State<RecipeStep1Screen> {
           salePrice: _parsePrice().toDouble(),
           emoji: _categoryEmoji,
           category: _selectedCategory,
+          description: _descCtrl.text.trim(),
+          portion: _selectedPortion ?? '',
+          photo: _photo,
           api: widget.api,
         ),
       ),
+    );
+  }
+
+  Widget _photoPlaceholder() {
+    return Container(
+      width: 200,
+      height: 160,
+      decoration: BoxDecoration(
+        color: Colors.grey.shade200,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(
+          color: Colors.grey.shade400,
+          width: 2,
+          strokeAlign: BorderSide.strokeAlignInside,
+        ),
+      ),
+      child: CustomPaint(
+        painter: _DashedBorderPainter(
+          color: Colors.grey.shade400,
+          radius: 20,
+        ),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.camera_alt_rounded,
+                size: 48, color: Colors.grey.shade500),
+            const SizedBox(height: 8),
+            Text(
+              'Tomar foto del plato',
+              style: TextStyle(
+                fontSize: 18,
+                color: Colors.grey.shade600,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _photoPreview(Uint8List bytes) {
+    return Stack(
+      children: [
+        ClipRRect(
+          borderRadius: BorderRadius.circular(20),
+          child: Image.memory(
+            bytes,
+            width: 200,
+            height: 160,
+            fit: BoxFit.cover,
+          ),
+        ),
+        Positioned(
+          right: 8,
+          top: 8,
+          child: Container(
+            padding: const EdgeInsets.all(6),
+            decoration: BoxDecoration(
+              color: Colors.black.withValues(alpha: 0.55),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: const Icon(Icons.edit_rounded,
+                size: 20, color: Colors.white),
+          ),
+        ),
+      ],
     );
   }
 
@@ -135,48 +273,19 @@ class _RecipeStep1ScreenState extends State<RecipeStep1Screen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // --- Photo placeholder ---
+                    // --- Photo placeholder / preview ---
                     GestureDetector(
+                      key: const Key('recipe_photo_tap'),
                       onTap: _takePhoto,
-                      child: Container(
-                        width: 200,
-                        height: 160,
-                        decoration: BoxDecoration(
-                          color: Colors.grey.shade200,
-                          borderRadius: BorderRadius.circular(20),
-                          border: Border.all(
-                            color: Colors.grey.shade400,
-                            width: 2,
-                            strokeAlign: BorderSide.strokeAlignInside,
-                          ),
-                        ),
-                        child: CustomPaint(
-                          painter: _DashedBorderPainter(
-                            color: Colors.grey.shade400,
-                            radius: 20,
-                          ),
-                          child: Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Icon(Icons.camera_alt_rounded,
-                                  size: 48, color: Colors.grey.shade500),
-                              const SizedBox(height: 8),
-                              Text(
-                                'Tomar foto del plato',
-                                style: TextStyle(
-                                  fontSize: 18,
-                                  color: Colors.grey.shade600,
-                                  fontWeight: FontWeight.w500,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
+                      child: _photoBytes != null
+                          ? _photoPreview(_photoBytes!)
+                          : _photoPlaceholder(),
                     ),
                     const SizedBox(height: 8),
                     Text(
-                      'Toque para abrir la camara. Luego puede mejorarla con IA \u2728',
+                      _photoBytes != null
+                          ? 'Toque la foto para cambiarla.'
+                          : 'Toque para abrir la camara o la galer\u00eda.',
                       style: TextStyle(
                         fontSize: 16,
                         color: Colors.grey.shade500,
@@ -204,6 +313,32 @@ class _RecipeStep1ScreenState extends State<RecipeStep1Screen> {
                       decoration: InputDecoration(
                         hintText: 'Ej: Perro Caliente Sencillo',
                         errorText: _nameError,
+                      ),
+                    ),
+
+                    const SizedBox(height: 28),
+
+                    // --- Description field (F043) ---
+                    const Text(
+                      'Descripción (opcional)',
+                      style: TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.w600,
+                        color: AppTheme.textPrimary,
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    TextField(
+                      key: const Key('field_recipe_description'),
+                      controller: _descCtrl,
+                      minLines: 2,
+                      maxLines: 4,
+                      textCapitalization: TextCapitalization.sentences,
+                      style: const TextStyle(
+                          fontSize: 20, color: AppTheme.textPrimary),
+                      decoration: const InputDecoration(
+                        hintText:
+                            'Ej: Pan artesanal, salchicha, papas y salsas',
                       ),
                     ),
 
@@ -280,6 +415,55 @@ class _RecipeStep1ScreenState extends State<RecipeStep1Screen> {
                           ),
                         ),
                       ],
+                    ),
+
+                    const SizedBox(height: 28),
+
+                    // --- Portion chips (F043, opcional) ---
+                    const Text(
+                      '\u00bfQu\u00e9 porci\u00f3n es? (opcional)',
+                      style: TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.w600,
+                        color: AppTheme.textPrimary,
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    Wrap(
+                      spacing: 10,
+                      runSpacing: 10,
+                      children: _portions.map((p) {
+                        final selected = _selectedPortion == p;
+                        return ChoiceChip(
+                          key: Key('recipe_portion_$p'),
+                          label: Text(
+                            p,
+                            style: TextStyle(
+                              fontSize: 18,
+                              color: selected
+                                  ? Colors.white
+                                  : AppTheme.textPrimary,
+                            ),
+                          ),
+                          selected: selected,
+                          showCheckmark: false,
+                          selectedColor: AppTheme.primary,
+                          backgroundColor: AppTheme.surfaceGrey,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(14),
+                            side: const BorderSide(
+                                color: AppTheme.borderColor),
+                          ),
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 16, vertical: 8),
+                          onSelected: (_) {
+                            HapticFeedback.selectionClick();
+                            // Toque de nuevo = deseleccionar (sin porci\u00f3n).
+                            setState(() =>
+                                _selectedPortion = selected ? null : p);
+                          },
+                        );
+                      }).toList(),
                     ),
 
                     const SizedBox(height: 28),
@@ -363,12 +547,16 @@ class _RecipeStep1ScreenState extends State<RecipeStep1Screen> {
                     child: const Row(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        Text(
-                          'Agregar ingredientes',
-                          style: TextStyle(
-                            fontSize: 22,
-                            fontWeight: FontWeight.w600,
-                            color: Colors.white,
+                        Flexible(
+                          child: Text(
+                            'Agregar ingredientes',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontSize: 22,
+                              fontWeight: FontWeight.w600,
+                              color: Colors.white,
+                            ),
                           ),
                         ),
                         SizedBox(width: 8),

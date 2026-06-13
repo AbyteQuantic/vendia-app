@@ -3,6 +3,7 @@ import 'dart:developer' as developer;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:image_picker/image_picker.dart';
 import '../../services/api_service.dart';
 import '../../services/auth_service.dart';
 import '../../theme/app_theme.dart';
@@ -19,6 +20,11 @@ class RecipeStep3Screen extends StatefulWidget {
   final String emoji;
   final String category;
 
+  /// F043 slice manual: descripción, porción y foto del plato.
+  final String description;
+  final String portion;
+  final XFile? photo;
+
   /// Cada item: {uuid, name, quantity, unitCost, unit}.
   final List<Map<String, dynamic>> ingredients;
 
@@ -32,6 +38,9 @@ class RecipeStep3Screen extends StatefulWidget {
     required this.emoji,
     required this.ingredients,
     this.category = '',
+    this.description = '',
+    this.portion = '',
+    this.photo,
     this.api,
   });
 
@@ -69,7 +78,7 @@ class _RecipeStep3ScreenState extends State<RecipeStep3Screen> {
   /// Es una receta nueva, así que `id` se omite (es opcional). Cada
   /// insumo viaja SOLO con `ingredient_uuid` y `quantity`.
   Map<String, dynamic> _buildPayload() {
-    return {
+    final payload = <String, dynamic>{
       'product_name': widget.productName,
       'sale_price': widget.salePrice.round(),
       'category': widget.category,
@@ -81,17 +90,46 @@ class _RecipeStep3ScreenState extends State<RecipeStep3Screen> {
               })
           .toList(),
     };
+    // F043 — descripción y porción alimentan la tarjeta del catálogo.
+    // Se omiten si están vacías para no pisar valores con cadenas vacías.
+    if (widget.description.isNotEmpty) {
+      payload['description'] = widget.description;
+    }
+    if (widget.portion.isNotEmpty) {
+      payload['portion'] = widget.portion;
+    }
+    return payload;
   }
 
   Future<void> _save() async {
     setState(() => _saving = true);
     try {
       final created = await _api.createRecipe(_buildPayload());
+
+      // F043 slice manual: si el tendero tomó una foto del plato, súbela al
+      // Product vendible que la receta acaba de crear. Best-effort — la
+      // receta ya quedó guardada; si la subida falla, no bloqueamos (la foto
+      // se puede reintentar luego). El backend devuelve `product_id`.
+      final photo = widget.photo;
+      final productId = created['product_id'] as String?;
+      if (photo != null && productId != null && productId.isNotEmpty) {
+        try {
+          await _api.uploadProductPhoto(productId, photo);
+        } catch (e, stack) {
+          developer.log(
+            'No se pudo subir la foto del plato (la receta sí se guardó)',
+            name: 'RecipeStep3Screen',
+            error: e,
+            stackTrace: stack,
+          );
+        }
+      }
+
       // Confirmación del costo autoritativo del backend (FR-04). Es
       // best-effort: si el backend no devuelve UUID o el endpoint aún
       // no existe, la receta ya quedó guardada y no bloqueamos al
       // usuario.
-      final recipeUuid = created['uuid'] as String?;
+      final recipeUuid = (created['id'] ?? created['uuid']) as String?;
       if (recipeUuid != null && recipeUuid.isNotEmpty) {
         try {
           await _api.fetchRecipeCost(recipeUuid);

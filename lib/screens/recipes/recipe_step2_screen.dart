@@ -3,6 +3,7 @@ import 'dart:developer' as developer;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:image_picker/image_picker.dart';
 import '../../models/ingredient.dart';
 import '../../services/api_service.dart';
 import '../../services/auth_service.dart';
@@ -20,6 +21,12 @@ class RecipeStep2Screen extends StatefulWidget {
   final String emoji;
   final String category;
 
+  /// F043 slice manual: descripción, porción y foto del plato — se recogen
+  /// en el paso 1 y viajan intactos hasta el guardado del paso 3.
+  final String description;
+  final String portion;
+  final XFile? photo;
+
   /// ApiService inyectable para pruebas; en producción usa el default.
   final ApiService? api;
 
@@ -29,6 +36,9 @@ class RecipeStep2Screen extends StatefulWidget {
     required this.salePrice,
     required this.emoji,
     this.category = '',
+    this.description = '',
+    this.portion = '',
+    this.photo,
     this.api,
   });
 
@@ -187,6 +197,9 @@ class _RecipeStep2ScreenState extends State<RecipeStep2Screen> {
           salePrice: widget.salePrice,
           emoji: widget.emoji,
           category: widget.category,
+          description: widget.description,
+          portion: widget.portion,
+          photo: widget.photo,
           api: widget.api,
           ingredients: _lines
               .map((l) => {
