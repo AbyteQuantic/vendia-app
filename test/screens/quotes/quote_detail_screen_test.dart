@@ -20,6 +20,24 @@ class _FakeQuotesApi extends ApiService {
   _FakeQuotesApi(this._status) : super(AuthService());
 
   final String _status;
+  String? markedStatus;
+
+  @override
+  Future<Map<String, dynamic>> markQuoteStatus(String id, String status,
+      {String? note}) async {
+    markedStatus = status;
+    return {
+      'id': id,
+      'folio': 'COT-2026-0001',
+      'status': status,
+      'customer_id': 'c-acme',
+      'customer_name': 'Constructora ACME',
+      'items': const [],
+      'subtotal': 50000,
+      'total': 50000,
+      'public_token': 'tok-123',
+    };
+  }
 
   @override
   Future<Map<String, dynamic>> getQuote(String id) async {
@@ -91,15 +109,35 @@ void main() {
       expect(find.byKey(const Key('quote_detail_edit')), findsOneWidget);
     });
 
-    testWidgets('en enviada no muestra "Enviar" pero sí "Reenviar"',
+    testWidgets('en enviada ofrece convertir, "El cliente aprobó" y reenviar',
         (tester) async {
       await pump(tester, 'enviada');
 
       expect(find.byKey(const Key('quote_detail_send')), findsNothing);
+      // Concilio: el tendero cierra el círculo a mano desde 'enviada'.
+      expect(find.byKey(const Key('quote_detail_convert')), findsOneWidget);
+      expect(find.byKey(const Key('quote_detail_approve')), findsOneWidget);
       expect(find.byKey(const Key('quote_detail_resend')), findsOneWidget);
-      expect(find.byKey(const Key('quote_detail_convert')), findsNothing);
       // Editable en enviada (genera V2).
       expect(find.byKey(const Key('quote_detail_edit')), findsOneWidget);
+    });
+
+    testWidgets('"El cliente aprobó" llama markQuoteStatus(aprobada)',
+        (tester) async {
+      final api = _FakeQuotesApi('enviada');
+      await tester.pumpWidget(MaterialApp(
+        home: QuoteDetailScreen(quoteId: 'q-1', apiOverride: api),
+      ));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byKey(const Key('quote_detail_approve')));
+      await tester.pumpAndSettle();
+      // Diálogo de confirmación → "Sí, aprobó".
+      expect(find.text('¿El cliente aprobó?'), findsOneWidget);
+      await tester.tap(find.text('Sí, aprobó'));
+      await tester.pumpAndSettle();
+
+      expect(api.markedStatus, 'aprobada');
     });
 
     testWidgets('en aprobada muestra "Convertir en venta"',

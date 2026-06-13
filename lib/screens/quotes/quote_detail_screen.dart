@@ -22,6 +22,7 @@ import 'package:flutter/services.dart';
 import '../../models/quote.dart';
 import '../../models/quote_item.dart';
 import '../../services/api_service.dart';
+import '../../services/app_error.dart';
 import '../../services/auth_service.dart';
 import '../../theme/app_theme.dart';
 import '../../utils/format_cop.dart';
@@ -177,37 +178,79 @@ class _QuoteDetailScreenState extends State<QuoteDetailScreen> {
     );
   }
 
+  /// Marca la cotización como aprobada SIN crear la venta todavía (el
+  /// cliente dijo "sí" por WhatsApp/teléfono/en persona — el caso común;
+  /// el link público casi no se usa). Cierra el círculo que hoy deja el
+  /// estado 'aprobada' inalcanzable. Reusa el endpoint backend que ya
+  /// valida la FSM (solo enviada → aprobada).
+  Future<void> _markApproved() async {
+    final quote = _quote;
+    if (quote == null) return;
+    final ok = await _confirm(
+      title: '¿El cliente aprobó?',
+      message: 'La cotización por ${formatCOP(quote.total)} quedará marcada '
+          'como APROBADA, lista para convertir en venta.',
+      confirmLabel: 'Sí, aprobó',
+    );
+    if (ok != true) return;
+    await _runQuoteAction(
+      () => _api.markQuoteStatus(quote.id, QuoteStatus.aprobada.wire),
+      okMsg: 'Cotización aprobada. Ya puede convertirla en venta.',
+      errMsg: 'No se pudo marcar como aprobada',
+    );
+  }
+
+  /// Marca la cotización como rechazada (acción destructiva — va en el
+  /// menú de overflow, no en un botón grande, para evitar toques por error).
+  Future<void> _markRejected() async {
+    final quote = _quote;
+    if (quote == null) return;
+    final ok = await _confirm(
+      title: '¿Rechazar esta cotización?',
+      message: 'Quedará marcada como RECHAZADA. Podrá duplicarla más '
+          'adelante si el cliente cambia de opinión.',
+      confirmLabel: 'Rechazar',
+      destructive: true,
+    );
+    if (ok != true) return;
+    await _runQuoteAction(
+      () => _api.markQuoteStatus(quote.id, QuoteStatus.rechazada.wire),
+      okMsg: 'Cotización rechazada.',
+      errMsg: 'No se pudo marcar como rechazada',
+    );
+  }
+
+  /// Convierte la cotización en venta (descuenta inventario). Atajo desde
+  /// 'enviada': encadena aprobar + convertir en un solo gesto ("hágale,
+  /// me lo llevo"). Desde 'aprobada' convierte directo.
   Future<void> _convert() async {
     final quote = _quote;
     if (quote == null) return;
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (_) => AlertDialog(
-        title: const Text('Convertir en venta'),
-        content: const Text(
-          'Se creará una venta con los mismos productos y se '
-          'descontará el inventario. ¿Continuar?',
-          style: TextStyle(fontSize: 16),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('Cancelar', style: TextStyle(fontSize: 16)),
-          ),
-          ElevatedButton(
-            onPressed: () => Navigator.of(context).pop(true),
-            child: const Text('Convertir', style: TextStyle(fontSize: 16)),
-          ),
-        ],
-      ),
+    final fromSent = quote.status == QuoteStatus.enviada;
+    final ok = await _confirm(
+      title: 'Convertir en venta',
+      message: fromSent
+          ? 'Se dará por APROBADA, se creará una venta por '
+              '${formatCOP(quote.total)} y se descontará el inventario. '
+              '¿Continuar?'
+          : 'Se creará una venta con los mismos productos y se descontará '
+              'el inventario. ¿Continuar?',
+      confirmLabel: 'Convertir',
     );
-    if (confirmed != true) return;
+    if (ok != true) return;
 
     setState(() => _actionRunning = true);
     HapticFeedback.lightImpact();
     try {
+      // enviada → convertida NO es transición legal: primero aprobar.
+      if (fromSent) {
+        await _api.markQuoteStatus(quote.id, QuoteStatus.aprobada.wire);
+      }
       final res = await _api.convertQuote(quote.id);
-      final updated = Quote.fromJson(res);
+      // convertQuote devuelve {sale_id, quote} — la cotización actualizada
+      // está en res['quote'], NO en el envelope completo (bug previo).
+      final quoteJson = (res['quote'] as Map<String, dynamic>?) ?? res;
+      final updated = Quote.fromJson(quoteJson);
       if (!mounted) return;
       setState(() {
         _quote = updated;
@@ -218,6 +261,66 @@ class _QuoteDetailScreenState extends State<QuoteDetailScreen> {
       if (!mounted) return;
       setState(() => _actionRunning = false);
       _snack('No se pudo convertir la cotización', isError: true);
+    }
+  }
+
+  /// Diálogo de confirmación estándar (gerontodiseño: texto grande,
+  /// botones cómodos, modo USTED).
+  Future<bool?> _confirm({
+    required String title,
+    required String message,
+    required String confirmLabel,
+    bool destructive = false,
+  }) {
+    return showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Text(title, style: const TextStyle(fontSize: 20)),
+        content: Text(message, style: const TextStyle(fontSize: 16, height: 1.35)),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('Cancelar', style: TextStyle(fontSize: 16)),
+          ),
+          ElevatedButton(
+            style: destructive
+                ? ElevatedButton.styleFrom(backgroundColor: AppTheme.error)
+                : null,
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: Text(confirmLabel, style: const TextStyle(fontSize: 16)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Ejecuta una acción que devuelve la cotización actualizada (envelope
+  /// {data: quote} ya desenvuelto por _extractData → un quote map), con
+  /// spinner, recarga y snackbar.
+  Future<void> _runQuoteAction(
+    Future<Map<String, dynamic>> Function() action, {
+    required String okMsg,
+    required String errMsg,
+  }) async {
+    setState(() => _actionRunning = true);
+    HapticFeedback.lightImpact();
+    try {
+      final res = await action();
+      final updated = Quote.fromJson(res);
+      if (!mounted) return;
+      setState(() {
+        _quote = updated;
+        _actionRunning = false;
+      });
+      _snack(okMsg);
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _actionRunning = false);
+      final msg = e is AppError && e.message.trim().isNotEmpty
+          ? e.message
+          : errMsg;
+      _snack(msg, isError: true);
     }
   }
 
@@ -280,6 +383,26 @@ class _QuoteDetailScreenState extends State<QuoteDetailScreen> {
                   color: AppTheme.primary, size: 24),
               tooltip: 'Editar',
               onPressed: _actionRunning ? null : _edit,
+            ),
+          // "Marcar como rechazada" va en el overflow (acción destructiva,
+          // no un botón grande, para evitar toques por error — concilio).
+          if (quote != null &&
+              (quote.status == QuoteStatus.enviada ||
+                  quote.status == QuoteStatus.aprobada))
+            PopupMenuButton<String>(
+              key: const Key('quote_detail_overflow'),
+              icon: const Icon(Icons.more_vert_rounded,
+                  color: AppTheme.textPrimary),
+              onSelected: (v) {
+                if (v == 'reject') _markRejected();
+              },
+              itemBuilder: (_) => const [
+                PopupMenuItem(
+                  value: 'reject',
+                  child: Text('Marcar como rechazada',
+                      style: TextStyle(fontSize: 16, color: AppTheme.error)),
+                ),
+              ],
             ),
         ],
       ),
@@ -579,9 +702,26 @@ class _QuoteDetailScreenState extends State<QuoteDetailScreen> {
       ));
     }
 
-    // Reenviar — en enviada (genera link/mensaje nuevo).
+    // ENVIADA — el cliente aún no ha respondido por el link. Lo común es
+    // que apruebe por WhatsApp/en persona, así que el tendero necesita
+    // cerrar el círculo a mano (concilio 2026-06-13):
+    //   PRINCIPAL: "Convertir en venta" (atajo: aprobar + convertir).
+    //   SECUNDARIO: "El cliente aprobó" (solo marca aprobada).
+    //   SECUNDARIO: "Reenviar cotización".
     if (quote.status == QuoteStatus.enviada) {
       actions.add(_primaryButton(
+        buttonKey: const Key('quote_detail_convert'),
+        icon: Icons.point_of_sale_rounded,
+        label: 'Convertir en venta',
+        onTap: _convert,
+      ));
+      actions.add(_secondaryButton(
+        buttonKey: const Key('quote_detail_approve'),
+        icon: Icons.check_circle_outline_rounded,
+        label: 'El cliente aprobó',
+        onTap: _markApproved,
+      ));
+      actions.add(_secondaryButton(
         buttonKey: const Key('quote_detail_resend'),
         icon: Icons.share_rounded,
         label: 'Reenviar cotización',
@@ -589,7 +729,7 @@ class _QuoteDetailScreenState extends State<QuoteDetailScreen> {
       ));
     }
 
-    // Convertir en venta — solo en aprobada (AC-09).
+    // APROBADA — lista para cerrar. Convertir en venta (AC-09).
     if (quote.status.canConvert) {
       actions.add(_primaryButton(
         buttonKey: const Key('quote_detail_convert'),
@@ -598,6 +738,7 @@ class _QuoteDetailScreenState extends State<QuoteDetailScreen> {
         onTap: _convert,
       ));
     }
+
 
     if (actions.isEmpty) return const SizedBox.shrink();
 
@@ -646,6 +787,38 @@ class _QuoteDetailScreenState extends State<QuoteDetailScreen> {
               borderRadius: BorderRadius.circular(14),
             ),
           ),
+        ),
+      ),
+    );
+  }
+
+  /// Acción secundaria — tinte azul al 10%, texto del color primario,
+  /// sin el peso visual del botón principal (jerarquía clara, concilio).
+  Widget _secondaryButton({
+    required Key buttonKey,
+    required IconData icon,
+    required String label,
+    required VoidCallback onTap,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 8),
+      child: SizedBox(
+        width: double.infinity,
+        height: 52,
+        child: FilledButton.icon(
+          key: buttonKey,
+          onPressed: _actionRunning ? null : onTap,
+          style: FilledButton.styleFrom(
+            backgroundColor: AppTheme.primary.withValues(alpha: 0.10),
+            foregroundColor: AppTheme.primary,
+            elevation: 0,
+            shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(14)),
+            textStyle:
+                const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+          ),
+          icon: Icon(icon, size: 22),
+          label: Text(label),
         ),
       ),
     );
