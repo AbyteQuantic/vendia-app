@@ -152,6 +152,51 @@ void main() {
       expect(freeLine['unit_price'], 15000);
     });
 
+    testWidgets('el stepper [- N +] de cada línea sube/baja la cantidad y '
+        'recalcula el subtotal (bug: cantidad pegada en 1)', (tester) async {
+      final api = _FakeQuotesApi();
+      await pump(tester, api);
+
+      // Agregar un producto del inventario (entra en cantidad 1 = 25.000).
+      await tester.tap(find.byKey(const Key('quote_form_add_inventory')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Cemento gris'));
+      await tester.pumpAndSettle();
+      expect(find.textContaining('25.000'), findsWidgets);
+
+      // Subir con [+] → cantidad 2 → subtotal 50.000.
+      await tester.tap(find.byKey(const Key('quote_line_inc_0')));
+      await tester.pumpAndSettle();
+      expect(find.textContaining('50.000'), findsWidgets);
+
+      // Bajar con [-] → vuelve a 1 → 25.000.
+      await tester.tap(find.byKey(const Key('quote_line_dec_0')));
+      await tester.pumpAndSettle();
+      expect(find.textContaining('25.000'), findsWidgets);
+    });
+
+    testWidgets('la línea con stepper no hace overflow a 360dp (Art. I)',
+        (tester) async {
+      tester.view.physicalSize = const Size(360, 800);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+
+      final api = _FakeQuotesApi();
+      await pump(tester, api);
+      await tester.tap(find.byKey(const Key('quote_form_add_inventory')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Cemento gris'));
+      await tester.pumpAndSettle();
+      // Subir varias veces para un subtotal largo ($250.000).
+      for (var i = 0; i < 9; i++) {
+        await tester.tap(find.byKey(const Key('quote_line_inc_0')));
+        await tester.pump();
+      }
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull,
+          reason: 'el stepper + subtotal no debe desbordar a 360dp');
+    });
+
     testWidgets('guardar sin cliente muestra error y no llama a createQuote',
         (tester) async {
       final api = _FakeQuotesApi();

@@ -428,6 +428,7 @@ class _QuoteFormScreenState extends State<QuoteFormScreen> {
             itemCount: _items.length,
             separatorBuilder: (_, __) => const SizedBox(height: 8),
             itemBuilder: (_, i) => _ItemCard(
+              index: i,
               item: _items[i],
               onRemove: () => _removeItem(i),
               onQuantityChanged: (q) => _updateItemQuantity(i, q),
@@ -524,14 +525,20 @@ class _QuoteFormScreenState extends State<QuoteFormScreen> {
                   const Icon(Icons.event_rounded,
                       color: AppTheme.primary, size: 24),
                   const SizedBox(width: 12),
-                  Text(
-                    'Válida hasta ${_formatDate(_validUntil)}',
-                    style: const TextStyle(
-                      fontSize: 17,
-                      fontWeight: FontWeight.w600,
-                      color: AppTheme.textPrimary,
+                  Expanded(
+                    child: Text(
+                      'Válida hasta ${_formatDate(_validUntil)}',
+                      style: const TextStyle(
+                        fontSize: 17,
+                        fontWeight: FontWeight.w600,
+                        color: AppTheme.textPrimary,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                     ),
                   ),
+                  const Icon(Icons.chevron_right_rounded,
+                      color: AppTheme.textSecondary, size: 22),
                 ],
               ),
             ),
@@ -659,19 +666,69 @@ class _QuoteFormScreenState extends State<QuoteFormScreen> {
 }
 
 /// Tarjeta de una línea de la cotización en el formulario.
+///
+/// Layout en DOS filas (concilio 2026-06-13, anti-overflow a 360dp):
+///   Fila 1 — identidad: ícono + nombre (Expanded, ellipsis) + papelera.
+///   Fila 2 — control: stepper [− N +] a la izquierda + "× precio" y el
+///            subtotal a la derecha (Flexible). Tocar el número abre un
+///            teclado numérico para escribir cantidades grandes (24, 100)
+///            sin tocar [+] veinticuatro veces (gerontodiseño 50+).
 class _ItemCard extends StatelessWidget {
+  final int index;
   final QuoteItem item;
   final VoidCallback onRemove;
   final ValueChanged<double> onQuantityChanged;
 
   const _ItemCard({
+    required this.index,
     required this.item,
     required this.onRemove,
     required this.onQuantityChanged,
   });
 
+  String get _qtyLabel =>
+      item.quantity % 1 == 0 ? '${item.quantity.toInt()}' : '${item.quantity}';
+
+  /// Abre un diálogo con teclado numérico para fijar la cantidad de un
+  /// golpe (el valor llega preseleccionado para sobrescribir).
+  Future<void> _promptQuantity(BuildContext context) async {
+    final ctrl = TextEditingController(text: _qtyLabel)
+      ..selection = TextSelection(baseOffset: 0, extentOffset: _qtyLabel.length);
+    final result = await showDialog<double>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Text('Cantidad', style: TextStyle(fontSize: 20)),
+        content: TextField(
+          controller: ctrl,
+          autofocus: true,
+          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+          style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w700),
+          decoration: const InputDecoration(border: OutlineInputBorder()),
+          onSubmitted: (_) =>
+              Navigator.of(ctx).pop(double.tryParse(ctrl.text.trim())),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('Cancelar', style: TextStyle(fontSize: 16)),
+          ),
+          ElevatedButton(
+            onPressed: () =>
+                Navigator.of(ctx).pop(double.tryParse(ctrl.text.trim())),
+            child: const Text('Listo', style: TextStyle(fontSize: 16)),
+          ),
+        ],
+      ),
+    );
+    // Validación: rechazar vacío/no-numérico/<=0 (el padre tiene una segunda
+    // barrera con `quantity <= 0`).
+    if (result != null && result > 0) onQuantityChanged(result);
+  }
+
   @override
   Widget build(BuildContext context) {
+    final canDecrement = item.quantity > 1;
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
@@ -679,48 +736,181 @@ class _ItemCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(14),
         border: Border.all(color: AppTheme.borderColor),
       ),
-      child: Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(
-            item.isInventoryItem
-                ? Icons.inventory_2_rounded
-                : Icons.edit_note_rounded,
-            color: AppTheme.primary,
-            size: 22,
-          ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
+          // ── Fila 1: identidad ──────────────────────────────────────
+          Row(
+            children: [
+              Icon(
+                item.isInventoryItem
+                    ? Icons.inventory_2_rounded
+                    : Icons.edit_note_rounded,
+                color: AppTheme.primary,
+                size: 22,
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
                   item.name,
                   style: const TextStyle(
                     fontSize: 17,
                     fontWeight: FontWeight.w700,
                     color: AppTheme.textPrimary,
                   ),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
                 ),
-                const SizedBox(height: 2),
-                Text(
-                  '${item.quantity % 1 == 0 ? item.quantity.toInt() : item.quantity}'
-                  ' x ${formatCOP(item.unitPrice)} = '
-                  '${formatCOP(item.computedSubtotal)}',
-                  style: const TextStyle(
-                    fontSize: 14,
-                    color: AppTheme.textSecondary,
-                  ),
-                ),
-              ],
-            ),
+              ),
+              IconButton(
+                key: Key('quote_line_remove_$index'),
+                icon: const Icon(Icons.remove_circle_outline_rounded,
+                    color: AppTheme.error, size: 24),
+                tooltip: 'Quitar de la cotización',
+                onPressed: onRemove,
+              ),
+            ],
           ),
-          IconButton(
-            icon: const Icon(Icons.remove_circle_outline_rounded,
-                color: AppTheme.error, size: 24),
-            tooltip: 'Quitar',
-            onPressed: onRemove,
+          const SizedBox(height: 8),
+          // ── Fila 2: stepper + subtotal ─────────────────────────────
+          Row(
+            children: [
+              _QtyStepper(
+                index: index,
+                label: _qtyLabel,
+                canDecrement: canDecrement,
+                onDecrement: canDecrement
+                    ? () => onQuantityChanged(item.quantity - 1)
+                    : null,
+                onIncrement: () => onQuantityChanged(item.quantity + 1),
+                onEdit: () => _promptQuantity(context),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      formatCOP(item.computedSubtotal),
+                      style: const TextStyle(
+                        fontSize: 17,
+                        fontWeight: FontWeight.w800,
+                        color: AppTheme.textPrimary,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    Text(
+                      '× ${formatCOP(item.unitPrice)} c/u',
+                      style: const TextStyle(
+                        fontSize: 12.5,
+                        color: AppTheme.textSecondary,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
+                ),
+              ),
+            ],
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// Stepper táctil [− N +] para 50+. Botones grandes (48dp); el número
+/// central es tocable y abre el teclado numérico (cantidades grandes).
+class _QtyStepper extends StatelessWidget {
+  final int index;
+  final String label;
+  final bool canDecrement;
+  final VoidCallback? onDecrement;
+  final VoidCallback onIncrement;
+  final VoidCallback onEdit;
+
+  const _QtyStepper({
+    required this.index,
+    required this.label,
+    required this.canDecrement,
+    required this.onDecrement,
+    required this.onIncrement,
+    required this.onEdit,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: BoxDecoration(
+        color: AppTheme.surfaceGrey,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppTheme.borderColor),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          _stepButton(
+            key: Key('quote_line_dec_$index'),
+            icon: Icons.remove_rounded,
+            tooltip: 'Disminuir cantidad',
+            enabled: canDecrement,
+            onTap: onDecrement,
+          ),
+          // Número tocable → teclado numérico para saltos grandes.
+          InkWell(
+            key: Key('quote_line_qty_$index'),
+            onTap: onEdit,
+            child: Container(
+              constraints: const BoxConstraints(minWidth: 44, minHeight: 48),
+              alignment: Alignment.center,
+              padding: const EdgeInsets.symmetric(horizontal: 8),
+              child: Text(
+                label,
+                style: const TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w800,
+                  color: AppTheme.textPrimary,
+                ),
+              ),
+            ),
+          ),
+          _stepButton(
+            key: Key('quote_line_inc_$index'),
+            icon: Icons.add_rounded,
+            tooltip: 'Aumentar cantidad',
+            enabled: true,
+            onTap: onIncrement,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _stepButton({
+    required Key key,
+    required IconData icon,
+    required String tooltip,
+    required bool enabled,
+    required VoidCallback? onTap,
+  }) {
+    return Semantics(
+      button: true,
+      label: tooltip,
+      child: InkWell(
+        key: key,
+        onTap: enabled ? onTap : null,
+        borderRadius: BorderRadius.circular(12),
+        child: SizedBox(
+          width: 48,
+          height: 48,
+          child: Icon(
+            icon,
+            size: 24,
+            color: enabled ? AppTheme.primary : Colors.grey.shade400,
+          ),
+        ),
       ),
     );
   }
