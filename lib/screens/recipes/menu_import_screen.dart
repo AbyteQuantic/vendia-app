@@ -99,7 +99,14 @@ class MenuImportScreen extends StatefulWidget {
   /// Platos crudos devueltos por `POST /menu/scan-photo`.
   final List<Map<String, dynamic>> scannedDishes;
 
-  const MenuImportScreen({super.key, required this.scannedDishes});
+  /// Inyectable para tests; en producción usa el ApiService default.
+  final ApiService? apiOverride;
+
+  const MenuImportScreen({
+    super.key,
+    required this.scannedDishes,
+    this.apiOverride,
+  });
 
   @override
   State<MenuImportScreen> createState() => _MenuImportScreenState();
@@ -155,7 +162,7 @@ class _MenuImportScreenState extends State<MenuImportScreen> {
     }
 
     setState(() => _saving = true);
-    final api = ApiService(AuthService());
+    final api = widget.apiOverride ?? ApiService(AuthService());
     var created = 0;
     final errors = <String>[];
 
@@ -237,6 +244,7 @@ class _MenuImportScreenState extends State<MenuImportScreen> {
                 key: ValueKey(_dishes[i]),
                 dish: _dishes[i],
                 index: i,
+                api: widget.apiOverride,
                 onRemove: () => _removeDish(i),
               ),
             ),
@@ -291,12 +299,14 @@ class _DishCard extends StatefulWidget {
   final EditableDish dish;
   final int index;
   final VoidCallback onRemove;
+  final ApiService? api;
 
   const _DishCard({
     super.key,
     required this.dish,
     required this.index,
     required this.onRemove,
+    this.api,
   });
 
   @override
@@ -304,6 +314,62 @@ class _DishCard extends StatefulWidget {
 }
 
 class _DishCardState extends State<_DishCard> {
+  bool _generatingDesc = false;
+
+  /// Genera la descripción del plato con IA a partir del nombre + categoría
+  /// y la precarga en el campo (el tendero la edita). Necesita un nombre.
+  Future<void> _generateDescription() async {
+    final d = widget.dish;
+    final name = d.name.text.trim();
+    if (name.length < 2) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('Escribe primero el nombre del plato.',
+            style: TextStyle(fontSize: 15)),
+        backgroundColor: AppTheme.warning,
+        behavior: SnackBarBehavior.floating,
+      ));
+      return;
+    }
+    setState(() => _generatingDesc = true);
+    try {
+      final api = widget.api ?? ApiService(AuthService());
+      final desc = await api.generateMenuDescription(
+        name: name,
+        category: d.category,
+      );
+      if (!mounted) return;
+      if (desc.isNotEmpty) {
+        d.description.text = desc;
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('No pudimos generar la descripción. Intenta de nuevo.',
+              style: TextStyle(fontSize: 15)),
+          backgroundColor: AppTheme.error,
+          behavior: SnackBarBehavior.floating,
+        ));
+      }
+    } on AppError catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(e.message, style: const TextStyle(fontSize: 15)),
+          backgroundColor: AppTheme.error,
+          behavior: SnackBarBehavior.floating,
+        ));
+      }
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('No pudimos generar la descripción. Intenta de nuevo.',
+              style: TextStyle(fontSize: 15)),
+          backgroundColor: AppTheme.error,
+          behavior: SnackBarBehavior.floating,
+        ));
+      }
+    } finally {
+      if (mounted) setState(() => _generatingDesc = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final d = widget.dish;
@@ -337,6 +403,33 @@ class _DishCardState extends State<_DishCard> {
             ],
           ),
           const SizedBox(height: 8),
+          Row(
+            children: [
+              const Expanded(child: SizedBox()),
+              // Genera la descripción con IA desde el nombre del plato.
+              TextButton.icon(
+                key: Key('menu_dish_ai_desc_${widget.index}'),
+                onPressed: _generatingDesc ? null : _generateDescription,
+                style: TextButton.styleFrom(
+                  foregroundColor: const Color(0xFF7C3AED),
+                  padding: const EdgeInsets.symmetric(horizontal: 8),
+                  minimumSize: const Size(0, 36),
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                ),
+                icon: _generatingDesc
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(
+                            strokeWidth: 2, color: Color(0xFF7C3AED)),
+                      )
+                    : const Icon(Icons.auto_awesome_rounded, size: 18),
+                label: Text(_generatingDesc ? 'Generando…' : 'Descripción con IA',
+                    style: const TextStyle(
+                        fontSize: 13.5, fontWeight: FontWeight.w600)),
+              ),
+            ],
+          ),
           _Field(
             controller: d.description,
             label: 'Descripción',

@@ -825,6 +825,26 @@ class ApiService {
     return _runAiPhotoJob(uuid, '/enhance', params);
   }
 
+  /// Spec 043: genera una descripción corta y apetecible para un plato del
+  /// menú a partir de su nombre (+ categoría). Síncrono (texto). Devuelve la
+  /// descripción lista para precargar en el editor (el tendero la edita).
+  Future<String> generateMenuDescription({
+    required String name,
+    String category = '',
+  }) async {
+    try {
+      final response = await _dio.post(
+        '/api/v1/menu/generate-description',
+        data: {'name': name, if (category.isNotEmpty) 'category': category},
+        options: Options(receiveTimeout: const Duration(seconds: 30)),
+      );
+      final data = _extractData(response);
+      return (data['description'] as String?)?.trim() ?? '';
+    } on DioException catch (e) {
+      throw AppError.fromDioException(e);
+    }
+  }
+
   Future<Map<String, dynamic>> generateProductImage(
     String uuid, {
     String? name,

@@ -1,9 +1,29 @@
 // Spec: specs/043-menu-restaurante-recetas/spec.md
 import 'package:flutter/material.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:vendia_pos/screens/recipes/menu_import_screen.dart';
+import 'package:vendia_pos/services/api_service.dart';
+import 'package:vendia_pos/services/auth_service.dart';
+
+/// Doble de ApiService — devuelve una descripción fija para el plato.
+class _FakeMenuApi extends ApiService {
+  _FakeMenuApi(this._desc) : super(AuthService());
+  final String _desc;
+
+  @override
+  Future<String> generateMenuDescription({
+    required String name,
+    String category = '',
+  }) async =>
+      _desc;
+}
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+  setUpAll(() =>
+      dotenv.testLoad(fileInput: 'API_BASE_URL=http://localhost:8080'));
+
   group('EditableDish (F043)', () {
     test('fromScan mapea los campos del plato escaneado', () {
       final d = EditableDish.fromScan({
@@ -107,6 +127,25 @@ void main() {
       await tester.pump();
 
       expect(find.byKey(const Key('menu_dish_remove_0')), findsOneWidget);
+    });
+
+    testWidgets('"Descripción con IA" llena el campo con la IA (F043)',
+        (tester) async {
+      await tester.pumpWidget(MaterialApp(
+        home: MenuImportScreen(
+          apiOverride: _FakeMenuApi('Frijoles, arroz, carne y chicharrón'),
+          scannedDishes: const [
+            {'name': 'Bandeja Paisa', 'price': 25000, 'category': 'Platos fuertes'},
+          ],
+        ),
+      ));
+      await tester.pump();
+
+      await tester.tap(find.byKey(const Key('menu_dish_ai_desc_0')));
+      await tester.pump(); // dispara la llamada (loading)
+      await tester.pumpAndSettle();
+
+      expect(find.text('Frijoles, arroz, carne y chicharrón'), findsOneWidget);
     });
   });
 }
