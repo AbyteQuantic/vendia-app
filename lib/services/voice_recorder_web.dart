@@ -33,15 +33,32 @@ import 'voice_recorder.dart';
 Future<String> resolveRecordingPath() async =>
     'vendia_voice_web.webm';
 
-/// Web: [stopResult] is a blob URL — fetch its bytes from browser memory.
+/// Web: [stopResult] is a blob URL — fetch the blob and read its bytes +
+/// its REAL MIME type. The type is no longer hardcoded to webm: it can be
+/// `audio/mp4` (Safari/iOS), `audio/webm` (Chrome) or `audio/wav` (the
+/// universal fallback), and Gemini needs the right one to pick a decoder.
 Future<RecordedAudio> readRecordedAudioImpl(String stopResult) async {
-  final bytes = await _fetchBlobBytes(stopResult);
+  final blob = await _fetchBlob(stopResult);
+  final rawType = (blob.type).toLowerCase().split(';').first.trim();
+  final mime = rawType.isNotEmpty ? rawType : 'audio/webm';
+  final bytes = await _blobToBytes(blob);
   return RecordedAudio(
     bytes: bytes,
-    // The browser's MediaRecorder emits WebM/Opus for AudioEncoder.opus.
-    mimeType: 'audio/webm',
-    filename: 'vendia_voice.webm',
+    mimeType: mime,
+    filename: 'vendia_voice.${_extForMime(mime)}',
   );
+}
+
+/// Maps an audio MIME type to a sensible file extension (a hint for the
+/// backend's content sniffing).
+String _extForMime(String mime) {
+  if (mime.contains('mp4') || mime.contains('m4a') || mime.contains('aac')) {
+    return 'mp4';
+  }
+  if (mime.contains('wav')) return 'wav';
+  if (mime.contains('ogg')) return 'ogg';
+  if (mime.contains('mpeg') || mime.contains('mp3')) return 'mp3';
+  return 'webm';
 }
 
 /// Web: revoke the blob URL so the browser frees the in-memory clip.
@@ -54,17 +71,25 @@ Future<void> disposeRecordedAudioImpl(String stopResult) async {
   }
 }
 
-/// Reads the bytes behind a `blob:` URL via an arraybuffer XHR. This is a
-/// local read of an in-memory blob — it never hits the network.
-Future<Uint8List> _fetchBlobBytes(String blobUrl) async {
+/// Fetches the [html.Blob] behind a `blob:` URL (so we can read its real
+/// `.type`). Local read of an in-memory blob — never hits the network.
+Future<html.Blob> _fetchBlob(String blobUrl) async {
   final request = await html.HttpRequest.request(
     blobUrl,
-    responseType: 'arraybuffer',
+    responseType: 'blob',
   );
-  final buffer = request.response;
-  if (buffer is ByteBuffer) {
-    return buffer.asUint8List();
-  }
-  // Defensive: an unexpected response shape means the clip is unusable.
+  final resp = request.response;
+  if (resp is html.Blob) return resp;
+  throw StateError('No se pudo leer el audio grabado en el navegador.');
+}
+
+/// Reads a [html.Blob] into bytes via FileReader (arraybuffer).
+Future<Uint8List> _blobToBytes(html.Blob blob) async {
+  final reader = html.FileReader();
+  reader.readAsArrayBuffer(blob);
+  await reader.onLoadEnd.first;
+  final result = reader.result;
+  if (result is ByteBuffer) return result.asUint8List();
+  if (result is Uint8List) return result;
   throw StateError('No se pudo leer el audio grabado en el navegador.');
 }

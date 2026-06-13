@@ -166,7 +166,12 @@ class _VoiceInventoryScreenState extends State<VoiceInventoryScreen>
       // `path_provider` call ever runs on the web build.
       final path = await _resolvePath();
 
-      await _recorder.start(recordConfigForPlatform(), path: path);
+      // Negocia el encoder en runtime: opus en Chrome/Android, mp4/AAC en
+      // Safari/iOS, WAV como último recurso universal. Antes se forzaba
+      // opus → en iPhone `start()` lanzaba "encoder not supported" y el
+      // micrófono parecía no hacer nada.
+      final config = await resolveRecordConfig(_recorder);
+      await _recorder.start(config, path: path);
 
       if (!mounted) return;
       setState(() {

@@ -55,24 +55,64 @@ class RecordedAudio {
   final String filename;
 }
 
-/// Builds the [RecordConfig] that works on the current platform.
-///
-/// - Web: `AudioEncoder.opus` — the only encoder the browser's
-///   MediaRecorder reliably supports (emits WebM/Opus). Forcing
-///   `aacLc` would make `record_web` throw "encoder not supported".
-/// - Mobile: `AudioEncoder.aacLc` — m4a, the original behavior.
+/// Builds the [RecordConfig] for the current platform (sync, mobile-only
+/// default). Kept for back-compat; the screen uses [resolveRecordConfig]
+/// so the web path can negotiate the encoder at runtime.
 RecordConfig recordConfigForPlatform() {
-  if (kIsWeb) {
-    return const RecordConfig(
-      encoder: AudioEncoder.opus,
-      bitRate: 128000,
-      sampleRate: 44100,
-    );
-  }
   return const RecordConfig(
     encoder: AudioEncoder.aacLc,
     bitRate: 128000,
     sampleRate: 44100,
+  );
+}
+
+/// Web-only ordered list of encoders to try, best-compatible first:
+///   1. opus  → WebM/Opus (Chrome, Firefox, Android web).
+///   2. aacLc → audio/mp4  (Safari/iOS — the ONLY MediaRecorder codec it
+///      supports; Opus made `start()` throw "encoder not supported",
+///      which is exactly why the mic "did nothing" on iPhone).
+///   3. wav   → record_web records WAV via the Web Audio API (NOT
+///      MediaRecorder), so it works on every browser as a last resort.
+const List<AudioEncoder> _webEncoderPreference = [
+  AudioEncoder.opus,
+  AudioEncoder.aacLc,
+  AudioEncoder.wav,
+];
+
+/// Picks the [RecordConfig] that actually works in THIS browser.
+///
+/// The same web bundle runs on Chrome (Opus) and Safari/iOS (mp4 only),
+/// so the choice must be made at runtime by asking the recorder which
+/// encoders it supports — a compile-time default can't be right for both.
+/// On mobile (and the test VM) `kIsWeb` is false → returns the AAC config
+/// unchanged, preserving the original behavior and not touching the
+/// injected recorder in widget tests.
+///
+/// Voice is speech: mono @ 16 kHz keeps uploads small (a 90 s WAV stays
+/// well under the backend's 10 MB cap) without hurting Gemini's accuracy.
+Future<RecordConfig> resolveRecordConfig(AudioRecorder recorder) async {
+  if (!kIsWeb) return recordConfigForPlatform();
+
+  for (final enc in _webEncoderPreference) {
+    try {
+      if (await recorder.isEncoderSupported(enc)) {
+        return RecordConfig(
+          encoder: enc,
+          bitRate: 128000,
+          sampleRate: 16000,
+          numChannels: 1,
+        );
+      }
+    } catch (_) {
+      // isEncoderSupported can throw on exotic browsers — try the next.
+    }
+  }
+  // Universal fallback: WAV via Web Audio works even if every
+  // MediaRecorder codec probe failed.
+  return const RecordConfig(
+    encoder: AudioEncoder.wav,
+    sampleRate: 16000,
+    numChannels: 1,
   );
 }
 
