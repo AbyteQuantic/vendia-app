@@ -25,6 +25,7 @@ import '../../models/product.dart';
 import '../../models/quote.dart';
 import '../../models/quote_item.dart';
 import '../../services/api_service.dart';
+import '../../services/app_error.dart';
 import '../../services/auth_service.dart';
 import '../../services/tax_settings_service.dart';
 import '../../theme/app_theme.dart';
@@ -253,7 +254,11 @@ class _QuoteFormScreenState extends State<QuoteFormScreen> {
       'items': _items.map((e) => e.toJson()).toList(),
       'discount_total': _discount,
       'tax_rate': _taxRate,
-      'valid_until': _validUntil.toIso8601String(),
+      // `.toUtc()` es OBLIGATORIO: el backend Go parsea las fechas como
+      // RFC3339, que EXIGE zona horaria. Un DateTime local serializa sin
+      // 'Z' ("2026-06-30T00:00:00.000") y el parse falla con 400 — por eso
+      // NUNCA se pudo guardar una cotización. Eventos ya usaban .toUtc().
+      'valid_until': _validUntil.toUtc().toIso8601String(),
       'note': _noteCtrl.text.trim(),
     };
 
@@ -270,7 +275,13 @@ class _QuoteFormScreenState extends State<QuoteFormScreen> {
     } catch (e) {
       if (!mounted) return;
       setState(() => _saving = false);
-      _snack('No se pudo guardar la cotización', isError: true);
+      // Mostramos el motivo real cuando el backend manda uno accionable
+      // (validación), en vez de un genérico que oculta la causa.
+      final msg = e is AppError && e.message.trim().isNotEmpty
+          ? e.message
+          : 'No se pudo guardar la cotización';
+      debugPrint('[QUOTE] save failed: $e');
+      _snack(msg, isError: true);
     }
   }
 
@@ -590,7 +601,9 @@ class _QuoteFormScreenState extends State<QuoteFormScreen> {
             ),
           ),
           Text(
-            formatCOP(amount),
+            // Formato correcto para negativos (descuento): "-$200", no el
+            // "$-.200" que producía formatCOP con el signo adentro.
+            amount < 0 ? '-${formatCOP(-amount)}' : formatCOP(amount),
             style: TextStyle(
               fontSize: emphasize ? 20 : 16,
               fontWeight: emphasize ? FontWeight.w800 : FontWeight.w600,

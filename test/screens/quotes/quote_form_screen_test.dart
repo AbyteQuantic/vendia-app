@@ -130,6 +130,13 @@ void main() {
       final payload = api.capturedCreatePayload!;
       expect(payload['customer_id'], 'c-acme');
       expect(payload['tax_rate'], 0);
+      // Regresión: `valid_until` DEBE llevar zona horaria (UTC 'Z'). Un
+      // DateTime local serializa sin 'Z' y el backend Go (RFC3339) lo
+      // rechaza con 400 → "no se pudo guardar" (nunca se creó ninguna).
+      final validUntil = payload['valid_until'] as String;
+      expect(validUntil.endsWith('Z'), isTrue,
+          reason: 'valid_until debe ir en UTC con sufijo Z (RFC3339)');
+      expect(DateTime.tryParse(validUntil), isNotNull);
 
       final items = payload['items'] as List;
       expect(items.length, 2);
