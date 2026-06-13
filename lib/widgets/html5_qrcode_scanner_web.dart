@@ -17,6 +17,7 @@
 import 'dart:js_interop';
 import 'dart:js_interop_unsafe';
 
+import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 import 'package:web/web.dart' as web;
 
@@ -36,6 +37,11 @@ extension type _Html5Qrcode._(JSObject _) implements JSObject {
   );
   external JSPromise<JSAny?> stop();
   external void clear();
+  // pause(true) congela también el <video>; resume() reanuda el escaneo.
+  // Usados para ceder la pantalla a los diálogos Flutter (el host HTML
+  // tiene z-index sobre el canvas — sin esto los diálogos quedan DETRÁS).
+  external void pause(JSBoolean shouldPauseVideo);
+  external void resume();
 }
 
 class Html5QrcodeScannerWidget extends StatefulWidget {
@@ -46,11 +52,18 @@ class Html5QrcodeScannerWidget extends StatefulWidget {
   /// si es null, se cierra con Navigator.pop.
   final VoidCallback? onBack;
 
+  /// Visibilidad controlada por el padre: false = pausar la cámara y
+  /// ocultar el video/overlay HTML (que viven SOBRE el canvas de Flutter)
+  /// para que los diálogos Flutter ("Código no reconocido", errores) sean
+  /// visibles; true = mostrar y reanudar el escaneo.
+  final ValueListenable<bool>? visibility;
+
   const Html5QrcodeScannerWidget({
     super.key,
     required this.onDetected,
     this.formats,
     this.onBack,
+    this.visibility,
   });
 
   @override
@@ -76,7 +89,26 @@ class _Html5QrcodeScannerWidgetState
   void initState() {
     super.initState();
     _injectDom();
+    widget.visibility?.addListener(_onVisibilityChanged);
     WidgetsBinding.instance.addPostFrameCallback((_) => _start());
+  }
+
+  void _onVisibilityChanged() {
+    final visible = widget.visibility?.value ?? true;
+    final display = visible ? '' : 'none';
+    _hostDiv?.style.display = display;
+    _overlayDiv?.style.display = display;
+    // pause/resume lanzan si el scanner no está en estado SCANNING
+    // (p. ej. aún arrancando) — el DOM oculto ya resuelve lo visual.
+    final scanner = _scanner;
+    if (scanner == null || !_started) return;
+    try {
+      if (visible) {
+        scanner.resume();
+      } else {
+        scanner.pause(true.toJS);
+      }
+    } catch (_) {/* estado no escaneando — ignorar */}
   }
 
   void _injectDom() {
@@ -282,6 +314,7 @@ class _Html5QrcodeScannerWidgetState
 
   @override
   void dispose() {
+    widget.visibility?.removeListener(_onVisibilityChanged);
     final scanner = _scanner;
     if (scanner != null && _started) {
       scanner.stop().toDart.then((_) {

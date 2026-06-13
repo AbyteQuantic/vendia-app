@@ -35,6 +35,15 @@
   <title>VendIA</title>
   <link rel="manifest" href="manifest.json">
 
+  <!-- Polyfill de BarcodeDetector (zxing-wasm) — Safari/iOS NO implementa
+       la API nativa, así que sin esto html5-qrcode cae a su decodificador
+       ZXing-JS, mucho más débil en códigos 1D (EAN/UPC) sobre iPhone.
+       Con el polyfill registrado ANTES, html5-qrcode lo detecta vía
+       `useBarCodeDetectorIfSupported` y decodifica con el motor WASM.
+       Self-hosted (44 KB); el zxing_reader.wasm (1 MB) se descarga LAZY
+       solo cuando se abre el scanner, no al cargar la app. -->
+  <script src="barcode-detector.min.js"></script>
+
   <!-- html5-qrcode — lector de códigos battle-tested en iOS Safari.
        Self-hosted desde el dominio (no CDN) para evitar bloqueos por
        anti-tracking de Safari iOS y aumentar la confiabilidad del

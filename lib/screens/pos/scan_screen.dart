@@ -54,9 +54,16 @@ class _ScanScreenState extends State<ScanScreen> {
   bool _processing = false;
   String? _lastScannedCode;
 
+  /// Web: controla el video HTML del scanner (vive SOBRE el canvas de
+  /// Flutter). false = pausar+ocultar para que los diálogos Flutter
+  /// ("Código no reconocido", errores) se VEAN — antes quedaban detrás
+  /// del video y parecía que el escaneo "no hacía nada".
+  final _webScannerVisible = ValueNotifier<bool>(true);
+
   @override
   void dispose() {
     _scannerCtrl.dispose();
+    _webScannerVisible.dispose();
     super.dispose();
   }
 
@@ -123,9 +130,15 @@ class _ScanScreenState extends State<ScanScreen> {
         ),
       );
       setState(() => _processing = false);
+      // Web: reanudar tras un respiro para que el snackbar (Flutter) se
+      // alcance a leer antes de que el video HTML vuelva a taparlo.
+      Future.delayed(const Duration(seconds: 2), () {
+        if (mounted) _webScannerVisible.value = true;
+      });
     } catch (_) {
       if (!mounted) return;
       setState(() => _processing = false);
+      _webScannerVisible.value = true;
     }
   }
 
@@ -165,6 +178,7 @@ class _ScanScreenState extends State<ScanScreen> {
                 _processing = false;
                 _lastScannedCode = null;
               });
+              _webScannerVisible.value = true;
             },
             child: const Text('Seguir escaneando',
                 style: TextStyle(fontSize: 18, color: AppTheme.textSecondary)),
@@ -222,6 +236,7 @@ class _ScanScreenState extends State<ScanScreen> {
         _processing = false;
         _lastScannedCode = null;
       });
+      _webScannerVisible.value = true;
       return;
     }
 
@@ -237,6 +252,7 @@ class _ScanScreenState extends State<ScanScreen> {
         _processing = false;
         _lastScannedCode = null;
       });
+      _webScannerVisible.value = true;
       return;
     }
 
@@ -357,6 +373,7 @@ class _ScanScreenState extends State<ScanScreen> {
         _processing = false;
         _lastScannedCode = null;
       });
+      _webScannerVisible.value = true;
       return;
     }
 
@@ -373,6 +390,7 @@ class _ScanScreenState extends State<ScanScreen> {
         _processing = false;
         _lastScannedCode = null;
       });
+      _webScannerVisible.value = true;
       return;
     }
 
@@ -397,6 +415,9 @@ class _ScanScreenState extends State<ScanScreen> {
       _processing = true;
       _lastScannedCode = code;
     });
+    // Ceder la pantalla a Flutter: el video HTML se pausa y oculta para
+    // que el resultado (pop, diálogo o error) sea SIEMPRE visible.
+    _webScannerVisible.value = false;
     HapticFeedback.lightImpact();
     await _lookupProduct(code);
   }
@@ -416,6 +437,7 @@ class _ScanScreenState extends State<ScanScreen> {
             if (kIsWeb)
               Html5QrcodeScannerWidget(
                 onDetected: _onDetectedFromWeb,
+                visibility: _webScannerVisible,
               )
             else
               MobileScanner(
