@@ -60,13 +60,19 @@ void main() {
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 50));
 
-      // The suggestion list (an Overlay) must render after 3 letters.
+      // The inline suggestion list must render after 3 letters.
       final suggestion = find.text('Coca Cola (Coca-Cola)');
       expect(suggestion, findsWidgets,
           reason: 'autocomplete suggestions must appear — the regression');
 
-      // And it must be selectable: tapping fills the name field.
-      await tester.tap(suggestion.first);
+      // And it must be selectable: tapping fills the name field. La lista es
+      // inline en el formulario; tocamos el InkWell de la fila (visible, como
+      // lo ve el tendero) y dejamos que el scroll de ensureVisible asiente.
+      final ink =
+          find.ancestor(of: suggestion.first, matching: find.byType(InkWell));
+      await tester.ensureVisible(ink.first);
+      await tester.pump(const Duration(milliseconds: 350)); // asienta el scroll
+      await tester.tap(ink.first, warnIfMissed: false);
       await tester.pump();
       final filled =
           (tester.widget(nameField) as TextFormField).controller!.text;
@@ -95,10 +101,14 @@ void main() {
       FocusManager.instance.primaryFocus?.unfocus();
       await tester.pump(); // el listener de blur arma el timer diferido
 
-      // El overlay sigue vivo y la sugerencia se puede seleccionar.
+      // La lista inline sigue viva y la sugerencia se puede seleccionar.
       expect(suggestion, findsWidgets,
-          reason: 'el blur no debe cerrar el overlay de inmediato');
-      await tester.tap(suggestion.first);
+          reason: 'el blur no debe cerrar la lista de sugerencias');
+      final ink =
+          find.ancestor(of: suggestion.first, matching: find.byType(InkWell));
+      await tester.ensureVisible(ink.first);
+      await tester.pump(const Duration(milliseconds: 350));
+      await tester.tap(ink.first, warnIfMissed: false);
       await tester.pump();
 
       final filled =

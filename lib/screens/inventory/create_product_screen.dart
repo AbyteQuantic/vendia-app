@@ -33,10 +33,6 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
   final _nameCtrl = TextEditingController();
   final _nameFocus = FocusNode();
   final _nameLayerLink = LayerLink();
-  // Cierre diferido del autocomplete al perder el foco (ver initState):
-  // evita que el blur mate el overlay antes de que el tap en una
-  // sugerencia se registre (bug "no me deja seleccionar" en iOS web).
-  Timer? _blurConfirmTimer;
   final _buyPriceCtrl = TextEditingController();
   final _sellPriceCtrl = TextEditingController();
   final _quantityCtrl = TextEditingController(text: '1');
@@ -110,26 +106,18 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
   void initState() {
     super.initState();
     _nameFocus.addListener(() {
-      if (!_nameFocus.hasFocus) {
-        // NO cerramos el autocomplete de inmediato al perder el foco.
-        // En web (iOS Safari) tocar una sugerencia hace que el campo
-        // pierda el foco ANTES de que el `onTap` del item alcance a
-        // dispararse — si aquí cerráramos el overlay, el tap caería al
-        // vacío y "no se podía seleccionar nada". Diferimos el cierre:
-        // si el blur fue por tocar una sugerencia, su `onTap` corre
-        // primero (cierra el overlay él mismo) y cancela este timer.
-        _blurConfirmTimer?.cancel();
-        _blurConfirmTimer = Timer(const Duration(milliseconds: 220), () {
-          if (!mounted || _nameFocus.hasFocus || _overlayEntry == null) return;
-          _confirmNameField(unfocus: false);
-        });
-      } else {
-        _blurConfirmTimer?.cancel();
-        // FR-02: when the name field gains focus the iOS keyboard slides
-        // up and covers the suggestion list. Scroll the form so the field
-        // — and the suggestions rendered right under it — stay visible.
+      if (_nameFocus.hasFocus) {
+        // FR-02: al enfocar, el teclado sube y tapa la lista; desplazamos
+        // el formulario para que el campo + sugerencias queden visibles.
         _ensureNameFieldVisible();
       }
+      // IMPORTANTE: ya NO cerramos las sugerencias al perder el foco. En
+      // web (iOS Safari) cualquier toque o arrastre sobre la lista inline
+      // hace que el input HTML pierda el foco — si cerráramos aquí, "se
+      // cerraría al mover o tocar" la lista (el bug reportado). La lista se
+      // cierra solo al SELECCIONAR, al ENVIAR (onFieldSubmitted) o cuando
+      // el texto baja de 3 letras. Es inline, así que quedarse abierta no
+      // estorba: la siguiente interacción la resuelve.
     });
     // F029: cargar la capacidad enable_price_tiers + los nombres custom
     // de los tiers. Fail-closed: si la red falla o el storage está
@@ -192,9 +180,11 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
 
   @override
   void dispose() {
-    _removeOverlay();
+    // No pasamos por _removeOverlay() aquí: ahora hace setState (la lista es
+    // inline) y setState durante dispose lanza. Limpiamos el entry directo.
+    _overlayEntry?.remove();
+    _overlayEntry = null;
     _debounce?.cancel();
-    _blurConfirmTimer?.cancel();
     _nameCtrl.dispose();
     _nameFocus.dispose();
     _buyPriceCtrl.dispose();
@@ -208,194 +198,125 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
     super.dispose();
   }
 
+  /// Oculta las sugerencias. (Antes removía un OverlayEntry; ahora la lista
+  /// es INLINE en el formulario, así que basta con limpiar el estado.)
   void _removeOverlay() {
     _overlayEntry?.remove();
     _overlayEntry = null;
+    if (mounted) setState(() {});
   }
 
+  /// Muestra/actualiza las sugerencias. Ya NO usa un Overlay: en Flutter web
+  /// (iOS Safari) tocar un Overlay dibujado sobre el canvas hacía que el
+  /// input HTML perdiera el foco → el teclado bajaba, el Overlay se reubicaba
+  /// (CompositedTransformFollower) y el toque caía al vacío: "no me deja
+  /// seleccionar / se cierra al mover la lista". La lista inline vive dentro
+  /// del propio ListView del formulario, así que tocarla y desplazarla son
+  /// gestos normales que nunca la cierran.
   void _showSuggestionsOverlay() {
-    _removeOverlay();
-    if (_suggestions.isEmpty) return;
-    // Note (regresión F018 → fix): NO se llama aquí a
-    // `_ensureNameFieldVisible()`. Antes esta función disparaba un
-    // `Scrollable.ensureVisible` (scroll animado) en CADA resultado de
-    // búsqueda; mostrar las sugerencias quedaba acoplado a un scroll que
-    // podía fallar/abortar y dejar el autocompletado sin pintar. Mostrar
-    // la lista ahora solo construye e inserta el overlay — nada más.
-    // FR-02 (sugerencias sobre el teclado) sigue cubierto por el
-    // `maxHeight` que respeta `viewInsets` y por el `ensureVisible` que
-    // se ejecuta al enfocar el campo.
+    if (mounted) setState(() {});
+  }
 
-    _overlayEntry = OverlayEntry(
-      builder: (context) {
-        // Spec 018 / FR-02: cap the list height so it never extends
-        // behind the on-screen keyboard. `viewInsets.bottom` is the
-        // keyboard height; what is left below the field (~field bottom
-        // at offset 60) minus that inset is the visible room.
-        final media = MediaQuery.of(context);
-        const fieldBottomOffset = 60.0; // CompositedTransformFollower offset
-        final available = media.size.height -
-            media.viewInsets.bottom -
-            fieldBottomOffset -
-            24; // breathing room above the keyboard
-        final maxHeight = available.clamp(120.0, 300.0);
-        return CompositedTransformFollower(
-          link: _nameLayerLink,
-          showWhenUnlinked: false,
-          offset: const Offset(0, fieldBottomOffset),
-          child: Align(
-            alignment: Alignment.topLeft,
-            child: Padding(
-              padding: const EdgeInsets.only(top: 4),
-              child: SizedBox(
-                width: media.size.width - 32,
-                child: Material(
-                  elevation: 8,
-                  shadowColor: Colors.black26,
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(16),
-                  clipBehavior: Clip.antiAlias,
-                  child: ConstrainedBox(
-                    constraints: BoxConstraints(maxHeight: maxHeight),
-                    child: ListView.builder(
-                      shrinkWrap: true,
-                      padding: const EdgeInsets.symmetric(vertical: 8),
-                      itemCount: _suggestions.length,
-                      itemBuilder: (_, i) {
-                        final s = _suggestions[i];
-                        // Subtitle: Presentación - Contenido (priority), fallback to brand
-                        final pres = s.presentation ?? '';
-                        final cont = s.content ?? '';
-                        final detail = [
-                          if (pres.isNotEmpty) pres,
-                          if (cont.isNotEmpty) cont,
-                        ].join(' - ');
-                        final subtitleText = detail.isNotEmpty
-                            ? detail
-                            : (s.brand.isNotEmpty
-                                ? s.brand
-                                : 'Sin especificar');
+  /// Sugerencias renderizadas INLINE bajo el campo de nombre. Es un Column
+  /// (NO un ListView anidado): así cada fila forma parte del scroll del
+  /// formulario y se toca/desplaza sin los problemas de hit-test de un
+  /// scrollable dentro de otro. Las sugerencias son pocas (≤8), así que no
+  /// hace falta virtualizar.
+  Widget _inlineSuggestions() {
+    final tiles = <Widget>[];
+    for (var i = 0; i < _suggestions.length; i++) {
+      if (i > 0) {
+        tiles.add(const Divider(height: 1, thickness: 1, color: DashUI.divider));
+      }
+      tiles.add(_suggestionTile(_suggestions[i]));
+    }
+    return Container(
+      margin: const EdgeInsets.only(top: 8),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: const Color(0x0D000000), width: 1),
+        boxShadow: DashUI.softShadow,
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Column(mainAxisSize: MainAxisSize.min, children: tiles),
+    );
+  }
 
-                        return InkWell(
-                          // `canRequestFocus: false`: tocar la sugerencia NO
-                          // le roba el foco al campo de texto → el teclado no
-                          // se cierra y la lista no se desplaza a mitad del
-                          // toque (esa era la otra causa del "no me deja
-                          // seleccionar"). `excludeFromSemantics`+translucent
-                          // para que el gesto siempre enganche.
-                          canRequestFocus: false,
-                          onTap: () => _selectSuggestion(s),
-                          child: Padding(
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 14, vertical: 10),
-                            child: Row(
-                              children: [
-                                // Image (strict 48x48)
-                                ClipRRect(
-                                  borderRadius: BorderRadius.circular(8),
-                                  child: Container(
-                                    width: 48,
-                                    height: 48,
-                                    color: Colors.grey.shade100,
-                                    child: s.imageUrl != null &&
-                                            s.imageUrl!.isNotEmpty
-                                        ? Image.network(
-                                            s.imageUrl!,
-                                            width: 48,
-                                            height: 48,
-                                            fit: BoxFit.contain,
-                                            errorBuilder: (_, __, ___) =>
-                                                _suggestionPlaceholder(),
-                                          )
-                                        : _suggestionPlaceholder(),
-                                  ),
-                                ),
-                                const SizedBox(width: 12),
-                                // Title + Subtitle
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      Text(
-                                        s.brand.isNotEmpty
-                                            ? '${s.name} (${s.brand})'
-                                            : s.name,
-                                        style: const TextStyle(
-                                          fontSize: 15,
-                                          fontWeight: FontWeight.w600,
-                                          color: AppTheme.textPrimary,
-                                        ),
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                      ),
-                                      const SizedBox(height: 2),
-                                      Text(
-                                        subtitleText,
-                                        style: TextStyle(
-                                          fontSize: 14,
-                                          color: Colors.grey.shade700,
-                                        ),
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                                const SizedBox(width: 8),
-                                // Source badge (pill style)
-                                if (s.source == 'user')
-                                  Container(
-                                    padding: const EdgeInsets.symmetric(
-                                        horizontal: 8, vertical: 3),
-                                    decoration: BoxDecoration(
-                                      color: const Color(0xFF7C3AED)
-                                          .withValues(alpha: 0.1),
-                                      borderRadius: BorderRadius.circular(100),
-                                    ),
-                                    child: const Text(
-                                      'VendIA',
-                                      style: TextStyle(
-                                        fontSize: 11,
-                                        color: Color(0xFF7C3AED),
-                                        fontWeight: FontWeight.w600,
-                                      ),
-                                    ),
-                                  )
-                                else if (s.isLocal)
-                                  Container(
-                                    padding: const EdgeInsets.symmetric(
-                                        horizontal: 8, vertical: 3),
-                                    decoration: BoxDecoration(
-                                      color: const Color(0xFF10B981)
-                                          .withValues(alpha: 0.08),
-                                      borderRadius: BorderRadius.circular(100),
-                                    ),
-                                    child: const Text(
-                                      'Mi tienda',
-                                      style: TextStyle(
-                                        fontSize: 11,
-                                        color: Color(0xFF0D8B5E),
-                                        fontWeight: FontWeight.w600,
-                                      ),
-                                    ),
-                                  ),
-                              ],
-                            ),
-                          ),
-                        );
-                      },
-                    ),
-                  ),
-                ),
+  Widget _suggestionTile(_ProductSuggestion s) {
+    final pres = s.presentation ?? '';
+    final cont = s.content ?? '';
+    final detail =
+        [if (pres.isNotEmpty) pres, if (cont.isNotEmpty) cont].join(' - ');
+    final subtitleText = detail.isNotEmpty
+        ? detail
+        : (s.brand.isNotEmpty ? s.brand : 'Sin especificar');
+
+    return InkWell(
+      onTap: () => _selectSuggestion(s),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
+        child: Row(
+          children: [
+            ClipRRect(
+              borderRadius: BorderRadius.circular(8),
+              child: Container(
+                width: 48,
+                height: 48,
+                color: Colors.grey.shade100,
+                child: s.imageUrl != null && s.imageUrl!.isNotEmpty
+                    ? Image.network(s.imageUrl!,
+                        width: 48,
+                        height: 48,
+                        fit: BoxFit.contain,
+                        errorBuilder: (_, __, ___) => _suggestionPlaceholder())
+                    : _suggestionPlaceholder(),
               ),
             ),
-          ),
-        );
-      },
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    s.brand.isNotEmpty ? '${s.name} (${s.brand})' : s.name,
+                    style: const TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w600,
+                        color: DashUI.ink),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  const SizedBox(height: 2),
+                  Text(subtitleText,
+                      style: const TextStyle(
+                          fontSize: 14, color: DashUI.inkSoft),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis),
+                ],
+              ),
+            ),
+            const SizedBox(width: 8),
+            if (s.source == 'user')
+              _sourcePill('VendIA', const Color(0xFF7C3AED))
+            else if (s.isLocal)
+              _sourcePill('Mi tienda', const Color(0xFF0D8B5E)),
+          ],
+        ),
+      ),
     );
-    Overlay.of(context).insert(_overlayEntry!);
   }
+
+  Widget _sourcePill(String label, Color color) => Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+        decoration: BoxDecoration(
+          color: color.withValues(alpha: 0.10),
+          borderRadius: BorderRadius.circular(100),
+        ),
+        child: Text(label,
+            style: TextStyle(
+                fontSize: 11, color: color, fontWeight: FontWeight.w600)),
+      );
 
   Widget _suggestionPlaceholder() {
     return Container(
@@ -661,7 +582,6 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
   }
 
   void _selectSuggestion(_ProductSuggestion s) {
-    _blurConfirmTimer?.cancel(); // ganamos la carrera contra el cierre por blur
     final fullName = s.brand.isNotEmpty ? '${s.name} (${s.brand})' : s.name;
     _nameCtrl.text = fullName;
     _removeOverlay();
@@ -1601,6 +1521,9 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
                       },
                     ),
                   ),
+                  // Sugerencias INLINE (no overlay) — se desplazan y se tocan
+                  // como parte del formulario; nunca se cierran al moverlas.
+                  if (_suggestions.isNotEmpty) _inlineSuggestions(),
                 ]),
 
                 const SizedBox(height: 14),
