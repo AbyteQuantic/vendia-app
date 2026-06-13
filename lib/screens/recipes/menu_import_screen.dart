@@ -37,6 +37,11 @@ class EditableDish {
   final TextEditingController portion;
   String category;
 
+  /// URL de la foto (muestra IA o real). Vive en memoria hasta "Publicar",
+  /// donde se incluye en createProduct — nunca se crea un producto antes
+  /// (concilio opción C: sin productos fantasma, sin perder ediciones).
+  String? imageUrl;
+
   EditableDish({
     required String name,
     required String description,
@@ -91,6 +96,7 @@ class EditableDish {
     if (desc.isNotEmpty) data['description'] = desc;
     final port = portion.text.trim();
     if (port.isNotEmpty) data['portion'] = port;
+    if (imageUrl != null && imageUrl!.isNotEmpty) data['image_url'] = imageUrl;
     return data;
   }
 }
@@ -315,6 +321,46 @@ class _DishCard extends StatefulWidget {
 
 class _DishCardState extends State<_DishCard> {
   bool _generatingDesc = false;
+  bool _generatingImage = false;
+
+  void _snackError(String msg) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text(msg, style: const TextStyle(fontSize: 15)),
+      backgroundColor: AppTheme.error,
+      behavior: SnackBarBehavior.floating,
+    ));
+  }
+
+  /// Genera una FOTO de muestra del plato con IA (name-based, concilio op. C):
+  /// no crea producto; la URL se guarda en el plato en memoria y se publica
+  /// junto con el resto. Una a la vez (no en lote), spinner in-card.
+  Future<void> _generateImage() async {
+    if (_generatingImage) return; // dedupe doble-tap (no disparar 2 jobs)
+    final d = widget.dish;
+    final name = d.name.text.trim();
+    if (name.length < 2) {
+      _snackError('Escribe primero el nombre del plato.');
+      return;
+    }
+    setState(() => _generatingImage = true);
+    try {
+      final api = widget.api ?? ApiService(AuthService());
+      final url = await api.generateMenuImage(name: name, category: d.category);
+      if (!mounted) return;
+      if (url.isNotEmpty) {
+        setState(() => d.imageUrl = url);
+      } else {
+        _snackError('No pudimos crear la foto. Intenta de nuevo.');
+      }
+    } on AppError catch (e) {
+      _snackError(e.message);
+    } catch (_) {
+      _snackError('No pudimos crear la foto. Intenta de nuevo.');
+    } finally {
+      if (mounted) setState(() => _generatingImage = false);
+    }
+  }
 
   /// Genera la descripción del plato con IA a partir del nombre + categoría
   /// y la precarga en el campo (el tendero la edita). Necesita un nombre.
@@ -370,6 +416,107 @@ class _DishCardState extends State<_DishCard> {
     }
   }
 
+  /// Sección de foto del plato (concilio op. C, máquina de 3 estados in-card):
+  ///   sin foto → botón "✨ Foto con IA"
+  ///   generando → spinner + "Creando la foto… esto tarda unos segundos"
+  ///   con foto → miniatura + badge "Imagen de muestra" + "Cambiar foto"
+  Widget _photoSection(EditableDish d) {
+    final url = d.imageUrl;
+    if (_generatingImage) {
+      return Container(
+        height: 96,
+        decoration: BoxDecoration(
+          color: AppTheme.surfaceGrey,
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: const Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            SizedBox(
+              width: 24,
+              height: 24,
+              child: CircularProgressIndicator(
+                  strokeWidth: 2.5, color: Color(0xFF7C3AED)),
+            ),
+            SizedBox(height: 8),
+            Text('Creando la foto… esto tarda unos segundos',
+                style: TextStyle(fontSize: 13, color: Colors.black54)),
+          ],
+        ),
+      );
+    }
+    if (url != null && url.isNotEmpty) {
+      return Row(
+        children: [
+          Stack(
+            children: [
+              ClipRRect(
+                borderRadius: BorderRadius.circular(12),
+                child: Image.network(url,
+                    width: 84,
+                    height: 84,
+                    fit: BoxFit.cover,
+                    errorBuilder: (_, __, ___) => Container(
+                          width: 84,
+                          height: 84,
+                          color: AppTheme.surfaceGrey,
+                          child: const Icon(Icons.broken_image_rounded,
+                              color: Colors.black38),
+                        )),
+              ),
+              Positioned(
+                left: 4,
+                bottom: 4,
+                child: Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: Colors.black.withValues(alpha: 0.6),
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: const Text('Muestra',
+                      style: TextStyle(color: Colors.white, fontSize: 10)),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: TextButton.icon(
+              key: Key('menu_dish_ai_photo_${widget.index}'),
+              onPressed: _generateImage,
+              style: TextButton.styleFrom(
+                foregroundColor: const Color(0xFF7C3AED),
+                alignment: Alignment.centerLeft,
+              ),
+              icon: const Icon(Icons.refresh_rounded, size: 18),
+              label: const Text('Cambiar foto (otra muestra)',
+                  style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w600)),
+            ),
+          ),
+        ],
+      );
+    }
+    // Sin foto: botón generar.
+    return SizedBox(
+      width: double.infinity,
+      height: 48,
+      child: OutlinedButton.icon(
+        key: Key('menu_dish_ai_photo_${widget.index}'),
+        onPressed: _generateImage,
+        style: OutlinedButton.styleFrom(
+          foregroundColor: const Color(0xFF7C3AED),
+          side: const BorderSide(color: Color(0x337C3AED)),
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        ),
+        icon: const Icon(Icons.auto_awesome_rounded, size: 20),
+        label: const Text('✨ Foto del plato con IA',
+            style: TextStyle(fontSize: 14.5, fontWeight: FontWeight.w600)),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final d = widget.dish;
@@ -383,6 +530,8 @@ class _DishCardState extends State<_DishCard> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          _photoSection(d),
+          const SizedBox(height: 10),
           Row(
             children: [
               Expanded(

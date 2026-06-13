@@ -845,6 +845,27 @@ class ApiService {
     }
   }
 
+  /// Spec 043 (concilio opción C): genera una foto de MUESTRA del plato con
+  /// IA a partir del nombre (sin crear producto) y devuelve la URL en R2. El
+  /// editor la guarda en el plato y la incluye en createProduct al publicar.
+  /// Síncrono (~30s); timeout amplio como el escaneo de carta.
+  Future<String> generateMenuImage({
+    required String name,
+    String category = '',
+  }) async {
+    try {
+      final response = await _dio.post(
+        '/api/v1/menu/generate-image',
+        data: {'name': name, if (category.isNotEmpty) 'category': category},
+        options: Options(receiveTimeout: const Duration(seconds: 90)),
+      );
+      final data = _extractData(response);
+      return (data['image_url'] as String?)?.trim() ?? '';
+    } on DioException catch (e) {
+      throw AppError.fromDioException(e);
+    }
+  }
+
   Future<Map<String, dynamic>> generateProductImage(
     String uuid, {
     String? name,

@@ -6,10 +6,13 @@ import 'package:vendia_pos/screens/recipes/menu_import_screen.dart';
 import 'package:vendia_pos/services/api_service.dart';
 import 'package:vendia_pos/services/auth_service.dart';
 
-/// Doble de ApiService — devuelve una descripción fija para el plato.
+/// Doble de ApiService — descripción + foto fijas para el plato.
 class _FakeMenuApi extends ApiService {
-  _FakeMenuApi(this._desc) : super(AuthService());
+  _FakeMenuApi(this._desc, {String? imageUrl})
+      : _imageUrl = imageUrl,
+        super(AuthService());
   final String _desc;
+  final String? _imageUrl;
 
   @override
   Future<String> generateMenuDescription({
@@ -17,6 +20,13 @@ class _FakeMenuApi extends ApiService {
     String category = '',
   }) async =>
       _desc;
+
+  @override
+  Future<String> generateMenuImage({
+    required String name,
+    String category = '',
+  }) async =>
+      _imageUrl ?? '';
 }
 
 void main() {
@@ -146,6 +156,32 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('Frijoles, arroz, carne y chicharrón'), findsOneWidget);
+    });
+
+    testWidgets('"Foto con IA" genera y muestra la miniatura de muestra (F043)',
+        (tester) async {
+      await tester.pumpWidget(MaterialApp(
+        home: MenuImportScreen(
+          apiOverride: _FakeMenuApi('',
+              imageUrl: 'https://r2.vendia.co/menu/abc.png'),
+          scannedDishes: const [
+            {'name': 'Bandeja Paisa', 'price': 25000},
+          ],
+        ),
+      ));
+      await tester.pump();
+
+      // Estado inicial: botón para generar.
+      expect(find.byKey(const Key('menu_dish_ai_photo_0')), findsOneWidget);
+      expect(find.text('Muestra'), findsNothing);
+
+      await tester.tap(find.byKey(const Key('menu_dish_ai_photo_0')));
+      await tester.pump();
+      await tester.pumpAndSettle();
+
+      // Tras generar: aparece la miniatura con el badge "Muestra".
+      expect(find.text('Muestra'), findsOneWidget);
+      expect(find.textContaining('Cambiar foto'), findsOneWidget);
     });
   });
 }
