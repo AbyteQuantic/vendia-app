@@ -78,6 +78,19 @@ class _Html5QrcodeScannerWidgetState
 
   _Html5Qrcode? _scanner;
   bool _started = false;
+
+  // ── Votación anti-misread ──────────────────────────────────────────
+  // En códigos 1D sobre superficies CURVAS (botellas) un cuadro borroso
+  // puede decodificar mal varias barras y aun así pasar el checksum
+  // (visto en producción: impreso 7702560009525, leído 7712560109521).
+  // Defensa estándar: aceptar el código solo tras N lecturas IDÉNTICAS
+  // consecutivas — el misread varía cuadro a cuadro, el real se repite.
+  // A fps 10, 3 votos ≈ 300 ms: imperceptible para el tendero.
+  static const int _votesNeeded = 3;
+  static const int _voteWindowMs = 1500;
+  String? _candidate;
+  int _votes = 0;
+  int _lastVoteMs = 0;
   web.HTMLDivElement? _hostDiv;
   /// Overlay separado del host del scanner. Los controles (atrás, texto
   /// guía, errores) viven aquí — html5-qrcode reemplaza el contenido del
@@ -248,7 +261,21 @@ class _Html5QrcodeScannerWidgetState
       }.jsify() as JSObject;
 
       void onSuccess(JSString code, JSAny? _) {
-        widget.onDetected(code.toDart);
+        final c = code.toDart;
+        final now = DateTime.now().millisecondsSinceEpoch;
+        // Voto: mismo código dentro de la ventana suma; distinto (o muy
+        // viejo) reinicia la cuenta con el nuevo candidato.
+        if (c == _candidate && now - _lastVoteMs < _voteWindowMs) {
+          _votes++;
+        } else {
+          _candidate = c;
+          _votes = 1;
+        }
+        _lastVoteMs = now;
+        if (_votes < _votesNeeded) return;
+        _candidate = null;
+        _votes = 0;
+        widget.onDetected(c);
       }
 
       void onFailure(JSString _) {}
