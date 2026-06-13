@@ -100,6 +100,11 @@ class Quote {
   /// fetch extra por fila.
   final String customerName;
 
+  /// Teléfono del cliente — usado para abrir WhatsApp dirigido a su número
+  /// (`wa.me/<phone>?text=…`, que SÍ precarga el mensaje en iOS; el
+  /// `wa.me/?text=` sin número no lo hace). Vacío si el cliente no tiene.
+  final String customerPhone;
+
   /// Líneas de la cotización.
   final List<QuoteItem> items;
 
@@ -135,6 +140,7 @@ class Quote {
     this.status = QuoteStatus.borrador,
     required this.customerId,
     this.customerName = '',
+    this.customerPhone = '',
     this.items = const [],
     this.discountTotal = 0,
     this.taxRate = 0,
@@ -171,12 +177,17 @@ class Quote {
     if (customerId.isEmpty && rawCustomer is Map<String, dynamic>) {
       customerId = (rawCustomer['id'] ?? '').toString();
     }
+    String customerPhone = (json['customer_phone'] as String?) ?? '';
+    if (customerPhone.isEmpty && rawCustomer is Map<String, dynamic>) {
+      customerPhone = (rawCustomer['phone'] as String?) ?? '';
+    }
     return Quote(
       id: (json['id'] ?? json['uuid'] ?? '').toString(),
       folio: (json['folio'] as String?) ?? '',
       status: QuoteStatus.fromWire(json['status'] as String?),
       customerId: customerId,
       customerName: customerName,
+      customerPhone: customerPhone,
       items: rawItems
           .whereType<Map<String, dynamic>>()
           .map(QuoteItem.fromJson)

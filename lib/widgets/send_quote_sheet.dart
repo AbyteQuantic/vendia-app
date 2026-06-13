@@ -93,7 +93,16 @@ class SendQuoteSheet extends StatelessWidget {
   Future<void> _openWhatsApp(BuildContext context) async {
     HapticFeedback.lightImpact();
     final text = Uri.encodeComponent(_message());
-    final uri = Uri.parse('https://wa.me/?text=$text');
+    // wa.me DIRIGIDO al número del cliente precarga el mensaje de forma
+    // fiable (incl. iOS); `wa.me/?text=` SIN número abre WhatsApp pero deja
+    // el mensaje vacío en iPhone — esa era la causa de "no carga el mensaje".
+    final digits = quote.customerPhone.replaceAll(RegExp(r'\D'), '');
+    final phone = digits.isEmpty
+        ? ''
+        : (digits.length == 10 ? '57$digits' : digits); // Colombia: +57
+    final uri = phone.isNotEmpty
+        ? Uri.parse('https://wa.me/$phone?text=$text')
+        : Uri.parse('https://api.whatsapp.com/send?text=$text');
     final ok = await launchUrl(uri, mode: LaunchMode.externalApplication);
     if (!ok && context.mounted) {
       _snack(context, 'No se pudo abrir WhatsApp');

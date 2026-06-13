@@ -68,6 +68,23 @@ void main() {
       expect(uri.toString().contains(' '), isFalse);
     });
 
+    test('los espacios se codifican como %20, NUNCA como + (bug del correo)',
+        () {
+      // Regresión: con Uri(queryParameters:) los espacios se volvían '+'
+      // y los clientes de correo los mostraban literales
+      // ("Cotización+COT-2026-0001", "Te+comparto…"). Deben ser %20.
+      final uri = EmailLauncher.buildUri(
+        to: 'a@b.co',
+        subject: 'Cotización COT-2026-0001 - Don Brayan',
+        body: 'Hola Viviana, le comparto su cotización.',
+      );
+      final s = uri.toString();
+      expect(s.contains('+'), isFalse,
+          reason: 'mailto no debe usar + para los espacios');
+      expect(s.contains('%20'), isTrue,
+          reason: 'los espacios deben ir como %20');
+    });
+
     test('escapa caracteres especiales (ñ, acentos) — round-trip correcto', () {
       const subject = 'Cotización Ñandú áéíóú';
       const body = 'Cuerpo con ñ, tildes áéíóú y símbolos.';

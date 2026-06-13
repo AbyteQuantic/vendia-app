@@ -46,25 +46,24 @@ class EmailLauncher {
 
   /// Construye la URI `mailto:` con el destinatario, asunto y cuerpo.
   ///
-  /// Usa el constructor `Uri()` que escapa automáticamente caracteres
-  /// especiales (ñ, acentos, #, &, ?, espacios, saltos de línea) tanto
-  /// en el path como en los `queryParameters`.
+  /// IMPORTANTE: NO usar `Uri(queryParameters:)` — ese codifica con reglas
+  /// de formulario (`application/x-www-form-urlencoded`), donde el espacio
+  /// se vuelve `+`. Los clientes de correo NO decodifican `+` a espacio en
+  /// `mailto:`, así que el asunto/cuerpo se veían con `+` literales
+  /// ("Cotización+COT-2026-0001", "Te+comparto…"). Codificamos a mano con
+  /// `Uri.encodeComponent`, que usa `%20` para el espacio y `%0A` para los
+  /// saltos de línea — el formato correcto para `mailto:`.
   ///
-  /// Si [to] es nulo o vacío, el path queda vacío — la URI sigue siendo
-  /// un `mailto:` válido sin destinatario.
+  /// Si [to] es nulo o vacío, el `mailto:` queda sin destinatario (válido).
   static Uri buildUri({
     required String? to,
     required String subject,
     required String body,
   }) {
-    return Uri(
-      scheme: 'mailto',
-      path: (to ?? '').trim(),
-      queryParameters: {
-        'subject': subject,
-        'body': body,
-      },
-    );
+    final recipient = (to ?? '').trim();
+    final query = 'subject=${Uri.encodeComponent(subject)}'
+        '&body=${Uri.encodeComponent(body)}';
+    return Uri.parse('mailto:$recipient?$query');
   }
 
   /// Abre el cliente de email del dispositivo precargado.
@@ -145,9 +144,9 @@ class EmailLauncher {
     final folioTxt = folio.isNotEmpty ? folio : 'la cotización';
     return '$saludo\n'
         '\n'
-        'Te comparto $folioTxt de $tenantName.\n'
+        'Le comparto $folioTxt de $tenantName.\n'
         '\n'
-        'Podés revisarla y aprobarla aquí:\n'
+        'Puede revisarla y aprobarla aquí:\n'
         '$publicLink\n'
         '\n'
         'Gracias.\n'
@@ -167,7 +166,7 @@ class EmailLauncher {
         ? 'Hola ${customerName.trim()},'
         : 'Hola,';
     final linkBlock = publicLink.trim().isNotEmpty
-        ? '\nPodés ver el detalle aquí:\n${publicLink.trim()}\n'
+        ? '\nPuede ver el detalle aquí:\n${publicLink.trim()}\n'
         : '';
     return '$saludo\n'
         '\n'
