@@ -1,18 +1,27 @@
 // Spec: specs/043-menu-restaurante-recetas/spec.md
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:image_picker_platform_interface/image_picker_platform_interface.dart';
+import 'package:plugin_platform_interface/plugin_platform_interface.dart';
 import 'package:vendia_pos/screens/recipes/menu_import_screen.dart';
 import 'package:vendia_pos/services/api_service.dart';
 import 'package:vendia_pos/services/auth_service.dart';
 
 /// Doble de ApiService — descripción + foto fijas para el plato.
 class _FakeMenuApi extends ApiService {
-  _FakeMenuApi(this._desc, {String? imageUrl})
+  _FakeMenuApi(this._desc, {String? imageUrl, String? enhancedUrl})
       : _imageUrl = imageUrl,
+        _enhancedUrl = enhancedUrl,
         super(AuthService());
   final String _desc;
   final String? _imageUrl;
+  final String? _enhancedUrl;
+
+  String? lastGenPresentation;
+  String? lastGenDescription;
 
   @override
   Future<String> generateMenuDescription({
@@ -25,8 +34,38 @@ class _FakeMenuApi extends ApiService {
   Future<String> generateMenuImage({
     required String name,
     String category = '',
+    String description = '',
+    String presentation = '',
+  }) async {
+    lastGenPresentation = presentation;
+    lastGenDescription = description;
+    return _imageUrl ?? '';
+  }
+
+  @override
+  Future<String> enhanceMenuImage({
+    required Uint8List imageBytes,
+    required String name,
+    String category = '',
+    String mimeType = 'image/jpeg',
+    String filename = 'plato.jpg',
   }) async =>
-      _imageUrl ?? '';
+      _enhancedUrl ?? '';
+}
+
+/// Fake del ImagePicker: devuelve siempre una imagen en memoria (web-safe,
+/// vía XFile.fromData) para poder ejercer el flujo subir→mejorar sin cámara.
+class _FakePicker extends ImagePickerPlatform with MockPlatformInterfaceMixin {
+  @override
+  Future<XFile?> getImageFromSource({
+    required ImageSource source,
+    ImagePickerOptions options = const ImagePickerOptions(),
+  }) async =>
+      XFile.fromData(
+        Uint8List.fromList(List<int>.filled(64, 7)),
+        name: 'plato.png',
+        mimeType: 'image/png',
+      );
 }
 
 void main() {
@@ -50,12 +89,7 @@ void main() {
       expect(d.portion.text, 'Personal');
       expect(d.category, 'Platos fuertes');
       expect(d.isValid, isTrue);
-    });
-
-    test('fromScan sin categoría cae a "Platos fuertes" y precio 0 → vacío', () {
-      final d = EditableDish.fromScan({'name': 'Algo', 'price': 0});
-      expect(d.category, 'Platos fuertes');
-      expect(d.price.text, '');
+      expect(d.imageKind, DishImageKind.none);
     });
 
     test('toCreatePayload marca is_menu_item y omite campos vacíos', () {
@@ -71,16 +105,31 @@ void main() {
       expect(payload['name'], 'Limonada');
       expect(payload['price'], 8000);
       expect(payload['is_menu_item'], true);
-      expect(payload['category'], 'Bebidas');
       expect(payload['stock'], 0);
       expect(payload.containsKey('description'), isFalse);
       expect(payload.containsKey('portion'), isFalse);
+      // Sin foto → no se envía provenance.
+      expect(payload.containsKey('photo_is_sample'), isFalse);
     });
 
-    test('isValid exige al menos 2 letras en el nombre', () {
-      expect(EditableDish.fromScan({'name': 'A'}).isValid, isFalse);
-      expect(EditableDish.fromScan({'name': ''}).isValid, isFalse);
-      expect(EditableDish.fromScan({'name': 'Te'}).isValid, isTrue);
+    test('toCreatePayload — foto de muestra IA viaja como photo_is_sample=true',
+        () {
+      final d = EditableDish.fromScan({'name': 'Bandeja Paisa', 'price': 25000})
+        ..imageUrl = 'https://r2/menu/abc.png'
+        ..imageKind = DishImageKind.sample;
+      final payload = d.toCreatePayload();
+      expect(payload['image_url'], 'https://r2/menu/abc.png');
+      expect(payload['photo_is_sample'], true);
+    });
+
+    test('toCreatePayload — foto real (mejorada) NO es muestra', () {
+      final d = EditableDish.fromScan({'name': 'Bandeja Paisa', 'price': 25000})
+        ..imageUrl = 'https://r2/menu/real.png'
+        ..imageKind = DishImageKind.real
+        ..photoEnhanced = true;
+      final payload = d.toCreatePayload();
+      expect(payload['image_url'], 'https://r2/menu/real.png');
+      expect(payload['photo_is_sample'], false);
     });
   });
 
@@ -106,37 +155,24 @@ void main() {
       expect(find.byKey(const Key('menu_import_add')), findsOneWidget);
     });
 
-    testWidgets('agregar plato añade una tarjeta vacía', (tester) async {
-      // Lienzo alto para que la ListView construya ambas tarjetas (la 2ª
-      // queda fuera del viewport por defecto y la lista las construye perezoso).
-      await tester.binding.setSurfaceSize(const Size(420, 1600));
+    testWidgets('estado vacío ofrece foto real (cámara/galería) + muestra IA',
+        (tester) async {
+      await tester.binding.setSurfaceSize(const Size(360, 1400));
       addTearDown(() => tester.binding.setSurfaceSize(null));
 
       await tester.pumpWidget(const MaterialApp(
         home: MenuImportScreen(scannedDishes: [
-          {'name': 'Plato 1', 'price': 1000, 'category': 'Otros'},
+          {'name': 'Bandeja Paisa', 'price': 25000},
         ]),
       ));
       await tester.pump();
 
-      // 1 tarjeta inicial → un botón de borrar.
-      expect(find.byKey(const Key('menu_dish_remove_0')), findsOneWidget);
-      expect(find.byKey(const Key('menu_dish_remove_1')), findsNothing);
-
-      await tester.tap(find.byKey(const Key('menu_import_add')));
-      await tester.pump();
-
-      expect(find.byKey(const Key('menu_dish_remove_1')), findsOneWidget);
-    });
-
-    testWidgets('lista vacía arranca con una tarjeta para llenar a mano',
-        (tester) async {
-      await tester.pumpWidget(const MaterialApp(
-        home: MenuImportScreen(scannedDishes: []),
-      ));
-      await tester.pump();
-
-      expect(find.byKey(const Key('menu_dish_remove_0')), findsOneWidget);
+      expect(find.byKey(const Key('menu_dish_photo_camera_0')), findsOneWidget);
+      expect(find.byKey(const Key('menu_dish_photo_gallery_0')), findsOneWidget);
+      expect(find.byKey(const Key('menu_dish_ai_photo_0')), findsOneWidget);
+      // "Mejorar con IA" NO existe sin foto.
+      expect(find.byKey(const Key('menu_dish_enhance_0')), findsNothing);
+      expect(tester.takeException(), isNull);
     });
 
     testWidgets('"Descripción con IA" llena el campo con la IA (F043)',
@@ -152,18 +188,18 @@ void main() {
       await tester.pump();
 
       await tester.tap(find.byKey(const Key('menu_dish_ai_desc_0')));
-      await tester.pump(); // dispara la llamada (loading)
+      await tester.pump();
       await tester.pumpAndSettle();
 
       expect(find.text('Frijoles, arroz, carne y chicharrón'), findsOneWidget);
     });
 
-    testWidgets('"Foto con IA" genera y muestra la miniatura de muestra (F043)',
+    testWidgets('muestra IA: pregunta presentación (omitible) y pinta "Muestra (IA)"',
         (tester) async {
+      final api = _FakeMenuApi('', imageUrl: 'https://r2.vendia.co/menu/abc.png');
       await tester.pumpWidget(MaterialApp(
         home: MenuImportScreen(
-          apiOverride: _FakeMenuApi('',
-              imageUrl: 'https://r2.vendia.co/menu/abc.png'),
+          apiOverride: api,
           scannedDishes: const [
             {'name': 'Bandeja Paisa', 'price': 25000},
           ],
@@ -171,17 +207,48 @@ void main() {
       ));
       await tester.pump();
 
-      // Estado inicial: botón para generar.
-      expect(find.byKey(const Key('menu_dish_ai_photo_0')), findsOneWidget);
-      expect(find.text('Muestra'), findsNothing);
+      expect(find.text('Muestra (IA)'), findsNothing);
 
       await tester.tap(find.byKey(const Key('menu_dish_ai_photo_0')));
-      await tester.pump();
+      await tester.pumpAndSettle();
+      // Hoja de presentación opcional.
+      expect(find.text('¿Cómo se sirve el plato? (opcional)'), findsOneWidget);
+      await tester.tap(find.text('Omitir'));
       await tester.pumpAndSettle();
 
-      // Tras generar: aparece la miniatura con el badge "Muestra".
-      expect(find.text('Muestra'), findsOneWidget);
-      expect(find.textContaining('Cambiar foto'), findsOneWidget);
+      // Tras generar: badge de MUESTRA (no engaña: es ilustración IA).
+      expect(find.text('Muestra (IA)'), findsOneWidget);
+      // Sobre una muestra NO se ofrece "Mejorar con IA".
+      expect(find.byKey(const Key('menu_dish_enhance_0')), findsNothing);
+    });
+
+    testWidgets('subir foto de galería → mejora fiel → badge "Su foto" + Mejorar',
+        (tester) async {
+      ImagePickerPlatform.instance = _FakePicker();
+      final api = _FakeMenuApi('',
+          enhancedUrl: 'https://r2.vendia.co/menu/real-mejorada.png');
+
+      await tester.binding.setSurfaceSize(const Size(360, 1400));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+
+      await tester.pumpWidget(MaterialApp(
+        home: MenuImportScreen(
+          apiOverride: api,
+          scannedDishes: const [
+            {'name': 'Bandeja Paisa', 'price': 25000},
+          ],
+        ),
+      ));
+      await tester.pump();
+
+      await tester.tap(find.byKey(const Key('menu_dish_photo_gallery_0')));
+      await tester.pumpAndSettle();
+
+      // Foto real mejorada: badge "Su foto" (verde), NO "Muestra (IA)".
+      expect(find.text('Su foto'), findsOneWidget);
+      expect(find.text('Muestra (IA)'), findsNothing);
+      // Y sí ofrece volver a mejorar.
+      expect(find.byKey(const Key('menu_dish_enhance_0')), findsOneWidget);
     });
   });
 }

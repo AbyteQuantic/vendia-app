@@ -846,17 +846,60 @@ class ApiService {
   }
 
   /// Spec 043 (concilio opción C): genera una foto de MUESTRA del plato con
-  /// IA a partir del nombre (sin crear producto) y devuelve la URL en R2. El
-  /// editor la guarda en el plato y la incluye en createProduct al publicar.
-  /// Síncrono (~30s); timeout amplio como el escaneo de carta.
+  /// IA y devuelve la URL en R2 (sin crear producto). La muestra se basa en
+  /// nombre + descripción (ingredientes) + presentación (cómo se sirve) para
+  /// que sea mucho más certera. El editor la guarda en el plato y la incluye
+  /// en createProduct al publicar. Síncrono; timeout amplio como el escaneo.
   Future<String> generateMenuImage({
     required String name,
     String category = '',
+    String description = '',
+    String presentation = '',
   }) async {
     try {
       final response = await _dio.post(
         '/api/v1/menu/generate-image',
-        data: {'name': name, if (category.isNotEmpty) 'category': category},
+        data: {
+          'name': name,
+          if (category.isNotEmpty) 'category': category,
+          if (description.isNotEmpty) 'description': description,
+          if (presentation.isNotEmpty) 'presentation': presentation,
+        },
+        options: Options(receiveTimeout: const Duration(seconds: 90)),
+      );
+      final data = _extractData(response);
+      return (data['image_url'] as String?)?.trim() ?? '';
+    } on DioException catch (e) {
+      throw AppError.fromDioException(e);
+    }
+  }
+
+  /// Spec 043: mejora FIEL de la foto REAL del plato (subida por el tendero).
+  /// Recorta el fondo + luz de estudio sin redibujar el plato (Spec 017,
+  /// EnhancePhoto) — el comensal ve el plato real, solo mejor fotografiado.
+  /// Espejo de [scanMenuPhoto]: viaja como BYTES + [MultipartFile.fromBytes]
+  /// para funcionar también en Flutter web (sin `dart:io File`/`XFile.path`).
+  /// Devuelve la URL de la foto mejorada en R2.
+  Future<String> enhanceMenuImage({
+    required Uint8List imageBytes,
+    required String name,
+    String category = '',
+    String mimeType = 'image/jpeg',
+    String filename = 'plato.jpg',
+  }) async {
+    try {
+      final formData = FormData.fromMap({
+        'name': name,
+        if (category.isNotEmpty) 'category': category,
+        'image': MultipartFile.fromBytes(
+          imageBytes,
+          filename: filename,
+          contentType: DioMediaType.parse(mimeType),
+        ),
+      });
+      final response = await _dio.post(
+        '/api/v1/menu/enhance-image',
+        data: formData,
         options: Options(receiveTimeout: const Duration(seconds: 90)),
       );
       final data = _extractData(response);

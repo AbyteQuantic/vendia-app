@@ -9,6 +9,7 @@
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:image_picker/image_picker.dart';
 
 import '../../services/api_service.dart';
 import '../../services/app_error.dart';
@@ -27,6 +28,12 @@ const List<String> kMenuCategories = [
   'Otros',
 ];
 
+/// Procedencia de la foto del plato. Distingue una ILUSTRACIÓN de muestra
+/// generada por IA desde el nombre (sample) de la FOTO REAL del plato subida
+/// por el tendero (real, mejorada o no). El catálogo público etiqueta la
+/// muestra para no engañar al comensal (F043). `none` = aún sin foto.
+enum DishImageKind { none, sample, real }
+
 /// Un plato editable en memoria. Mutable a propósito: es estado local de un
 /// formulario, no un modelo de dominio (Art. de inmutabilidad aplica a datos
 /// compartidos, no a controladores de un editor efímero).
@@ -41,6 +48,14 @@ class EditableDish {
   /// donde se incluye en createProduct — nunca se crea un producto antes
   /// (concilio opción C: sin productos fantasma, sin perder ediciones).
   String? imageUrl;
+
+  /// Procedencia de [imageUrl]. Gobierna el badge y si "Mejorar con IA" es
+  /// alcanzable (solo sobre foto real, nunca sobre una muestra).
+  DishImageKind imageKind = DishImageKind.none;
+
+  /// La foto real ya pasó por la mejora fiel con IA (estado F). Solo aplica
+  /// cuando [imageKind] == real.
+  bool photoEnhanced = false;
 
   EditableDish({
     required String name,
@@ -96,7 +111,12 @@ class EditableDish {
     if (desc.isNotEmpty) data['description'] = desc;
     final port = portion.text.trim();
     if (port.isNotEmpty) data['portion'] = port;
-    if (imageUrl != null && imageUrl!.isNotEmpty) data['image_url'] = imageUrl;
+    if (imageUrl != null && imageUrl!.isNotEmpty) {
+      data['image_url'] = imageUrl;
+      // Provenance al catálogo público: una muestra IA se etiqueta como tal
+      // para no engañar al comensal; una foto real (mejorada o no) no.
+      data['photo_is_sample'] = imageKind == DishImageKind.sample;
+    }
     return data;
   }
 }
@@ -321,7 +341,10 @@ class _DishCard extends StatefulWidget {
 
 class _DishCardState extends State<_DishCard> {
   bool _generatingDesc = false;
-  bool _generatingImage = false;
+  bool _generatingSample = false; // estado B: creando muestra IA (name-based)
+  bool _enhancingPhoto = false; // estado C: mejorando la foto real subida
+
+  static const Color _purple = Color(0xFF7C3AED);
 
   void _snackError(String msg) {
     if (!mounted) return;
@@ -332,34 +355,202 @@ class _DishCardState extends State<_DishCard> {
     ));
   }
 
-  /// Genera una FOTO de muestra del plato con IA (name-based, concilio op. C):
-  /// no crea producto; la URL se guarda en el plato en memoria y se publica
-  /// junto con el resto. Una a la vez (no en lote), spinner in-card.
-  Future<void> _generateImage() async {
-    if (_generatingImage) return; // dedupe doble-tap (no disparar 2 jobs)
+  void _snackInfo(String msg, {Color color = AppTheme.warning}) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text(msg, style: const TextStyle(fontSize: 15)),
+      backgroundColor: color,
+      behavior: SnackBarBehavior.floating,
+    ));
+  }
+
+  bool get _busy => _generatingSample || _enhancingPhoto;
+
+  /// Genera una FOTO de MUESTRA del plato con IA (concilio op. C): no crea
+  /// producto. La muestra se basa en nombre + descripción (ingredientes) +
+  /// presentación (cómo se sirve) → mucho más certera. Antes de generar
+  /// pregunta la presentación de forma OPCIONAL (se puede omitir).
+  Future<void> _generateSample() async {
+    if (_busy) return; // dedupe doble-tap
     final d = widget.dish;
     final name = d.name.text.trim();
     if (name.length < 2) {
-      _snackError('Escribe primero el nombre del plato.');
+      _snackError('Escriba primero el nombre del plato.');
       return;
     }
-    setState(() => _generatingImage = true);
+    final presentation = await _askPresentation();
+    if (!mounted || presentation == _kPresentationCancelled) return;
+
+    setState(() => _generatingSample = true);
     try {
       final api = widget.api ?? ApiService(AuthService());
-      final url = await api.generateMenuImage(name: name, category: d.category);
+      final url = await api.generateMenuImage(
+        name: name,
+        category: d.category,
+        description: d.description.text.trim(),
+        presentation: presentation,
+      );
       if (!mounted) return;
       if (url.isNotEmpty) {
-        setState(() => d.imageUrl = url);
+        setState(() {
+          d.imageUrl = url;
+          d.imageKind = DishImageKind.sample;
+          d.photoEnhanced = false;
+        });
       } else {
-        _snackError('No pudimos crear la foto. Intenta de nuevo.');
+        _snackError('No pudimos crear la foto. Intente de nuevo.');
       }
     } on AppError catch (e) {
       _snackError(e.message);
     } catch (_) {
-      _snackError('No pudimos crear la foto. Intenta de nuevo.');
+      _snackError('No pudimos crear la foto. Intente de nuevo.');
     } finally {
-      if (mounted) setState(() => _generatingImage = false);
+      if (mounted) setState(() => _generatingSample = false);
     }
+  }
+
+  /// Sube la foto REAL del plato (cámara o galería) y la mejora con IA de
+  /// forma FIEL (recorta fondo + luz de estudio, sin redibujar). Web-safe:
+  /// usa bytes (`readAsBytes`), nunca `XFile.path`. Si la mejora falla, se
+  /// conserva la foto real subida SIN mejorar (nunca se pierde lo del tendero).
+  Future<void> _pickAndEnhance(ImageSource source) async {
+    if (_busy) return;
+    final d = widget.dish;
+    final name = d.name.text.trim();
+    if (name.length < 2) {
+      _snackError('Escriba primero el nombre del plato.');
+      return;
+    }
+    final XFile? picked = await ImagePicker().pickImage(
+      source: source,
+      imageQuality: 85,
+      maxWidth: 1280,
+      maxHeight: 1280,
+    );
+    if (picked == null || !mounted) return;
+
+    final bytes = await picked.readAsBytes();
+    if (!mounted) return;
+    if (bytes.lengthInBytes > 8 * 1024 * 1024) {
+      _snackInfo('La foto es muy pesada, intente con otra');
+      return;
+    }
+
+    setState(() => _enhancingPhoto = true);
+    try {
+      final api = widget.api ?? ApiService(AuthService());
+      final url = await api.enhanceMenuImage(
+        imageBytes: bytes,
+        name: name,
+        category: d.category,
+        mimeType: picked.mimeType ?? 'image/jpeg',
+        filename: picked.name.isNotEmpty ? picked.name : 'plato.jpg',
+      );
+      if (!mounted) return;
+      if (url.isNotEmpty) {
+        setState(() {
+          d.imageUrl = url;
+          d.imageKind = DishImageKind.real;
+          d.photoEnhanced = true;
+        });
+      } else {
+        _snackError('No pudimos mejorar la foto. Intente de nuevo.');
+      }
+    } on AppError catch (e) {
+      // La foto real ya está en manos del tendero; la mejora es best-effort.
+      // No se pierde nada: queda el plato sin foto mejorada y se avisa.
+      _snackInfo('No pudimos mejorar la foto, pero puede intentar de nuevo. '
+          '($e)');
+    } catch (_) {
+      _snackInfo('No pudimos mejorar la foto, pero puede intentar de nuevo.');
+    } finally {
+      if (mounted) setState(() => _enhancingPhoto = false);
+    }
+  }
+
+  /// Centinela: el usuario canceló la hoja de presentación (≠ "sin presentación").
+  static const String _kPresentationCancelled = ' cancelled';
+
+  /// Pregunta OPCIONAL por cómo se sirve el plato, para que la muestra IA sea
+  /// más certera. Devuelve '' si el tendero omite, o el centinela si cancela.
+  Future<String> _askPresentation() async {
+    final controller = TextEditingController();
+    const chips = ['En plato', 'Para llevar', 'En vaso', 'En bandeja'];
+    final result = await showModalBottomSheet<String>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: AppTheme.background,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (ctx) => Padding(
+        padding: EdgeInsets.only(
+          left: 20,
+          right: 20,
+          top: 20,
+          bottom: MediaQuery.of(ctx).viewInsets.bottom + 20,
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('¿Cómo se sirve el plato? (opcional)',
+                style: TextStyle(
+                    fontSize: 19, fontWeight: FontWeight.bold)),
+            const SizedBox(height: 6),
+            const Text('Así la foto de muestra queda más parecida.',
+                style: TextStyle(fontSize: 14, color: Colors.black54)),
+            const SizedBox(height: 14),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: chips
+                  .map((c) => ActionChip(
+                        label: Text(c, style: const TextStyle(fontSize: 15)),
+                        backgroundColor: AppTheme.surfaceGrey,
+                        onPressed: () => Navigator.of(ctx).pop(c),
+                      ))
+                  .toList(),
+            ),
+            const SizedBox(height: 14),
+            TextField(
+              controller: controller,
+              style: const TextStyle(fontSize: 16),
+              decoration: const InputDecoration(
+                hintText: 'O escríbalo (ej: en hoja de plátano)',
+              ),
+            ),
+            const SizedBox(height: 16),
+            Row(
+              children: [
+                Expanded(
+                  child: TextButton(
+                    onPressed: () => Navigator.of(ctx).pop(''),
+                    child: const Text('Omitir',
+                        style: TextStyle(fontSize: 16)),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: _purple,
+                      foregroundColor: Colors.white,
+                    ),
+                    onPressed: () =>
+                        Navigator.of(ctx).pop(controller.text.trim()),
+                    child: const Text('Crear foto',
+                        style: TextStyle(fontSize: 16)),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+    controller.dispose();
+    return result ?? _kPresentationCancelled;
   }
 
   /// Genera la descripción del plato con IA a partir del nombre + categoría
@@ -416,103 +607,245 @@ class _DishCardState extends State<_DishCard> {
     }
   }
 
-  /// Sección de foto del plato (concilio op. C, máquina de 3 estados in-card):
-  ///   sin foto → botón "✨ Foto con IA"
-  ///   generando → spinner + "Creando la foto… esto tarda unos segundos"
-  ///   con foto → miniatura + badge "Imagen de muestra" + "Cambiar foto"
+  /// Sección de foto del plato — máquina de 6 estados (concilio 2026-06-13):
+  ///   A vacío          → [Tomar foto][Galería] + link "muestra con IA"
+  ///   B creando muestra→ spinner "Creando la foto…"
+  ///   C mejorando real → spinner "Mejorando su foto…"
+  ///   D con muestra    → miniatura + badge "Muestra (IA)" + reemplazar + otra muestra
+  ///   E con foto real  → miniatura + badge "Su foto" + reemplazar + "✨ Mejorar con IA"
+  ///   F real mejorada  → miniatura + badge "Su foto" + reemplazar + "Mejorar otra vez"
   Widget _photoSection(EditableDish d) {
-    final url = d.imageUrl;
-    if (_generatingImage) {
-      return Container(
-        height: 96,
-        decoration: BoxDecoration(
-          color: AppTheme.surfaceGrey,
-          borderRadius: BorderRadius.circular(12),
-        ),
-        child: const Column(
-          mainAxisAlignment: MainAxisAlignment.center,
+    if (_generatingSample) {
+      return _spinnerBox('Creando la foto… esto tarda unos segundos');
+    }
+    if (_enhancingPhoto) {
+      return _spinnerBox('Mejorando su foto… un momento');
+    }
+    if (d.imageKind == DishImageKind.none || d.imageUrl == null) {
+      return _emptyState();
+    }
+    return _withPhotoState(d);
+  }
+
+  Widget _spinnerBox(String label) {
+    return Container(
+      height: 96,
+      decoration: BoxDecoration(
+        color: AppTheme.surfaceGrey,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          const SizedBox(
+            width: 24,
+            height: 24,
+            child:
+                CircularProgressIndicator(strokeWidth: 2.5, color: _purple),
+          ),
+          const SizedBox(height: 8),
+          Text(label,
+              textAlign: TextAlign.center,
+              style: const TextStyle(fontSize: 13, color: Colors.black54)),
+        ],
+      ),
+    );
+  }
+
+  /// Estado A — sin foto. Camino PRINCIPAL: foto real (Tomar foto / Galería →
+  /// mejora fiel). Plan B explícito debajo: crear una de muestra con IA.
+  Widget _emptyState() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Row(
           children: [
-            SizedBox(
-              width: 24,
-              height: 24,
-              child: CircularProgressIndicator(
-                  strokeWidth: 2.5, color: Color(0xFF7C3AED)),
+            Expanded(
+              child: _photoActionButton(
+                key: Key('menu_dish_photo_camera_${widget.index}'),
+                icon: Icons.camera_alt_rounded,
+                label: 'Tomar foto',
+                color: AppTheme.primary,
+                onPressed: () => _pickAndEnhance(ImageSource.camera),
+              ),
             ),
-            SizedBox(height: 8),
-            Text('Creando la foto… esto tarda unos segundos',
-                style: TextStyle(fontSize: 13, color: Colors.black54)),
+            const SizedBox(width: 8),
+            Expanded(
+              child: _photoActionButton(
+                key: Key('menu_dish_photo_gallery_${widget.index}'),
+                icon: Icons.photo_library_rounded,
+                label: 'Galería',
+                color: AppTheme.success,
+                onPressed: () => _pickAndEnhance(ImageSource.gallery),
+              ),
+            ),
           ],
         ),
-      );
-    }
-    if (url != null && url.isNotEmpty) {
-      return Row(
-        children: [
-          Stack(
-            children: [
-              ClipRRect(
-                borderRadius: BorderRadius.circular(12),
-                child: Image.network(url,
-                    width: 84,
-                    height: 84,
-                    fit: BoxFit.cover,
-                    errorBuilder: (_, __, ___) => Container(
-                          width: 84,
-                          height: 84,
-                          color: AppTheme.surfaceGrey,
-                          child: const Icon(Icons.broken_image_rounded,
-                              color: Colors.black38),
-                        )),
-              ),
-              Positioned(
-                left: 4,
-                bottom: 4,
-                child: Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                  decoration: BoxDecoration(
-                    color: Colors.black.withValues(alpha: 0.6),
-                    borderRadius: BorderRadius.circular(6),
-                  ),
-                  child: const Text('Muestra',
-                      style: TextStyle(color: Colors.white, fontSize: 10)),
+        const SizedBox(height: 6),
+        Align(
+          alignment: Alignment.center,
+          child: TextButton.icon(
+            key: Key('menu_dish_ai_photo_${widget.index}'),
+            onPressed: _generateSample,
+            style: TextButton.styleFrom(foregroundColor: _purple),
+            icon: const Icon(Icons.auto_awesome_rounded, size: 18),
+            label: const Text('¿No tiene foto? Crear una de muestra con IA',
+                textAlign: TextAlign.center,
+                style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// Estados D/E/F — ya hay foto. Miniatura + badge según procedencia + fila
+  /// para reemplazar por foto real + acción principal según el tipo.
+  Widget _withPhotoState(EditableDish d) {
+    final isSample = d.imageKind == DishImageKind.sample;
+    final isReal = d.imageKind == DishImageKind.real;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Stack(
+              children: [
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(12),
+                  child: Image.network(d.imageUrl!,
+                      width: 84,
+                      height: 84,
+                      fit: BoxFit.cover,
+                      errorBuilder: (_, __, ___) => Container(
+                            width: 84,
+                            height: 84,
+                            color: AppTheme.surfaceGrey,
+                            child: const Icon(Icons.broken_image_rounded,
+                                color: Colors.black38),
+                          )),
                 ),
-              ),
-            ],
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: TextButton.icon(
-              key: Key('menu_dish_ai_photo_${widget.index}'),
-              onPressed: _generateImage,
-              style: TextButton.styleFrom(
-                foregroundColor: const Color(0xFF7C3AED),
-                alignment: Alignment.centerLeft,
-              ),
-              icon: const Icon(Icons.refresh_rounded, size: 18),
-              label: const Text('Cambiar foto (otra muestra)',
-                  style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w600)),
+                Positioned(
+                  left: 4,
+                  bottom: 4,
+                  child: Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: (isSample ? AppTheme.warning : AppTheme.success)
+                          .withValues(alpha: 0.95),
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: Text(isSample ? 'Muestra (IA)' : 'Su foto',
+                        style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 10,
+                            fontWeight: FontWeight.w700)),
+                  ),
+                ),
+              ],
             ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Row(
+                    children: [
+                      Expanded(
+                        child: _photoActionButton(
+                          key: Key('menu_dish_photo_camera_${widget.index}'),
+                          icon: Icons.camera_alt_rounded,
+                          label: 'Tomar foto',
+                          color: AppTheme.primary,
+                          dense: true,
+                          onPressed: () => _pickAndEnhance(ImageSource.camera),
+                        ),
+                      ),
+                      const SizedBox(width: 6),
+                      Expanded(
+                        child: _photoActionButton(
+                          key: Key('menu_dish_photo_gallery_${widget.index}'),
+                          icon: Icons.photo_library_rounded,
+                          label: 'Galería',
+                          color: AppTheme.success,
+                          dense: true,
+                          onPressed: () => _pickAndEnhance(ImageSource.gallery),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        // Acción principal según procedencia.
+        if (isSample)
+          TextButton.icon(
+            key: Key('menu_dish_ai_photo_${widget.index}'),
+            onPressed: _generateSample,
+            style: TextButton.styleFrom(foregroundColor: _purple),
+            icon: const Icon(Icons.refresh_rounded, size: 18),
+            label: const Text('Otra muestra',
+                style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w600)),
+          )
+        else if (isReal)
+          OutlinedButton.icon(
+            key: Key('menu_dish_enhance_${widget.index}'),
+            onPressed: () => _pickAndEnhance(ImageSource.gallery),
+            style: OutlinedButton.styleFrom(
+              foregroundColor: _purple,
+              side: const BorderSide(color: Color(0x337C3AED)),
+              shape:
+                  RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            ),
+            icon: const Icon(Icons.auto_fix_high_rounded, size: 18),
+            label: Text(d.photoEnhanced ? 'Mejorar otra vez' : '✨ Mejorar con IA',
+                style: const TextStyle(
+                    fontSize: 13.5, fontWeight: FontWeight.w600)),
           ),
-        ],
-      );
-    }
-    // Sin foto: botón generar.
+      ],
+    );
+  }
+
+  /// Botón de foto compacto. FittedBox para que el texto nunca desborde a
+  /// 360dp (~300dp útiles, dos botones lado a lado).
+  Widget _photoActionButton({
+    required Key key,
+    required IconData icon,
+    required String label,
+    required Color color,
+    required VoidCallback onPressed,
+    bool dense = false,
+  }) {
     return SizedBox(
-      width: double.infinity,
-      height: 48,
-      child: OutlinedButton.icon(
-        key: Key('menu_dish_ai_photo_${widget.index}'),
-        onPressed: _generateImage,
+      height: dense ? 40 : 46,
+      child: OutlinedButton(
+        key: key,
+        onPressed: onPressed,
         style: OutlinedButton.styleFrom(
-          foregroundColor: const Color(0xFF7C3AED),
-          side: const BorderSide(color: Color(0x337C3AED)),
+          foregroundColor: color,
+          side: BorderSide(color: color.withValues(alpha: 0.4)),
+          padding: const EdgeInsets.symmetric(horizontal: 6),
           shape:
               RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
         ),
-        icon: const Icon(Icons.auto_awesome_rounded, size: 20),
-        label: const Text('✨ Foto del plato con IA',
-            style: TextStyle(fontSize: 14.5, fontWeight: FontWeight.w600)),
+        child: FittedBox(
+          fit: BoxFit.scaleDown,
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(icon, size: dense ? 17 : 19),
+              const SizedBox(width: 5),
+              Text(label,
+                  style: TextStyle(
+                      fontSize: dense ? 13 : 14.5,
+                      fontWeight: FontWeight.w600)),
+            ],
+          ),
+        ),
       ),
     );
   }
