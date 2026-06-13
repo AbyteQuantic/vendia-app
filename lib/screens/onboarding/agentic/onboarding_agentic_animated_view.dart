@@ -1,0 +1,581 @@
+// Spec: specs/045-onboarding-agentic/agentic_onboarding_animation_spec.md
+//
+// Single-View Agentic Onboarding (animado). Orquesta el flujo de preguntas
+// (una a la vez + skip), la pila LIFO de undo y las animaciones del Top Canvas,
+// delegando en PreviewCanvasWidget + GlassChatConsoleWidget. Reusa el
+// OnboardingStepperController (estado/submit), la IA (parseOnboarding), la voz
+// y la persistencia. 100% presentación.
+import 'dart:async';
+import 'dart:convert';
+
+import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:provider/provider.dart';
+import 'package:record/record.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
+import '../../../services/api_service.dart';
+import '../../../services/app_error.dart';
+import '../../../services/auth_service.dart';
+import '../../../services/voice_recorder.dart';
+import '../../../theme/app_theme.dart';
+import '../onboarding_stepper_controller.dart';
+import '../post_login_gate.dart';
+import 'glass_chat_console_widget.dart';
+import 'onboarding_animation_controller.dart';
+import 'onboarding_flow.dart';
+import 'preview_canvas_widget.dart';
+
+typedef ResolvePath = Future<String> Function();
+typedef ReadAudio = Future<RecordedAudio> Function(String stopResult);
+
+class OnboardingAgenticAnimatedView extends StatefulWidget {
+  const OnboardingAgenticAnimatedView({
+    super.key,
+    this.apiOverride,
+    this.recorderOverride,
+    this.resolvePathOverride,
+    this.readAudioOverride,
+    this.persistOverride = true,
+  });
+
+  final ApiService? apiOverride;
+  final AudioRecorder? recorderOverride;
+  final ResolvePath? resolvePathOverride;
+  final ReadAudio? readAudioOverride;
+  final bool persistOverride;
+
+  @override
+  State<OnboardingAgenticAnimatedView> createState() =>
+      _OnboardingAgenticAnimatedViewState();
+}
+
+class _OnboardingAgenticAnimatedViewState
+    extends State<OnboardingAgenticAnimatedView>
+    with TickerProviderStateMixin {
+  late final OnboardingStepperController _ctrl;
+  late final OnboardingAnimationController _anim;
+  late final ApiService _api = widget.apiOverride ?? ApiService(AuthService());
+  late final AudioRecorder _recorder =
+      widget.recorderOverride ?? AudioRecorder();
+  late final ResolvePath _resolvePath =
+      widget.resolvePathOverride ?? recordingPath;
+  late final ReadAudio _readAudio =
+      widget.readAudioOverride ?? readRecordedAudio;
+  final _inputCtrl = TextEditingController();
+
+  static const String _prefsKey = 'vendia:onboarding:current';
+
+  int _qIndex = 0;
+  final List<String> _trail = []; // ids contestados, en orden (LIFO)
+  final Set<String> _answered = {}; // respuestas explícitas (chips sí/no)
+
+  bool _parsing = false;
+  bool _recording = false;
+  bool _degraded = false;
+  Timer? _persistTimer;
+  bool _animReady = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _ctrl = context.read<OnboardingStepperController>();
+    _anim = OnboardingAnimationController(vsync: this);
+    _animReady = true;
+    _ctrl.addListener(_onControllerChange);
+    _restore();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // Reduce-motion no se re-aplica en caliente; el value=1.0 ya cubre el caso.
+  }
+
+  void _onControllerChange() {
+    if (!mounted) return;
+    if (_ctrl.status == StepperStatus.success) {
+      _clearPersisted();
+      _disposeAnimSafely();
+      _finishOnboarding();
+      return;
+    }
+    if (_animReady) {
+      _anim.reflect(
+          hasType: _ctrl.businessTypeSelected, hasLogo: _ctrl.logoSelected);
+    }
+    _schedulePersist();
+  }
+
+  void _disposeAnimSafely() {
+    if (_animReady) {
+      _animReady = false;
+      _anim.dispose();
+    }
+  }
+
+  @override
+  void dispose() {
+    _persistTimer?.cancel();
+    _ctrl.removeListener(_onControllerChange);
+    _disposeAnimSafely();
+    _recorder.dispose();
+    _inputCtrl.dispose();
+    super.dispose();
+  }
+
+  void _finishOnboarding() {
+    Navigator.of(context).pushAndRemoveUntil(
+      PageRouteBuilder(
+        pageBuilder: (_, a, __) => PostLoginGate(
+          ownerName: '${_ctrl.ownerName} ${_ctrl.ownerLastName}'.trim(),
+          businessName: _ctrl.businessName,
+        ),
+        transitionsBuilder: (_, a, __, child) => FadeTransition(
+          opacity: CurvedAnimation(parent: a, curve: Curves.easeInOut),
+          child: child,
+        ),
+        transitionDuration: const Duration(milliseconds: 400),
+      ),
+      (_) => false,
+    );
+  }
+
+  OnboardingQuestion get _question => kOnboardingQuestions[_qIndex];
+
+  // ── Avance / retroceso (LIFO) ─────────────────────────────────────────────
+  void _recomputeTrailAndIndex() {
+    final next = firstUnansweredIndex(_ctrl, _answered);
+    for (var i = 0; i < next; i++) {
+      final id = kOnboardingQuestions[i].id;
+      if (kOnboardingQuestions[i].isResolved(_ctrl, _answered) &&
+          !_trail.contains(id)) {
+        _trail.add(id);
+      }
+    }
+    _qIndex = next;
+  }
+
+  void _advance() {
+    final before = _qIndex;
+    _recomputeTrailAndIndex();
+    if (_qIndex != before) _anim.enterStep();
+    setState(() {});
+  }
+
+  void _back() {
+    if (_trail.isEmpty) return;
+    HapticFeedback.selectionClick();
+    final id = _trail.removeLast();
+    questionById(id).reset(_ctrl, _answered);
+    _anim.reverseStep();
+    setState(() {
+      _qIndex = kOnboardingQuestions.indexWhere((q) => q.id == id);
+    });
+  }
+
+  void _onAdvanceText() {
+    if (_question.isResolved(_ctrl, _answered)) {
+      FocusScope.of(context).unfocus();
+      _advance();
+    } else {
+      _hint('Complete este dato para continuar.');
+    }
+  }
+
+  Future<void> _onChip(String questionId, String value) async {
+    switch (questionId) {
+      case 'tipo':
+        _ctrl.setPrimaryBusinessType(value);
+        break;
+      case 'local':
+        _ctrl.setMultipleBranches(value == 'varios');
+        _answered.add('local');
+        break;
+      case 'empleados':
+        _ctrl.setHasEmployees(value == 'si');
+        _answered.add('empleados');
+        break;
+      case 'logo':
+        await _handleLogo(value);
+        return; // _handleLogo llama _advance al terminar
+    }
+    _advance();
+  }
+
+  Future<void> _handleLogo(String intent) async {
+    try {
+      if (intent == 'generar') {
+        if (_ctrl.businessName.trim().isEmpty || !_ctrl.businessTypeSelected) {
+          _hint('Primero complete el nombre y el tipo de su negocio.');
+          return;
+        }
+        _setBusy(true);
+        final res = await _api.previewLogoIA(
+          businessName: _ctrl.businessName,
+          businessType: _ctrl.businessType,
+          details: _ctrl.businessName,
+        );
+        final url = (res['logo_url'] as String?)?.trim() ?? '';
+        if (url.isNotEmpty) _ctrl.setLogoUrl(url);
+      } else if (intent == 'subir') {
+        final picked = await ImagePicker().pickImage(
+            source: ImageSource.gallery,
+            imageQuality: 90,
+            maxWidth: 1024,
+            maxHeight: 1024);
+        if (picked == null) return;
+        _setBusy(true);
+        final res = await _api.previewLogoUpload(picked);
+        final url = (res['logo_url'] as String?)?.trim() ?? '';
+        if (url.isNotEmpty) _ctrl.setLogoUrl(url);
+      }
+    } on AppError catch (e) {
+      _hint(e.message);
+    } catch (_) {
+      _hint('No pudimos preparar el logo. Intente de nuevo.');
+    } finally {
+      _setBusy(false);
+    }
+    if (_ctrl.logoSelected) _advance();
+  }
+
+  void _setBusy(bool v) {
+    if (mounted) setState(() => _parsing = v);
+  }
+
+  // ── IA (texto/voz) ────────────────────────────────────────────────────────
+  Map<String, dynamic> get _current => {
+        if (_ctrl.ownerName.isNotEmpty) 'owner_name': _ctrl.ownerName,
+        if (_ctrl.phone.isNotEmpty) 'phone': _ctrl.phone,
+        if (_ctrl.businessName.isNotEmpty) 'business_name': _ctrl.businessName,
+        if (_ctrl.address.isNotEmpty) 'address': _ctrl.address,
+        if (_ctrl.businessType.isNotEmpty) 'business_type': _ctrl.businessType,
+      };
+
+  Future<void> _sendText() async {
+    final text = _inputCtrl.text.trim();
+    if (text.isEmpty || _parsing) return;
+    FocusScope.of(context).unfocus();
+    await _runParse(text: text);
+  }
+
+  Future<void> _runParse({String text = '', RecordedAudio? audio}) async {
+    if (_parsing) return;
+    setState(() => _parsing = true);
+    try {
+      final result = await _api.parseOnboarding(
+        text: text,
+        audioBytes: audio?.bytes,
+        mimeType: audio?.mimeType ?? 'audio/webm',
+        filename: audio?.filename ?? 'onboarding.webm',
+        current: _current,
+      );
+      if (!mounted) return;
+      final degraded = result['degraded'] == true;
+      if (!degraded) {
+        _ctrl.applyParseResult(result);
+        _inputCtrl.clear();
+      }
+      setState(() => _degraded = degraded);
+      _advance();
+    } finally {
+      if (mounted) setState(() => _parsing = false);
+    }
+  }
+
+  Future<void> _toggleMic() async {
+    if (_parsing) return;
+    if (_recording) {
+      await _stopAndSendVoice();
+    } else {
+      await _startRecording();
+    }
+  }
+
+  Future<void> _startRecording() async {
+    try {
+      if (!await _recorder.hasPermission()) {
+        _hint('Sin permiso para usar el micrófono.');
+        return;
+      }
+      final path = await _resolvePath();
+      final config = await resolveRecordConfig(_recorder);
+      await _recorder.start(config, path: path);
+      if (mounted) setState(() => _recording = true);
+    } catch (_) {
+      if (mounted) setState(() => _recording = false);
+      _hint('No pudimos iniciar la grabación.');
+    }
+  }
+
+  Future<void> _stopAndSendVoice() async {
+    setState(() => _recording = false);
+    String? stop;
+    try {
+      stop = await _recorder.stop();
+    } catch (_) {
+      stop = null;
+    }
+    if (stop == null) {
+      _hint('No se pudo guardar el audio.');
+      return;
+    }
+    try {
+      final audio = await _readAudio(stop);
+      await _runParse(audio: audio);
+    } catch (_) {
+      _hint('No se pudo leer el audio.');
+    } finally {
+      unawaited(disposeRecordedAudio(stop));
+    }
+  }
+
+  void _hint(String m) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(m, style: const TextStyle(fontSize: 15))));
+  }
+
+  // ── Persistencia (PIN nunca) ──────────────────────────────────────────────
+  Map<String, dynamic> get _persistable => {
+        'owner_name': _ctrl.ownerName,
+        'owner_last_name': _ctrl.ownerLastName,
+        'phone': _ctrl.phone,
+        'business_name': _ctrl.businessName,
+        'address': _ctrl.address,
+        'business_type': _ctrl.businessType,
+        'has_multiple_branches': _ctrl.hasMultipleBranches,
+        'has_employees': _ctrl.hasEmployees,
+        'logo_url': _ctrl.logoUrl,
+        'answered': _answered.toList(),
+      };
+
+  void _schedulePersist() {
+    if (!widget.persistOverride) return;
+    _persistTimer?.cancel();
+    _persistTimer = Timer(const Duration(milliseconds: 600), () async {
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString(_prefsKey, jsonEncode(_persistable));
+      } catch (_) {}
+    });
+  }
+
+  Future<void> _clearPersisted() async {
+    if (!widget.persistOverride) return;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove(_prefsKey);
+    } catch (_) {}
+  }
+
+  Future<void> _restore() async {
+    if (!widget.persistOverride) {
+      setState(_recomputeTrailAndIndex);
+      return;
+    }
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final raw = prefs.getString(_prefsKey);
+      if (raw != null) {
+        final m = jsonDecode(raw) as Map<String, dynamic>;
+        String s(String k) => (m[k] as String?) ?? '';
+        if (s('owner_name').isNotEmpty) _ctrl.ownerName = s('owner_name');
+        if (s('owner_last_name').isNotEmpty) {
+          _ctrl.ownerLastName = s('owner_last_name');
+        }
+        if (s('phone').isNotEmpty) _ctrl.phone = s('phone');
+        if (s('business_name').isNotEmpty) {
+          _ctrl.businessName = s('business_name');
+        }
+        if (s('address').isNotEmpty) _ctrl.address = s('address');
+        final bt = s('business_type');
+        if (OnboardingStepperController.validBusinessTypes.contains(bt)) {
+          _ctrl.setPrimaryBusinessType(bt);
+        }
+        if (m['has_multiple_branches'] is bool) {
+          _ctrl.hasMultipleBranches = m['has_multiple_branches'] as bool;
+        }
+        if (m['has_employees'] is bool) {
+          _ctrl.hasEmployees = m['has_employees'] as bool;
+        }
+        if (s('logo_url').isNotEmpty) _ctrl.setLogoUrl(s('logo_url'));
+        for (final a in (m['answered'] as List? ?? const [])) {
+          _answered.add(a.toString());
+        }
+      }
+    } catch (_) {}
+    if (mounted) {
+      setState(() {
+        _recomputeTrailAndIndex();
+      });
+      if (_animReady) {
+        _anim.reflect(
+            hasType: _ctrl.businessTypeSelected, hasLogo: _ctrl.logoSelected);
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    context.watch<OnboardingStepperController>();
+    final compact = MediaQuery.of(context).viewInsets.bottom > 0;
+    final reduceMotion = MediaQuery.of(context).disableAnimations;
+    if (reduceMotion && _animReady) {
+      _anim.reflect(
+          hasType: _ctrl.businessTypeSelected, hasLogo: _ctrl.logoSelected);
+    }
+
+    return Scaffold(
+      backgroundColor: const Color(0xFFFAFAFA),
+      body: SafeArea(
+        bottom: false,
+        child: Column(
+          children: [
+            _header(),
+            if (_degraded) _degradedBanner(),
+            Expanded(
+              child: PreviewCanvasWidget(
+                anim: _anim,
+                businessName: _ctrl.businessName,
+                ownerName: _ctrl.ownerName,
+                phone: _ctrl.phone,
+                businessType: _ctrl.businessType,
+                logoUrl: _ctrl.logoUrl,
+                compact: compact,
+              ),
+            ),
+            ConstrainedBox(
+              constraints: BoxConstraints(
+                  maxHeight: MediaQuery.of(context).size.height * 0.62),
+              child: _ctrl.canRegister ? _readyConsole() : _questionConsole(),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _header() {
+    final canBack = _trail.isNotEmpty;
+    final total = kOnboardingQuestions.length;
+    final step = (_qIndex + 1).clamp(1, total);
+    return Container(
+      height: 56,
+      padding: const EdgeInsets.symmetric(horizontal: 8),
+      child: Row(
+        children: [
+          if (canBack)
+            TextButton.icon(
+              key: const Key('agentic_back'),
+              onPressed: _back,
+              style: TextButton.styleFrom(foregroundColor: AppTheme.textSecondary),
+              icon: const Icon(Icons.arrow_back_rounded, size: 22),
+              label: const Text('Atrás', style: TextStyle(fontSize: 15)),
+            )
+          else
+            const SizedBox(width: 12),
+          const Spacer(),
+          if (!_ctrl.canRegister)
+            Padding(
+              padding: const EdgeInsets.only(right: 16),
+              child: Text('Paso $step de $total',
+                  style: const TextStyle(
+                      fontSize: 13, color: AppTheme.textSecondary)),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _degradedBanner() => Container(
+        width: double.infinity,
+        color: AppTheme.warning.withValues(alpha: 0.10),
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+        child: const Text(
+          'Sin conexión con la IA — responda con los botones o el teclado.',
+          style: TextStyle(fontSize: 14, color: AppTheme.textPrimary),
+        ),
+      );
+
+  Widget _questionConsole() {
+    return GlassChatConsoleWidget(
+      controller: _ctrl,
+      question: _question,
+      inputController: _inputCtrl,
+      parsing: _parsing,
+      recording: _recording,
+      useBlur: !kIsWeb, // fallback sólido en web gama baja (Stylist)
+      onAdvance: _onAdvanceText,
+      onChip: _onChip,
+      onSendAI: _sendText,
+      onMic: _toggleMic,
+    );
+  }
+
+  Widget _readyConsole() {
+    return ClipRRect(
+      borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+      child: Container(
+        width: double.infinity,
+        color: Colors.white,
+        padding: EdgeInsets.fromLTRB(
+            24, 22, 24, MediaQuery.of(context).viewInsets.bottom + 24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(
+              '¡Todo listo, ${_ctrl.ownerName}!',
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                  fontSize: 22,
+                  fontWeight: FontWeight.w600,
+                  color: AppTheme.textPrimary),
+            ),
+            const SizedBox(height: 6),
+            const Text('Cree su cuenta para empezar a vender.',
+                textAlign: TextAlign.center,
+                style: TextStyle(fontSize: 15, color: AppTheme.textSecondary)),
+            const SizedBox(height: 18),
+            SizedBox(
+              height: 64,
+              child: ElevatedButton(
+                key: const Key('agentic_create_account'),
+                onPressed: _ctrl.status == StepperStatus.loading
+                    ? null
+                    : () => _ctrl.submitWithCaptcha(null),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppTheme.primary,
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(20)),
+                ),
+                child: _ctrl.status == StepperStatus.loading
+                    ? const SizedBox(
+                        width: 26,
+                        height: 26,
+                        child: CircularProgressIndicator(
+                            strokeWidth: 3, color: Colors.white))
+                    : const Text('Crear mi cuenta',
+                        style: TextStyle(
+                            fontSize: 20,
+                            fontWeight: FontWeight.w600,
+                            color: Colors.white)),
+              ),
+            ),
+            if (_ctrl.status == StepperStatus.error)
+              Padding(
+                padding: const EdgeInsets.only(top: 12),
+                child: Text(_ctrl.errorMessage,
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(color: AppTheme.error, fontSize: 14)),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}

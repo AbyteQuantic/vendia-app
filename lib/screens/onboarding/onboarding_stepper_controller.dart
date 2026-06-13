@@ -203,6 +203,19 @@ class OnboardingStepperController extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Spec 045-anim — undo: limpia el tipo de negocio (vuelve a "no resuelto").
+  /// Al re-elegir, setPrimaryBusinessType recalcula los feature-flags.
+  void clearBusinessType() {
+    businessTypes = [];
+    notifyListeners();
+  }
+
+  /// Spec 045-anim — undo: vuelve la respuesta de empleados a "sin responder".
+  void clearHasEmployees() {
+    hasEmployees = null;
+    notifyListeners();
+  }
+
   /// Núcleo sin notify (Spec 045) — ver _setPrimaryBusinessTypeCore.
   void _setHasEmployeesCore(bool value) {
     hasEmployees = value;
