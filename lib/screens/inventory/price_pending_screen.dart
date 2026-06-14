@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:uuid/uuid.dart';
 import '../../database/database_service.dart';
 import '../../database/collections/local_product.dart';
+import '../../database/local_product_factory.dart';
 import '../../services/api_service.dart';
 import '../../services/auth_service.dart';
 import '../../theme/app_theme.dart';
@@ -304,16 +305,14 @@ class _PricePendingScreenState extends State<PricePendingScreen> {
                             'price': p.salePrice,
                             'stock': 1,
                           });
-                          // Local (Isar)
-                          localProducts.add(LocalProduct()
-                            ..uuid = id
-                            ..name = p.name
-                            ..price = p.salePrice!
-                            ..stock = 1
-                            ..isAvailable = true
-                            ..requiresContainer = false
-                            ..containerPrice = 0
-                            ..clientUpdatedAt = DateTime.now());
+                          // Local (Isar) — factory setea reservedStock (late)
+                          // para no romper la serialización.
+                          localProducts.add(buildSavedLocalProduct(
+                            uuid: id,
+                            name: p.name,
+                            price: p.salePrice!,
+                            stock: 1,
+                          ));
                         }
                         await DatabaseService.instance
                             .upsertProducts(localProducts);
