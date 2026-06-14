@@ -23,8 +23,10 @@ import '../../../services/voice_recorder.dart';
 import '../../../theme/app_theme.dart';
 import '../onboarding_stepper_controller.dart';
 import '../post_login_gate.dart';
+import '../../../widgets/sprite_sheet_player.dart';
 import 'glass_chat_console_widget.dart';
 import 'onboarding_animation_controller.dart';
+import 'onboarding_bg_tempo.dart';
 import 'onboarding_flow.dart';
 import 'preview_canvas_widget.dart';
 
@@ -78,6 +80,11 @@ class _OnboardingAgenticAnimatedViewState
   Timer? _persistTimer;
   bool _animReady = false;
 
+  // Señales para la velocidad del video de fondo (Spec 048).
+  bool _typing = false; // el usuario está escribiendo
+  Timer? _typingTimer;
+  bool _persisting = false; // guardando el dato en SharedPreferences
+
   @override
   void initState() {
     super.initState();
@@ -85,7 +92,18 @@ class _OnboardingAgenticAnimatedViewState
     _anim = OnboardingAnimationController(vsync: this);
     _animReady = true;
     _ctrl.addListener(_onControllerChange);
+    _inputCtrl.addListener(_onInput);
     _restore();
+  }
+
+  /// El usuario escribe → tempo lento. El flag se apaga 1.2s después de la
+  /// última tecla (volvemos a "esperando input").
+  void _onInput() {
+    _typingTimer?.cancel();
+    if (!_typing && mounted) setState(() => _typing = true);
+    _typingTimer = Timer(const Duration(milliseconds: 1200), () {
+      if (mounted) setState(() => _typing = false);
+    });
   }
 
   @override
@@ -119,7 +137,9 @@ class _OnboardingAgenticAnimatedViewState
   @override
   void dispose() {
     _persistTimer?.cancel();
+    _typingTimer?.cancel();
     _ctrl.removeListener(_onControllerChange);
+    _inputCtrl.removeListener(_onInput);
     _disposeAnimSafely();
     _recorder.dispose();
     _inputCtrl.dispose();
@@ -409,11 +429,14 @@ class _OnboardingAgenticAnimatedViewState
   void _schedulePersist() {
     if (!widget.persistOverride) return;
     _persistTimer?.cancel();
+    // "Guardando" → el fondo se acelera un poco mientras se persiste.
+    if (mounted && !_persisting) setState(() => _persisting = true);
     _persistTimer = Timer(const Duration(milliseconds: 600), () async {
       try {
         final prefs = await SharedPreferences.getInstance();
         await prefs.setString(_prefsKey, jsonEncode(_persistable));
       } catch (_) {}
+      if (mounted) setState(() => _persisting = false);
     });
   }
 
@@ -482,32 +505,61 @@ class _OnboardingAgenticAnimatedViewState
           hasType: _ctrl.businessTypeSelected, hasLogo: _ctrl.logoSelected);
     }
 
+    // Velocidad del fondo según el estado (Spec 048): IA/persistencia → rápido,
+    // typing → lento, esperando input → lento-suave.
+    final busy =
+        _parsing || _ctrl.status == StepperStatus.loading || _persisting;
+    final bgFps = bgFpsForTempo(resolveBgTempo(busy: busy, typing: _typing));
+
     return Scaffold(
       backgroundColor: const Color(0xFFFAFAFA),
-      body: SafeArea(
-        bottom: false,
-        child: Column(
-          children: [
-            _header(),
-            if (_degraded) _degradedBanner(),
-            Expanded(
-              child: PreviewCanvasWidget(
-                anim: _anim,
-                businessName: _ctrl.businessName,
-                ownerName: _ctrl.ownerName,
-                phone: _ctrl.phone,
-                businessType: _ctrl.businessType,
-                logoUrl: _ctrl.logoUrl,
-                compact: compact,
+      body: Stack(
+        children: [
+          // Video de fondo (sprite sheet liviano). cover → desktop/tablet/mobile
+          // sin deformar la relación de aspecto.
+          Positioned.fill(
+            child: SpriteSheetPlayer(
+              asset: 'assets/onboarding/onboarding_hex_bg.webp',
+              columns: 8,
+              rows: 5,
+              frameCount: 40,
+              targetFps: bgFps,
+              reduceMotion: reduceMotion,
+            ),
+          ),
+          // Velo claro para legibilidad (tema claro, usuarios 50+): suave en el
+          // centro (donde el video se ve), más marcado arriba/abajo.
+          const Positioned.fill(child: IgnorePointer(child: _OnboardingScrim())),
+          Positioned.fill(
+            child: SafeArea(
+              bottom: false,
+              child: Column(
+                children: [
+                  _header(),
+                  if (_degraded) _degradedBanner(),
+                  Expanded(
+                    child: PreviewCanvasWidget(
+                      anim: _anim,
+                      businessName: _ctrl.businessName,
+                      ownerName: _ctrl.ownerName,
+                      phone: _ctrl.phone,
+                      businessType: _ctrl.businessType,
+                      logoUrl: _ctrl.logoUrl,
+                      compact: compact,
+                      backgroundColor: Colors.transparent, // deja ver el video
+                    ),
+                  ),
+                  ConstrainedBox(
+                    constraints: BoxConstraints(
+                        maxHeight: MediaQuery.of(context).size.height * 0.62),
+                    child:
+                        _ctrl.canRegister ? _readyConsole() : _questionConsole(),
+                  ),
+                ],
               ),
             ),
-            ConstrainedBox(
-              constraints: BoxConstraints(
-                  maxHeight: MediaQuery.of(context).size.height * 0.62),
-              child: _ctrl.canRegister ? _readyConsole() : _questionConsole(),
-            ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
@@ -637,6 +689,32 @@ class _OnboardingAgenticAnimatedViewState
           ],
         ),
       ),
+    );
+  }
+}
+
+/// Velo claro sobre el video de fondo. Mantiene el contraste del texto en el
+/// tema claro (usuarios 50+) dejando ver el video, sobre todo en el centro.
+class _OnboardingScrim extends StatelessWidget {
+  const _OnboardingScrim();
+
+  @override
+  Widget build(BuildContext context) {
+    // Los ARGB son el color base FAFAFA con distinta opacidad.
+    return const DecoratedBox(
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [
+            Color(0x8CFAFAFA), // ~55% arriba (header)
+            Color(0x2EFAFAFA), // ~18% centro (se ve el video)
+            Color(0x73FAFAFA), // ~45% abajo (consola)
+          ],
+          stops: [0.0, 0.45, 1.0],
+        ),
+      ),
+      child: SizedBox.expand(),
     );
   }
 }

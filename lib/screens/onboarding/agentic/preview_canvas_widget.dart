@@ -35,6 +35,7 @@ class PreviewCanvasWidget extends StatelessWidget {
     required this.businessType,
     required this.logoUrl,
     this.compact = false,
+    this.backgroundColor = const Color(0xFFFAFAFA),
   });
 
   final OnboardingAnimationController anim;
@@ -44,12 +45,14 @@ class PreviewCanvasWidget extends StatelessWidget {
   final String businessType;
   final String logoUrl;
   final bool compact; // teclado abierto → versión mini
+  /// Fondo del canvas. Transparente cuando hay un video de fondo detrás.
+  final Color backgroundColor;
 
   @override
   Widget build(BuildContext context) {
     return RepaintBoundary(
       child: Container(
-        color: const Color(0xFFFAFAFA),
+        color: backgroundColor,
         width: double.infinity,
         child: Center(
           child: SingleChildScrollView(
