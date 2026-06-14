@@ -520,9 +520,9 @@ class _OnboardingAgenticAnimatedViewState
           Positioned.fill(
             child: SpriteSheetPlayer(
               asset: 'assets/onboarding/onboarding_hex_bg.webp',
-              columns: 8,
-              rows: 5,
-              frameCount: 40,
+              columns: 5,
+              rows: 6,
+              frameCount: 30,
               targetFps: bgFps,
               reduceMotion: reduceMotion,
             ),

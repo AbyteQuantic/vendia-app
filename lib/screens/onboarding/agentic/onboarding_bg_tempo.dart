@@ -11,14 +11,16 @@
 enum OnboardingBgTempo { typing, idle, busy }
 
 /// Velocidad de avance del sprite (frames por segundo) para cada tempo.
+/// Valores BAJOS a propósito: el fondo es ambiental, no debe distraer. El
+/// cross-fade del reproductor suaviza el movimiento aun a estas velocidades.
 double bgFpsForTempo(OnboardingBgTempo t) {
   switch (t) {
     case OnboardingBgTempo.typing:
-      return 4.0; // el más lento: el tendero está escribiendo
+      return 1.5; // el más lento: el tendero está escribiendo
     case OnboardingBgTempo.idle:
-      return 6.5; // calma: esperando el siguiente dato
+      return 2.5; // calma: esperando el siguiente dato
     case OnboardingBgTempo.busy:
-      return 16.0; // IA procesando / guardando / pensando
+      return 6.0; // IA procesando / guardando / pensando
   }
 }
 

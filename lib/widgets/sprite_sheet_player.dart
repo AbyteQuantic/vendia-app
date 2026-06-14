@@ -61,7 +61,7 @@ class _SpriteSheetPlayerState extends State<SpriteSheetPlayer>
   Duration _last = Duration.zero;
   double _pos = 0; // posición continua en fotogramas
   double _fps = 0; // fps actual (se acerca a targetFps por lerp)
-  final ValueNotifier<int> _frame = ValueNotifier<int>(0);
+  final ValueNotifier<double> _position = ValueNotifier<double>(0);
 
   @override
   void initState() {
@@ -109,7 +109,7 @@ class _SpriteSheetPlayerState extends State<SpriteSheetPlayer>
     }
 
     _pos += _fps * dt;
-    _frame.value = frameIndexFor(_pos, widget.frameCount, widget.pingPong);
+    _position.value = _pos; // posición continua → el painter hace cross-fade
   }
 
   @override
@@ -129,7 +129,7 @@ class _SpriteSheetPlayerState extends State<SpriteSheetPlayer>
   @override
   void dispose() {
     _ticker?.dispose();
-    _frame.dispose();
+    _position.dispose();
     _image?.dispose();
     super.dispose();
   }
@@ -145,7 +145,9 @@ class _SpriteSheetPlayerState extends State<SpriteSheetPlayer>
           image: img,
           columns: widget.columns,
           rows: widget.rows,
-          frame: _frame,
+          frameCount: widget.frameCount,
+          pingPong: widget.pingPong,
+          position: _position,
           fit: widget.fit,
         ),
       ),
@@ -170,36 +172,59 @@ class _SpritePainter extends CustomPainter {
     required this.image,
     required this.columns,
     required this.rows,
-    required this.frame,
+    required this.frameCount,
+    required this.pingPong,
+    required this.position,
     required this.fit,
-  }) : super(repaint: frame);
+  }) : super(repaint: position);
 
   final ui.Image image;
   final int columns;
   final int rows;
-  final ValueListenable<int> frame;
+  final int frameCount;
+  final bool pingPong;
+  final ValueListenable<double> position;
   final BoxFit fit;
-  final Paint _paint = Paint()..filterQuality = FilterQuality.medium;
+  final Paint _paint = Paint()..filterQuality = FilterQuality.high;
+
+  Rect _srcFor(int idx) {
+    final fw = image.width / columns;
+    final fh = image.height / rows;
+    final i = idx.clamp(0, columns * rows - 1);
+    return Rect.fromLTWH((i % columns) * fw, (i ~/ columns) * fh, fw, fh);
+  }
 
   @override
   void paint(Canvas canvas, Size size) {
     if (size.isEmpty) return;
     final fw = image.width / columns;
     final fh = image.height / rows;
-    final idx = frame.value.clamp(0, columns * rows - 1);
-    final col = idx % columns;
-    final row = idx ~/ columns;
-    final src = Rect.fromLTWH(col * fw, row * fh, fw, fh);
 
-    // cover: escala el fotograma para CUBRIR el área y recorta lo que sobra,
-    // centrado — preserva la relación de aspecto en cualquier pantalla.
+    // cover: escala para CUBRIR y recorta lo que sobra, centrado — preserva la
+    // relación de aspecto en cualquier pantalla (desktop/tablet/mobile).
     final scale = fit == BoxFit.contain
         ? math.min(size.width / fw, size.height / fh)
         : math.max(size.width / fw, size.height / fh);
     final dw = fw * scale, dh = fh * scale;
     final dst =
         Rect.fromLTWH((size.width - dw) / 2, (size.height - dh) / 2, dw, dh);
-    canvas.drawImageRect(image, src, dst, _paint);
+
+    // Cross-fade entre el fotograma actual y el siguiente según la parte
+    // fraccionaria de la posición → movimiento FLUIDO aun con pocos frames y
+    // velocidad lenta (en vez de "saltar" de cuadro en cuadro).
+    final pos = position.value;
+    final lo = pos.floor();
+    final frac = pos - lo;
+    final idxA = frameIndexFor(lo.toDouble(), frameCount, pingPong);
+    final idxB = frameIndexFor((lo + 1).toDouble(), frameCount, pingPong);
+
+    canvas.drawImageRect(image, _srcFor(idxA), dst, _paint);
+    if (frac > 0.001 && idxB != idxA) {
+      final fade = Paint()
+        ..filterQuality = FilterQuality.high
+        ..color = Color.fromRGBO(255, 255, 255, frac);
+      canvas.drawImageRect(image, _srcFor(idxB), dst, fade);
+    }
   }
 
   @override
@@ -207,5 +232,6 @@ class _SpritePainter extends CustomPainter {
       old.image != image ||
       old.columns != columns ||
       old.rows != rows ||
+      old.frameCount != frameCount ||
       old.fit != fit;
 }
