@@ -9,6 +9,7 @@ import '../../database/database_service.dart';
 import '../../database/collections/local_catalog_product.dart';
 import '../../database/collections/local_product.dart';
 import '../../database/sync/pending_product_push.dart';
+import '../../database/local_product_factory.dart';
 import 'product_save_flow.dart';
 import '../../services/api_service.dart';
 import '../../services/app_error.dart';
@@ -1087,21 +1088,19 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
         },
         saveLocal: () async {
           // Only a durable photo URL is stored — never a transient local/blob
-          // path that would be a dead reference after a refresh.
-          final product = LocalProduct()
-            ..uuid = id
-            ..name = productName
-            ..price = price
-            ..stock = stock
-            ..imageUrl = _photoUrl
-            ..isAvailable = true
-            ..requiresContainer = false
-            ..containerPrice = 0
-            ..barcode = _skuCtrl.text.trim()
-            ..presentation = _presentation
-            ..content = _contentCtrl.text.trim()
-            ..expiryDate = _expiryDate
-            ..clientUpdatedAt = DateTime.now();
+          // path that would be a dead reference after a refresh. La factory
+          // setea reservedStock (late) para no romper la serialización Isar.
+          final product = buildSavedLocalProduct(
+            uuid: id,
+            name: productName,
+            price: price,
+            stock: stock,
+            imageUrl: _photoUrl,
+            barcode: _skuCtrl.text.trim(),
+            presentation: _presentation,
+            content: _contentCtrl.text.trim(),
+            expiryDate: _expiryDate,
+          );
           await DatabaseService.instance.upsertProduct(product);
         },
         markPending: () => PendingProductPush.add(id),
