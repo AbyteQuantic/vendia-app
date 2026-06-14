@@ -8,6 +8,8 @@ import 'package:uuid/uuid.dart';
 import '../../database/database_service.dart';
 import '../../database/collections/local_catalog_product.dart';
 import '../../database/collections/local_product.dart';
+import '../../database/sync/pending_product_push.dart';
+import 'product_save_flow.dart';
 import '../../services/api_service.dart';
 import '../../services/app_error.dart';
 import '../../services/auth_service.dart';
@@ -1005,96 +1007,107 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
         if (t3 > 0) tierExtras['price_tier_3'] = t3;
       }
 
-      if (_pendingUuid != null) {
-        // Product was already created by enhance — update it
-        await api.updateProduct(id, {
-          'name': productName,
-          'price': price,
-          'stock': stock,
-          'image_url': _photoUrl,
-          'barcode': _skuCtrl.text.trim(),
-          'presentation': _presentation,
-          'content': _contentCtrl.text.trim(),
-          'expiry_date': expiryIso ?? '',
-          if (_pendingCatalogImageId != null)
-            'catalog_image_id': _pendingCatalogImageId,
-          ...tierExtras,
-        });
-      } else {
-        // Create new product
-        _pendingUuid = id;
-        await api.createProduct({
-          'id': id,
-          'name': productName,
-          'price': price,
-          'stock': stock,
-          'image_url': _photoUrl,
-          'barcode': _skuCtrl.text.trim(),
-          'presentation': _presentation,
-          'content': _contentCtrl.text.trim(),
-          if (expiryIso != null) 'expiry_date': expiryIso,
-          if (_pendingCatalogImageId != null)
-            'catalog_image_id': _pendingCatalogImageId,
-          ...tierExtras,
-        });
-      }
+      // Offline-first (Art. II): el guardado LOCAL ocurre siempre, aunque la
+      // red falle. El bug previo dejaba el upsert local DESPUÉS de la llamada
+      // de red dentro del mismo try; sin conexión `createProduct` lanzaba, se
+      // saltaba al catch y el producto (con su foto) se perdía — pero igual se
+      // mostraba "guardado". Ahora la red es best-effort y el row local nunca
+      // se pierde.
+      // Invariante offline-first (probada en product_save_flow.dart): la red
+      // es best-effort; el guardado local ocurre SIEMPRE; si el server no
+      // confirma se marca pendiente para subir luego (Spec 047).
+      await persistProductOfflineFirst(
+        serverWrite: () async {
+          if (_pendingUuid != null) {
+            // Product was already created by enhance — update it
+            await api.updateProduct(id, {
+              'name': productName,
+              'price': price,
+              'stock': stock,
+              'image_url': _photoUrl,
+              'barcode': _skuCtrl.text.trim(),
+              'presentation': _presentation,
+              'content': _contentCtrl.text.trim(),
+              'expiry_date': expiryIso ?? '',
+              if (_pendingCatalogImageId != null)
+                'catalog_image_id': _pendingCatalogImageId,
+              ...tierExtras,
+            });
+          } else {
+            // Create new product
+            _pendingUuid = id;
+            await api.createProduct({
+              'id': id,
+              'name': productName,
+              'price': price,
+              'stock': stock,
+              'image_url': _photoUrl,
+              'barcode': _skuCtrl.text.trim(),
+              'presentation': _presentation,
+              'content': _contentCtrl.text.trim(),
+              if (expiryIso != null) 'expiry_date': expiryIso,
+              if (_pendingCatalogImageId != null)
+                'catalog_image_id': _pendingCatalogImageId,
+              ...tierExtras,
+            });
+          }
 
-      // Upload local photo if taken from camera/gallery.
-      // Spec 013: pass the picked XFile — `uploadProductPhoto` reads its
-      // bytes and normalizes to PNG, so this works on web and the photo
-      // renders on Android.
-      final pickedPhoto = _photoFile;
-      if (pickedPhoto != null && _photoUrl == null) {
-        try {
-          final uploadRes = await api.uploadProductPhoto(id, pickedPhoto);
-          final url = (uploadRes['photo_url'] as String?) ??
-              (uploadRes['image_url'] as String?);
-          if (url != null && url.isNotEmpty) {
-            _photoUrl = url;
-            await api.updateProduct(id, {'image_url': url});
+          // Upload local photo if taken from camera/gallery.
+          // Spec 013: pass the picked XFile — `uploadProductPhoto` reads its
+          // bytes and normalizes to PNG, so this works on web and the photo
+          // renders on Android. Una falla de FOTO no debe marcar la venta como
+          // offline: se maneja aquí y no se propaga.
+          final pickedPhoto = _photoFile;
+          if (pickedPhoto != null && _photoUrl == null) {
+            try {
+              final uploadRes = await api.uploadProductPhoto(id, pickedPhoto);
+              final url = (uploadRes['photo_url'] as String?) ??
+                  (uploadRes['image_url'] as String?);
+              if (url != null && url.isNotEmpty) {
+                _photoUrl = url;
+                await api.updateProduct(id, {'image_url': url});
+              }
+            } on ImageNormalizationException catch (e) {
+              if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text(e.message)),
+                );
+              }
+            } catch (e) {
+              if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text(
+                        'El producto se guardó, pero no pudimos subir la foto.'),
+                  ),
+                );
+              }
+            }
           }
-        } on ImageNormalizationException catch (e) {
-          // Could not normalize the picked image — tell the merchant in
-          // Spanish; the product is still saved without a photo.
-          if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text(e.message)),
-            );
-          }
-        } catch (e) {
-          // Network / backend failure — the product is saved without an
-          // image; let the merchant know instead of staying silent.
-          if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text(
-                    'El producto se guardó, pero no pudimos subir la foto.'),
-              ),
-            );
-          }
-        }
-      }
-
-      // Save to local Isar for offline. Only a durable photo URL is
-      // stored — never a transient local/blob path that would be a dead
-      // reference after a refresh.
-      final product = LocalProduct()
-        ..uuid = id
-        ..name = productName
-        ..price = price
-        ..stock = stock
-        ..imageUrl = _photoUrl
-        ..isAvailable = true
-        ..requiresContainer = false
-        ..containerPrice = 0
-        ..barcode = _skuCtrl.text.trim()
-        ..presentation = _presentation
-        ..content = _contentCtrl.text.trim()
-        ..expiryDate = _expiryDate
-        ..clientUpdatedAt = DateTime.now();
-      await DatabaseService.instance.upsertProduct(product);
+        },
+        saveLocal: () async {
+          // Only a durable photo URL is stored — never a transient local/blob
+          // path that would be a dead reference after a refresh.
+          final product = LocalProduct()
+            ..uuid = id
+            ..name = productName
+            ..price = price
+            ..stock = stock
+            ..imageUrl = _photoUrl
+            ..isAvailable = true
+            ..requiresContainer = false
+            ..containerPrice = 0
+            ..barcode = _skuCtrl.text.trim()
+            ..presentation = _presentation
+            ..content = _contentCtrl.text.trim()
+            ..expiryDate = _expiryDate
+            ..clientUpdatedAt = DateTime.now();
+          await DatabaseService.instance.upsertProduct(product);
+        },
+        markPending: () => PendingProductPush.add(id),
+      );
     } catch (_) {
-      // best effort save
+      // best effort save — error verdaderamente inesperado del lado local.
     }
 
     if (!mounted) return;

@@ -488,8 +488,17 @@ class CartController extends ChangeNotifier {
     );
   }
 
-  String get formattedTotal {
-    final int cents = activeTotal.round();
+  String get formattedTotal => _formatCop(activeTotal.round());
+
+  /// Subtotal por item formateado para el TIER ACTIVO. El carrito debe
+  /// mostrar el MISMO precio que se cobra: antes usaba
+  /// `CartItem.formattedSubtotal` (siempre retail), así que con un tier
+  /// activo las líneas no sumaban al total del checkout y el cajero veía
+  /// dos números distintos para lo mismo.
+  String formattedSubtotalForItem(CartItem item) =>
+      _formatCop(subtotalForItem(item).round());
+
+  static String _formatCop(int cents) {
     final String s = cents.toString();
     final buffer = StringBuffer('\$');
     final start = s.length % 3;

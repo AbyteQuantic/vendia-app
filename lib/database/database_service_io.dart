@@ -16,6 +16,8 @@ import 'collections/local_customer_io.dart';
 import 'collections/local_credit_io.dart';
 import 'collections/local_table_tab_io.dart';
 import 'collections/pending_operation_io.dart';
+import 'sync/product_merge.dart';
+import 'sync/pending_product_push.dart';
 import '../utils/digital_payment_method.dart';
 import '../utils/generate_id.dart';
 import '../services/tax_settings_service.dart';
@@ -135,19 +137,25 @@ class DatabaseService {
     });
   }
 
-  /// Sync products from server to local Isar (upsert by UUID).
-  /// Does NOT clear existing products — prevents data loss on partial fetches.
+  /// Sync products from server to local Isar.
+  ///
+  /// H1 fix — merge no destructivo (ver [mergeServerProducts]): el servidor es
+  /// la verdad para precio/stock/foto, pero `reservedStock` (reservas de mesa,
+  /// concepto local) se conserva y los productos creados offline aún sin subir
+  /// (registrados en [PendingProductPush]) NO se borran. Antes hacía
+  /// `clear()`+`putAll(server)` y reseteaba reservas / perdía productos.
   Future<void> replaceAllProducts(List<LocalProduct> products) async {
     if (products.isEmpty) return;
-    // Deduplicate by uuid — keep the last occurrence (freshest data)
-    final byUuid = <String, LocalProduct>{};
-    for (final p in products) {
-      byUuid[p.uuid] = p;
-    }
-    final unique = byUuid.values.toList();
+    final protected = await PendingProductPush.all();
     await isar.writeTxn(() async {
+      final existing = await isar.localProducts.where().findAll();
+      final merged = mergeServerProducts(
+        existing: existing,
+        incoming: products,
+        protectedUuids: protected,
+      );
       await isar.localProducts.clear();
-      await isar.localProducts.putAll(unique);
+      await isar.localProducts.putAll(merged);
     });
   }
 

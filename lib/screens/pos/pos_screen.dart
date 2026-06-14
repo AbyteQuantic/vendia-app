@@ -869,24 +869,38 @@ class _PosScreenBodyState extends State<_PosScreenBody> {
                         Icon(Icons.table_restaurant_rounded,
                             size: 16, color: statusColor),
                         const SizedBox(width: 4),
-                        Text(label,
-                            style: TextStyle(
-                                fontSize: 14,
-                                fontWeight: FontWeight.w800,
-                                color: statusColor)),
-                        const SizedBox(width: 8),
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 6, vertical: 2),
-                          decoration: BoxDecoration(
-                            color: statusColor.withValues(alpha: 0.12),
-                            borderRadius: BorderRadius.circular(6),
-                          ),
-                          child: Text(statusLabel,
+                        // Responsive 360dp: el nombre de mesa se encoge con
+                        // elipsis en vez de desbordar el Row cuando es largo
+                        // ("Terraza 12") junto al badge de estado.
+                        Flexible(
+                          child: Text(label,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
                               style: TextStyle(
-                                  fontSize: 10,
-                                  fontWeight: FontWeight.w700,
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w800,
                                   color: statusColor)),
+                        ),
+                        const SizedBox(width: 8),
+                        // El badge también cede (elipsis) en pantalla angosta
+                        // para que el Row nunca desborde con label + estado
+                        // largos junto a los 4 botones de acción.
+                        Flexible(
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: statusColor.withValues(alpha: 0.12),
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            child: Text(statusLabel,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.w700,
+                                    color: statusColor)),
+                          ),
                         ),
                       ],
                     ),
@@ -1212,8 +1226,13 @@ class _PosScreenBodyState extends State<_PosScreenBody> {
                 : GridView.builder(
                     shrinkWrap: true,
                     physics: const NeverScrollableScrollPhysics(),
-                    gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                      crossAxisCount: 4,
+                    // Responsive 360dp (SAT N140): ancho máximo por celda en vez
+                    // de 4 columnas fijas. En pantallas angostas el conteo se
+                    // adapta (≈3 col → celdas ~103dp legibles) en vez de exprimir
+                    // 4 celdas de ~72dp ilegibles.
+                    gridDelegate:
+                        const SliverGridDelegateWithMaxCrossAxisExtent(
+                      maxCrossAxisExtent: 110,
                       mainAxisSpacing: 10,
                       crossAxisSpacing: 10,
                       childAspectRatio: 1.3,
@@ -1956,13 +1975,17 @@ class _PosScreenBodyState extends State<_PosScreenBody> {
                     final db = DatabaseService.instance;
                     final saleUuid = const Uuid().v4();
                     final saleItems = ctrl.activeCart.map((item) {
+                      // Usa el precio efectivo del TIER ACTIVO (reusa el
+                      // método ya probado del controller). Antes fijaba
+                      // `item.product.price` (retail) y las líneas no
+                      // cuadraban con `ctrl.activeTotal` cuando había tier.
                       return SaleItemEmbed()
                         ..productUuid = item.product.uuid.isNotEmpty
                             ? item.product.uuid
                             : item.product.id.toString()
                         ..productName = item.product.name
                         ..quantity = item.quantity
-                        ..unitPrice = item.product.price
+                        ..unitPrice = ctrl.priceForItem(item)
                         ..isContainerCharge = false;
                     }).toList();
 
@@ -3100,7 +3123,10 @@ class _CartBottomSheet extends StatelessWidget {
                                   ),
                                   const SizedBox(height: 4),
                                   Text(
-                                    item.formattedSubtotal,
+                                    // Subtotal por línea con el TIER ACTIVO
+                                    // (antes mostraba retail y divergía del
+                                    // total cobrado en el checkout).
+                                    ctrl.formattedSubtotalForItem(item),
                                     style: const TextStyle(
                                       fontSize: 16,
                                       fontWeight: FontWeight.bold,

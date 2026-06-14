@@ -5,6 +5,7 @@ import '../../database/collections/local_customer.dart';
 import '../../database/collections/local_credit.dart';
 import '../../database/collections/pending_operation.dart';
 import '../../database/sync/sync_service.dart';
+import '../../database/sync/sync_payloads.dart';
 import '../../utils/generate_id.dart';
 
 class FiarController extends ChangeNotifier {
@@ -84,7 +85,8 @@ class FiarController extends ChangeNotifier {
       ..uuid = customer.uuid
       ..entity = 'customer'
       ..action = 'create'
-      ..jsonData = jsonEncode(customer.toJson())
+      // Spec 047: payload con columnas reales del modelo Customer.
+      ..jsonData = jsonEncode(customerSyncPayload(customer))
       ..clientUpdatedAt = DateTime.now()
       ..retryCount = 0
       ..createdAt = DateTime.now();
@@ -123,9 +125,11 @@ class FiarController extends ChangeNotifier {
 
     final op = PendingOperation()
       ..uuid = credit.uuid
-      ..entity = 'credit'
+      // Spec 047 AC-05: la entidad es 'credit_account' (el backend no conoce
+      // 'credit'); payload con columnas reales (customer_id, montos enteros).
+      ..entity = 'credit_account'
       ..action = 'create'
-      ..jsonData = jsonEncode(credit.toJson())
+      ..jsonData = jsonEncode(creditAccountSyncPayload(credit))
       ..clientUpdatedAt = DateTime.now()
       ..retryCount = 0
       ..createdAt = DateTime.now();
@@ -172,12 +176,12 @@ class FiarController extends ChangeNotifier {
       ..uuid = paymentUuid
       ..entity = 'credit_payment'
       ..action = 'create'
-      ..jsonData = jsonEncode({
-        'credit_uuid': creditUuid,
-        'amount': amount,
-        'note': note,
-        'paid_at': DateTime.now().toIso8601String(),
-      })
+      // Spec 047 AC-04: credit_account_id + amount entero (columnas reales).
+      ..jsonData = jsonEncode(creditPaymentSyncPayload(
+        creditAccountId: creditUuid,
+        amount: amount,
+        note: note,
+      ))
       ..clientUpdatedAt = DateTime.now()
       ..retryCount = 0
       ..createdAt = DateTime.now();

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../utils/format_cop.dart';
+import '../../utils/money_split.dart';
 
 class ClientAccountScreen extends StatefulWidget {
   final String accountUuid;
@@ -42,10 +43,11 @@ class _ClientAccountScreenState extends State<ClientAccountScreen> {
 
   double get _saldoPendiente => _total - _totalAbonado;
 
-  double get _perPerson {
-    final raw = _saldoPendiente / _splitCount;
-    return ((raw / 50).ceil() * 50).toDouble();
-  }
+  // Monto representativo por persona. Usa `evenSplitCOP` para que
+  // `_perPerson × _splitCount` NUNCA supere el saldo (el bug previo
+  // redondeaba hacia arriba y sobrecobraba al grupo hasta $50 por persona).
+  double get _perPerson =>
+      representativeSplitCOP(_saldoPendiente.round(), _splitCount).toDouble();
 
   // ── Build ──────────────────────────────────────────────────────────────
 
