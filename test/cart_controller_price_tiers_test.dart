@@ -157,5 +157,46 @@ void main() {
 
       expect(notifyCount, 2);
     });
+
+    test(
+        'formattedSubtotalForItem usa el TIER ACTIVO (no el retail) — '
+        'el carrito ya no diverge del total cobrado', () {
+      final ctrl = CartController();
+      ctrl.addProduct(cemento()); // retail 28_500 · tier_1 25_000
+      final item = ctrl.activeCart.first;
+
+      // En retail muestra el subtotal retail.
+      expect(ctrl.formattedSubtotalForItem(item), '\$28.500');
+
+      // Al activar tier_1 el subtotal por línea sigue al tier.
+      ctrl.setPriceTier('tier_1');
+      expect(ctrl.formattedSubtotalForItem(item), '\$25.000');
+
+      // Y la suma de subtotales de líneas == total activo (cuadra).
+      ctrl.addProduct(cemento());
+      final lineSum = ctrl.activeCart
+          .map((i) => ctrl.subtotalForItem(i))
+          .fold<double>(0, (s, v) => s + v);
+      expect(lineSum, closeTo(ctrl.activeTotal, 0.01));
+    });
+
+    test(
+        'invariante de auditoría: persistir saleItems con priceForItem cuadra '
+        'con activeTotal bajo tier (camino "Cobrar y enviar" mesa-inmediata)',
+        () {
+      final ctrl = CartController();
+      for (var i = 0; i < 3; i++) {
+        ctrl.addProduct(cemento());
+      }
+      ctrl.setPriceTier('tier_1'); // 25_000 c/u
+
+      // Reproduce lo que persiste pos_screen: unitPrice = priceForItem(item).
+      final persistedTotal = ctrl.activeCart
+          .map((item) => ctrl.priceForItem(item) * item.quantity)
+          .fold<double>(0, (s, v) => s + v);
+
+      expect(persistedTotal, closeTo(ctrl.activeTotal, 0.01));
+      expect(persistedTotal, closeTo(75000, 0.01)); // 3 × 25_000, NO retail
+    });
   });
 }

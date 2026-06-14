@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'package:isar/isar.dart';
 
 part 'pending_operation_io.g.dart';
@@ -30,10 +31,24 @@ class PendingOperation {
   String tenantId = '';
 
   Map<String, dynamic> toSyncPayload() => {
-        'uuid': uuid,
+        // El backend espera la PK del lote bajo la llave `id`
+        // (SyncOperation.ID, binding:"required"). Mandar `uuid` deja `ID`
+        // vacío → 400 de todo el lote y, aun pasando, PK vacía en el insert.
+        'id': uuid,
         'entity': entity,
         'action': action,
-        'data': jsonData,
+        // AC-01: el backend espera `data` como objeto (map[string]any), no como
+        // String. `jsonData` se guarda serializado para Isar; aquí se decodifica
+        // antes de mandarlo o el bind del lote falla con 400.
+        'data': _decodedData(),
         'client_updated_at': clientUpdatedAt.toIso8601String(),
       };
+
+  Map<String, dynamic> _decodedData() {
+    if (jsonData.isEmpty) return <String, dynamic>{};
+    final decoded = jsonDecode(jsonData);
+    return decoded is Map<String, dynamic>
+        ? decoded
+        : Map<String, dynamic>.from(decoded as Map);
+  }
 }

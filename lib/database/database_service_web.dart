@@ -24,6 +24,8 @@ import 'collections/local_customer.dart';
 import 'collections/local_credit.dart';
 import 'collections/local_table_tab.dart';
 import 'collections/pending_operation.dart';
+import 'sync/product_merge.dart';
+import 'sync/pending_product_push.dart';
 import '../utils/digital_payment_method.dart';
 import '../utils/generate_id.dart';
 import '../services/tax_settings_service.dart';
@@ -122,13 +124,17 @@ class DatabaseService {
 
   Future<void> replaceAllProducts(List<LocalProduct> products) async {
     if (products.isEmpty) return;
-    final byUuid = <String, LocalProduct>{};
-    for (final p in products) {
-      byUuid[p.uuid] = p;
-    }
+    // H1 fix — mismo merge no destructivo que el camino Isar (preserva
+    // reservedStock y productos creados offline pendientes de subir).
+    final protected = await PendingProductPush.all();
+    final merged = mergeServerProducts(
+      existing: List<LocalProduct>.from(_products),
+      incoming: products,
+      protectedUuids: protected,
+    );
     _products
       ..clear()
-      ..addAll(byUuid.values);
+      ..addAll(merged);
     _emitProducts();
   }
 
