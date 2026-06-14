@@ -22,17 +22,28 @@ class ProductSaveOutcome {
 ///   2. ejecuta [saveLocal] SIEMPRE (el producto nunca se pierde),
 ///   3. si el servidor no confirmó, ejecuta [markPending] (protege el producto
 ///      del pull destructivo y lo marca para subir luego).
+///
+/// [isOnline] (opcional): si se pasa y devuelve `false`, se OMITE [serverWrite]
+/// por completo. Sin esto, guardar offline bloquea ~30s esperando el timeout
+/// del socket antes de caer al guardado local; conociendo el estado de red lo
+/// saltamos y guardamos local al instante. Si es null, se asume online (intenta
+/// la red como antes — retrocompatible).
 Future<ProductSaveOutcome> persistProductOfflineFirst({
   required Future<void> Function() serverWrite,
   required Future<void> Function() saveLocal,
   required Future<void> Function() markPending,
+  Future<bool> Function()? isOnline,
 }) async {
   bool serverOk = false;
-  try {
-    await serverWrite();
-    serverOk = true;
-  } catch (_) {
-    // Sin conexión / backend caído: NO abortamos.
+
+  final online = isOnline == null ? true : await isOnline();
+  if (online) {
+    try {
+      await serverWrite();
+      serverOk = true;
+    } catch (_) {
+      // Backend caído / red intermitente: NO abortamos, caemos a local.
+    }
   }
 
   await saveLocal();

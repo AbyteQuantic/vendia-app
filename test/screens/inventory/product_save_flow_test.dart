@@ -63,4 +63,63 @@ void main() {
       );
     });
   });
+
+  group('isOnline — sin red NO se intenta el servidor (evita el delay de ~30s)',
+      () {
+    test('isOnline=false → serverWrite NUNCA se llama; guarda local + pendiente',
+        () async {
+      var serverCalled = false, localSaved = false, marked = false;
+      final out = await persistProductOfflineFirst(
+        serverWrite: () async => serverCalled = true,
+        saveLocal: () async => localSaved = true,
+        markPending: () async => marked = true,
+        isOnline: () async => false,
+      );
+
+      expect(serverCalled, isFalse,
+          reason: 'offline no debe tocar la red (sin espera de timeout)');
+      expect(localSaved, isTrue);
+      expect(marked, isTrue);
+      expect(out.serverOk, isFalse);
+    });
+
+    test('isOnline=true → sí intenta el servidor', () async {
+      var serverCalled = false;
+      final out = await persistProductOfflineFirst(
+        serverWrite: () async => serverCalled = true,
+        saveLocal: () async {},
+        markPending: () async {},
+        isOnline: () async => true,
+      );
+      expect(serverCalled, isTrue);
+      expect(out.serverOk, isTrue);
+    });
+
+    test('isOnline ausente → asume online (retrocompatible)', () async {
+      var serverCalled = false;
+      await persistProductOfflineFirst(
+        serverWrite: () async => serverCalled = true,
+        saveLocal: () async {},
+        markPending: () async {},
+      );
+      expect(serverCalled, isTrue);
+    });
+
+    test('isOnline=false NO espera por serverWrite lento (responde rápido)',
+        () async {
+      // Si la red estuviera caída, serverWrite tardaría; con isOnline=false ni
+      // se invoca, así que el flujo termina al instante.
+      final sw = Stopwatch()..start();
+      await persistProductOfflineFirst(
+        serverWrite: () async =>
+            await Future<void>.delayed(const Duration(seconds: 5)),
+        saveLocal: () async {},
+        markPending: () async {},
+        isOnline: () async => false,
+      );
+      sw.stop();
+      expect(sw.elapsedMilliseconds, lessThan(1000),
+          reason: 'no debe esperar el serverWrite lento');
+    });
+  });
 }

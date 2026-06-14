@@ -1,6 +1,7 @@
 // Spec: specs/018-nuevo-producto-fixes/spec.md
 // Spec: specs/029-precios-multi-tier/spec.md
 import 'dart:async';
+import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
@@ -1104,6 +1105,12 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
           await DatabaseService.instance.upsertProduct(product);
         },
         markPending: () => PendingProductPush.add(id),
+        // Si no hay red, NO intentamos el servidor: el guardado offline cae al
+        // instante en Isar en vez de bloquear ~30s esperando el timeout.
+        isOnline: () async {
+          final r = await Connectivity().checkConnectivity();
+          return r.any((c) => c != ConnectivityResult.none);
+        },
       );
     } catch (_) {
       // best effort save — error verdaderamente inesperado del lado local.
