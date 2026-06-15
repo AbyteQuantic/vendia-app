@@ -84,9 +84,18 @@ class SalesSyncService {
             continue;
           }
 
+          // Mismo serializador que el camino vivo (_syncSaleToBackend): un item
+          // de servicio (productUuid 'service_…') debe viajar como is_service +
+          // custom_unit_price, no como producto. Antes se mandaba como producto
+          // → el backend no lo encontraba, abortaba la venta entera y NUNCA
+          // sincronizaba (pérdida). También enviamos unit_price del precio
+          // efectivo persistido (tier ya aplicado).
           final items = sale.items
-              .where((i) => !i.isContainerCharge && i.productUuid.isNotEmpty)
-              .map((i) => {'product_id': i.productUuid, 'quantity': i.quantity})
+              .where((i) => !i.isContainerCharge)
+              .map(saleSyncItemPayload)
+              .where((m) =>
+                  m['is_service'] == true ||
+                  (m['product_id'] as String).isNotEmpty)
               .toList();
 
           if (items.isEmpty) {
@@ -128,4 +137,25 @@ class SalesSyncService {
     await pullFromServer();
     await pushToServer();
   }
+}
+
+/// Serializa un item de venta para `/sync/batch` igual que el camino vivo
+/// (`_syncSaleToBackend`): un servicio ad-hoc (productUuid 'service_…') viaja
+/// como `is_service` + `custom_unit_price`; un producto normal como
+/// `product_id` + `unit_price` (precio efectivo persistido).
+@visibleForTesting
+Map<String, dynamic> saleSyncItemPayload(SaleItemEmbed i) {
+  if (i.productUuid.startsWith('service_')) {
+    return {
+      'quantity': i.quantity,
+      'is_service': true,
+      'custom_description': i.productName,
+      'custom_unit_price': i.unitPrice,
+    };
+  }
+  return {
+    'product_id': i.productUuid,
+    'quantity': i.quantity,
+    'unit_price': i.unitPrice,
+  };
 }

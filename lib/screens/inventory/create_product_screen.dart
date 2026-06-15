@@ -985,6 +985,7 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
     HapticFeedback.lightImpact();
 
     final productName = _nameCtrl.text.trim();
+    bool savedOk = false;
 
     try {
       final id = _pendingUuid ?? const Uuid().v4();
@@ -1018,7 +1019,7 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
       // Invariante offline-first (probada en product_save_flow.dart): la red
       // es best-effort; el guardado local ocurre SIEMPRE; si el server no
       // confirma se marca pendiente para subir luego (Spec 047).
-      await persistProductOfflineFirst(
+      final outcome = await persistProductOfflineFirst(
         serverWrite: () async {
           if (_pendingUuid != null) {
             // Product was already created by enhance — update it
@@ -1112,11 +1113,29 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
           return r.any((c) => c != ConnectivityResult.none);
         },
       );
+      savedOk = outcome.savedLocally;
     } catch (_) {
-      // best effort save — error verdaderamente inesperado del lado local.
+      // El guardado LOCAL falló de verdad → savedOk queda false; NO mostramos
+      // falso éxito (ese era el bug original, una capa más arriba).
+      savedOk = false;
     }
 
     if (!mounted) return;
+
+    if (!savedOk) {
+      // No se guardó: avisamos y dejamos el formulario para reintentar.
+      HapticFeedback.heavyImpact();
+      setState(() => _saving = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('No pudimos guardar el producto. Intente de nuevo.',
+              style: TextStyle(fontSize: 16)),
+          backgroundColor: AppTheme.error,
+        ),
+      );
+      return;
+    }
+
     HapticFeedback.mediumImpact();
     Navigator.of(context).pop(true);
     ScaffoldMessenger.of(context).showSnackBar(

@@ -60,8 +60,8 @@ class LocalProduct {
 
     return LocalProduct()
       ..uuid = uuid
-      ..name = json['name'] as String
-      ..price = (json['price'] as num).toDouble()
+      ..name = json['name'] as String? ?? ''
+      ..price = (json['price'] as num?)?.toDouble() ?? 0
       ..stock = json['stock'] as int? ?? 0
       ..reservedStock = json['reserved_stock'] as int? ?? 0
       ..imageUrl = bestImage

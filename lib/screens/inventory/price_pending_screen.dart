@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:uuid/uuid.dart';
 import '../../database/database_service.dart';
-import '../../database/collections/local_product.dart';
 import '../../database/local_product_factory.dart';
+import '../../database/sync/pending_product_push.dart';
 import '../../services/api_service.dart';
 import '../../services/auth_service.dart';
 import '../../theme/app_theme.dart';
@@ -290,35 +291,51 @@ class _PricePendingScreenState extends State<PricePendingScreen> {
                   child: ElevatedButton.icon(
                     onPressed: () async {
                       HapticFeedback.mediumImpact();
-                      // Guardar en backend + Isar local
-                      try {
-                        const uuid = Uuid();
-                        final api = ApiService(AuthService());
-                        final localProducts = <LocalProduct>[];
+                      const uuid = Uuid();
+                      final api = ApiService(AuthService());
+                      final priced =
+                          _products.where((p) => p.salePrice != null).toList();
+                      final ids = [for (final _ in priced) uuid.v4()];
 
-                        for (final p in _products.where((p) => p.salePrice != null)) {
-                          final id = uuid.v4();
-                          // Backend (PostgreSQL/Supabase)
-                          await api.createProduct({
-                            'id': id,
-                            'name': p.name,
-                            'price': p.salePrice,
-                            'stock': 1,
-                          });
-                          // Local (Isar) — factory setea reservedStock (late)
-                          // para no romper la serialización.
-                          localProducts.add(buildSavedLocalProduct(
-                            uuid: id,
-                            name: p.name,
-                            price: p.salePrice!,
+                      // Offline-first: guardar LOCAL primero y SIEMPRE. Antes la
+                      // red (createProduct) corría en el mismo try y ANTES del
+                      // guardado local, así que offline se perdían TODOS los
+                      // productos importados sin aviso.
+                      final localProducts = [
+                        for (var i = 0; i < priced.length; i++)
+                          buildSavedLocalProduct(
+                            uuid: ids[i],
+                            name: priced[i].name,
+                            price: priced[i].salePrice!,
                             stock: 1,
-                          ));
-                        }
+                          )
+                      ];
+                      try {
                         await DatabaseService.instance
                             .upsertProducts(localProducts);
-                      } catch (_) {}
+                      } catch (_) {/* el guardado local es best-effort Isar */}
+
+                      // Subir al server best-effort; sin red → marcar pendientes
+                      // para que el sync los empuje luego (no se pierden).
+                      final online = (await Connectivity().checkConnectivity())
+                          .any((c) => c != ConnectivityResult.none);
+                      for (var i = 0; i < priced.length; i++) {
+                        var ok = false;
+                        if (online) {
+                          try {
+                            await api.createProduct({
+                              'id': ids[i],
+                              'name': priced[i].name,
+                              'price': priced[i].salePrice,
+                              'stock': 1,
+                            });
+                            ok = true;
+                          } catch (_) {/* offline/backend caído */}
+                        }
+                        if (!ok) await PendingProductPush.add(ids[i]);
+                      }
+
                       if (!context.mounted) return;
-                      // Pop back to root of inventory flow
                       Navigator.of(context)
                         ..pop()
                         ..pop()

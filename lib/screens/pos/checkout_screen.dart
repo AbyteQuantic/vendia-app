@@ -2270,7 +2270,7 @@ class _ActiveFiadoPickerContentState
     final total = (credit['total_amount'] as num?)?.toInt() ?? 0;
     final paid = (credit['paid_amount'] as num?)?.toInt() ?? 0;
     final balance = total - paid;
-    final accountId = credit['id'] as String;
+    final accountId = credit['id'] as String? ?? '';
     final initial = name.trim().isNotEmpty ? name.trim()[0].toUpperCase() : '?';
 
     return Material(
