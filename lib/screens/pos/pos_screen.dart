@@ -1614,9 +1614,24 @@ class _PosScreenBodyState extends State<_PosScreenBody> {
       }) async {
     try {
       final api = ApiService(AuthService());
+      // Spec 049 (IVA): desglose de IVA para que el servidor lo GUARDE
+      // (reportes). NO cambia el total cobrado — el backend ya no suma el IVA;
+      // este monto solo se persiste en Sale.tax_amount.
+      final taxSvc = TaxSettingsService.instance;
+      double saleTax = 0;
+      for (final item in cartItems) {
+        final eff = item.isService
+            ? (item.customUnitPrice ?? item.product.price)
+            : item.product.priceForTier(priceTier);
+        saleTax +=
+            taxSvc.snapshotForLine(unitPrice: eff, quantity: item.quantity)
+                    .amount ??
+                0;
+      }
       final payload = <String, dynamic>{
         'id': saleUuid,
         'payment_method': paymentMethod,
+        if (saleTax > 0) 'tax_amount': saleTax,
         // F029: el tier viaja con la venta entera (no por línea); el
         // backend lo persiste en sales.price_tier. 'retail' es el
         // default server-side, así que un payload sin esta clave
