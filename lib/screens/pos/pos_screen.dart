@@ -2041,12 +2041,18 @@ class _PosScreenBodyState extends State<_PosScreenBody> {
                     );
 
                     final cartSnapshot = List<CartItem>.from(ctrl.activeCart);
+                    // Capturar el tier ANTES de limpiar (clearActiveCart lo
+                    // resetea). El sale local usa este tier; el sync debe
+                    // mandar el mismo unit_price (si no, el servidor recibiría
+                    // retail y descuadraría — F049).
+                    final mesaPriceTier = ctrl.selectedPriceTier;
                     ctrl.clearActiveCart();
 
                     _syncSaleToBackend(
                       cartSnapshot,
                       method.$1.toLowerCase(),
                       saleUuid,
+                      priceTier: mesaPriceTier,
                     );
 
                     if (!mounted) return;
