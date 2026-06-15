@@ -33,13 +33,19 @@ class Employee {
     this.photoUrl,
   }) : createdAt = createdAt ?? DateTime.now();
 
-  /// Initials for avatar display (e.g., "PM" for "Pedro Martínez")
+  /// Initials for avatar display (e.g., "PM" for "Pedro Martínez").
+  /// Filtra tokens vacíos: un nombre con doble espacio ("Pedro  Martínez")
+  /// producía `parts[1] = ""` y `parts[1][0]` lanzaba RangeError.
   String get initials {
-    final parts = name.trim().split(' ');
+    final parts = name
+        .trim()
+        .split(RegExp(r'\s+'))
+        .where((p) => p.isNotEmpty)
+        .toList();
     if (parts.length >= 2) {
       return '${parts[0][0]}${parts[1][0]}'.toUpperCase();
     }
-    return name.isNotEmpty ? name[0].toUpperCase() : '?';
+    return parts.isNotEmpty ? parts[0][0].toUpperCase() : '?';
   }
 
   /// Role display label in Spanish

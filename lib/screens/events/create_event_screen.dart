@@ -446,7 +446,7 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
         // Costo por asistente (solo eventos de pago) → ganancia = precio − costo.
         'cost': price > 0 ? _costValue : 0,
         'currency': _currency,
-        'capacity': int.parse(_capacityCtrl.text.trim()),
+        'capacity': int.tryParse(_capacityCtrl.text.trim()) ?? 0,
         // El pago solo aplica a eventos con precio.
         'enabled_payment_methods': price > 0 ? _methods.toList() : <String>[],
         'payment_details': price > 0 ? _buildPaymentDetails() : <Map<String, dynamic>>[],
