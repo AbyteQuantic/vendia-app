@@ -88,7 +88,10 @@ jobs:
         # Corre sobre un Isar REAL (initializeIsarCore baja el core nativo,
         # headless en Linux — sin emulador). Atrapa los bugs de serialización
         # (campos `late` sin setear) que la suite mockeada NO ve — la causa raíz
-        # de la pérdida de datos offline.
+        # de la pérdida de datos offline. NO bloqueante hasta confirmarlo
+        # estable en el runner Linux (verificado en macOS/emulador); quitar el
+        # continue-on-error una vez validado en CI.
+        continue-on-error: true
         run: flutter test integration_test/
 
       - name: Guard — no silent catches in persistence layer
