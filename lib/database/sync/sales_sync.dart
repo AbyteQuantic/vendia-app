@@ -109,6 +109,13 @@ class SalesSyncService {
             'payment_method': sale.paymentMethod,
             'items': items,
           };
+          // Spec 049 (IVA): desglose de IVA congelado por línea → el servidor
+          // lo guarda para reportes (no cambia el total cobrado).
+          final saleTax =
+              sale.items.fold<double>(0, (s, i) => s + (i.taxAmount ?? 0));
+          if (saleTax > 0) {
+            payload['tax_amount'] = saleTax;
+          }
           if (sale.creditAccountId != null &&
               sale.creditAccountId!.isNotEmpty) {
             payload['credit_account_id'] = sale.creditAccountId;
