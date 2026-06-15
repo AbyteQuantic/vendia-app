@@ -62,19 +62,19 @@ class LocalProduct {
       ..uuid = uuid
       ..name = json['name'] as String? ?? ''
       ..price = (json['price'] as num?)?.toDouble() ?? 0
-      ..stock = json['stock'] as int? ?? 0
-      ..reservedStock = json['reserved_stock'] as int? ?? 0
+      ..stock = (json['stock'] as num?)?.toInt() ?? 0
+      ..reservedStock = (json['reserved_stock'] as num?)?.toInt() ?? 0
       ..imageUrl = bestImage
       ..isAvailable = json['is_available'] as bool? ?? true
       ..requiresContainer = json['requires_container'] as bool? ?? false
-      ..containerPrice = json['container_price'] as int? ?? 0
+      ..containerPrice = (json['container_price'] as num?)?.toInt() ?? 0
       ..barcode = json['barcode'] as String?
       ..presentation = json['presentation'] as String?
       ..content = json['content'] as String?
       ..expiryDate = parsedExpiry
-      ..clientUpdatedAt = json['client_updated_at'] != null
-          ? DateTime.parse(json['client_updated_at'] as String)
-          : DateTime.now();
+      ..clientUpdatedAt =
+          DateTime.tryParse(json['client_updated_at'] as String? ?? '') ??
+              DateTime.now();
   }
 
   int get availableStock {
