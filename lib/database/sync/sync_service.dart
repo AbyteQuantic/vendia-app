@@ -9,6 +9,7 @@ import '../collections/pending_operation.dart';
 import '../collections/local_payment_method.dart';
 import '../collections/local_product.dart';
 import 'connectivity_monitor.dart';
+import 'sales_sync.dart';
 
 enum SyncStatus { synced, syncing, offline, error }
 
@@ -69,6 +70,15 @@ class SyncService extends ChangeNotifier {
       notifyListeners();
       return;
     }
+
+    // Spec 047: las ventas offline suben por POST /api/v1/sales (idempotente
+    // por UUID), NO por /sync/batch — esa ruta para 'sale' estaba rota y
+    // envenenaba el lote. pushToServer() drena cada LocalSale(synced=false).
+    // Va aquí, en syncNow(), para que el timer de 30 s y la reconexión
+    // (_onConnectivityChange) cubran las ventas: antes solo se empujaban al
+    // arrancar la app, así que una venta hecha con la app ABIERTA nunca
+    // sincronizaba hasta reiniciar. pushToServer ya traga sus errores por venta.
+    await SalesSyncService.pushToServer();
 
     await _refreshPendingCount();
     if (_pendingCount == 0) {

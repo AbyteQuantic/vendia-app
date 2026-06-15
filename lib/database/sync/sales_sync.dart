@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 import '../../services/api_service.dart';
+import '../../services/app_error.dart';
 import '../../services/auth_service.dart';
 import '../database_service.dart';
 import '../collections/local_sale.dart';
@@ -62,8 +63,16 @@ class SalesSyncService {
     }
   }
 
+  /// Guard de reentrada: syncNow() (timer 30 s) + _onConnectivityChange +
+  /// processSale + las 3 pantallas que llaman pushToServer pueden solaparse.
+  /// Un doble push es idempotente (el backend devuelve 200 sin doble descuento)
+  /// pero desperdicia red y puede doble-marcar; este flag serializa los sweeps.
+  static bool _pushInFlight = false;
+
   /// Push all unsynced local sales to the server.
   static Future<void> pushToServer() async {
+    if (_pushInFlight) return;
+    _pushInFlight = true;
     try {
       final db = DatabaseService.instance;
       // TODAS las no sincronizadas (sin tope). Antes `getRecentSales(200)`
@@ -127,16 +136,35 @@ class SalesSyncService {
           await db.markSaleSynced(sale);
           synced++;
         } catch (e) {
-          debugPrint('[SALES_SYNC] Push failed for ${sale.uuid}: $e');
+          // Distinguir error PERMANENTE (el server rechazó el payload) de
+          // error TRANSITORIO (red caída, 5xx, timeout). Sin esto, una venta
+          // estructuralmente inválida se reintentaba cada 30 s para siempre
+          // (el catch viejo solo la dejaba synced=false). 400/422 = el backend
+          // la rechazó por contrato → reintentar es inútil: la marcamos
+          // sincronizada para drenarla y la logueamos FUERTE para visibilidad.
+          // Cualquier otro caso (5xx, red, 401/403 por token vencido) se deja
+          // synced=false para reintentar en el próximo sweep.
+          final permanent = isPermanentSalePushError(e);
+          if (permanent) {
+            debugPrint('[SALES_SYNC] ⚠️ Venta RECHAZADA por el servidor '
+                '(${(e as AppError).statusCode}) — se descarta de la cola para '
+                'no reintentar infinito: ${sale.uuid} → $e');
+            await db.markSaleSynced(sale);
+          } else {
+            debugPrint('[SALES_SYNC] Push transitorio falló para ${sale.uuid} '
+                '(reintentará): $e');
+          }
           // Continue with next sale — don't block on one failure
         }
       }
 
       if (synced > 0) {
-        debugPrint('[SALES_SYNC] Pushed $synced/${ unsynced.length} sales to server');
+        debugPrint('[SALES_SYNC] Pushed $synced/${unsynced.length} sales to server');
       }
     } catch (e) {
       debugPrint('[SALES_SYNC] Push batch failed: $e');
+    } finally {
+      _pushInFlight = false;
     }
   }
 
@@ -145,6 +173,16 @@ class SalesSyncService {
     await pullFromServer();
     await pushToServer();
   }
+}
+
+/// True cuando un fallo al subir una venta es PERMANENTE: el servidor rechazó
+/// el payload por contrato (HTTP 400/422), así que reintentar cada 30 s es
+/// inútil y la venta debe drenarse de la cola (con log fuerte). Cualquier otro
+/// error — 5xx, red caída, timeout, 401/403 por token vencido — es TRANSITORIO
+/// y debe reintentarse. Spec 047: evita el bucle de reintento infinito que
+/// señaló el concilio.
+bool isPermanentSalePushError(Object e) {
+  return e is AppError && (e.statusCode == 400 || e.statusCode == 422);
 }
 
 /// Serializa un item de venta para `/sync/batch` igual que el camino vivo

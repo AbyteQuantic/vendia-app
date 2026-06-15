@@ -1,9 +1,7 @@
-import 'dart:convert';
 import 'package:flutter/material.dart';
 import '../../database/database_service.dart';
 import '../../database/collections/local_product.dart';
 import '../../database/collections/local_sale.dart';
-import '../../database/collections/pending_operation.dart';
 import '../../database/sync/sync_service.dart';
 import '../../models/product.dart';
 import '../../models/cart_item.dart';
@@ -192,19 +190,20 @@ class PosController extends ChangeNotifier {
         ..createdAt = DateTime.now()
         ..synced = false;
 
-      // Atomic transaction: save sale + deduct stock
+      // Atomic transaction: save sale + deduct stock. La venta queda
+      // persistida como LocalSale(synced=false) — fuente única de verdad de la
+      // cola de ventas (Art. II: la venta nunca se pierde).
       await _db.insertSaleAndDeductStock(localSale);
 
-      final pendingOp = PendingOperation()
-        ..uuid = saleUuid
-        ..entity = 'sale'
-        ..action = 'create'
-        ..jsonData = jsonEncode(localSale.toJson())
-        ..clientUpdatedAt = DateTime.now()
-        ..retryCount = 0
-        ..createdAt = DateTime.now();
-
-      await _sync.enqueue(pendingOp);
+      // Spec 047: la venta NO se encola como PendingOperation. Esa ruta
+      // (/sync/batch entity:'sale') estaba ROTA: el backend insertaba las
+      // llaves de localSale.toJson() (uuid/customer_uuid/is_credit_sale/items…)
+      // como columnas de `sales` → el INSERT reventaba y abortaba TODO el lote,
+      // reintentando para siempre (replay real: HTTP 500). Las ventas suben SOLO
+      // por POST /api/v1/sales (idempotente por UUID) vía
+      // SalesSyncService.pushToServer(), que syncNow() dispara. Con red, la
+      // empuja de inmediato; sin red, el timer de 30 s / la reconexión la drenan.
+      _sync.syncNow();
 
       clearCart();
       _status = PosStatus.success;
