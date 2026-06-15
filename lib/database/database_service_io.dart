@@ -5,6 +5,7 @@
 // Importa las colecciones `_io` directamente (no la fachada) para que los
 // esquemas Isar generados (`*_io.g.dart`) y las extensiones `IsarCollection`
 // queden disponibles.
+import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:isar/isar.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -58,6 +59,41 @@ class DatabaseService {
       directory: dir.path,
       name: 'vendia',
     );
+  }
+
+  /// Test-only: abre un Isar REAL en [directory]/[name] (sin path_provider) para
+  /// tests de integración de la capa de persistencia. En la VM/CI hace falta
+  /// bajar el core nativo (en dispositivo viene en isar_flutter_libs). Esto es
+  /// lo que permite ejercitar la serialización real (donde vivía el bug del
+  /// `late` reservedStock) en vez de mockear la DB.
+  @visibleForTesting
+  static Future<void> initForTest({
+    required String directory,
+    required String name,
+  }) async {
+    await Isar.initializeIsarCore(download: true);
+    await _isar?.close();
+    _isar = await Isar.open(
+      [
+        LocalCatalogProductSchema,
+        LocalCreditSchema,
+        LocalCustomerSchema,
+        LocalPaymentMethodSchema,
+        LocalProductSchema,
+        LocalSaleSchema,
+        LocalTableTabSchema,
+        PendingOperationSchema,
+      ],
+      directory: directory,
+      name: name,
+    );
+  }
+
+  /// Test-only: cierra y borra el Isar de test.
+  @visibleForTesting
+  static Future<void> closeForTest() async {
+    await _isar?.close(deleteFromDisk: true);
+    _isar = null;
   }
 
   static const _prefKeyLastTenant = 'vendia_last_tenant_id';
@@ -237,6 +273,13 @@ class DatabaseService {
 
   Future<List<LocalSale>> getRecentSales({int limit = 20}) async {
     return isar.localSales.where().sortByCreatedAtDesc().limit(limit).findAll();
+  }
+
+  /// TODAS las ventas sin sincronizar (sin tope). El reintento de sync debe
+  /// verlas todas — antes `getRecentSales(200)` dejaba ventas viejas no
+  /// sincronizadas fuera del alcance del sweep → pérdida silenciosa.
+  Future<List<LocalSale>> getUnsyncedSales() async {
+    return isar.localSales.filter().syncedEqualTo(false).findAll();
   }
 
   Future<List<LocalSale>> getSalesSince(DateTime since) async {

@@ -191,6 +191,10 @@ class DatabaseService {
     return sorted.take(limit).toList();
   }
 
+  Future<List<LocalSale>> getUnsyncedSales() async {
+    return _sales.where((s) => !s.synced).toList();
+  }
+
   Future<List<LocalSale>> getSalesSince(DateTime since) async {
     return _sales.where((s) => s.createdAt.isAfter(since)).toList();
   }

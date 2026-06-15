@@ -83,3 +83,14 @@ jobs:
         # threshold would be noise. Add `--coverage` + Codecov upload
         # once the team agrees on a minimum %.
         run: flutter test
+
+      - name: Test (real Isar persistence)
+        # Corre sobre un Isar REAL (initializeIsarCore baja el core nativo,
+        # headless en Linux — sin emulador). Atrapa los bugs de serialización
+        # (campos `late` sin setear) que la suite mockeada NO ve — la causa raíz
+        # de la pérdida de datos offline.
+        run: flutter test integration_test/
+
+      - name: Guard — no silent catches in persistence layer
+        # Falla si vuelve a aparecer un `catch (_) {}` vacío en lib/database.
+        run: bash tool/check_silent_catches.sh
