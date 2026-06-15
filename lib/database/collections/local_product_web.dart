@@ -11,6 +11,9 @@ class LocalProduct {
   late double price;
   late int stock;
   late int reservedStock;
+
+  /// Punto de reorden (Spec 050). Non-late + default 0 (igual que el io).
+  int minStock = 0;
   String? imageUrl;
   late bool isAvailable;
   late bool requiresContainer;
@@ -28,6 +31,7 @@ class LocalProduct {
         'price': price,
         'stock': stock,
         'reserved_stock': reservedStock,
+        'min_stock': minStock,
         'image_url': imageUrl,
         'is_available': isAvailable,
         'requires_container': requiresContainer,
@@ -64,6 +68,7 @@ class LocalProduct {
       ..price = (json['price'] as num?)?.toDouble() ?? 0
       ..stock = (json['stock'] as num?)?.toInt() ?? 0
       ..reservedStock = (json['reserved_stock'] as num?)?.toInt() ?? 0
+      ..minStock = (json['min_stock'] as num?)?.toInt() ?? 0
       ..imageUrl = bestImage
       ..isAvailable = json['is_available'] as bool? ?? true
       ..requiresContainer = json['requires_container'] as bool? ?? false

@@ -50,5 +50,22 @@ void main() {
       expect(p.content, '500g');
       expect(p.isAvailable, isTrue);
     });
+
+    test('Spec 050 — minStock round-trippea sin trampa late (default 0)', () {
+      final sin = buildSavedLocalProduct(
+        uuid: 'p-4', name: 'SinMin', price: 1000, stock: 5,
+        clientUpdatedAt: DateTime(2026),
+      );
+      expect(sin.minStock, 0);
+      expect(sin.toJson()['min_stock'], 0);
+
+      final con = buildSavedLocalProduct(
+        uuid: 'p-5', name: 'ConMin', price: 1000, stock: 5, minStock: 8,
+        clientUpdatedAt: DateTime(2026),
+      );
+      expect(con.minStock, 8);
+      expect(() => con.toJson(), returnsNormally);
+      expect(con.toJson()['min_stock'], 8);
+    });
   });
 }

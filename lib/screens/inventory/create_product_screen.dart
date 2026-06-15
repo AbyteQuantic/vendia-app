@@ -40,6 +40,8 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
   final _buyPriceCtrl = TextEditingController();
   final _sellPriceCtrl = TextEditingController();
   final _quantityCtrl = TextEditingController(text: '1');
+  // Spec 050 — punto de reorden opcional. Vacío → 0 (sin alerta).
+  final _minStockCtrl = TextEditingController();
   final _contentCtrl = TextEditingController(); // e.g. "350ml", "500g"
   OverlayEntry? _overlayEntry;
 
@@ -194,6 +196,7 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
     _buyPriceCtrl.dispose();
     _sellPriceCtrl.dispose();
     _quantityCtrl.dispose();
+    _minStockCtrl.dispose();
     _contentCtrl.dispose();
     _skuCtrl.dispose();
     _priceTier1Ctrl.dispose();
@@ -991,6 +994,8 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
       final id = _pendingUuid ?? const Uuid().v4();
       final price = CurrencyUtils.parseToDouble(_sellPriceCtrl.text);
       final stock = int.tryParse(_quantityCtrl.text.trim()) ?? 1;
+      // Spec 050 — punto de reorden. Vacío o inválido → 0 (sin alerta).
+      final minStock = int.tryParse(_minStockCtrl.text.trim()) ?? 0;
 
       final api = ApiService(AuthService());
       final expiryIso = _expiryDate == null ? null : _isoDate(_expiryDate!);
@@ -1027,6 +1032,7 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
               'name': productName,
               'price': price,
               'stock': stock,
+              'min_stock': minStock,
               'image_url': _photoUrl,
               'barcode': _skuCtrl.text.trim(),
               'presentation': _presentation,
@@ -1044,6 +1050,7 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
               'name': productName,
               'price': price,
               'stock': stock,
+              'min_stock': minStock,
               'image_url': _photoUrl,
               'barcode': _skuCtrl.text.trim(),
               'presentation': _presentation,
@@ -1097,6 +1104,7 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
             name: productName,
             price: price,
             stock: stock,
+            minStock: minStock,
             imageUrl: _photoUrl,
             barcode: _skuCtrl.text.trim(),
             presentation: _presentation,
@@ -1884,6 +1892,39 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
                           ),
                         ),
                       ],
+                    ),
+                  ),
+
+                  // ── Stock mínimo (Spec 050) — punto de reorden opcional ────
+                  const SizedBox(height: 18),
+                  _fieldLabel('Stock mínimo para avisar (opcional)'),
+                  const SizedBox(height: 8),
+                  TextField(
+                    controller: _minStockCtrl,
+                    keyboardType: TextInputType.number,
+                    inputFormatters: [
+                      FilteringTextInputFormatter.digitsOnly,
+                    ],
+                    style: const TextStyle(
+                      fontSize: 18, color: AppTheme.textPrimary),
+                    decoration: InputDecoration(
+                      hintText: 'Ej: 5 — le avisamos para pedir al proveedor',
+                      hintStyle: const TextStyle(
+                          fontSize: 14, color: AppTheme.textSecondary),
+                      prefixIcon: const Icon(Icons.notifications_active_outlined,
+                          color: AppTheme.textSecondary),
+                      contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 16, vertical: 14),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(16),
+                        borderSide:
+                            const BorderSide(color: AppTheme.borderColor),
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(16),
+                        borderSide:
+                            const BorderSide(color: AppTheme.primary, width: 2),
+                      ),
                     ),
                   ),
                 ]),

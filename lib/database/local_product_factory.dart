@@ -16,6 +16,7 @@ LocalProduct buildSavedLocalProduct({
   required String name,
   required double price,
   required int stock,
+  int minStock = 0,
   String? imageUrl,
   String barcode = '',
   String? presentation,
@@ -32,6 +33,7 @@ LocalProduct buildSavedLocalProduct({
     ..price = price
     ..stock = stock
     ..reservedStock = 0 // campo `late` que faltaba en los call-sites
+    ..minStock = minStock
     ..imageUrl = imageUrl
     ..isAvailable = isAvailable
     ..requiresContainer = requiresContainer

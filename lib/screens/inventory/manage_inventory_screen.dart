@@ -636,6 +636,7 @@ class _EditProductSheetState extends State<_EditProductSheet> {
   late final TextEditingController _nameCtrl;
   late final TextEditingController _priceCtrl;
   late final TextEditingController _stockCtrl;
+  late final TextEditingController _minStockCtrl; // Spec 050 — punto de reorden
   late final TextEditingController _contentCtrl;
   late final TextEditingController _skuCtrl;
   late String _presentation;
@@ -672,6 +673,9 @@ class _EditProductSheetState extends State<_EditProductSheet> {
         text: CurrencyUtils.formatInt(((p['price'] as num?)?.toDouble() ?? 0).toInt()));
     _stockCtrl =
         TextEditingController(text: (p['stock'] as int? ?? 0).toString());
+    // Spec 050 — pre-llena el stock mínimo; vacío si es 0 (sin alerta).
+    final pMin = (p['min_stock'] as num?)?.toInt() ?? 0;
+    _minStockCtrl = TextEditingController(text: pMin > 0 ? '$pMin' : '');
     _contentCtrl =
         TextEditingController(text: p['content'] as String? ?? '');
     _skuCtrl =
@@ -687,6 +691,7 @@ class _EditProductSheetState extends State<_EditProductSheet> {
     _nameCtrl.dispose();
     _priceCtrl.dispose();
     _stockCtrl.dispose();
+    _minStockCtrl.dispose();
     _contentCtrl.dispose();
     _skuCtrl.dispose();
     super.dispose();
@@ -938,6 +943,8 @@ class _EditProductSheetState extends State<_EditProductSheet> {
         'name': name,
         'price': CurrencyUtils.parseToDouble(_priceCtrl.text),
         'stock': int.tryParse(_stockCtrl.text.trim()) ?? 0,
+        // Spec 050 — punto de reorden. Vacío → 0 (apaga la alerta).
+        'min_stock': int.tryParse(_minStockCtrl.text.trim()) ?? 0,
         'presentation': _presentation,
         'content': _contentCtrl.text.trim(),
         'barcode': _skuCtrl.text.trim(),
@@ -1397,6 +1404,23 @@ class _EditProductSheetState extends State<_EditProductSheet> {
                     ),
                   ),
                 ],
+              ),
+              const SizedBox(height: 18),
+
+              // Stock mínimo (Spec 050) — punto de reorden para la alerta.
+              const Text('Stock mínimo para avisar (opcional)',
+                  style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                      color: AppTheme.textSecondary)),
+              const SizedBox(height: 6),
+              TextField(
+                controller: _minStockCtrl,
+                keyboardType: TextInputType.number,
+                inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                style: const TextStyle(fontSize: 18),
+                decoration:
+                    _inputDecoration('Ej: 5 — le avisamos para pedir'),
               ),
               const SizedBox(height: 18),
 
