@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 import '../../database/database_service.dart';
 import '../../services/api_service.dart';
 import '../../services/app_error.dart';
+import '../../utils/login_capability_flags.dart';
 import '../../services/auth_service.dart';
 import '../../services/role_manager.dart';
 import '../../theme/app_theme.dart';
@@ -134,7 +135,11 @@ class _LoginScreenState extends State<LoginScreen> {
       // feature_flags + business_types ride on the root response (migration
       // 021). Fold them into the tenant map / legacy-save call so the
       // dashboard can pick them up on first render.
-      final featureFlags = data['feature_flags'] as Map<String, dynamic>?;
+      // Spec 051: las capacidades nuevas (enable_recipes, enable_marketing_hub,
+      // …) viajan como llaves TOP-LEVEL del login, NO dentro de `feature_flags`.
+      // foldLoginCapabilityFlags las mergea para no perderlas al persistir (si
+      // no, el dashboard degrada un módulo ACTIVO a "Descubre más opciones").
+      final featureFlags = foldLoginCapabilityFlags(data);
       final businessTypes =
           (data['business_types'] as List?)?.whereType<String>().toList();
       // F028: capture credit_label_mode from login response.
