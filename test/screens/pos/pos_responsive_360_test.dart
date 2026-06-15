@@ -81,12 +81,12 @@ void main() {
                           const Icon(Icons.table_restaurant_rounded, size: 16),
                           const SizedBox(width: 4),
                           // El patrón del fix: Flexible + ellipsis.
-                          Flexible(
+                          const Flexible(
                             child: Text(
                               'Terraza Principal Salón VIP 12',
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
+                              style: TextStyle(
                                   fontSize: 14, fontWeight: FontWeight.w800),
                             ),
                           ),

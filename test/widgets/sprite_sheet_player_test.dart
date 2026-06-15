@@ -26,7 +26,7 @@ void main() {
     });
 
     test('un período completo vuelve a 0 (loop continuo)', () {
-      final period = 2 * (40 - 1); // 78
+      const period = 2 * (40 - 1); // 78
       expect(frameIndexFor(period.toDouble(), 40, true), 0);
     });
 
