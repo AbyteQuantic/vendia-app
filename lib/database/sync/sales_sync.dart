@@ -66,8 +66,9 @@ class SalesSyncService {
   static Future<void> pushToServer() async {
     try {
       final db = DatabaseService.instance;
-      final allSales = await db.getRecentSales(limit: 200);
-      final unsynced = allSales.where((s) => !s.synced).toList();
+      // TODAS las no sincronizadas (sin tope). Antes `getRecentSales(200)`
+      // dejaba ventas viejas sin sincronizar fuera del sweep → pérdida.
+      final unsynced = await db.getUnsyncedSales();
 
       if (unsynced.isEmpty) return;
 
