@@ -258,12 +258,25 @@ class _DashboardScreenState extends State<DashboardScreen> {
     try {
       final api = ApiService(AuthService());
       final profile = await api.fetchBusinessProfile();
+      // Spec 051: el GET /store/profile SIEMPRE trae `feature_flags` + TODAS las
+      // capacidades top-level (enable_recipes, enable_marketing_hub, enable_quotes,
+      // …). Las refrescamos desde la fuente de verdad del servidor en CADA carga
+      // del dashboard. Antes los flags solo se escribían al iniciar sesión: si el
+      // login los omitía, o el caché del PWA servía el bundle viejo, o el usuario
+      // solo recargaba (sesión restaurada de disco, sin re-login), una capacidad
+      // ACTIVA (Recetas/menú) se quedaba atascada en "Descubre más opciones".
+      // Refrescar aquí lo cura sin pedir re-login. Es SEGURO: el GET nunca llega
+      // sin los flags, así que no los borra (a diferencia de un PATCH parcial).
+      await AuthService().saveFeatureFlagsFromProfile(profile);
       final raw = profile['business_types'];
       if (raw is List) {
         final types = raw.whereType<String>().toList();
         await AuthService().setBusinessTypes(types);
         if (mounted) setState(() => _businessTypes = types);
       }
+      // Releer los flags ya persistidos y repintar: mueve los módulos activos al
+      // carrusel y los saca del reel "Descubre más opciones".
+      if (mounted) await _loadCapabilityFlags();
     } catch (_) {
       // Offline / sin perfil — se conserva la cache local.
     }
