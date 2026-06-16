@@ -15,7 +15,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
-import '../theme/app_theme.dart';
+import 'carousel_navigation.dart';
 import 'dashboard_ui_kit.dart';
 
 /// Datos para una card del carrusel de KPIs.
@@ -147,6 +147,32 @@ class _KpiCarouselState extends State<KpiCarousel> {
     });
   }
 
+  /// Avanza/retrocede `delta` páginas con wrap-around (consistente con el
+  /// autoplay). Lo usan las flechas de desktop (AC-02).
+  void _goTo(int delta) {
+    if (!_pageCtrl.hasClients || widget.cards.length <= 1) return;
+    final n = widget.cards.length;
+    _animateTo((_currentPage + delta + n) % n);
+  }
+
+  /// Salta directo a `index` — lo usan los dots tocables (AC-03).
+  void _jumpTo(int index) {
+    if (!_pageCtrl.hasClients || index < 0 || index >= widget.cards.length) {
+      return;
+    }
+    _animateTo(index);
+  }
+
+  void _animateTo(int target) {
+    _pauseAutoplay();
+    _pageCtrl.animateToPage(
+      target,
+      duration: const Duration(milliseconds: 400),
+      curve: Curves.easeInOut,
+    );
+    _scheduleResume();
+  }
+
   @override
   Widget build(BuildContext context) {
     if (widget.cards.isEmpty) return const SizedBox.shrink();
@@ -156,29 +182,70 @@ class _KpiCarouselState extends State<KpiCarousel> {
       children: [
         SizedBox(
           height: 340,
-          child: GestureDetector(
-            onPanDown: (_) => _pauseAutoplay(),
-            onPanEnd: (_) => _scheduleResume(),
-            onPanCancel: () => _scheduleResume(),
-            child: PageView.builder(
-              controller: _pageCtrl,
-              itemCount: widget.cards.length,
-              onPageChanged: (p) {
-                if (!mounted) return;
-                setState(() => _currentPage = p);
-              },
-              itemBuilder: (context, index) => _KpiCard(
-                data: widget.cards[index],
-                pageCtrl: _pageCtrl,
-                pageIndex: index,
-              ),
-            ),
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              // Flechas solo en pantallas anchas (desktop/web). En mobile
+              // el swipe basta y estorbarían en 360dp (AC-04).
+              final showArrows =
+                  constraints.maxWidth >= kCarouselArrowsBreakpoint &&
+                      widget.cards.length > 1;
+              return Stack(
+                children: [
+                  GestureDetector(
+                    onPanDown: (_) => _pauseAutoplay(),
+                    onPanEnd: (_) => _scheduleResume(),
+                    onPanCancel: () => _scheduleResume(),
+                    // Habilita arrastre con mouse/trackpad (AC-01).
+                    child: MouseDraggableScroll(
+                      child: PageView.builder(
+                        controller: _pageCtrl,
+                        itemCount: widget.cards.length,
+                        onPageChanged: (p) {
+                          if (!mounted) return;
+                          setState(() => _currentPage = p);
+                        },
+                        itemBuilder: (context, index) => _KpiCard(
+                          data: widget.cards[index],
+                          pageCtrl: _pageCtrl,
+                          pageIndex: index,
+                        ),
+                      ),
+                    ),
+                  ),
+                  if (showArrows) ...[
+                    Positioned(
+                      left: 8,
+                      top: 0,
+                      bottom: 0,
+                      child: Center(
+                        child: CarouselArrowButton(
+                          isNext: false,
+                          onTap: () => _goTo(-1),
+                        ),
+                      ),
+                    ),
+                    Positioned(
+                      right: 8,
+                      top: 0,
+                      bottom: 0,
+                      child: Center(
+                        child: CarouselArrowButton(
+                          isNext: true,
+                          onTap: () => _goTo(1),
+                        ),
+                      ),
+                    ),
+                  ],
+                ],
+              );
+            },
           ),
         ),
         const SizedBox(height: 12),
-        _DotsIndicator(
+        CarouselDots(
           count: widget.cards.length,
           current: _currentPage,
+          onTap: _jumpTo,
         ),
         const SizedBox(height: 4),
       ],
@@ -448,34 +515,6 @@ class _KpiCard extends StatelessWidget {
       child: Center(
         child: Icon(icon, size: 84, color: accent.withValues(alpha: 0.7)),
       ),
-    );
-  }
-}
-
-class _DotsIndicator extends StatelessWidget {
-  final int count;
-  final int current;
-
-  const _DotsIndicator({required this.count, required this.current});
-
-  @override
-  Widget build(BuildContext context) {
-    if (count <= 1) return const SizedBox.shrink();
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: List.generate(count, (i) {
-        final active = i == current;
-        return AnimatedContainer(
-          duration: const Duration(milliseconds: 250),
-          margin: const EdgeInsets.symmetric(horizontal: 4),
-          width: active ? 22 : 10,
-          height: 10,
-          decoration: BoxDecoration(
-            color: active ? AppTheme.primary : AppTheme.borderColor,
-            borderRadius: BorderRadius.circular(5),
-          ),
-        );
-      }),
     );
   }
 }

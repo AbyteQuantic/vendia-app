@@ -2,10 +2,39 @@
 //
 // Tests del carrusel inmersivo de KPIs del Dashboard.
 
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:vendia_pos/widgets/carousel_navigation.dart';
 import 'package:vendia_pos/widgets/kpi_carousel.dart';
+
+List<KpiCardData> _threeCards() => [
+      KpiCardData(
+        title: 'Ventas hoy',
+        value: r'$50.000',
+        photoUrl: '',
+        fallbackIcon: Icons.trending_up_rounded,
+        accentColor: Colors.blue,
+        onTap: () {},
+      ),
+      KpiCardData(
+        title: 'Más vendido',
+        value: 'Coca-Cola',
+        photoUrl: '',
+        fallbackIcon: Icons.star_rounded,
+        accentColor: Colors.amber,
+        onTap: () {},
+      ),
+      KpiCardData(
+        title: 'Inventario',
+        value: '20 ref.',
+        photoUrl: '',
+        fallbackIcon: Icons.inventory_2_rounded,
+        accentColor: Colors.indigo,
+        onTap: () {},
+      ),
+    ];
 
 void main() {
   testWidgets('Sin cards → no renderea nada', (tester) async {
@@ -146,5 +175,68 @@ void main() {
     await tester.pump();
 
     expect(find.text('5 ventas'), findsOneWidget);
+  });
+
+  testWidgets('AC-01: arrastrar con MOUSE cambia de página', (tester) async {
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(body: KpiCarousel(cards: _threeCards())),
+    ));
+    await tester.pumpAndSettle();
+
+    final ctrl = tester.widget<PageView>(find.byType(PageView)).controller!;
+    expect(ctrl.page!.round(), 0);
+
+    await tester.drag(
+      find.byType(PageView),
+      const Offset(-600, 0),
+      kind: PointerDeviceKind.mouse,
+    );
+    await tester.pumpAndSettle();
+    expect(ctrl.page!.round(), 1);
+  });
+
+  testWidgets('AC-02: flecha siguiente avanza una página', (tester) async {
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(body: KpiCarousel(cards: _threeCards())),
+    ));
+    await tester.pumpAndSettle();
+
+    final ctrl = tester.widget<PageView>(find.byType(PageView)).controller!;
+    expect(find.byType(CarouselArrowButton), findsNWidgets(2));
+
+    await tester.tap(find.byIcon(Icons.chevron_right_rounded));
+    await tester.pumpAndSettle();
+    expect(ctrl.page!.round(), 1);
+  });
+
+  testWidgets('AC-03: tocar el tercer dot salta a esa página',
+      (tester) async {
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(body: KpiCarousel(cards: _threeCards())),
+    ));
+    await tester.pumpAndSettle();
+
+    final ctrl = tester.widget<PageView>(find.byType(PageView)).controller!;
+    final dots = find.descendant(
+      of: find.byType(CarouselDots),
+      matching: find.byType(InkWell),
+    );
+    await tester.tap(dots.at(2));
+    await tester.pumpAndSettle();
+    expect(ctrl.page!.round(), 2);
+  });
+
+  testWidgets('AC-04: en pantalla angosta (360dp) NO hay flechas',
+      (tester) async {
+    tester.view.physicalSize = const Size(360, 800);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(body: KpiCarousel(cards: _threeCards())),
+    ));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(CarouselArrowButton), findsNothing);
   });
 }

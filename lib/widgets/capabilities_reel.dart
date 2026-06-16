@@ -30,6 +30,7 @@ import '../screens/dashboard/business_capabilities_screen.dart';
 import '../screens/quotes/quote_capability_screen.dart';
 import '../theme/app_theme.dart';
 import '../utils/business_capability_map.dart';
+import 'carousel_navigation.dart';
 
 /// Cadencia del autoplay — conservadora a propósito (Gerontodiseño,
 /// AC-12). 3500ms da tiempo al tendero 50+ a leer una card antes de
@@ -139,6 +140,32 @@ class _CapabilitiesReelState extends State<CapabilitiesReel> {
     });
   }
 
+  /// Avanza/retrocede `delta` páginas con wrap-around (flechas desktop,
+  /// Spec 054 AC-02).
+  void _goTo(int delta) {
+    if (!_pageCtrl.hasClients || widget.modules.length <= 1) return;
+    final n = widget.modules.length;
+    _animateTo((_currentPage + delta + n) % n);
+  }
+
+  /// Salta directo a `index` — dots tocables (Spec 054 AC-03).
+  void _jumpTo(int index) {
+    if (!_pageCtrl.hasClients || index < 0 || index >= widget.modules.length) {
+      return;
+    }
+    _animateTo(index);
+  }
+
+  void _animateTo(int target) {
+    _pauseAutoplay();
+    _pageCtrl.animateToPage(
+      target,
+      duration: const Duration(milliseconds: 400),
+      curve: Curves.easeInOut,
+    );
+    _scheduleResume();
+  }
+
   Future<void> _openCapabilitiesScreen(DashboardModule module) async {
     HapticFeedback.lightImpact();
     _pauseAutoplay();
@@ -237,35 +264,69 @@ class _CapabilitiesReelState extends State<CapabilitiesReel> {
               SizedBox(
                 key: const Key('capabilities_reel_pageview'),
                 height: 130,
-                child: GestureDetector(
-                  onPanDown: (_) => _pauseAutoplay(),
-                  onPanEnd: (_) => _scheduleResume(),
-                  onPanCancel: () => _scheduleResume(),
-                  child: PageView.builder(
-                    controller: _pageCtrl,
-                    itemCount: widget.modules.length,
-                    onPageChanged: (p) {
-                      if (!mounted) return;
-                      setState(() => _currentPage = p);
-                    },
-                    itemBuilder: (context, index) {
-                      final m = widget.modules[index];
-                      return Padding(
-                        padding:
-                            const EdgeInsets.symmetric(horizontal: 6),
-                        child: _ReelCard(
-                          module: m,
-                          onTap: () => _openCapabilitiesScreen(m),
+                child: Stack(
+                  children: [
+                    GestureDetector(
+                      onPanDown: (_) => _pauseAutoplay(),
+                      onPanEnd: (_) => _scheduleResume(),
+                      onPanCancel: () => _scheduleResume(),
+                      // Habilita arrastre con mouse/trackpad (AC-01).
+                      child: MouseDraggableScroll(
+                        child: PageView.builder(
+                          controller: _pageCtrl,
+                          itemCount: widget.modules.length,
+                          onPageChanged: (p) {
+                            if (!mounted) return;
+                            setState(() => _currentPage = p);
+                          },
+                          itemBuilder: (context, index) {
+                            final m = widget.modules[index];
+                            return Padding(
+                              padding:
+                                  const EdgeInsets.symmetric(horizontal: 6),
+                              child: _ReelCard(
+                                module: m,
+                                onTap: () => _openCapabilitiesScreen(m),
+                              ),
+                            );
+                          },
                         ),
-                      );
-                    },
-                  ),
+                      ),
+                    ),
+                    // Flechas solo en pantallas anchas (AC-02 / AC-04).
+                    if (width >= kCarouselArrowsBreakpoint &&
+                        widget.modules.length > 1) ...[
+                      Positioned(
+                        left: 0,
+                        top: 0,
+                        bottom: 0,
+                        child: Center(
+                          child: CarouselArrowButton(
+                            isNext: false,
+                            onTap: () => _goTo(-1),
+                          ),
+                        ),
+                      ),
+                      Positioned(
+                        right: 0,
+                        top: 0,
+                        bottom: 0,
+                        child: Center(
+                          child: CarouselArrowButton(
+                            isNext: true,
+                            onTap: () => _goTo(1),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ],
                 ),
               ),
               const SizedBox(height: 10),
-              _DotsIndicator(
+              CarouselDots(
                 count: widget.modules.length,
                 current: _currentPage,
+                onTap: _jumpTo,
               ),
             ],
           ),
@@ -351,34 +412,6 @@ class _ReelCard extends StatelessWidget {
           ),
         ),
       ),
-    );
-  }
-}
-
-/// Indicador de páginas (dots). Grande (10dp) para que el tendero 50+
-/// vea claramente en qué card va el reel (AC-12).
-class _DotsIndicator extends StatelessWidget {
-  final int count;
-  final int current;
-
-  const _DotsIndicator({required this.count, required this.current});
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: List.generate(count, (i) {
-        final active = i == current;
-        return Container(
-          margin: const EdgeInsets.symmetric(horizontal: 4),
-          width: active ? 22 : 10,
-          height: 10,
-          decoration: BoxDecoration(
-            color: active ? AppTheme.primary : AppTheme.borderColor,
-            borderRadius: BorderRadius.circular(5),
-          ),
-        );
-      }),
     );
   }
 }
