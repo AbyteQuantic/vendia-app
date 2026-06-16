@@ -2,10 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../models/app_notification.dart';
-import '../screens/inventory/manage_inventory_screen.dart';
-import '../screens/online_orders/online_orders_screen.dart';
-import '../screens/pos/cuaderno_fiados_screen.dart';
 import '../theme/app_theme.dart';
+import '../utils/notification_navigation.dart';
 import '../utils/notification_router.dart';
 
 /// Bottom-sheet "Activity Feed" that replaces the legacy flat list.
@@ -115,7 +113,7 @@ class _EmptyState extends StatelessWidget {
           ),
           const SizedBox(height: 6),
           Text(
-            'Aquí verás pedidos web, fiados y alertas.',
+            'Aquí verá pedidos web, fiados y alertas.',
             style: TextStyle(
               fontSize: 13,
               color: AppTheme.textSecondary.withValues(alpha: 0.7),
@@ -332,24 +330,9 @@ class _NotificationTile extends StatelessWidget {
     // stack shallow (otherwise the target would sit on top of the
     // bottom sheet and back-nav would feel laggy).
     navigator.pop();
-    final builder = _builderFor(dest);
+    final builder = notificationRouteBuilder(dest);
     if (builder == null) return;
     navigator.push(MaterialPageRoute(builder: builder));
-  }
-
-  /// Construye la pantalla destino precargando el id de foco. Aislado
-  /// del router puro porque acá sí importamos pantallas concretas.
-  WidgetBuilder? _builderFor(NotificationDestination dest) {
-    switch (dest.target) {
-      case NotificationTarget.onlineOrders:
-        return (_) => OnlineOrdersScreen(focusOrderId: dest.focusId);
-      case NotificationTarget.fiado:
-        return (_) => CuadernoFiadosScreen(focusFiadoId: dest.focusId);
-      case NotificationTarget.inventory:
-        return (_) => ManageInventoryScreen(focusProductId: dest.focusId);
-      case NotificationTarget.none:
-        return null;
-    }
   }
 }
 

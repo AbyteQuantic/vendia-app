@@ -22,29 +22,44 @@ class NotificationDestination {
   bool get isRoutable => target != NotificationTarget.none;
 }
 
+/// Resuelve un destino a partir de SOLO un path de deep-link
+/// (`/pedidos/{id}`, `/inventario/{id}`, `/fiado/{id}`). Lo usa el
+/// handler de push, que únicamente recibe el string del payload.
+NotificationDestination destinationForPath(String deepLink) {
+  final seg = Uri.tryParse(deepLink)?.pathSegments ?? const <String>[];
+  if (seg.isEmpty) return const NotificationDestination(NotificationTarget.none);
+  final id = seg.length >= 2 ? seg.last : null;
+  switch (seg.first) {
+    case 'pedidos':
+    case 'pedido':
+      return NotificationDestination(NotificationTarget.onlineOrders, id);
+    case 'inventario':
+    case 'producto':
+      return NotificationDestination(NotificationTarget.inventory, id);
+    case 'fiado':
+    case 'fiados':
+      return NotificationDestination(NotificationTarget.fiado, id);
+  }
+  return const NotificationDestination(NotificationTarget.none);
+}
+
 /// Resuelve el destino de [n]. El `deep_link` del backend manda; si no
 /// viene, cae al `kind` + ids derivados. Devuelve `none` cuando no hay
 /// a dónde llevar (mensajes de sistema sin payload, ej. prueba).
 NotificationDestination destinationFor(AppNotification n) {
   final dl = n.deepLink;
   if (dl != null) {
-    final seg = Uri.tryParse(dl)?.pathSegments ?? const <String>[];
-    if (seg.isNotEmpty) {
-      final id = seg.length >= 2 ? seg.last : null;
-      switch (seg.first) {
-        case 'pedidos':
-        case 'pedido':
-          return NotificationDestination(
-              NotificationTarget.onlineOrders, id ?? n.orderId);
-        case 'inventario':
-        case 'producto':
-          return NotificationDestination(
-              NotificationTarget.inventory, id ?? n.productId);
-        case 'fiado':
-        case 'fiados':
-          return NotificationDestination(
-              NotificationTarget.fiado, id ?? n.fiadoId);
-      }
+    final byPath = destinationForPath(dl);
+    if (byPath.isRoutable) {
+      // Completa el id de foco con el del payload si el path no lo trae.
+      final id = byPath.focusId ??
+          switch (byPath.target) {
+            NotificationTarget.onlineOrders => n.orderId,
+            NotificationTarget.inventory => n.productId,
+            NotificationTarget.fiado => n.fiadoId,
+            NotificationTarget.none => null,
+          };
+      return NotificationDestination(byPath.target, id);
     }
   }
 

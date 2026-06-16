@@ -18,9 +18,13 @@ import 'services/hardware_service.dart';
 import 'services/tax_settings_service.dart';
 import 'models/branch.dart';
 import 'services/branch_provider.dart';
+import 'services/notification_toast_controller.dart';
 import 'services/role_manager.dart';
 import 'theme/app_theme.dart';
 import 'screens/splash/animated_splash_screen.dart';
+import 'utils/notification_navigation.dart';
+import 'utils/notification_router.dart';
+import 'widgets/notification_toast.dart';
 import 'widgets/premium_upsell_sheet.dart';
 
 Future<void> main() async {
@@ -49,9 +53,22 @@ Future<void> main() async {
   // que bloquea SW, iPhone sin PWA), degrada en silencio sin
   // bloquear el arranque. NUNCA pide permiso al usuario acá —
   // eso lo hace PushOptinCard cuando el tendero toca el botón.
-  unawaited(PushService().init());
+  // Spec 056 slice 3 — al tocar una push, abrir el módulo correcto con
+  // el dato precargado, reusando el router de notificaciones. Navega por
+  // la key global porque el handler corre fuera de un BuildContext.
+  unawaited(PushService().init(onDeepLink: _handlePushDeepLink));
 
   runApp(const VendIAApp());
+}
+
+/// Resuelve el `deep_link` de una push y navega al destino. Silencioso
+/// si el path no mapea a un módulo conocido o el navigator no está listo.
+void _handlePushDeepLink(String deepLink) {
+  final dest = destinationForPath(deepLink);
+  final builder = notificationRouteBuilder(dest);
+  if (builder == null) return;
+  PremiumUpsellController.navigatorKey.currentState
+      ?.push(MaterialPageRoute(builder: builder));
 }
 
 class VendIAApp extends StatefulWidget {
@@ -192,6 +209,7 @@ class _VendIAAppState extends State<VendIAApp> {
         ChangeNotifierProvider.value(value: _roleManager),
         ChangeNotifierProvider.value(value: _activeFiado),
         ChangeNotifierProvider.value(value: _branchProvider),
+        ChangeNotifierProvider(create: (_) => NotificationToastController()),
       ],
       child: MaterialApp(
         title: 'VendIA',
@@ -205,6 +223,21 @@ class _VendIAAppState extends State<VendIAApp> {
         scrollBehavior: const MaterialScrollBehavior().copyWith(
           overscroll: false,
         ),
+        // Toast global de notificaciones, sobre cualquier pantalla. Vive
+        // hasta que el usuario lo cierra (Spec 056 slice 2).
+        builder: (context, child) {
+          return Stack(
+            children: [
+              if (child != null) child,
+              const Positioned(
+                top: 0,
+                left: 0,
+                right: 0,
+                child: SafeArea(child: NotificationToast()),
+              ),
+            ],
+          );
+        },
         home: const AnimatedSplashScreen(),
       ),
     );

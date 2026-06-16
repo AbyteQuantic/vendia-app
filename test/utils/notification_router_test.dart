@@ -68,6 +68,24 @@ void main() {
     });
   });
 
+  group('destinationForPath (push)', () {
+    test('/pedidos/{id} → pedidos con foco', () {
+      final d = destinationForPath('/pedidos/o-9');
+      expect(d.target, NotificationTarget.onlineOrders);
+      expect(d.focusId, 'o-9');
+    });
+
+    test('/inventario/{id} → inventario', () {
+      expect(destinationForPath('/inventario/p-2').target,
+          NotificationTarget.inventory);
+    });
+
+    test('path desconocido → none', () {
+      expect(destinationForPath('/algo-raro').isRoutable, isFalse);
+      expect(destinationForPath('').isRoutable, isFalse);
+    });
+  });
+
   group('ctaLabelFor', () {
     test('etiquetas por módulo', () {
       expect(ctaLabelFor(NotificationTarget.onlineOrders), 'Ver pedido');

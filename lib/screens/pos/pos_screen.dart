@@ -7,6 +7,7 @@ import 'package:uuid/uuid.dart';
 import '../../models/app_notification.dart';
 import '../../models/cart_item.dart';
 import '../../models/product.dart';
+import '../../services/notification_toast_controller.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/notification_center_sheet.dart';
 import '../../widgets/panic_button.dart';
@@ -283,6 +284,13 @@ class _PosScreenBodyState extends State<_PosScreenBody> {
           _notifications = list;
           _unreadNotifications = unread;
         });
+        // Alimenta el toast persistente con la última notificación no
+        // leída (Spec 056 slice 2). read() — no queremos rebuilds del POS.
+        final parsed = list
+            .map(AppNotification.fromApi)
+            .whereType<AppNotification>()
+            .toList(growable: false);
+        context.read<NotificationToastController>().offer(parsed);
       }
     } catch (_) {}
   }
