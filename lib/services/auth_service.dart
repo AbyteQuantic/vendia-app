@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import '../utils/login_capability_flags.dart';
 
 /// Manages JWT lifecycle and tenant session data securely.
 /// iOS: Keychain | Android: EncryptedSharedPreferences.
@@ -79,32 +80,20 @@ class AuthService {
     //
     // Solución: mergear ambos en un mismo blob antes de escribir a
     // disco. `FeatureFlags.fromJson` ya entiende las dos formas.
-    final flagsSub = source['feature_flags'];
-    final merged = <String, dynamic>{};
-    if (flagsSub is Map) {
-      merged.addAll(flagsSub.map((k, v) => MapEntry(k.toString(), v)));
-    }
-    const topLevelKeys = [
-      'enable_marketing_hub',
-      'enable_quotes',
-      'enable_promotions',
-      'enable_customer_management',
-      'enable_recipes',
-      'enable_supplies',
-      'enable_furniture_jobs',
-      'enable_purchase_orders',
-      'enable_price_tiers',
-    ];
-    for (final k in topLevelKeys) {
-      if (source.containsKey(k)) {
-        merged[k] = source[k];
-      }
-    }
+    // Mergea el sub-objeto feature_flags (7 viejos) + las capacidades
+    // top-level (Spec 051). Misma lógica que el login.
+    final merged = foldLoginCapabilityFlags(source);
     final types = source['business_types'];
-    await _storage.write(
-      key: _keyFeatureFlags,
-      value: merged.isEmpty ? null : jsonEncode(merged),
-    );
+    // GUARDA NO-DESTRUCTIVA (Spec 051 — bug crítico): el PATCH /store/profile
+    // responde SOLO {"message": ...} (sin flags). Pasar esa respuesta aquí
+    // dejaba `merged` vacío y el código viejo escribía `null` → BORRABA todas
+    // las capacidades del cache (se "apagaban" todos los módulos hasta el
+    // próximo GET). Ahora: si el source no trae info de flags, NO tocamos el
+    // cache existente. El camino correcto tras un PATCH es re-hacer GET (lo
+    // hace refreshFeatureFlagsFromServer) — esto es defensa en profundidad.
+    if (merged.isNotEmpty) {
+      await _storage.write(key: _keyFeatureFlags, value: jsonEncode(merged));
+    }
     // Solo sobrescribimos los tipos cuando el source TRAE el array. El
     // login envía `business_type` (singular) pero NO `business_types`
     // (plural), y antes esto nulaba la cache en cada login aunque el
@@ -112,12 +101,16 @@ class AuthService {
     if (types is List) {
       await _storage.write(key: _keyBusinessTypes, value: jsonEncode(types));
     }
-    // F028: persist credit_label_mode — default 'fiar' when absent.
-    final mode = source['credit_label_mode'];
-    await _storage.write(
-      key: _keyCreditLabelMode,
-      value: (mode == 'credit') ? 'credit' : 'fiar',
-    );
+    // F028: persist credit_label_mode SOLO cuando el source lo trae. Antes
+    // escribía 'fiar' por defecto aunque el source no lo incluyera (p.ej. la
+    // respuesta {message} del PATCH) → reseteaba a 'fiar' un tenant 'credit'.
+    if (source.containsKey('credit_label_mode')) {
+      final mode = source['credit_label_mode'];
+      await _storage.write(
+        key: _keyCreditLabelMode,
+        value: (mode == 'credit') ? 'credit' : 'fiar',
+      );
+    }
     // F036: persist onboarding_completed. Only write when the source
     // actually carries the field — a login response without it (legacy
     // backend pre-F036) must NOT overwrite a previously-stored value.
