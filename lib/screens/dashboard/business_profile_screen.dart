@@ -10,6 +10,7 @@ import '../../services/api_service.dart';
 import '../../services/auth_service.dart';
 import '../../services/image_normalizer.dart';
 import '../../theme/app_theme.dart';
+import '../../widgets/logo_ai_editor_sheet.dart';
 
 /// Perfil del Negocio — Gerontodiseño: textos grandes, alto contraste,
 /// cero fricción. Fetch real al backend, sin datos hardcodeados.
@@ -259,56 +260,27 @@ class _BusinessProfileScreenState extends State<BusinessProfileScreen> {
         selected;
 
     if (!mounted) return;
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (_) => PopScope(
-        canPop: false,
-        child: AlertDialog(
-          shape:
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-          content: const Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              SizedBox(height: 16),
-              CircularProgressIndicator(
-                  color: Color(0xFF8B5CF6), strokeWidth: 3),
-              SizedBox(height: 24),
-              Text(
-                'Diseñando su logo...\nesto tomará unos segundos',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                    fontSize: 20,
-                    fontWeight: FontWeight.w600,
-                    color: Colors.black87),
-              ),
-              SizedBox(height: 8),
-            ],
-          ),
-        ),
-      ),
+    // Editor con IA: el tendero escribe especificaciones (colores, estilo,
+    // símbolos), genera, previsualiza y puede iterar hasta que le guste.
+    // La IA exige ≥12 chars de detalle, así que pedirlos NO es opcional —
+    // antes se generaba sin `details` y el backend lo rechazaba.
+    await showLogoAiEditor(
+      context,
+      currentLogoUrl: _logoUrl,
+      onGenerate: (specs) async {
+        final result = await _api.generateLogoAI(
+          businessName: name,
+          businessType: typeLabel,
+          details: specs,
+        );
+        return result['logo_url'] as String?;
+      },
+      onSaved: (url) async {
+        setState(() => _logoUrl = url);
+        await AuthService().updateLogoUrl(url);
+        if (mounted) _showSnack('Logo actualizado con IA');
+      },
     );
-
-    try {
-      final result = await _api.generateLogoAI(
-        businessName: name,
-        businessType: typeLabel,
-      );
-
-      if (!mounted) return;
-      Navigator.of(context).pop(); // close loading dialog
-
-      final newUrl = result['logo_url'] as String?;
-      if (newUrl != null) {
-        setState(() => _logoUrl = newUrl);
-        await AuthService().updateLogoUrl(newUrl);
-        _showSnack('Logo creado con IA exitosamente');
-      }
-    } catch (e) {
-      if (!mounted) return;
-      Navigator.of(context).pop();
-      _showSnack('Error al generar logo: $e', isError: true);
-    }
   }
 
   // ── Save ───────────────────────────────────────────────────────────────────

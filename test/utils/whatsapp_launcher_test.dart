@@ -1,6 +1,5 @@
 // Spec: specs/055-cuenta-mesa-whatsapp/spec.md
 
-import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:url_launcher/url_launcher.dart';
 
