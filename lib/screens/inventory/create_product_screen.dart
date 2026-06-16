@@ -70,6 +70,8 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
   bool _dataFromCatalog = false; // shows "datos cargados" indicator
   String _presentation = ''; // botella, lata, bolsa, etc.
   DateTime? _expiryDate; // optional — only perishables carry one
+  // Spec 063 — venta solo para mayores de 18 (licor, cigarrillos…).
+  bool _isAgeRestricted = false;
   final _skuCtrl = TextEditingController();
   String? _skuError;
   /// Código completo y válido sugerido cuando el dígito de control falta o
@@ -747,6 +749,7 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
         'image_url': _photoUrl,
         'presentation': _presentation,
         'content': _contentCtrl.text.trim(),
+        'is_age_restricted': _isAgeRestricted,
       });
 
       // If product has a photo URL, enhance it. Otherwise, generate from scratch.
@@ -1038,6 +1041,7 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
               'presentation': _presentation,
               'content': _contentCtrl.text.trim(),
               'expiry_date': expiryIso ?? '',
+              'is_age_restricted': _isAgeRestricted,
               if (_pendingCatalogImageId != null)
                 'catalog_image_id': _pendingCatalogImageId,
               ...tierExtras,
@@ -1055,6 +1059,7 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
               'barcode': _skuCtrl.text.trim(),
               'presentation': _presentation,
               'content': _contentCtrl.text.trim(),
+              'is_age_restricted': _isAgeRestricted,
               if (expiryIso != null) 'expiry_date': expiryIso,
               if (_pendingCatalogImageId != null)
                 'catalog_image_id': _pendingCatalogImageId,
@@ -1731,6 +1736,26 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
                       hint: 'Ej: 350ml, 500g, 1L, 6 unidades',
                       icon: Icons.scale_rounded,
                       iconColor: AppTheme.textSecondary,
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+
+                  // ── Spec 063 — venta solo para mayores de 18 ─────────────
+                  SwitchListTile.adaptive(
+                    key: const Key('product_age_restricted_switch'),
+                    contentPadding: EdgeInsets.zero,
+                    value: _isAgeRestricted,
+                    onChanged: (v) => setState(() => _isAgeRestricted = v),
+                    secondary: const Icon(Icons.no_adult_content_rounded,
+                        color: AppTheme.textSecondary),
+                    title: const Text(
+                      'Solo para mayores de 18',
+                      style:
+                          TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+                    ),
+                    subtitle: const Text(
+                      'Licor, cigarrillos. El catálogo pedirá confirmar edad.',
+                      style: TextStyle(fontSize: 13),
                     ),
                   ),
                 ]),
