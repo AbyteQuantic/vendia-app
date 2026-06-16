@@ -152,7 +152,12 @@ class _PromoManagementScreenState extends State<PromoManagementScreen> {
   }
 
   Future<void> _loadAll() async {
-    await Future.wait([_loadSlug(), _loadPromos(), _loadExpiring()]);
+    await Future.wait([
+      _loadSlug(),
+      _loadPromos(),
+      _loadExpiring(),
+      _loadOffersVisibility(),
+    ]);
   }
 
   Future<void> _loadExpiring() async {
@@ -182,6 +187,36 @@ class _PromoManagementScreenState extends State<PromoManagementScreen> {
     } catch (e) {
       if (!mounted) return;
       setState(() => _slugError = _errorMessage(e));
+    }
+  }
+
+  // Carga el estado real de "Sección de Ofertas visible" del perfil (antes el
+  // switch era state local que no persistía).
+  Future<void> _loadOffersVisibility() async {
+    try {
+      final profile = await _api.fetchBusinessProfile();
+      if (!mounted) return;
+      setState(() => _offersVisible = profile['hide_offers_section'] != true);
+    } catch (_) {
+      // Si falla, deja el default (visible) — no bloquea la pantalla.
+    }
+  }
+
+  // Persiste el toggle. Optimista con reversión si el PATCH falla.
+  Future<void> _setOffersVisible(bool val) async {
+    final prev = _offersVisible;
+    setState(() => _offersVisible = val);
+    try {
+      await _api.updateBusinessProfile({
+        'config': {'hide_offers_section': !val},
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _offersVisible = prev); // revierte
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(_errorMessage(e)),
+        backgroundColor: AppTheme.error,
+      ));
     }
   }
 
@@ -642,7 +677,7 @@ class _PromoManagementScreenState extends State<PromoManagementScreen> {
               value: _offersVisible,
               onChanged: (val) {
                 HapticFeedback.mediumImpact();
-                setState(() => _offersVisible = val);
+                _setOffersVisible(val);
               },
               activeThumbColor: Colors.white,
               activeTrackColor: AppTheme.success,
