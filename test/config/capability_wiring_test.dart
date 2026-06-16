@@ -37,6 +37,21 @@ void main() {
         expect(moduleFor(cap), isNotNull, reason: '$cap sin DashboardModule');
       }
     });
+
+    // Capacidades de comportamiento: antes NO tenían módulo → al activarlas no
+    // aparecían en el carrusel. Ahora apuntan a su CapabilityScaffold.
+    test('priceTiers/services/fractionalUnits tienen módulo (carrusel)', () {
+      for (final cap in [
+        OptionalCapability.priceTiers,
+        OptionalCapability.services,
+        OptionalCapability.fractionalUnits,
+      ]) {
+        final m = moduleFor(cap);
+        expect(m, isNotNull, reason: '$cap sin DashboardModule');
+        // El destino abre algo (su scaffold) — no es null.
+        expect(m!.destination, isNotNull);
+      }
+    });
   });
 
   group('capabilitiesRegistry — metadata para activar + carrusel', () {

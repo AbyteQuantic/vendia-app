@@ -50,6 +50,8 @@ import '../screens/purchases/purchase_orders_screen.dart';
 import '../screens/quotes/quotes_list_screen.dart';
 import '../screens/recipes/recipes_home_screen.dart';
 import '../screens/work_orders/work_orders_screen.dart';
+import '../screens/capabilities/capabilities_registry.dart';
+import '../screens/capabilities/capability_scaffold.dart';
 import '../screens/events/events_list_screen.dart';
 import '../screens/tables/tables_screen.dart';
 
@@ -131,6 +133,16 @@ class DashboardModule {
 // por capacidades + backfill backend para tenants con data legacy.
 
 /// Registro central de todos los módulos del Dashboard.
+// Destinos de las capacidades de COMPORTAMIENTO (sin pantalla-módulo propia):
+// abren su CapabilityScaffold (estado activo + cómo usar + apagar). Son
+// funciones top-level para que su tear-off sea const y la lista siga siendo const.
+Widget _priceTiersModule() =>
+    CapabilityScaffold(metadata: capabilitiesRegistry[OptionalCapability.priceTiers]!);
+Widget _servicesModule() =>
+    CapabilityScaffold(metadata: capabilitiesRegistry[OptionalCapability.services]!);
+Widget _fractionalModule() =>
+    CapabilityScaffold(metadata: capabilitiesRegistry[OptionalCapability.fractionalUnits]!);
+
 const List<DashboardModule> dashboardModules = [
   // ── VENDER ───────────────────────────────────────────────────────
   DashboardModule(
@@ -297,6 +309,44 @@ const List<DashboardModule> dashboardModules = [
     // Faltaba registrar el módulo: enable_tables persistía pero "Mesas" nunca
     // subía al carrusel/grid (auditoría capacidades). Ahora aparece como activo.
     destination: TablesScreen.new,
+  ),
+  // Capacidades de COMPORTAMIENTO (precios por nivel, servicios, granel): no
+  // tienen pantalla-módulo propia (modifican el POS / los productos). Antes, al
+  // activarlas, NO aparecían en el carrusel (no había DashboardModule) — el
+  // usuario las prendía y "desaparecían". Ahora se registran apuntando a su
+  // CapabilityScaffold, que muestra el estado activo + cómo usarlas + apagar.
+  DashboardModule(
+    id: 'precios_nivel',
+    title: 'Precios mayorista y minorista',
+    subtitle: 'Dos o tres precios por producto',
+    icon: Icons.sell_rounded,
+    color: Color(0xFF059669),
+    category: ModuleCategory.vender,
+    layer: ModuleLayer.optional,
+    capability: OptionalCapability.priceTiers,
+    destination: _priceTiersModule,
+  ),
+  DashboardModule(
+    id: 'servicios',
+    title: 'Servicios',
+    subtitle: 'Cobre arreglos y trabajos por encargo',
+    icon: Icons.handyman_rounded,
+    color: Color(0xFF7C3AED),
+    category: ModuleCategory.vender,
+    layer: ModuleLayer.optional,
+    capability: OptionalCapability.services,
+    destination: _servicesModule,
+  ),
+  DashboardModule(
+    id: 'granel',
+    title: 'Venta a granel',
+    subtitle: 'Venda por libra, kilo o litro',
+    icon: Icons.scale_rounded,
+    color: Color(0xFFD97706),
+    category: ModuleCategory.vender,
+    layer: ModuleLayer.optional,
+    capability: OptionalCapability.fractionalUnits,
+    destination: _fractionalModule,
   ),
   DashboardModule(
     id: 'eventos',

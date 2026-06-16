@@ -42,7 +42,7 @@ void main() {
         const CapabilitiesReel(modules: []),
       ));
       // No header, no cards.
-      expect(find.textContaining('Descubre'), findsNothing);
+      expect(find.textContaining('Descubra'), findsNothing);
       expect(find.byKey(const Key('capabilities_reel_pageview')),
           findsNothing);
     });
@@ -58,7 +58,7 @@ void main() {
       ));
       await tester.pump();
 
-      expect(find.textContaining('Descubre'), findsOneWidget);
+      expect(find.textContaining('Descubra'), findsOneWidget);
       expect(find.byKey(const Key('capabilities_reel_pageview')),
           findsOneWidget);
       // El primer módulo opcional del registro queda visible en el
@@ -66,8 +66,8 @@ void main() {
       // parte de la segunda card también).
       expect(find.byKey(Key('reel_card_${modules.first.id}')),
           findsOneWidget);
-      // "Toca para activar" en al menos la primera card.
-      expect(find.text('Toca para activar'), findsWidgets);
+      // "Toque para activar" en al menos la primera card.
+      expect(find.text('Toque para activar'), findsWidgets);
 
       // Limpiar timer recurrente.
       await tester.pumpWidget(_wrap(const SizedBox.shrink()));
