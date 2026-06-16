@@ -144,8 +144,8 @@ class RecipesHomeScreen extends StatelessWidget {
           const Padding(
             padding: EdgeInsets.only(bottom: 16, left: 4),
             child: Text(
-              'Arma tu menú como te quede más fácil. La IA te ayuda con la foto, '
-              'la descripción y las porciones — y todo lo puedes editar.',
+              'Arme su menú como le quede más fácil. La IA le ayuda con la foto, '
+              'la descripción y las porciones — y todo lo puede editar.',
               style: TextStyle(fontSize: 15, color: Colors.black54, height: 1.3),
             ),
           ),
@@ -154,7 +154,7 @@ class RecipesHomeScreen extends StatelessWidget {
             icon: Icons.photo_camera_rounded,
             color: const Color(0xFFEE5A24),
             title: 'Importar menú desde la cámara',
-            subtitle: 'Toma una foto de tu carta y la IA arma los platos.',
+            subtitle: 'Tome una foto de su carta y la IA arma los platos.',
             onTap: () => _importFromCamera(context),
           ),
           const SizedBox(height: 12),
@@ -163,7 +163,7 @@ class RecipesHomeScreen extends StatelessWidget {
             icon: Icons.restaurant_menu_rounded,
             color: AppTheme.primary,
             title: 'Crear plato o receta',
-            subtitle: 'Arma un plato paso a paso y mira su costo y ganancia.',
+            subtitle: 'Arme un plato paso a paso y mire su costo y ganancia.',
             onTap: () => _go(context, const RecipeStep1Screen()),
           ),
           const SizedBox(height: 12),
@@ -172,7 +172,7 @@ class RecipesHomeScreen extends StatelessWidget {
             icon: Icons.mic_rounded,
             color: const Color(0xFF7C3AED),
             title: 'Dictar receta desde el micrófono',
-            subtitle: 'Di tus platos en voz alta y la IA los organiza.',
+            subtitle: 'Diga sus platos en voz alta y la IA los organiza.',
             onTap: () => _go(context, const VoiceInventoryScreen()),
           ),
         ],

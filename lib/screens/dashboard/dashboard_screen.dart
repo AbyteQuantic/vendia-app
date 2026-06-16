@@ -879,7 +879,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                           fontWeight: FontWeight.w700,
                                           color: Color(0xFF92400E)),
                                     ),
-                                    const Text('Toca para ver pedidos sugeridos',
+                                    const Text('Toque para ver pedidos sugeridos',
                                         style: TextStyle(fontSize: 13, color: Color(0xFFB45309))),
                                   ],
                                 ),

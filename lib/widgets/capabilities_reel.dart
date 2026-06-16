@@ -226,7 +226,7 @@ class _CapabilitiesReelState extends State<CapabilitiesReel> {
               const Padding(
                 padding: EdgeInsets.only(left: 4, bottom: 12),
                 child: Text(
-                  '✨ Descubre más opciones para tu negocio',
+                  '✨ Descubra más opciones para su negocio',
                   style: TextStyle(
                     fontSize: 18,
                     fontWeight: FontWeight.w800,
@@ -287,7 +287,7 @@ class _ReelCard extends StatelessWidget {
     return Semantics(
       key: Key('reel_card_${module.id}'),
       button: true,
-      label: '${module.title}. Toca para activar.',
+      label: '${module.title}. Toque para activar.',
       child: GestureDetector(
         onTap: onTap,
         child: Container(
@@ -337,7 +337,7 @@ class _ReelCard extends StatelessWidget {
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      'Toca para activar',
+                      'Toque para activar',
                       style: TextStyle(
                         fontSize: 14,
                         color: module.color,
