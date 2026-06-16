@@ -6,6 +6,8 @@ import 'package:share_plus/share_plus.dart';
 import '../services/api_service.dart';
 import '../services/auth_service.dart';
 import '../theme/app_theme.dart';
+import '../utils/whatsapp_launcher.dart';
+import 'whatsapp_send_field.dart';
 
 /// Bottom-sheet that renders the QR for a live table tab.
 ///
@@ -150,12 +152,30 @@ class _TableQrSheetState extends State<_TableQrSheet> {
     return '${uri.scheme}://${uri.host}$port';
   }
 
+  String _message(String url) =>
+      '📋 Esta es tu cuenta en vivo en ${widget.tableLabel}. '
+      'Ábrela cuando quieras: $url';
+
   Future<void> _share(String url) async {
     HapticFeedback.lightImpact();
-    final text =
-        '📋 Esta es tu cuenta en vivo en ${widget.tableLabel}. '
-        'Ábrela cuando quieras: $url';
-    await Share.share(text, subject: 'Tu cuenta en ${widget.tableLabel}');
+    await Share.share(_message(url),
+        subject: 'Tu cuenta en ${widget.tableLabel}');
+  }
+
+  /// Envío directo: abre WhatsApp con el link de la cuenta precargado al
+  /// número que digitó el tendero. Si no se pudo abrir, avisa.
+  Future<void> _sendWhatsapp(String url, String phone) async {
+    HapticFeedback.lightImpact();
+    final ok = await launchWhatsapp(phone: phone, message: _message(url));
+    if (!mounted) return;
+    if (!ok) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+              'No pudimos abrir WhatsApp. Revisa el número e intenta de nuevo.'),
+        ),
+      );
+    }
   }
 
   Future<void> _copy(String url) async {
@@ -200,7 +220,12 @@ class _TableQrSheetState extends State<_TableQrSheet> {
               const SizedBox(height: 18),
               _Header(tableLabel: widget.tableLabel),
               const SizedBox(height: 18),
-              _StateView(state: _state, onShare: _share, onCopy: _copy),
+              _StateView(
+                state: _state,
+                onShare: _share,
+                onCopy: _copy,
+                onSendWhatsapp: _sendWhatsapp,
+              ),
             ],
           ),
         ),
@@ -245,11 +270,13 @@ class _StateView extends StatelessWidget {
     required this.state,
     required this.onShare,
     required this.onCopy,
+    required this.onSendWhatsapp,
   });
 
   final _LoadState state;
   final Future<void> Function(String url) onShare;
   final Future<void> Function(String url) onCopy;
+  final Future<void> Function(String url, String phone) onSendWhatsapp;
 
   @override
   Widget build(BuildContext context) {
@@ -271,6 +298,7 @@ class _StateView extends StatelessWidget {
         url: s.url,
         onShare: () => onShare(s.url),
         onCopy: () => onCopy(s.url),
+        onSendWhatsapp: (phone) => onSendWhatsapp(s.url, phone),
       );
     }
     return const SizedBox.shrink();
@@ -282,10 +310,12 @@ class _ReadyView extends StatelessWidget {
     required this.url,
     required this.onShare,
     required this.onCopy,
+    required this.onSendWhatsapp,
   });
   final String url;
   final VoidCallback onShare;
   final VoidCallback onCopy;
+  final void Function(String phone) onSendWhatsapp;
 
   @override
   Widget build(BuildContext context) {
@@ -363,6 +393,10 @@ class _ReadyView extends StatelessWidget {
             ),
           ),
         ),
+        const SizedBox(height: 20),
+        const Divider(height: 1),
+        const SizedBox(height: 18),
+        WhatsappSendField(onSend: onSendWhatsapp),
       ],
     );
   }
