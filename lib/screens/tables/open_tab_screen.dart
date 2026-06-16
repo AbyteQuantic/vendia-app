@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import '../../database/collections/local_product.dart';
+import '../../database/database_service.dart';
 import '../../models/product.dart';
 import '../../theme/app_theme.dart';
 import '../../utils/format_cop.dart';
-import '../pos/cart_controller.dart';
 import '../pos/checkout_screen.dart';
 import '../pos/sale_success_screen.dart';
 import 'tables_controller.dart';
@@ -27,6 +28,45 @@ class _OpenTabScreenState extends State<OpenTabScreen> {
   final _searchCtrl = TextEditingController();
   String _search = '';
 
+  // Inventario REAL del tenant (antes usaba CartController.mockProducts: 3-4
+  // productos falsos → no se podía cobrar la mesa con el catálogo real).
+  List<Product> _products = [];
+  bool _loadingProducts = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadProducts();
+  }
+
+  Future<void> _loadProducts() async {
+    try {
+      final locals = await DatabaseService.instance.getAllProducts();
+      if (!mounted) return;
+      setState(() {
+        _products = locals.map(_toProduct).toList();
+        _loadingProducts = false;
+      });
+    } catch (_) {
+      if (mounted) setState(() => _loadingProducts = false);
+    }
+  }
+
+  Product _toProduct(LocalProduct lp) => Product(
+        id: lp.serverId ?? 0,
+        uuid: lp.uuid,
+        name: lp.name,
+        price: lp.price,
+        stock: lp.stock,
+        imageUrl: lp.imageUrl,
+        isAvailable: lp.isAvailable,
+        requiresContainer: lp.requiresContainer,
+        containerPrice: lp.containerPrice,
+        barcode: lp.barcode,
+        presentation: lp.presentation,
+        content: lp.content,
+      );
+
   @override
   void dispose() {
     _searchCtrl.dispose();
@@ -34,10 +74,11 @@ class _OpenTabScreenState extends State<OpenTabScreen> {
   }
 
   List<Product> get _filteredProducts {
-    final products = CartController.mockProducts;
-    if (_search.isEmpty) return products;
+    if (_search.isEmpty) return _products;
     final q = _search.toLowerCase();
-    return products.where((p) => p.name.toLowerCase().contains(q)).toList();
+    return _products
+        .where((p) => p.name.toLowerCase().contains(q))
+        .toList();
   }
 
   void _addItem(Product product) {
@@ -147,18 +188,30 @@ class _OpenTabScreenState extends State<OpenTabScreen> {
                   ),
                 ),
 
-                // Product list for adding
+                // Product list for adding (inventario real)
                 if (_search.isNotEmpty)
                   SizedBox(
                     height: 120,
-                    child: ListView(
-                      scrollDirection: Axis.horizontal,
-                      padding: const EdgeInsets.symmetric(horizontal: 16),
-                      children: _filteredProducts
-                          .map((p) => _QuickAddChip(
-                              product: p, onTap: () => _addItem(p)))
-                          .toList(),
-                    ),
+                    child: _loadingProducts
+                        ? const Center(child: CircularProgressIndicator())
+                        : _filteredProducts.isEmpty
+                            ? Center(
+                                child: Text(
+                                  'Sin productos para "$_search"',
+                                  style: const TextStyle(
+                                      fontSize: 16,
+                                      color: AppTheme.textSecondary),
+                                ),
+                              )
+                            : ListView(
+                                scrollDirection: Axis.horizontal,
+                                padding:
+                                    const EdgeInsets.symmetric(horizontal: 16),
+                                children: _filteredProducts
+                                    .map((p) => _QuickAddChip(
+                                        product: p, onTap: () => _addItem(p)))
+                                    .toList(),
+                              ),
                   ),
 
                 // Current tab items
