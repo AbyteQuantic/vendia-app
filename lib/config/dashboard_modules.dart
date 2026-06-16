@@ -51,6 +51,7 @@ import '../screens/quotes/quotes_list_screen.dart';
 import '../screens/recipes/recipes_home_screen.dart';
 import '../screens/work_orders/work_orders_screen.dart';
 import '../screens/events/events_list_screen.dart';
+import '../screens/tables/tables_screen.dart';
 
 /// Las 4 categorías con encabezado del Dashboard (spec §4.1).
 enum ModuleCategory { vender, inventario, clientes, miNegocio }
@@ -284,6 +285,19 @@ const List<DashboardModule> dashboardModules = [
     destination: PromotionsListScreen.new,
   ),
   // F042 — Módulo de Eventos. Opt-in self-service desde el reel.
+  DashboardModule(
+    id: 'mesas',
+    title: 'Atención en mesas',
+    subtitle: 'Abra cuentas por mesa y cobre al final',
+    icon: Icons.table_restaurant_rounded,
+    color: Color(0xFF3B82F6),
+    category: ModuleCategory.vender,
+    layer: ModuleLayer.optional,
+    capability: OptionalCapability.tables,
+    // Faltaba registrar el módulo: enable_tables persistía pero "Mesas" nunca
+    // subía al carrusel/grid (auditoría capacidades). Ahora aparece como activo.
+    destination: TablesScreen.new,
+  ),
   DashboardModule(
     id: 'eventos',
     title: 'Eventos',

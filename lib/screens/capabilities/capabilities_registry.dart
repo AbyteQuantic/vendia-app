@@ -20,7 +20,8 @@ import '../inventory/ingredients_screen.dart';
 import '../online_store/promo_management_screen.dart';
 import '../promotions/promotions_list_screen.dart';
 import '../purchases/purchase_orders_screen.dart';
-import '../recipes/recipe_step1_screen.dart';
+import '../quotes/quotes_list_screen.dart';
+import '../recipes/recipes_home_screen.dart';
 import '../tables/tables_screen.dart';
 import '../work_orders/work_orders_screen.dart';
 import '../events/events_list_screen.dart';
@@ -97,6 +98,28 @@ final Map<OptionalCapability, CapabilityMetadata> capabilitiesRegistry = {
         'Al activar, podrá poner precios por nivel en cada producto '
         '("Productos") y elegir el nivel al cobrar.',
   ),
+  // Cotizaciones tiene su pantalla activadora propia (QuoteCapabilityScreen,
+  // ruteada aparte en el reel). Pero SÍ necesita entrada en el registry para que
+  // su card del carrusel tenga foto hero y botón "quitar" (onRemove depende de
+  // capabilitiesRegistry[cap]); sin esto era la única capacidad no-removible y
+  // sin foto (auditoría capacidades).
+  OptionalCapability.quotes: const CapabilityMetadata(
+    title: 'Cotizaciones',
+    tagline: 'Arme cotizaciones y conviértalas en venta',
+    description:
+        'Cree cotizaciones para sus clientes con productos y precios, '
+        'compártalas por WhatsApp y, cuando las aprueben, conviértalas '
+        'en venta de un toque.',
+    heroPhotoUrl:
+        'https://images.pexels.com/photos/4386366/pexels-photo-4386366.jpeg?auto=compress&cs=tinysrgb&w=1280&h=600&fit=crop',
+    fallbackIcon: Icons.request_quote_rounded,
+    accentColor: Color(0xFF1A2FA0),
+    configKey: 'enable_quotes',
+    profileKey: 'enable_quotes',
+    primaryActionLabel: 'Ver mis cotizaciones',
+    primaryActionIcon: Icons.request_quote_rounded,
+    primaryDestination: QuotesListScreen.new,
+  ),
   OptionalCapability.customerManagement: const CapabilityMetadata(
     title: 'Gestión de clientes',
     tagline: 'Sepa quién le compra y cuánto',
@@ -162,7 +185,9 @@ final Map<OptionalCapability, CapabilityMetadata> capabilitiesRegistry = {
     profileKey: 'enable_recipes',
     primaryActionLabel: 'Ver mis recetas',
     primaryActionIcon: Icons.restaurant_menu_rounded,
-    primaryDestination: RecipeStep1Screen.new,
+    // Abre el HOME del módulo (3 opciones: importar carta / crear / voz) +
+    // lista de recetas, no el paso 1 del wizard directo (auditoría capacidades).
+    primaryDestination: RecipesHomeScreen.new,
   ),
   OptionalCapability.supplies: const CapabilityMetadata(
     title: 'Mis Insumos',
