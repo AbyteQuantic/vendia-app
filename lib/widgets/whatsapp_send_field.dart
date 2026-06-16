@@ -33,7 +33,7 @@ class _WhatsappSendFieldState extends State<WhatsappSendField> {
     final digits = _ctrl.text.replaceAll(RegExp(r'[^\d]'), '');
     // 10 dígitos (celular CO) o más (ya con indicativo). Menos = inválido.
     if (digits.length < 10) {
-      setState(() => _error = 'Escribe un número de WhatsApp válido');
+      setState(() => _error = 'Escriba un número de WhatsApp válido');
       return;
     }
     setState(() => _error = null);
@@ -46,7 +46,7 @@ class _WhatsappSendFieldState extends State<WhatsappSendField> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         const Text(
-          'O envíalo al WhatsApp del cliente',
+          'O envíelo al WhatsApp del cliente',
           style: TextStyle(
             fontSize: 14,
             fontWeight: FontWeight.w700,

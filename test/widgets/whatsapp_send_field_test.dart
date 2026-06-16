@@ -38,6 +38,6 @@ void main() {
     await tester.pump();
 
     expect(called, isFalse);
-    expect(find.text('Escribe un número de WhatsApp válido'), findsOneWidget);
+    expect(find.text('Escriba un número de WhatsApp válido'), findsOneWidget);
   });
 }
