@@ -16,7 +16,7 @@ import '../../services/auth_service.dart';
 import '../../theme/app_theme.dart';
 import '../../theme/app_ui.dart';
 import '../promotions/promo_builder_screen.dart';
-import 'promo_management_screen.dart';
+import '../promotions/promotions_list_screen.dart';
 
 class CatalogOnlineHubScreen extends StatefulWidget {
   const CatalogOnlineHubScreen({super.key, ApiService? apiOverride})
@@ -123,7 +123,7 @@ class _CatalogOnlineHubScreenState extends State<CatalogOnlineHubScreen> {
               _ActionRow(
                 icon: Icons.campaign_rounded,
                 title: 'Envío masivo por campañas',
-                onTap: () => _go(const PromoManagementScreen()),
+                onTap: () => _go(const PromotionsListScreen()),
               ),
               _ActionRow(
                 icon: Icons.image_outlined,
