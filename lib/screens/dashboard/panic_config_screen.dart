@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
+import '../../models/panic_alert.dart';
 import '../../services/api_service.dart';
 import '../../services/auth_service.dart';
 import '../../theme/app_theme.dart';
+import '../../widgets/panic_history.dart';
 
 class PanicConfigScreen extends StatefulWidget {
   const PanicConfigScreen({super.key});
@@ -16,6 +18,7 @@ class _PanicConfigScreenState extends State<PanicConfigScreen> {
   late final ApiService _api;
   final _msgCtrl = TextEditingController();
   List<Map<String, dynamic>> _contacts = [];
+  List<PanicAlert> _alerts = const [];
   bool _loading = true;
   bool _saving = false;
   bool _includeAddress = true;
@@ -55,6 +58,13 @@ class _PanicConfigScreenState extends State<PanicConfigScreen> {
           _loading = false;
         });
       }
+      // Histórico de alertas (Spec 057) — best-effort, no bloquea la config.
+      try {
+        final raw = await _api.fetchPanicAlerts();
+        if (mounted) {
+          setState(() => _alerts = raw.map(PanicAlert.fromApi).toList());
+        }
+      } catch (_) {/* histórico opcional */}
     } catch (_) {
       if (mounted) setState(() => _loading = false);
     }
@@ -539,6 +549,15 @@ class _PanicConfigScreenState extends State<PanicConfigScreen> {
                           ),
                         ),
                     ]),
+                  ),
+                  const SizedBox(height: 16),
+                  // ═══════════════════════════════════════════════════
+                  // SECTION 4: Histórico de alertas (Spec 057)
+                  // ═══════════════════════════════════════════════════
+                  _sectionCard(
+                    number: '4',
+                    title: 'Alertas enviadas',
+                    child: PanicHistory(alerts: _alerts),
                   ),
                   const SizedBox(height: 80), // space for bottom button
                 ],

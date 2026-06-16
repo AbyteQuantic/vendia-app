@@ -3751,6 +3751,19 @@ class ApiService {
     }
   }
 
+  /// Histórico de alertas de pánico (Spec 057) — cada alerta con sus
+  /// entregas por contacto (estado sent/failed/skipped/pending).
+  Future<List<Map<String, dynamic>>> fetchPanicAlerts() async {
+    try {
+      final response = await _dio.get('/api/v1/store/panic/alerts');
+      final data = response.data['data'];
+      if (data is List) return data.cast<Map<String, dynamic>>();
+      return const [];
+    } on DioException catch (e) {
+      throw AppError.fromDioException(e);
+    }
+  }
+
   // ═══════════════════════════════════════════════════════════════════════════
   // CREDITS (EL CUADERNO) - detail + abono
   // ═══════════════════════════════════════════════════════════════════════════
