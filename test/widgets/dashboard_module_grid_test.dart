@@ -58,6 +58,21 @@ void main() {
           findsOneWidget);
     });
 
+    testWidgets('"Mi Catálogo Online" destacado bajo Registrar venta (Spec 061)',
+        (tester) async {
+      await tester.pumpWidget(_wrap(
+        const DashboardModuleGrid(
+          businessType: 'tienda_barrio',
+          flags: FeatureFlags(),
+        ),
+      ));
+
+      expect(find.text('Mi Catálogo Online'), findsOneWidget);
+      // Se renderea como tarjeta destacada (misma jerarquía que la venta).
+      expect(find.byKey(const Key('dashboard_featured_catalogo_online')),
+          findsOneWidget);
+    });
+
     testWidgets('F037: "Análisis de Ganancias" presente como core',
         (tester) async {
       await tester.pumpWidget(_wrap(

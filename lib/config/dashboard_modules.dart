@@ -43,6 +43,7 @@ import '../screens/history/sales_history_screen.dart';
 import '../screens/inventory/add_merchandise_screen.dart';
 import '../screens/inventory/ingredients_screen.dart';
 import '../screens/inventory/inventory_report_screen.dart';
+import '../screens/online_store/catalog_online_hub_screen.dart';
 import '../screens/online_store/promo_management_screen.dart';
 import '../screens/pos/pos_screen.dart';
 import '../screens/promotions/promotions_list_screen.dart';
@@ -154,6 +155,18 @@ const List<DashboardModule> dashboardModules = [
     category: ModuleCategory.vender,
     layer: ModuleLayer.core,
     destination: PosScreen.new,
+  ),
+  // Botón destacado VERDE bajo "Registrar venta": reúne el catálogo en
+  // línea (vista previa, compartir/copiar link, campañas masivas, banner).
+  DashboardModule(
+    id: 'catalogo_online',
+    title: 'Mi Catálogo Online',
+    subtitle: 'Comparta, promocione y edite su tienda en línea',
+    icon: Icons.storefront_rounded,
+    color: AppTheme.success,
+    category: ModuleCategory.vender,
+    layer: ModuleLayer.core,
+    destination: CatalogOnlineHubScreen.new,
   ),
   DashboardModule(
     id: 'historial',

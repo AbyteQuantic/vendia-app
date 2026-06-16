@@ -64,15 +64,17 @@ void main() {
 
     test('F037: los cores reducidos son solo los esenciales', () {
       // El default ultra-simple (spec §4.1): pocos cores. Aceptamos
-      // 5–7 cores: los 5 nominados + reporte_inventario y proveedores
-      // que también arrancan visibles porque son útiles a todo tipo.
+      // 5–8 cores: los 5 nominados + reporte_inventario y proveedores
+      // que arrancan visibles, y catalogo_online (Spec 061: hub del
+      // catálogo en línea, destacado en VENDER).
       final cores = dashboardModules
           .where((m) => m.layer == ModuleLayer.core)
           .map((m) => m.id)
           .toSet();
       expect(cores.length, greaterThanOrEqualTo(5));
-      expect(cores.length, lessThanOrEqualTo(7));
+      expect(cores.length, lessThanOrEqualTo(8));
       expect(cores, contains('registrar_venta'));
+      expect(cores, contains('catalogo_online'));
       expect(cores, contains('historial'));
       expect(cores, contains('analisis_ganancias'));
       expect(cores, contains('productos'));

@@ -68,11 +68,12 @@ class _CategorySection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // "Registrar venta" va destacado al inicio de su categoría.
-    final featured = modules
-        .where((m) => m.id == 'registrar_venta')
-        .toList();
-    final rest = modules.where((m) => m.id != 'registrar_venta').toList();
+    // "Registrar venta" y "Mi Catálogo Online" van destacados al inicio
+    // de VENDER (tarjetas grandes con degradado). El orden lo da el
+    // registro `dashboardModules` (venta primero, catálogo debajo).
+    const featuredIds = {'registrar_venta', 'catalogo_online'};
+    final featured = modules.where((m) => featuredIds.contains(m.id)).toList();
+    final rest = modules.where((m) => !featuredIds.contains(m.id)).toList();
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(DashUI.s16, DashUI.s24, DashUI.s16, 0),
@@ -128,6 +129,17 @@ class _FeaturedModuleCard extends StatelessWidget {
 
   const _FeaturedModuleCard({required this.module});
 
+  /// Degradado de la tarjeta destacada. "Registrar venta" conserva su
+  /// azul marino; el resto (ej. Catálogo Online) deriva su degradado del
+  /// color del módulo (más oscuro → color), para verse igual de premium.
+  List<Color> get _gradient {
+    if (module.id == 'registrar_venta') {
+      return const [Color(0xFF101F4E), Color(0xFF1E3A8A)];
+    }
+    final base = module.color;
+    return [Color.lerp(base, Colors.black, 0.30) ?? base, base];
+  }
+
   @override
   Widget build(BuildContext context) {
     return Semantics(
@@ -144,15 +156,15 @@ class _FeaturedModuleCard extends StatelessWidget {
           // premium, no el azul sólido básico. Sin subtítulo: el título
           // ya dice todo (cero redundancia).
           decoration: BoxDecoration(
-            gradient: const LinearGradient(
+            gradient: LinearGradient(
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
-              colors: [Color(0xFF101F4E), Color(0xFF1E3A8A)],
+              colors: _gradient,
             ),
             borderRadius: BorderRadius.circular(DashUI.rCard),
             boxShadow: [
               BoxShadow(
-                color: const Color(0xFF101F4E).withValues(alpha: 0.18),
+                color: _gradient.first.withValues(alpha: 0.20),
                 blurRadius: 20,
                 offset: const Offset(0, 8),
               ),
