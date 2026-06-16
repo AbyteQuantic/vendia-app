@@ -18,6 +18,7 @@ import '../../services/auth_service.dart';
 import '../../theme/app_theme.dart';
 import '../inventory/voice_inventory_screen.dart';
 import 'menu_import_screen.dart';
+import 'recipe_list_screen.dart';
 import 'recipe_step1_screen.dart';
 
 class RecipesHomeScreen extends StatelessWidget {
@@ -149,6 +150,17 @@ class RecipesHomeScreen extends StatelessWidget {
               style: TextStyle(fontSize: 15, color: Colors.black54, height: 1.3),
             ),
           ),
+          // Ver/gestionar las recetas ya creadas (antes no había forma de
+          // listarlas; solo se podían crear — auditoría capacidades).
+          _OptionCard(
+            key: const Key('recipes_option_list'),
+            icon: Icons.menu_book_rounded,
+            color: AppTheme.primary,
+            title: 'Ver mis recetas',
+            subtitle: 'Revise sus platos, costos y ganancias.',
+            onTap: () => _go(context, const RecipeListScreen()),
+          ),
+          const SizedBox(height: 12),
           _OptionCard(
             key: const Key('recipes_option_camera'),
             icon: Icons.photo_camera_rounded,

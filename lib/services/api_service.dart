@@ -2280,6 +2280,16 @@ class ApiService {
     }
   }
 
+  /// DELETE /api/v1/recipes/:uuid — borra una receta. El backend ya lo expone;
+  /// faltaba el método cliente para la lista "Ver mis recetas".
+  Future<void> deleteRecipe(String uuid) async {
+    try {
+      await _dio.delete('/api/v1/recipes/$uuid');
+    } on DioException catch (e) {
+      throw AppError.fromDioException(e);
+    }
+  }
+
   // ── Insumos (Feature 001) — contrato en plan.md §4 ────────────────────────
 
   /// Lista los insumos del tenant. GET /api/v1/ingredients.
