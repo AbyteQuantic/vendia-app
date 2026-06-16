@@ -20,7 +20,12 @@ import '../../theme/app_theme.dart';
 /// whitelists `pending/accepted/rejected/completed` on PATCH so a
 /// typo here 400s instead of wedging the row.
 class OnlineOrdersScreen extends StatefulWidget {
-  const OnlineOrdersScreen({super.key});
+  const OnlineOrdersScreen({super.key, this.focusOrderId});
+
+  /// Pedido a destacar al abrir (desde una notificación). Se hace
+  /// scroll hasta él y se resalta el borde. `null` = comportamiento
+  /// normal (lista completa, sin foco).
+  final String? focusOrderId;
 
   @override
   State<OnlineOrdersScreen> createState() => _OnlineOrdersScreenState();
@@ -35,6 +40,10 @@ class _OnlineOrdersScreenState extends State<OnlineOrdersScreen> {
   // buttons can flip to a spinner without blocking other rows.
   final Set<String> _mutating = {};
   Timer? _pollTimer;
+  // Foco desde notificación: key del card a destacar + guard para
+  // hacer scroll una sola vez tras la primera carga.
+  final GlobalKey _focusKey = GlobalKey();
+  bool _focusScrolled = false;
 
   @override
   void initState() {
@@ -98,6 +107,7 @@ class _OnlineOrdersScreenState extends State<OnlineOrdersScreen> {
         _loading = false;
         _errorMessage = null;
       });
+      _maybeScrollToFocus();
     } catch (e) {
       if (!mounted) return;
       setState(() {
@@ -107,6 +117,23 @@ class _OnlineOrdersScreenState extends State<OnlineOrdersScreen> {
         }
       });
     }
+  }
+
+  /// Tras cargar, si venimos con un pedido en foco, hacemos scroll
+  /// hasta su card una sola vez (post-frame, cuando ya está montada).
+  void _maybeScrollToFocus() {
+    if (_focusScrolled || widget.focusOrderId == null) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final ctx = _focusKey.currentContext;
+      if (ctx == null) return;
+      _focusScrolled = true;
+      Scrollable.ensureVisible(
+        ctx,
+        duration: const Duration(milliseconds: 400),
+        curve: Curves.easeInOut,
+        alignment: 0.1,
+      );
+    });
   }
 
   Future<void> _decide(String id, String status, String confirmation) async {
@@ -211,8 +238,12 @@ class _OnlineOrdersScreenState extends State<OnlineOrdersScreen> {
         padding: const EdgeInsets.all(16),
         itemBuilder: (ctx, i) {
           final order = _orders[i] as Map<String, dynamic>;
+          final isFocus = widget.focusOrderId != null &&
+              order['id'] == widget.focusOrderId;
           return _OrderCard(
+            key: isFocus ? _focusKey : null,
             order: order,
+            highlight: isFocus,
             busy: _mutating.contains(order['id'] as String),
             onAccept: () => _decide(
                 order['id'] as String, 'accepted', 'Pedido aceptado'),
@@ -231,15 +262,20 @@ class _OnlineOrdersScreenState extends State<OnlineOrdersScreen> {
 
 class _OrderCard extends StatelessWidget {
   const _OrderCard({
+    super.key,
     required this.order,
     required this.busy,
     required this.onAccept,
     required this.onReject,
     required this.onComplete,
+    this.highlight = false,
   });
 
   final Map<String, dynamic> order;
   final bool busy;
+
+  /// Resalta el card cuando se llegó desde una notificación (foco).
+  final bool highlight;
   final Future<void> Function() onAccept;
   final Future<void> Function() onReject;
   final Future<void> Function() onComplete;
@@ -287,9 +323,12 @@ class _OrderCard extends StatelessWidget {
 
     return Container(
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: highlight ? AppTheme.primary.withValues(alpha: 0.05) : Colors.white,
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: Colors.grey.shade200),
+        border: Border.all(
+          color: highlight ? AppTheme.primary : Colors.grey.shade200,
+          width: highlight ? 2 : 1,
+        ),
       ),
       padding: const EdgeInsets.all(16),
       child: Column(

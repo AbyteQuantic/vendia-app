@@ -28,7 +28,12 @@ import '../../widgets/receipt_image_picker.dart';
 ///                   real audit log of cierres, not the apertura
 ///                   timeline.
 class CuadernoFiadosScreen extends StatefulWidget {
-  const CuadernoFiadosScreen({super.key});
+  const CuadernoFiadosScreen({super.key, this.focusFiadoId});
+
+  /// Fiado a destacar al abrir (desde una notificación). Hoy abre el
+  /// cuaderno en el módulo correcto; el resaltado por-ítem es el
+  /// siguiente paso (Spec 056 slice 1).
+  final String? focusFiadoId;
 
   @override
   State<CuadernoFiadosScreen> createState() => _CuadernoFiadosScreenState();

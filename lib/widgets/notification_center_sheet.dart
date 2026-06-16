@@ -2,9 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../models/app_notification.dart';
+import '../screens/inventory/manage_inventory_screen.dart';
 import '../screens/online_orders/online_orders_screen.dart';
 import '../screens/pos/cuaderno_fiados_screen.dart';
 import '../theme/app_theme.dart';
+import '../utils/notification_router.dart';
 
 /// Bottom-sheet "Activity Feed" that replaces the legacy flat list.
 ///
@@ -217,14 +219,15 @@ class _NotificationTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final visual = NotificationVisual.of(notification.kind);
     final ago = relativeTime(notification.createdAt, now: now);
-    final interactive = notification.kind != NotificationKind.system;
+    final dest = destinationFor(notification);
+    final interactive = dest.isRoutable;
 
     return Material(
       color: notification.isRead ? Colors.white : const Color(0xFFF5F8FF),
       borderRadius: BorderRadius.circular(16),
       child: InkWell(
         borderRadius: BorderRadius.circular(16),
-        onTap: interactive ? () => _handleTap(context) : null,
+        onTap: interactive ? () => _navigate(context, dest) : null,
         child: Container(
           padding: const EdgeInsets.all(14),
           decoration: BoxDecoration(
@@ -274,6 +277,16 @@ class _NotificationTile extends StatelessWidget {
                         ),
                       ),
                     ],
+                    // CTA explícito al módulo correspondiente. Solo cuando
+                    // la notificación es accionable (tiene a dónde llevar).
+                    if (interactive) ...[
+                      const SizedBox(height: 10),
+                      _CtaChip(
+                        label: ctaLabelFor(dest.target),
+                        color: visual.color,
+                        onTap: () => _navigate(context, dest),
+                      ),
+                    ],
                   ],
                 ),
               ),
@@ -312,25 +325,73 @@ class _NotificationTile extends StatelessWidget {
     );
   }
 
-  void _handleTap(BuildContext context) {
+  void _navigate(BuildContext context, NotificationDestination dest) {
     HapticFeedback.selectionClick();
+    final navigator = Navigator.of(context);
     // The sheet is a route — closing it first keeps the navigation
-    // stack shallow (otherwise the KDS would sit on top of the
+    // stack shallow (otherwise the target would sit on top of the
     // bottom sheet and back-nav would feel laggy).
-    Navigator.of(context).pop();
-    switch (notification.kind) {
-      case NotificationKind.webOrder:
-        Navigator.of(context).push(
-          MaterialPageRoute(builder: (_) => const OnlineOrdersScreen()),
-        );
-        break;
-      case NotificationKind.fiado:
-        Navigator.of(context).push(
-          MaterialPageRoute(builder: (_) => const CuadernoFiadosScreen()),
-        );
-        break;
-      case NotificationKind.system:
-        break; // non-interactive by contract
+    navigator.pop();
+    final builder = _builderFor(dest);
+    if (builder == null) return;
+    navigator.push(MaterialPageRoute(builder: builder));
+  }
+
+  /// Construye la pantalla destino precargando el id de foco. Aislado
+  /// del router puro porque acá sí importamos pantallas concretas.
+  WidgetBuilder? _builderFor(NotificationDestination dest) {
+    switch (dest.target) {
+      case NotificationTarget.onlineOrders:
+        return (_) => OnlineOrdersScreen(focusOrderId: dest.focusId);
+      case NotificationTarget.fiado:
+        return (_) => CuadernoFiadosScreen(focusFiadoId: dest.focusId);
+      case NotificationTarget.inventory:
+        return (_) => ManageInventoryScreen(focusProductId: dest.focusId);
+      case NotificationTarget.none:
+        return null;
     }
+  }
+}
+
+/// Botón-chip de acción dentro de un tile de notificación.
+class _CtaChip extends StatelessWidget {
+  const _CtaChip({
+    required this.label,
+    required this.color,
+    required this.onTap,
+  });
+
+  final String label;
+  final Color color;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: color.withValues(alpha: 0.10),
+      borderRadius: BorderRadius.circular(10),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(10),
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w800,
+                  color: color,
+                ),
+              ),
+              const SizedBox(width: 4),
+              Icon(Icons.arrow_forward_rounded, size: 15, color: color),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 }

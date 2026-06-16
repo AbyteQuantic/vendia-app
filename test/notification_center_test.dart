@@ -205,4 +205,59 @@ void main() {
       expect(find.text('Más antiguas'), findsOneWidget);
     });
   });
+
+  group('CTA por notificación (Spec 056 slice 1)', () {
+    Future<void> pumpSheet(
+        WidgetTester tester, List<AppNotification> items) async {
+      await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+          body: Builder(
+            builder: (ctx) => ElevatedButton(
+              onPressed: () => showNotificationCenter(ctx, items: items),
+              child: const Text('open'),
+            ),
+          ),
+        ),
+      ));
+      await tester.tap(find.text('open'));
+      await tester.pumpAndSettle();
+    }
+
+    AppNotification mk({
+      required String type,
+      String? orderId,
+      String? productId,
+    }) {
+      return AppNotification(
+        id: 'x',
+        kind: AppNotification.kindFromType(type),
+        title: 'Título',
+        body: 'Cuerpo',
+        isRead: false,
+        createdAt: DateTime.now(),
+        rawType: type,
+        orderId: orderId,
+        productId: productId,
+      );
+    }
+
+    testWidgets('pedido web → CTA "Ver pedido"', (tester) async {
+      await pumpSheet(
+          tester, [mk(type: 'online_order', orderId: 'o-1')]);
+      expect(find.text('Ver pedido'), findsOneWidget);
+    });
+
+    testWidgets('stock bajo → CTA "Reponer stock"', (tester) async {
+      await pumpSheet(
+          tester, [mk(type: 'stock_low', productId: 'p-1')]);
+      expect(find.text('Reponer stock'), findsOneWidget);
+    });
+
+    testWidgets('mensaje de prueba (sin destino) → sin CTA', (tester) async {
+      await pumpSheet(tester, [mk(type: 'info')]);
+      expect(find.text('Ver pedido'), findsNothing);
+      expect(find.text('Ver fiado'), findsNothing);
+      expect(find.text('Reponer stock'), findsNothing);
+    });
+  });
 }

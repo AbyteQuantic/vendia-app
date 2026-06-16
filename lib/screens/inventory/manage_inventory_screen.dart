@@ -18,7 +18,12 @@ import 'negative_stock_screen.dart';
 import 'product_import_screen.dart';
 
 class ManageInventoryScreen extends StatefulWidget {
-  const ManageInventoryScreen({super.key});
+  const ManageInventoryScreen({super.key, this.focusProductId});
+
+  /// Producto a destacar al abrir (desde una alerta de stock bajo). Hoy
+  /// abre el inventario en el módulo correcto; el resaltado por-ítem es
+  /// el siguiente paso (Spec 056 slice 1).
+  final String? focusProductId;
 
   @override
   State<ManageInventoryScreen> createState() => _ManageInventoryScreenState();

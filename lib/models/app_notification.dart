@@ -40,6 +40,8 @@ class AppNotification {
     required this.rawType,
     this.orderId,
     this.fiadoId,
+    this.productId,
+    this.deepLink,
   });
 
   final String id;
@@ -64,6 +66,15 @@ class AppNotification {
   /// may not have them — `null` is a valid state.
   final String? orderId;
   final String? fiadoId;
+
+  /// Producto referenciado (alertas de stock bajo). Permite abrir la
+  /// ficha/reposición de ESE producto desde la notificación.
+  final String? productId;
+
+  /// Deep-link crudo emitido por el backend (`/pedidos/{id}`,
+  /// `/inventario/{id}`, `/fiado/{id}`). Es la fuente de verdad para el
+  /// CTA cuando viene; los `*Id` quedan como respaldo / conveniencia.
+  final String? deepLink;
 
   /// Bucketize a backend `type` string into a UI kind. Exposed as
   /// a pure function so widget tests can assert the mapping table
@@ -92,10 +103,40 @@ class AppNotification {
     // shape isn't a Map we silently drop it rather than crashing.
     String? orderId;
     String? fiadoId;
+    String? productId;
     final data = raw['data'];
     if (data is Map) {
       orderId = data['order_id']?.toString() ?? data['order_uuid']?.toString();
       fiadoId = data['fiado_id']?.toString() ?? data['fiado_token']?.toString();
+      productId =
+          data['product_id']?.toString() ?? data['product_uuid']?.toString();
+    }
+
+    // El deep_link es top-level (Spec 038). Como respaldo, derivamos los
+    // *Id desde el path cuando el backend no mandó el `data` (filas
+    // viejas o tipos que aún no migran al dispatcher).
+    final deepLink = (raw['deep_link']?.toString().trim().isNotEmpty ?? false)
+        ? raw['deep_link'].toString().trim()
+        : null;
+    if (deepLink != null) {
+      final seg = Uri.tryParse(deepLink)?.pathSegments ?? const [];
+      if (seg.length >= 2) {
+        final last = seg.last;
+        switch (seg.first) {
+          case 'pedidos':
+          case 'pedido':
+            orderId ??= last;
+            break;
+          case 'inventario':
+          case 'producto':
+            productId ??= last;
+            break;
+          case 'fiado':
+          case 'fiados':
+            fiadoId ??= last;
+            break;
+        }
+      }
     }
 
     return AppNotification(
@@ -108,6 +149,8 @@ class AppNotification {
       rawType: raw['type']?.toString() ?? '',
       orderId: orderId,
       fiadoId: fiadoId,
+      productId: productId,
+      deepLink: deepLink,
     );
   }
 
