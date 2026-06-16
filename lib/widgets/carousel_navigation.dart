@@ -35,6 +35,21 @@ class CarouselScrollBehavior extends MaterialScrollBehavior {
         PointerDeviceKind.trackpad,
         PointerDeviceKind.stylus,
       };
+
+  // CRÍTICO: este behavior REEMPLAZA al global de la app dentro del
+  // carrusel. El global (main.dart) ya desactiva el glow de overscroll
+  // y en web Material muestra scrollbar por defecto. Sin reproducir eso
+  // acá, el PageView en web reaparecía con scrollbar + glow (el "se dañó
+  // en mobile"). Los anulamos para igualar la config global.
+  @override
+  Widget buildScrollbar(
+          BuildContext context, Widget child, ScrollableDetails details) =>
+      child;
+
+  @override
+  Widget buildOverscrollIndicator(
+          BuildContext context, Widget child, ScrollableDetails details) =>
+      child;
 }
 
 /// Envuelve un scrollable (típicamente un `PageView`) para que acepte
