@@ -211,3 +211,38 @@ flutter test
 ```
 
 Estas tres deben pasar verde antes de merge a `main`.
+
+---
+
+## 12. Kit de UI moderno (estándar de diseño actual)
+
+> **Cambio de prioridad (decisión del fundador, 2026-06-16):** la prioridad de
+> diseño deja de ser gerontodiseño (CONSTITUTION Art. I) y pasa a **estándares
+> modernos de UI/UX** (estilo Linear/GitHub). Las reglas de *correctness* siguen
+> vigentes (sin overflow a 360dp, español sin voseo, máx 2 acciones en header),
+> pero los objetivos táctiles gigantes / texto grande / subtítulos explicativos
+> ya **no** son obligatorios. Módulos nuevos nacen con este kit; los existentes
+> se migran al tocarlos.
+
+**Kit reutilizable:** `lib/theme/app_ui.dart` (`AppUI` + `SoftCard`,
+`InsetGroupedList`, `MinimalBadge`, `glassAppBar`). Módulo de referencia:
+`CatalogOnlineHubScreen`.
+
+**Reglas (Spec 062):**
+1. Espaciado estricto en múltiplos de 8.
+2. Tarjetas **blancas puras**, radius 12, sombra difusa `0 4 24 rgba(0,0,0,.04)`.
+   Sin bordes pesados.
+3. Separadores casi invisibles `#F1F5F9` o, mejor, whitespace.
+4. Listas agrupadas (inset grouped): un contenedor, ítems con divisor hairline,
+   sin caja por ítem.
+5. Botones ghost (transparente + borde sutil) o solid neutro con un toque de
+   color solo en el primario.
+6. Badges pastel al 10%, sin borde, medium 12px.
+7. Títulos SemiBold `#1E293B`; secundario 14px `#64748B`. Sin texto redundante.
+8. Glassmorphism SOLO en barras (header/bottom): blur 15 + blanco 65%. El área
+   de datos queda limpia y de alto contraste.
+9. Densidad moderna, objetivos táctiles ~44dp. Íconos monocromos sutiles; nada
+   de colores estridentes ni íconos enormes.
+
+REGLA DE ORO al refactorizar visualmente: **no alterar lógica, navegación ni
+estados** — solo presentación.

@@ -1,10 +1,10 @@
 // Spec: specs/061-catalogo-online-hub/spec.md
+// UI: specs/062-ui-highend-kit/spec.md (estética moderna, AppUI)
 //
-// Hub "Mi Catálogo Online": un solo lugar desde donde el tendero
-// previsualiza su catálogo público, comparte/copia el link, lanza envíos
-// masivos por campañas y edita el banner/promociones. Compone piezas que
-// ya existían (link de tienda, marketing hub, constructor de promos) en
-// una entrada prominente desde el Dashboard.
+// Hub "Mi Catálogo Online": previsualizar el catálogo público,
+// compartir/copiar el link, lanzar campañas masivas y editar el banner.
+// Compone piezas existentes (link de tienda, marketing hub, constructor
+// de promos). Refactor visual con el kit AppUI — solo presentación.
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -14,6 +14,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../services/api_service.dart';
 import '../../services/auth_service.dart';
 import '../../theme/app_theme.dart';
+import '../../theme/app_ui.dart';
 import '../promotions/promo_builder_screen.dart';
 import 'promo_management_screen.dart';
 
@@ -58,11 +59,9 @@ class _CatalogOnlineHubScreenState extends State<CatalogOnlineHubScreen> {
     final url = _publicUrl;
     if (url == null || url.isEmpty) return;
     HapticFeedback.lightImpact();
-    final ok = await launchUrl(Uri.parse(url),
-        mode: LaunchMode.externalApplication);
-    if (!ok && mounted) {
-      _snack('No se pudo abrir el catálogo.');
-    }
+    final ok =
+        await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
+    if (!ok && mounted) _snack('No se pudo abrir el catálogo.');
   }
 
   Future<void> _share() async {
@@ -96,16 +95,16 @@ class _CatalogOnlineHubScreenState extends State<CatalogOnlineHubScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final topPad = MediaQuery.paddingOf(context).top + kToolbarHeight + AppUI.s8;
     return Scaffold(
-      backgroundColor: const Color(0xFFF7F8FA),
-      appBar: AppBar(
-        title: const Text('Mi Catálogo Online'),
-        backgroundColor: Colors.white,
-        foregroundColor: Colors.black87,
-        elevation: 0,
+      backgroundColor: AppUI.pageBg,
+      extendBodyBehindAppBar: true,
+      appBar: glassAppBar(
+        title: 'Mi Catálogo Online',
+        onBack: () => Navigator.of(context).maybePop(),
       ),
       body: ListView(
-        padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
+        padding: EdgeInsets.fromLTRB(AppUI.s16, topPad, AppUI.s16, AppUI.s24),
         children: [
           _LinkCard(
             loading: _loading,
@@ -114,33 +113,24 @@ class _CatalogOnlineHubScreenState extends State<CatalogOnlineHubScreen> {
             onShare: _share,
             onCopy: _copy,
           ),
-          const SizedBox(height: 24),
+          const SizedBox(height: AppUI.s24),
           const Padding(
-            padding: EdgeInsets.only(left: 4, bottom: 10),
-            child: Text(
-              'Promociona tu catálogo',
-              style: TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.w700,
-                color: AppTheme.textSecondary,
-                letterSpacing: 0.5,
+            padding: EdgeInsets.only(left: AppUI.s4, bottom: AppUI.s12),
+            child: Text('Promociona tu catálogo', style: AppUI.sectionLabel),
+          ),
+          InsetGroupedList(
+            children: [
+              _ActionRow(
+                icon: Icons.campaign_rounded,
+                title: 'Envío masivo por campañas',
+                onTap: () => _go(const PromoManagementScreen()),
               ),
-            ),
-          ),
-          _ActionTile(
-            icon: Icons.campaign_rounded,
-            color: const Color(0xFF7C3AED),
-            title: 'Envío masivo por campañas',
-            subtitle: 'Mande sus promociones por WhatsApp a sus clientes',
-            onTap: () => _go(const PromoManagementScreen()),
-          ),
-          const SizedBox(height: 12),
-          _ActionTile(
-            icon: Icons.image_rounded,
-            color: const Color(0xFFEA580C),
-            title: 'Editar banner y promociones',
-            subtitle: 'Cree combos y banners con IA para su catálogo',
-            onTap: () => _go(const PromoBuilderScreen()),
+              _ActionRow(
+                icon: Icons.image_outlined,
+                title: 'Editar banner y promociones',
+                onTap: () => _go(const PromoBuilderScreen()),
+              ),
+            ],
           ),
         ],
       ),
@@ -166,187 +156,158 @@ class _LinkCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final hasLink = publicUrl != null && publicUrl!.isNotEmpty;
-    return Container(
-      padding: const EdgeInsets.all(18),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: const Color(0xFFEDE8E0)),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.04),
-            blurRadius: 14,
-            offset: const Offset(0, 6),
-          ),
-        ],
-      ),
+    return SoftCard(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
               Container(
-                width: 44,
-                height: 44,
+                width: 40,
+                height: 40,
                 decoration: BoxDecoration(
-                  color: AppTheme.success.withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(12),
+                  color: AppUI.hairline,
+                  borderRadius: BorderRadius.circular(10),
                 ),
                 child: const Icon(Icons.storefront_rounded,
-                    color: AppTheme.success, size: 24),
+                    color: AppTheme.primary, size: 22),
               ),
-              const SizedBox(width: 12),
+              const SizedBox(width: AppUI.s12),
               const Expanded(
-                child: Text(
-                  'Su catálogo en línea',
-                  style: TextStyle(
-                    fontSize: 17,
-                    fontWeight: FontWeight.w800,
-                    color: Colors.black87,
-                  ),
-                ),
+                child: Text('Su catálogo en línea', style: AppUI.bodyStrong),
               ),
             ],
           ),
-          const SizedBox(height: 14),
-          if (loading)
-            const Center(
-              child: Padding(
-                padding: EdgeInsets.symmetric(vertical: 12),
-                child: CircularProgressIndicator(),
-              ),
-            )
-          else if (hasLink) ...[
+          if (loading) ...[
+            const SizedBox(height: AppUI.s16),
+            const Center(child: CircularProgressIndicator()),
+          ] else if (hasLink) ...[
+            const SizedBox(height: AppUI.s12),
             SelectableText(
               publicUrl!,
               key: const Key('catalog_hub_url'),
-              style: const TextStyle(fontSize: 13, color: AppTheme.textSecondary),
+              style: const TextStyle(fontSize: 13, color: AppUI.inkSoft),
             ),
-            const SizedBox(height: 16),
-            // Vista previa: acción principal, llamativa.
+            const SizedBox(height: AppUI.s16),
             SizedBox(
               width: double.infinity,
               child: FilledButton.icon(
                 key: const Key('catalog_hub_preview'),
                 onPressed: onPreview,
-                icon: const Icon(Icons.visibility_rounded),
+                icon: const Icon(Icons.visibility_outlined, size: 20),
                 label: const Text('Ver mi catálogo'),
                 style: FilledButton.styleFrom(
-                  backgroundColor: AppTheme.success,
-                  minimumSize: const Size.fromHeight(50),
-                  textStyle: const TextStyle(
-                      fontSize: 16, fontWeight: FontWeight.w800),
+                  backgroundColor: AppTheme.primary,
+                  minimumSize: const Size.fromHeight(46),
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(AppUI.radius)),
+                  textStyle:
+                      const TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
                 ),
               ),
             ),
-            const SizedBox(height: 10),
+            const SizedBox(height: AppUI.s8),
             Row(
               children: [
                 Expanded(
-                  child: OutlinedButton.icon(
+                  child: _GhostButton(
                     key: const Key('catalog_hub_share'),
-                    onPressed: onShare,
-                    icon: const Icon(Icons.share_rounded, size: 20),
-                    label: const Text('Compartir'),
-                    style: OutlinedButton.styleFrom(
-                      minimumSize: const Size.fromHeight(48),
-                    ),
+                    icon: Icons.ios_share_rounded,
+                    label: 'Compartir',
+                    onTap: onShare,
                   ),
                 ),
-                const SizedBox(width: 10),
+                const SizedBox(width: AppUI.s8),
                 Expanded(
-                  child: OutlinedButton.icon(
+                  child: _GhostButton(
                     key: const Key('catalog_hub_copy'),
-                    onPressed: onCopy,
-                    icon: const Icon(Icons.link_rounded, size: 20),
-                    label: const Text('Copiar'),
-                    style: OutlinedButton.styleFrom(
-                      minimumSize: const Size.fromHeight(48),
-                    ),
+                    icon: Icons.link_rounded,
+                    label: 'Copiar',
+                    onTap: onCopy,
                   ),
                 ),
               ],
             ),
-          ] else
+          ] else ...[
+            const SizedBox(height: AppUI.s12),
             const Text(
               'Configure el enlace de su tienda en Perfil del Negocio.',
-              style: TextStyle(fontSize: 14, color: AppTheme.textSecondary),
+              style: AppUI.bodySoft,
             ),
+          ],
         ],
       ),
     );
   }
 }
 
-class _ActionTile extends StatelessWidget {
-  const _ActionTile({
+/// Botón 'ghost' — fondo transparente, borde sutil, texto ink.
+class _GhostButton extends StatelessWidget {
+  const _GhostButton({
+    super.key,
     required this.icon,
-    required this.color,
-    required this.title,
-    required this.subtitle,
+    required this.label,
     required this.onTap,
   });
 
   final IconData icon;
-  final Color color;
-  final String title;
-  final String subtitle;
+  final String label;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    return Material(
-      color: Colors.white,
-      borderRadius: BorderRadius.circular(16),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(16),
-        onTap: onTap,
-        child: Container(
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: const Color(0xFFEDE8E0)),
-          ),
-          child: Row(
-            children: [
-              Container(
-                width: 48,
-                height: 48,
-                decoration: BoxDecoration(
-                  color: color.withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(14),
-                ),
-                child: Icon(icon, color: color, size: 26),
+    return OutlinedButton.icon(
+      onPressed: onTap,
+      icon: Icon(icon, size: 19, color: AppUI.ink),
+      label: Text(label,
+          style: const TextStyle(
+              fontSize: 14, fontWeight: FontWeight.w600, color: AppUI.ink)),
+      style: OutlinedButton.styleFrom(
+        minimumSize: const Size.fromHeight(44),
+        side: const BorderSide(color: Color(0xFFE2E8F0)),
+        shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(AppUI.radius)),
+      ),
+    );
+  }
+}
+
+/// Fila de acción dentro de la lista agrupada: ícono monocromo sutil +
+/// título; sin subtítulo redundante. La interfaz se explica sola.
+class _ActionRow extends StatelessWidget {
+  const _ActionRow({
+    required this.icon,
+    required this.title,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final String title;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(
+            horizontal: AppUI.s16, vertical: AppUI.s12),
+        child: Row(
+          children: [
+            Container(
+              width: 32,
+              height: 32,
+              decoration: BoxDecoration(
+                color: AppUI.hairline,
+                borderRadius: BorderRadius.circular(8),
               ),
-              const SizedBox(width: 14),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      title,
-                      style: const TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w800,
-                        color: Colors.black87,
-                      ),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      subtitle,
-                      style: const TextStyle(
-                        fontSize: 13,
-                        color: AppTheme.textSecondary,
-                        height: 1.3,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const Icon(Icons.chevron_right_rounded,
-                  color: AppTheme.textSecondary),
-            ],
-          ),
+              child: Icon(icon, size: 18, color: AppUI.inkSoft),
+            ),
+            const SizedBox(width: AppUI.s16),
+            Expanded(child: Text(title, style: AppUI.bodyStrong)),
+            const Icon(Icons.chevron_right_rounded,
+                color: AppUI.inkSoft, size: 22),
+          ],
         ),
       ),
     );
