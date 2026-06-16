@@ -130,6 +130,32 @@ void main() {
     }
   });
 
+  test('Spec 061: inyecta "catalogo_online" aunque el catálogo backend no lo traiga',
+      () {
+    // Simula el catálogo de prod, que todavía NO tiene el módulo
+    // catalogo_online (es feature core de la app, no del catálogo F041).
+    final sinCatalogo = catalog.modules
+        .where((m) => m.key != 'catalogo_online')
+        .toList();
+    final cat = Catalog(
+      modules: sinCatalogo,
+      types: const [],
+      relations: const [],
+      overrides: const [],
+      version: 'sin-catalogo-online',
+    );
+
+    final dash = buildCatalogDashboard(
+      cat,
+      businessTypes: const ['tienda_barrio'],
+      flags: const FeatureFlags(),
+      isPro: false,
+    );
+
+    expect(_gridIds(dash.grid), contains('catalogo_online'),
+        reason: 'el botón verde debe aparecer aunque el catálogo no lo traiga');
+  });
+
   for (final bt in businessTypes) {
     for (final entry in flagSets.entries) {
       test('paridad grilla — tipo=$bt, flags=${entry.key}', () {

@@ -50,6 +50,17 @@ CatalogDashboard buildCatalogDashboard(
         break;
     }
   }
+
+  // "Mi Catálogo Online" (Spec 061) es una feature CORE de la app, no un
+  // módulo configurable por el catálogo dinámico del backend (F041). Si el
+  // catálogo del tenant aún no lo trae, lo inyectamos desde el bundle para
+  // que el botón destacado SIEMPRE aparezca en VENDER. Sin esto, los
+  // tenants con catálogo backend nunca lo veían (solo los del fallback).
+  if (!grid.any((m) => m.id == 'catalogo_online')) {
+    final co = bundleById['catalogo_online'];
+    if (co != null) grid.add(co);
+  }
+
   return CatalogDashboard(grid: grid, reel: reel);
 }
 
