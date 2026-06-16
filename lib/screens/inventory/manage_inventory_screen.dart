@@ -645,6 +645,8 @@ class _EditProductSheetState extends State<_EditProductSheet> {
   late final TextEditingController _contentCtrl;
   late final TextEditingController _skuCtrl;
   late String _presentation;
+  // Spec 063 — venta solo para mayores de 18.
+  bool _isAgeRestricted = false;
   bool _saving = false;
   bool _enhancing = false;
   String? _photoUrl;
@@ -686,6 +688,7 @@ class _EditProductSheetState extends State<_EditProductSheet> {
     _skuCtrl =
         TextEditingController(text: p['barcode'] as String? ?? '');
     _presentation = p['presentation'] as String? ?? '';
+    _isAgeRestricted = p['is_age_restricted'] as bool? ?? false;
     final photo = p['photo_url'] as String?;
     final image = p['image_url'] as String?;
     _photoUrl = (photo != null && photo.isNotEmpty) ? photo : image;
@@ -953,6 +956,8 @@ class _EditProductSheetState extends State<_EditProductSheet> {
         'presentation': _presentation,
         'content': _contentCtrl.text.trim(),
         'barcode': _skuCtrl.text.trim(),
+        // Spec 063 — venta para mayores de 18 (licor, cigarrillos).
+        'is_age_restricted': _isAgeRestricted,
       });
       HapticFeedback.mediumImpact();
       if (!mounted) return;
@@ -1479,6 +1484,25 @@ class _EditProductSheetState extends State<_EditProductSheet> {
                 controller: _contentCtrl,
                 style: const TextStyle(fontSize: 18),
                 decoration: _inputDecoration('ej: 350ml, 500g, 1L'),
+              ),
+              const SizedBox(height: 18),
+
+              // ── Spec 063 — venta solo para mayores de 18 ─────────────
+              SwitchListTile.adaptive(
+                key: const Key('product_age_restricted_switch'),
+                contentPadding: EdgeInsets.zero,
+                value: _isAgeRestricted,
+                onChanged: (v) => setState(() => _isAgeRestricted = v),
+                secondary: const Icon(Icons.no_adult_content_rounded,
+                    color: AppTheme.textSecondary),
+                title: const Text(
+                  'Solo para mayores de 18',
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+                ),
+                subtitle: const Text(
+                  'Licor, cigarrillos. El catálogo pedirá confirmar edad.',
+                  style: TextStyle(fontSize: 13),
+                ),
               ),
               const SizedBox(height: 32),
 
