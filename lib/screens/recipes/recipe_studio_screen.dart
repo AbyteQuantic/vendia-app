@@ -27,6 +27,7 @@ import '../../services/app_error.dart';
 import '../../services/auth_service.dart';
 import '../../theme/app_theme.dart';
 import '../../theme/app_ui.dart';
+import '../inventory/ingredients_screen.dart';
 
 String _fmtQty(double q) =>
     q == q.roundToDouble() ? q.toInt().toString() : q.toString();
@@ -89,6 +90,7 @@ class _RecipeStudioScreenState extends State<RecipeStudioScreen> {
   bool _loading = true;
   bool _saving = false;
   bool _aiBusy = false;
+  bool _photoBusy = false; // foto del plato generándose/subiéndose
   String? _error;
 
   bool get _isEdit => widget.editing != null;
@@ -138,6 +140,19 @@ class _RecipeStudioScreenState extends State<RecipeStudioScreen> {
         _error = 'No pudimos cargar sus insumos.';
         _loading = false;
       });
+    }
+  }
+
+  /// Refresca SOLO la lista de insumos disponibles (tras volver de registrar
+  /// insumos), sin re-aplicar initial/editing — así NO se pierde lo que el
+  /// tendero ya escribió en el plato.
+  Future<void> _refreshAvailable() async {
+    try {
+      final raw = await _api.fetchIngredients();
+      if (!mounted) return;
+      setState(() => _available = raw.map(Ingredient.fromJson).toList());
+    } catch (_) {
+      /* deja los insumos actuales */
     }
   }
 
@@ -312,6 +327,7 @@ class _RecipeStudioScreenState extends State<RecipeStudioScreen> {
           bottom: MediaQuery.of(ctx).viewInsets.bottom + AppUI.s16,
         ),
         child: Column(mainAxisSize: MainAxisSize.min, children: [
+          const _SheetHandle(),
           const Row(children: [
             Icon(Icons.auto_awesome_rounded, color: AppTheme.primary),
             SizedBox(width: 8),
@@ -370,7 +386,10 @@ class _RecipeStudioScreenState extends State<RecipeStudioScreen> {
       _snack('Escriba el nombre del plato primero.', color: AppTheme.warning);
       return;
     }
-    setState(() => _aiBusy = true);
+    setState(() {
+      _aiBusy = true;
+      _photoBusy = true;
+    });
     try {
       final url = await _api.generateMenuImage(
         name: name,
@@ -393,7 +412,12 @@ class _RecipeStudioScreenState extends State<RecipeStudioScreen> {
     } catch (_) {
       _snack('No pudimos generar la foto.', color: AppTheme.error);
     } finally {
-      if (mounted) setState(() => _aiBusy = false);
+      if (mounted) {
+        setState(() {
+          _aiBusy = false;
+          _photoBusy = false;
+        });
+      }
     }
   }
 
@@ -402,7 +426,10 @@ class _RecipeStudioScreenState extends State<RecipeStudioScreen> {
     final XFile? photo = await picker.pickImage(
         source: ImageSource.gallery, imageQuality: 80, maxWidth: 1600);
     if (photo == null || !mounted) return;
-    setState(() => _aiBusy = true);
+    setState(() {
+      _aiBusy = true;
+      _photoBusy = true;
+    });
     try {
       final bytes = await photo.readAsBytes();
       final url = await _api.enhanceMenuImage(
@@ -426,7 +453,12 @@ class _RecipeStudioScreenState extends State<RecipeStudioScreen> {
     } catch (_) {
       _snack('No pudimos subir la foto.', color: AppTheme.error);
     } finally {
-      if (mounted) setState(() => _aiBusy = false);
+      if (mounted) {
+        setState(() {
+          _aiBusy = false;
+          _photoBusy = false;
+        });
+      }
     }
   }
 
@@ -731,16 +763,28 @@ class _RecipeStudioScreenState extends State<RecipeStudioScreen> {
           color: AppUI.pageBg,
           borderRadius: BorderRadius.circular(AppUI.radiusSm),
           border: Border.all(color: AppUI.border),
-          image: hasPhoto
+          image: hasPhoto && !_photoBusy
               ? DecorationImage(
                   image: NetworkImage(_photoUrl!), fit: BoxFit.cover)
               : null,
         ),
-        child: hasPhoto
-            ? null
-            : const Center(
-                child: Icon(Icons.restaurant_rounded,
-                    size: 32, color: AppUI.inkSoft)),
+        child: _photoBusy
+            ? const Center(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    CircularProgressIndicator(strokeWidth: 2),
+                    SizedBox(height: AppUI.s8),
+                    Text('Preparando la foto… puede tardar unos segundos',
+                        textAlign: TextAlign.center, style: AppUI.bodySoft),
+                  ],
+                ),
+              )
+            : (hasPhoto
+                ? null
+                : const Center(
+                    child: Icon(Icons.restaurant_rounded,
+                        size: 32, color: AppUI.inkSoft))),
       ),
       const SizedBox(height: AppUI.s8),
       Wrap(spacing: AppUI.s8, runSpacing: AppUI.s8, children: [
@@ -774,7 +818,13 @@ class _RecipeStudioScreenState extends State<RecipeStudioScreen> {
           GhostButton(
               icon: Icons.inventory_2_rounded,
               label: 'Registrar mis insumos',
-              onPressed: () => Navigator.of(context).pop()),
+              // PUSH (no pop): conserva el plato que está armando. Al volver,
+              // refresca la lista de insumos sin perder lo ya escrito.
+              onPressed: () async {
+                await Navigator.of(context).push(MaterialPageRoute(
+                    builder: (_) => const IngredientsScreen()));
+                await _refreshAvailable();
+              }),
         ])
       else ...[
         // Encabezados de columna (se lee como receta).
@@ -1100,6 +1150,27 @@ class _RecipeStudioScreenState extends State<RecipeStudioScreen> {
       );
 }
 
+/// Manija superior estándar de los bottom sheets (UI normalizada).
+class _SheetHandle extends StatelessWidget {
+  const _SheetHandle();
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: AppUI.s12),
+      child: Center(
+        child: Container(
+          width: 40,
+          height: 4,
+          decoration: BoxDecoration(
+            color: AppUI.border,
+            borderRadius: BorderRadius.circular(2),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 /// Hoja Spotlight: búsqueda rápida de insumos (reemplaza el dropdown infinito).
 class _SpotlightSheet extends StatefulWidget {
   final List<Ingredient> pool;
@@ -1129,8 +1200,14 @@ class _SpotlightSheetState extends State<_SpotlightSheet> {
           bottom: MediaQuery.of(context).viewInsets.bottom,
           left: AppUI.s16,
           right: AppUI.s16,
-          top: AppUI.s16),
+          top: AppUI.s8),
       child: Column(mainAxisSize: MainAxisSize.min, children: [
+        const _SheetHandle(),
+        const Align(
+          alignment: Alignment.centerLeft,
+          child: Text('Escoja un insumo', style: AppUI.title),
+        ),
+        const SizedBox(height: AppUI.s12),
         TextField(
           key: const Key('spotlight_search'),
           controller: _searchCtrl,
