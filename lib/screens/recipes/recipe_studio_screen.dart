@@ -475,7 +475,7 @@ class _RecipeStudioScreenState extends State<RecipeStudioScreen> {
           color: AppTheme.primary);
       return;
     }
-    final picked = await showModalBottomSheet<Ingredient>(
+    final result = await showModalBottomSheet<Object>(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.white,
@@ -484,8 +484,52 @@ class _RecipeStudioScreenState extends State<RecipeStudioScreen> {
       ),
       builder: (ctx) => _SpotlightSheet(pool: pool),
     );
-    if (picked != null) {
-      setState(() => _lines.add(_RecipeLine(picked)));
+    if (!mounted || result == null) return;
+    if (result is Ingredient) {
+      setState(() => _lines.add(_RecipeLine(result)));
+    } else if (result is _CreateNewIngredient) {
+      // No bloqueante: el tendero recordó un insumo mientras pensaba la
+      // receta → lo crea aquí mismo y queda agregado al plato.
+      await _createIngredientInline(prefillName: result.query);
+    }
+  }
+
+  /// Crea un insumo SIN salir del Studio (hoja rápida) y lo agrega al plato.
+  /// Reusa POST /ingredients; el costeo sigue derivándose igual.
+  Future<void> _createIngredientInline({String prefillName = ''}) async {
+    final data = await showModalBottomSheet<Map<String, dynamic>>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(AppUI.radius)),
+      ),
+      builder: (ctx) => _CreateIngredientSheet(prefillName: prefillName),
+    );
+    if (data == null || !mounted) return;
+    try {
+      final created = await _api.createIngredient({
+        'name': data['name'],
+        'unit': data['unit'],
+        'unit_cost': data['unit_cost'],
+        'stock': 0,
+        'min_stock': 0,
+      });
+      final ing = Ingredient.fromJson(created);
+      if (!mounted) return;
+      setState(() {
+        _available.add(ing);
+        if (!_lines.any((l) => l.ingredient.uuid == ing.uuid)) {
+          _lines.add(_RecipeLine(ing));
+        }
+      });
+      _snack('Insumo "${ing.name}" creado y agregado al plato.',
+          color: AppTheme.success);
+    } on AppError catch (e) {
+      _snack(e.message, color: AppTheme.error);
+    } catch (_) {
+      _snack('No pudimos crear el insumo. Intente de nuevo.',
+          color: AppTheme.error);
     }
   }
 
@@ -812,19 +856,31 @@ class _RecipeStudioScreenState extends State<RecipeStudioScreen> {
       const SizedBox(height: AppUI.s12),
       if (noInsumos)
         Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          const Text('Aún no tiene insumos. Regístrelos primero para poder costear.',
-              style: TextStyle(fontSize: 14, color: AppTheme.warning)),
+          const Text(
+              'Aún no tiene insumos. Créelos aquí mismo cuando los recuerde — '
+              'no tiene que salir del plato.',
+              style: AppUI.bodySoft),
           const SizedBox(height: AppUI.s8),
           GhostButton(
-              icon: Icons.inventory_2_rounded,
-              label: 'Registrar mis insumos',
-              // PUSH (no pop): conserva el plato que está armando. Al volver,
-              // refresca la lista de insumos sin perder lo ya escrito.
+              icon: Icons.add_rounded,
+              label: 'Crear insumo',
+              color: AppTheme.primary,
+              onPressed: () => _createIngredientInline()),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: TextButton.icon(
+              icon: const Icon(Icons.inventory_2_rounded,
+                  size: 16, color: AppUI.inkSoft),
+              label: const Text('Administrar en Inventario',
+                  style: TextStyle(fontSize: 13, color: AppUI.inkSoft)),
+              // PUSH (no pop): conserva el plato. Al volver, refresca insumos.
               onPressed: () async {
                 await Navigator.of(context).push(MaterialPageRoute(
                     builder: (_) => const IngredientsScreen()));
                 await _refreshAvailable();
-              }),
+              },
+            ),
+          ),
         ])
       else ...[
         // Encabezados de columna (se lee como receta).
@@ -1222,23 +1278,166 @@ class _SpotlightSheetState extends State<_SpotlightSheet> {
         ),
         const SizedBox(height: AppUI.s8),
         Flexible(
-          child: ListView.builder(
+          child: ListView(
             shrinkWrap: true,
-            itemCount: results.length,
-            itemBuilder: (_, i) {
-              final ing = results[i];
-              return ListTile(
+            children: [
+              for (final ing in results)
+                ListTile(
+                  dense: true,
+                  title: Text(ing.name, style: AppUI.bodyStrong),
+                  trailing: Text(
+                      '\$${ing.unitCost.round()} / ${ing.unitLabel.toLowerCase()}',
+                      style: AppUI.bodySoft),
+                  onTap: () => Navigator.of(context).pop(ing),
+                ),
+              // Crear el insumo que el tendero está buscando, sin salir.
+              ListTile(
                 dense: true,
-                title: Text(ing.name, style: AppUI.bodyStrong),
-                trailing: Text(
-                    '\$${ing.unitCost.round()} / ${ing.unitLabel.toLowerCase()}',
-                    style: AppUI.bodySoft),
-                onTap: () => Navigator.of(context).pop(ing),
-              );
-            },
+                leading: const Icon(Icons.add_circle_outline_rounded,
+                    color: AppTheme.primary),
+                title: Text(
+                  _q.trim().isEmpty
+                      ? 'Crear insumo nuevo'
+                      : 'Crear "${_q.trim()}"',
+                  style: const TextStyle(
+                      fontWeight: FontWeight.w600, color: AppTheme.primary),
+                ),
+                onTap: () =>
+                    Navigator.of(context).pop(_CreateNewIngredient(_q.trim())),
+              ),
+            ],
           ),
         ),
         const SizedBox(height: AppUI.s8),
+      ]),
+    );
+  }
+}
+
+/// Señal que devuelve el Spotlight cuando el tendero quiere CREAR un insumo
+/// nuevo (en vez de escoger uno existente). `query` es lo que venía buscando.
+class _CreateNewIngredient {
+  final String query;
+  const _CreateNewIngredient(this.query);
+}
+
+/// Hoja rápida para CREAR un insumo sin salir del Studio (no bloqueante).
+/// Devuelve {name, unit, unit_cost} por Navigator.pop; el Studio hace el POST.
+class _CreateIngredientSheet extends StatefulWidget {
+  final String prefillName;
+  const _CreateIngredientSheet({this.prefillName = ''});
+
+  @override
+  State<_CreateIngredientSheet> createState() => _CreateIngredientSheetState();
+}
+
+class _CreateIngredientSheetState extends State<_CreateIngredientSheet> {
+  late final TextEditingController _nameCtrl =
+      TextEditingController(text: widget.prefillName);
+  final _costCtrl = TextEditingController();
+  String _unit = 'unidad';
+
+  @override
+  void dispose() {
+    _nameCtrl.dispose();
+    _costCtrl.dispose();
+    super.dispose();
+  }
+
+  bool get _valid {
+    final cost = double.tryParse(_costCtrl.text.replaceAll(',', '.')) ?? 0;
+    return _nameCtrl.text.trim().isNotEmpty && cost > 0;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: EdgeInsets.only(
+        left: AppUI.s16,
+        right: AppUI.s16,
+        top: AppUI.s8,
+        bottom: MediaQuery.of(context).viewInsets.bottom + AppUI.s16,
+      ),
+      child: Column(mainAxisSize: MainAxisSize.min, children: [
+        const _SheetHandle(),
+        const Align(
+          alignment: Alignment.centerLeft,
+          child: Text('Nuevo insumo', style: AppUI.title),
+        ),
+        const SizedBox(height: AppUI.s4),
+        const Align(
+          alignment: Alignment.centerLeft,
+          child: Text('Quedará en su inventario y agregado a este plato.',
+              style: AppUI.bodySoft),
+        ),
+        const SizedBox(height: AppUI.s16),
+        TextField(
+          controller: _nameCtrl,
+          autofocus: widget.prefillName.isEmpty,
+          textCapitalization: TextCapitalization.sentences,
+          onChanged: (_) => setState(() {}),
+          decoration: InputDecoration(
+            labelText: 'Nombre del insumo',
+            helperText: 'Ej: Arroz, Aceite, Carne',
+            floatingLabelBehavior: FloatingLabelBehavior.always,
+            border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(AppUI.radiusSm)),
+          ),
+        ),
+        const SizedBox(height: AppUI.s16),
+        const Align(
+          alignment: Alignment.centerLeft,
+          child: Text('Unidad de medida', style: AppUI.sectionLabel),
+        ),
+        const SizedBox(height: AppUI.s8),
+        Wrap(
+          spacing: AppUI.s8,
+          children: [
+            for (final u in Ingredient.validUnits)
+              ChoiceChip(
+                label: Text(Ingredient.unitLabels[u] ?? u),
+                selected: _unit == u,
+                onSelected: (_) => setState(() => _unit = u),
+              ),
+          ],
+        ),
+        const SizedBox(height: AppUI.s16),
+        TextField(
+          controller: _costCtrl,
+          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+          onChanged: (_) => setState(() {}),
+          decoration: InputDecoration(
+            labelText: 'Costo por ${(Ingredient.unitLabels[_unit] ?? _unit).toLowerCase()}',
+            helperText: 'Lo que le cuesta a usted. Ej: 3.000',
+            floatingLabelBehavior: FloatingLabelBehavior.always,
+            prefixText: '\$ ',
+            border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(AppUI.radiusSm)),
+          ),
+        ),
+        const SizedBox(height: AppUI.s16),
+        SizedBox(
+          width: double.infinity,
+          height: 48,
+          child: FilledButton.icon(
+            style: FilledButton.styleFrom(
+              backgroundColor: AppTheme.primary,
+              disabledBackgroundColor: AppTheme.primary.withValues(alpha: 0.4),
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(AppUI.radiusSm)),
+            ),
+            onPressed: _valid
+                ? () => Navigator.of(context).pop({
+                      'name': _nameCtrl.text.trim(),
+                      'unit': _unit,
+                      'unit_cost':
+                          double.parse(_costCtrl.text.replaceAll(',', '.')),
+                    })
+                : null,
+            icon: const Icon(Icons.check_rounded),
+            label: const Text('Crear y agregar al plato'),
+          ),
+        ),
       ]),
     );
   }

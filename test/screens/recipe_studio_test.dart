@@ -30,6 +30,22 @@ class _FakeApi extends ApiService {
     return {...data, 'id': uuid, 'product_id': 'prod-1'};
   }
 
+  final List<Map<String, dynamic>> createdIngredients = [];
+
+  @override
+  Future<Map<String, dynamic>> createIngredient(
+      Map<String, dynamic> data) async {
+    createdIngredients.add(data);
+    return {
+      'id': 'ing-${createdIngredients.length}',
+      'name': data['name'],
+      'unit': data['unit'],
+      'unit_cost': data['unit_cost'],
+      'stock': 0,
+      'min_stock': 0,
+    };
+  }
+
   @override
   Future<Map<String, dynamic>> fetchRecipeCost(String uuid) async =>
       {'total_cost': 0};
@@ -154,5 +170,38 @@ void main() {
     expect(api.updated.first.key, 'rec-9');
     expect(api.created, isEmpty); // edición NO crea
     expect(api.updated.first.value['ingredients'], isNotEmpty);
+  });
+
+  testWidgets('crear insumo inline (no bloqueante) lo agrega al plato',
+      (tester) async {
+    tester.view.physicalSize = const Size(390, 1200);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    // Sin insumos registrados → debe ofrecer crearlos sin salir.
+    final api = _FakeApi()..ingredients = [];
+    await tester.pumpWidget(MaterialApp(home: RecipeStudioScreen(api: api)));
+    await tester.pumpAndSettle();
+
+    await tester.ensureVisible(find.text('Crear insumo'));
+    await tester.tap(find.text('Crear insumo'));
+    await tester.pumpAndSettle();
+
+    // Se abre la hoja rápida (no navega afuera).
+    expect(find.text('Nuevo insumo'), findsOneWidget);
+    await tester.enterText(
+        find.widgetWithText(TextField, 'Nombre del insumo'), 'Cebolla');
+    await tester.enterText(
+        find.widgetWithText(TextField, 'Costo por unidades'), '500');
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Crear y agregar al plato'));
+    await tester.pumpAndSettle();
+
+    expect(api.createdIngredients.length, 1);
+    expect(api.createdIngredients.first['name'], 'Cebolla');
+    // Queda agregado como línea del plato.
+    expect(find.text('Cebolla'), findsWidgets);
   });
 }
