@@ -74,6 +74,103 @@ abstract final class AppUI {
     color: inkSoft,
     height: 1.35,
   );
+
+  // ── Densidad "SaaS Professional" (Spec 065 — Recipe Studio) ──
+  /// Borde sobrio de 1px para tablas/paneles de alta densidad (estilo ERP).
+  static const Color border = Color(0xFFE2E8F0);
+
+  /// Radio pequeño (6px) para contenedores densos — más "industrial" que el 12.
+  static const double radiusSm = 6;
+
+  /// Tarjeta blanca con BORDE de 1px (no sombra): la densidad pro del Studio.
+  static BoxDecoration borderedCard({double r = radiusSm}) => BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(r),
+        border: Border.all(color: border, width: 1),
+      );
+
+  /// Cifras tabulares: alinea los números en columnas de costo.
+  static const TextStyle tabular = TextStyle(
+    fontSize: 14,
+    color: ink,
+    fontFeatures: [FontFeature.tabularFigures()],
+  );
+
+  static const TextStyle tabularStrong = TextStyle(
+    fontSize: 14,
+    fontWeight: FontWeight.w600,
+    color: ink,
+    fontFeatures: [FontFeature.tabularFigures()],
+  );
+}
+
+/// Botón de acción secundaria (Ghost): ícono + texto, sin relleno de color.
+/// Reemplaza los botones gigantes de color que rompen la densidad pro.
+class GhostButton extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final VoidCallback? onPressed;
+  final Color? color;
+
+  const GhostButton({
+    super.key,
+    required this.icon,
+    required this.label,
+    required this.onPressed,
+    this.color,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final c = color ?? AppUI.ink;
+    return TextButton.icon(
+      onPressed: onPressed,
+      icon: Icon(icon, size: 18, color: c),
+      label: Text(label,
+          style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: c)),
+      style: TextButton.styleFrom(
+        foregroundColor: c,
+        padding: const EdgeInsets.symmetric(horizontal: AppUI.s12, vertical: AppUI.s8),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(AppUI.radiusSm),
+          side: const BorderSide(color: AppUI.border),
+        ),
+      ),
+    );
+  }
+}
+
+/// Card de resumen con glassmorphism real (blur + blanco translúcido + borde
+/// claro). Para el resumen de costeo del Studio, que flota sobre el contenido.
+class GlassCard extends StatelessWidget {
+  final Widget child;
+  final EdgeInsetsGeometry padding;
+
+  const GlassCard({
+    super.key,
+    required this.child,
+    this.padding = const EdgeInsets.all(AppUI.s16),
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(AppUI.radius),
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
+        child: Container(
+          padding: padding,
+          decoration: BoxDecoration(
+            color: Colors.white.withValues(alpha: 0.72),
+            borderRadius: BorderRadius.circular(AppUI.radius),
+            border: Border.all(color: Colors.white.withValues(alpha: 0.6)),
+            boxShadow: AppUI.shadow,
+          ),
+          child: child,
+        ),
+      ),
+    );
+  }
 }
 
 /// Tarjeta blanca pura con sombra difusa (sin bordes pesados).

@@ -1067,6 +1067,59 @@ class ApiService {
     }
   }
 
+  /// Spec 065 — Recipe Studio: dicta una receta por voz. Envía el audio
+  /// (BYTES, web-safe) a `/ai/voice-recipe` y devuelve la receta estructurada
+  /// `{name, description, yield, prep_time, ingredients:[{name,quantity,unit}],
+  /// steps:[...]}` para precargar el Studio. El usuario siempre revisa/edita.
+  Future<Map<String, dynamic>> voiceRecipe({
+    required Uint8List audioBytes,
+    required String mimeType,
+    String filename = 'vendia_recipe_voice',
+  }) async {
+    try {
+      final formData = FormData.fromMap({
+        'audio_file': MultipartFile.fromBytes(
+          audioBytes,
+          filename: filename,
+          contentType: DioMediaType.parse(mimeType),
+        ),
+      });
+      final response = await _dio.post(
+        '/api/v1/ai/voice-recipe',
+        data: formData,
+        options: Options(receiveTimeout: const Duration(seconds: 60)),
+      );
+      return _extractData(response);
+    } on DioException catch (e) {
+      throw AppError.fromDioException(e);
+    }
+  }
+
+  /// Spec 065 — Asistente IA de recetas (texto): completa o refina. Manda el
+  /// nombre, el borrador actual y opcionalmente instrucciones libres
+  /// ("hazla más económica", "para 10 porciones") y devuelve la receta
+  /// refinada en el mismo formato que [voiceRecipe].
+  Future<Map<String, dynamic>> recipeAssist({
+    required String name,
+    String instructions = '',
+    Map<String, dynamic>? current,
+  }) async {
+    try {
+      final response = await _dio.post(
+        '/api/v1/ai/recipe-assist',
+        data: {
+          'name': name,
+          if (instructions.isNotEmpty) 'instructions': instructions,
+          if (current != null) 'current': current,
+        },
+        options: Options(receiveTimeout: const Duration(seconds: 60)),
+      );
+      return _extractData(response);
+    } on DioException catch (e) {
+      throw AppError.fromDioException(e);
+    }
+  }
+
   Future<List<Map<String, dynamic>>> fetchInventoryAlerts() async {
     try {
       final response =

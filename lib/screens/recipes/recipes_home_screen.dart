@@ -16,10 +16,10 @@ import '../../services/api_service.dart';
 import '../../services/app_error.dart';
 import '../../services/auth_service.dart';
 import '../../theme/app_theme.dart';
-import '../inventory/voice_inventory_screen.dart';
 import 'menu_import_screen.dart';
 import 'recipe_list_screen.dart';
-import 'recipe_step1_screen.dart';
+import 'recipe_studio_screen.dart';
+import 'recipe_voice_screen.dart';
 
 class RecipesHomeScreen extends StatelessWidget {
   const RecipesHomeScreen({super.key});
@@ -176,7 +176,7 @@ class RecipesHomeScreen extends StatelessWidget {
             color: AppTheme.primary,
             title: 'Crear plato o receta',
             subtitle: 'Arme un plato paso a paso y mire su costo y ganancia.',
-            onTap: () => _go(context, const RecipeStep1Screen()),
+            onTap: () => _go(context, const RecipeStudioScreen()),
           ),
           const SizedBox(height: 12),
           _OptionCard(
@@ -184,8 +184,8 @@ class RecipesHomeScreen extends StatelessWidget {
             icon: Icons.mic_rounded,
             color: const Color(0xFF7C3AED),
             title: 'Dictar receta desde el micrófono',
-            subtitle: 'Diga sus platos en voz alta y la IA los organiza.',
-            onTap: () => _go(context, const VoiceInventoryScreen()),
+            subtitle: 'Diga su receta en voz alta y la IA la organiza.',
+            onTap: () => _go(context, const RecipeVoiceScreen()),
           ),
         ],
       ),
