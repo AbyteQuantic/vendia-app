@@ -13,6 +13,7 @@ import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../../models/ingredient.dart';
+import '../../models/recipe.dart';
 import '../../services/api_service.dart';
 import '../../services/app_error.dart';
 import '../../services/auth_service.dart';
@@ -40,9 +41,13 @@ class RecipeStudioScreen extends StatefulWidget {
   /// Prefill opcional desde voz/IA: {name, description, yield, prep_time,
   /// ingredients:[{name,quantity,unit}], steps:[String]}.
   final Map<String, dynamic>? initial;
+
+  /// Si viene una receta, el Studio entra en modo EDICIÓN (precarga todo y
+  /// guarda con updateRecipe en vez de createRecipe).
+  final Recipe? editing;
   final ApiService? api;
 
-  const RecipeStudioScreen({super.key, this.initial, this.api});
+  const RecipeStudioScreen({super.key, this.initial, this.editing, this.api});
 
   @override
   State<RecipeStudioScreen> createState() => _RecipeStudioScreenState();
@@ -59,7 +64,7 @@ class _RecipeStudioScreenState extends State<RecipeStudioScreen> {
   final _yieldCtrl = TextEditingController();
   final _timeCtrl = TextEditingController();
   final _instructionsCtrl = TextEditingController();
-  final String _emoji = '🍽️';
+  String _emoji = '🍽️';
 
   final List<_RecipeLine> _lines = [];
   final List<_StepDraft> _steps = [];
@@ -105,6 +110,7 @@ class _RecipeStudioScreenState extends State<RecipeStudioScreen> {
         _available = raw.map(Ingredient.fromJson).toList();
         _loading = false;
       });
+      if (widget.editing != null) _applyEditing(widget.editing!);
       if (widget.initial != null) _applyInitial(widget.initial!);
     } catch (e, stack) {
       developer.log('Error al cargar insumos (Studio)',
@@ -183,6 +189,45 @@ class _RecipeStudioScreenState extends State<RecipeStudioScreen> {
   }
 
   static final Ingredient _sentinel = Ingredient(uuid: '__none__', name: '');
+
+  /// Modo EDICIÓN: precarga todos los campos de una receta existente.
+  void _applyEditing(Recipe r) {
+    setState(() {
+      _nameCtrl.text = r.productName;
+      _priceCtrl.text = r.salePrice.round().toString();
+      _categoryCtrl.text = r.category;
+      _emoji = r.emoji ?? _emoji;
+      _photoUrl = (r.photoUrl?.isNotEmpty ?? false) ? r.photoUrl : null;
+      _yieldCtrl.text = r.recipeYield;
+      _timeCtrl.text = r.prepTime;
+      for (final s in _steps) {
+        s.controller.dispose();
+      }
+      _steps
+        ..clear()
+        ..addAll(r.prepSteps.map((m) => _StepDraft(text: '${m['text'] ?? ''}')
+          ..photoUrl = (m['photo_url'] as String?)?.isNotEmpty ?? false
+              ? m['photo_url'] as String
+              : null));
+      // Insumos costeados: matchea por uuid contra los insumos vivos (costo
+      // actual); si el insumo fue borrado, reconstruye desde el snapshot de la
+      // receta para no perder la línea al editar.
+      _lines.clear();
+      for (final ing in r.ingredients) {
+        final live = _available.firstWhere(
+          (i) => i.uuid == ing.ingredientUuid,
+          orElse: () => _sentinel,
+        );
+        final ingredient = identical(live, _sentinel)
+            ? Ingredient(
+                uuid: ing.ingredientUuid,
+                name: ing.productName,
+                unitCost: ing.unitCost)
+            : live;
+        _lines.add(_RecipeLine(ingredient, ing.quantity));
+      }
+    });
+  }
 
   // ── Asistente IA (texto): completar / refinar ──────────────────────────
   Map<String, dynamic> _currentRecipeMap() => {
@@ -377,8 +422,10 @@ class _RecipeStudioScreenState extends State<RecipeStudioScreen> {
           'description': _descCtrl.text.trim(),
         if (_portionCtrl.text.trim().isNotEmpty)
           'portion': _portionCtrl.text.trim(),
-        if (_yieldCtrl.text.trim().isNotEmpty) 'yield': _yieldCtrl.text.trim(),
-        if (_timeCtrl.text.trim().isNotEmpty) 'prep_time': _timeCtrl.text.trim(),
+        // Siempre enviamos yield/prep_time (aunque vacíos) para que al EDITAR
+        // se puedan limpiar; en create un '' es inocuo (default '').
+        'yield': _yieldCtrl.text.trim(),
+        'prep_time': _timeCtrl.text.trim(),
         'prep_steps': _steps
             .where((s) => s.controller.text.trim().isNotEmpty)
             .map((s) => {
@@ -391,10 +438,14 @@ class _RecipeStudioScreenState extends State<RecipeStudioScreen> {
                 {'ingredient_uuid': l.ingredient.uuid, 'quantity': l.quantity})
             .toList(),
       };
-      final created = await _api.createRecipe(payload);
 
-      // Foto cruda sin mejorar → subir al producto recién creado (best-effort).
-      final productId = created['product_id'] as String?;
+      final isEdit = widget.editing != null;
+      final result = isEdit
+          ? await _api.updateRecipe(widget.editing!.uuid, payload)
+          : await _api.createRecipe(payload);
+
+      // Foto cruda sin mejorar → subir al producto vendible (best-effort).
+      final productId = result['product_id'] as String?;
       if (_localPhoto != null && productId != null && productId.isNotEmpty) {
         try {
           await _api.uploadProductPhoto(productId, _localPhoto!);
@@ -404,7 +455,9 @@ class _RecipeStudioScreenState extends State<RecipeStudioScreen> {
         }
       }
       // Costo autoritativo (best-effort, no bloquea).
-      final uuid = (created['id'] ?? created['uuid']) as String?;
+      final uuid = isEdit
+          ? widget.editing!.uuid
+          : (result['id'] ?? result['uuid']) as String?;
       if (uuid != null && uuid.isNotEmpty) {
         try {
           await _api.fetchRecipeCost(uuid);
@@ -414,7 +467,9 @@ class _RecipeStudioScreenState extends State<RecipeStudioScreen> {
       HapticFeedback.heavyImpact();
       Navigator.of(context).popUntil((r) => r.isFirst);
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text('"${_nameCtrl.text.trim()}" guardado en el menú'),
+        content: Text(isEdit
+            ? '"${_nameCtrl.text.trim()}" actualizado'
+            : '"${_nameCtrl.text.trim()}" guardado en el menú'),
         backgroundColor: AppTheme.success,
       ));
     } on AppError catch (e) {
@@ -451,7 +506,7 @@ class _RecipeStudioScreenState extends State<RecipeStudioScreen> {
         backgroundColor: AppUI.pageBg,
         surfaceTintColor: Colors.transparent,
         elevation: 0,
-        title: const Text('Recipe Studio',
+        title: Text(widget.editing != null ? 'Editar receta' : 'Recipe Studio',
             style: AppUI.title, overflow: TextOverflow.ellipsis),
         actions: [
           TextButton.icon(

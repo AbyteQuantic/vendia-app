@@ -2324,6 +2324,19 @@ class ApiService {
     }
   }
 
+  /// Spec 065 — edita una receta existente (PATCH /recipes/:uuid). Acepta los
+  /// mismos campos que createRecipe (incluidos prep_steps/yield/prep_time y,
+  /// opcionalmente, el set de `ingredients` a reemplazar).
+  Future<Map<String, dynamic>> updateRecipe(
+      String uuid, Map<String, dynamic> data) async {
+    try {
+      final response = await _dio.patch('/api/v1/recipes/$uuid', data: data);
+      return _extractData(response);
+    } on DioException catch (e) {
+      throw AppError.fromDioException(e);
+    }
+  }
+
   Future<Map<String, dynamic>> fetchRecipeCost(String uuid) async {
     try {
       final response = await _dio.get('/api/v1/recipes/$uuid/cost');

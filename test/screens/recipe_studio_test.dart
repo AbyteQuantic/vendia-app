@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 
+import 'package:vendia_pos/models/recipe.dart';
 import 'package:vendia_pos/services/api_service.dart';
 import 'package:vendia_pos/services/auth_service.dart';
 import 'package:vendia_pos/screens/recipes/recipe_studio_screen.dart';
@@ -11,6 +12,7 @@ class _FakeApi extends ApiService {
   _FakeApi() : super(AuthService());
   List<Map<String, dynamic>> ingredients = [];
   final List<Map<String, dynamic>> created = [];
+  final List<MapEntry<String, Map<String, dynamic>>> updated = [];
 
   @override
   Future<List<Map<String, dynamic>>> fetchIngredients() async => ingredients;
@@ -19,6 +21,13 @@ class _FakeApi extends ApiService {
   Future<Map<String, dynamic>> createRecipe(Map<String, dynamic> data) async {
     created.add(data);
     return {...data, 'id': 'recipe-1', 'product_id': 'prod-1'};
+  }
+
+  @override
+  Future<Map<String, dynamic>> updateRecipe(
+      String uuid, Map<String, dynamic> data) async {
+    updated.add(MapEntry(uuid, data));
+    return {...data, 'id': uuid, 'product_id': 'prod-1'};
   }
 
   @override
@@ -100,5 +109,45 @@ void main() {
     expect(find.text('Pollo'), findsWidgets);
     // Pasos precargados.
     expect(find.text('Sofría el pollo'), findsOneWidget);
+  });
+
+  testWidgets('modo EDICIÓN precarga la receta y guarda con updateRecipe',
+      (tester) async {
+    final api = _FakeApi()..ingredients = [_ing('i1', 'Arroz', cost: 1000)];
+    final recipe = Recipe(
+      uuid: 'rec-9',
+      productName: 'Arroz Editado',
+      salePrice: 9000,
+      category: 'Almuerzos',
+      recipeYield: '4 porciones',
+      prepTime: '20 min',
+      prepSteps: const [
+        {'text': 'Paso uno', 'photo_url': ''}
+      ],
+      ingredients: [
+        RecipeIngredient(
+            ingredientUuid: 'i1',
+            productName: 'Arroz',
+            quantity: 3,
+            unitCost: 1000),
+      ],
+    );
+
+    await tester.pumpWidget(
+        MaterialApp(home: RecipeStudioScreen(api: api, editing: recipe)));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Editar receta'), findsOneWidget);
+    expect(find.text('Paso uno'), findsOneWidget);
+    // Costo precargado: 3 × 1.000 = 3.000.
+    expect(find.text('\$3.000'), findsWidgets);
+
+    await tester.tap(find.text('Guardar'));
+    await tester.pumpAndSettle();
+
+    expect(api.updated.length, 1);
+    expect(api.updated.first.key, 'rec-9');
+    expect(api.created, isEmpty); // edición NO crea
+    expect(api.updated.first.value['ingredients'], isNotEmpty);
   });
 }

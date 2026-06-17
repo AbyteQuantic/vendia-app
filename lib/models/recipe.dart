@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 /// Recipe model for VendIA POS system.
 /// Transforms raw ingredients into sellable menu products (e.g., Hot Dog).
 class Recipe {
@@ -8,6 +10,14 @@ class Recipe {
   final String? emoji;
   final String? photoUrl;
   final List<RecipeIngredient> ingredients;
+  // Spec 065 — metadatos de preparación (Recipe Studio). `yield` es palabra
+  // reservada en Dart, así que el campo se llama recipeYield.
+  final String recipeYield;
+  final String prepTime;
+
+  /// Pasos de preparación: lista de {text, photo_url}. El backend los guarda
+  /// como JSONB; en el JSON llega como string que aquí se decodifica.
+  final List<Map<String, dynamic>> prepSteps;
   final DateTime createdAt;
   final int? serverId;
 
@@ -19,9 +29,32 @@ class Recipe {
     this.emoji,
     this.photoUrl,
     this.ingredients = const [],
+    this.recipeYield = '',
+    this.prepTime = '',
+    this.prepSteps = const [],
     DateTime? createdAt,
     this.serverId,
   }) : createdAt = createdAt ?? DateTime.now();
+
+  /// Decodifica prep_steps que puede venir como String JSON, List ya parseada,
+  /// o null. Siempre devuelve una lista de mapas {text, photo_url}.
+  static List<Map<String, dynamic>> parseSteps(dynamic raw) {
+    if (raw == null) return const [];
+    dynamic decoded = raw;
+    if (raw is String) {
+      if (raw.trim().isEmpty) return const [];
+      try {
+        decoded = jsonDecode(raw);
+      } catch (_) {
+        return const [];
+      }
+    }
+    if (decoded is! List) return const [];
+    return decoded
+        .whereType<Map>()
+        .map((m) => Map<String, dynamic>.from(m))
+        .toList();
+  }
 
   /// Total cost of all ingredients for one unit
   double get productionCost =>
@@ -49,6 +82,9 @@ class Recipe {
       category: json['category'] as String? ?? '',
       emoji: json['emoji'] as String?,
       photoUrl: json['photo_url'] as String?,
+      recipeYield: json['yield'] as String? ?? '',
+      prepTime: json['prep_time'] as String? ?? '',
+      prepSteps: parseSteps(json['prep_steps']),
       ingredients: (json['ingredients'] as List?)
               ?.map((e) =>
                   RecipeIngredient.fromJson(e as Map<String, dynamic>))

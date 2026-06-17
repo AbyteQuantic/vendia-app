@@ -14,7 +14,7 @@ import '../../services/app_error.dart';
 import '../../services/auth_service.dart';
 import '../../theme/app_theme.dart';
 import '../../utils/format_cop.dart';
-import 'recipe_step1_screen.dart';
+import 'recipe_studio_screen.dart';
 
 class RecipeListScreen extends StatefulWidget {
   /// Inyección para pruebas de widget.
@@ -62,7 +62,15 @@ class _RecipeListScreenState extends State<RecipeListScreen> {
 
   Future<void> _createNew() async {
     await Navigator.of(context).push(
-      MaterialPageRoute(builder: (_) => const RecipeStep1Screen()),
+      MaterialPageRoute(builder: (_) => const RecipeStudioScreen()),
+    );
+    if (mounted) _load();
+  }
+
+  /// Abre el Recipe Studio en modo EDICIÓN con la receta precargada.
+  Future<void> _edit(Recipe r) async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => RecipeStudioScreen(editing: r)),
     );
     if (mounted) _load();
   }
@@ -113,7 +121,13 @@ class _RecipeListScreenState extends State<RecipeListScreen> {
       backgroundColor: Colors.white,
       shape: const RoundedRectangleBorder(
           borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
-      builder: (_) => _RecipeDetailSheet(recipe: r),
+      builder: (sheetCtx) => _RecipeDetailSheet(
+        recipe: r,
+        onEdit: () {
+          Navigator.of(sheetCtx).pop();
+          _edit(r);
+        },
+      ),
     );
   }
 
@@ -264,7 +278,8 @@ class _RecipeCard extends StatelessWidget {
 
 class _RecipeDetailSheet extends StatelessWidget {
   final Recipe recipe;
-  const _RecipeDetailSheet({required this.recipe});
+  final VoidCallback onEdit;
+  const _RecipeDetailSheet({required this.recipe, required this.onEdit});
 
   @override
   Widget build(BuildContext context) {
@@ -285,15 +300,36 @@ class _RecipeDetailSheet extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 16),
-            Text(recipe.productName,
-                style: const TextStyle(
-                    fontSize: 22, fontWeight: FontWeight.bold)),
+            Row(
+              children: [
+                Expanded(
+                  child: Text(recipe.productName,
+                      style: const TextStyle(
+                          fontSize: 22, fontWeight: FontWeight.bold)),
+                ),
+                TextButton.icon(
+                  onPressed: onEdit,
+                  icon: const Icon(Icons.edit_rounded, size: 18),
+                  label: const Text('Editar', style: TextStyle(fontSize: 15)),
+                ),
+              ],
+            ),
             if (recipe.category.isNotEmpty)
               Padding(
                 padding: const EdgeInsets.only(top: 2),
                 child: Text(recipe.category,
                     style: const TextStyle(
                         fontSize: 14, color: AppTheme.textSecondary)),
+              ),
+            if (recipe.recipeYield.isNotEmpty || recipe.prepTime.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.only(top: 8),
+                child: Wrap(spacing: 8, children: [
+                  if (recipe.recipeYield.isNotEmpty)
+                    _chip(Icons.restaurant_rounded, recipe.recipeYield),
+                  if (recipe.prepTime.isNotEmpty)
+                    _chip(Icons.schedule_rounded, recipe.prepTime),
+                ]),
               ),
             const SizedBox(height: 16),
             _row('Precio de venta', formatCOP(recipe.salePrice)),
@@ -332,11 +368,37 @@ class _RecipeDetailSheet extends StatelessWidget {
                       ],
                     ),
                   )),
+            if (recipe.prepSteps.isNotEmpty) ...[
+              const Divider(height: 28),
+              const Text('Preparación',
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+              const SizedBox(height: 8),
+              ...recipe.prepSteps.asMap().entries.map((e) => Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 4),
+                    child: Text('${e.key + 1}. ${e.value['text'] ?? ''}',
+                        style: const TextStyle(fontSize: 15)),
+                  )),
+            ],
           ],
         ),
       ),
     );
   }
+
+  Widget _chip(IconData icon, String label) => Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+        decoration: BoxDecoration(
+          color: AppTheme.surfaceGrey,
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Row(mainAxisSize: MainAxisSize.min, children: [
+          Icon(icon, size: 14, color: AppTheme.textSecondary),
+          const SizedBox(width: 5),
+          Text(label,
+              style:
+                  const TextStyle(fontSize: 13, color: AppTheme.textSecondary)),
+        ]),
+      );
 
   Widget _row(String label, String value, {Color? color}) => Padding(
         padding: const EdgeInsets.symmetric(vertical: 5),
