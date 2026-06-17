@@ -791,6 +791,40 @@ class _RecipeStudioScreenState extends State<RecipeStudioScreen> {
     ]);
   }
 
+  /// Visor a pantalla completa con pinch-zoom — la imagen se ve ÍNTEGRA
+  /// (BoxFit.contain) para verificar que no quedó recortada.
+  void _openPhotoViewer(String url) {
+    showDialog<void>(
+      context: context,
+      barrierColor: Colors.black87,
+      builder: (ctx) => Dialog(
+        backgroundColor: Colors.transparent,
+        insetPadding: const EdgeInsets.all(AppUI.s12),
+        child: Stack(children: [
+          InteractiveViewer(
+            minScale: 0.8,
+            maxScale: 5,
+            child: Center(
+              child: Image.network(url, fit: BoxFit.contain,
+                  errorBuilder: (c, e, s) => const Icon(
+                      Icons.broken_image_outlined,
+                      size: 48,
+                      color: Colors.white54)),
+            ),
+          ),
+          Positioned(
+            top: 0,
+            right: 0,
+            child: IconButton(
+              icon: const Icon(Icons.close_rounded, color: Colors.white, size: 28),
+              onPressed: () => Navigator.of(ctx).pop(),
+            ),
+          ),
+        ]),
+      ),
+    );
+  }
+
   Widget _photoBox() {
     final hasPhoto = _photoUrl != null && _photoUrl!.isNotEmpty;
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -819,32 +853,61 @@ class _RecipeStudioScreenState extends State<RecipeStudioScreen> {
                 // Image.network (no DecorationImage) para poder mostrar el
                 // progreso de carga y un fallback claro si la URL falla — antes
                 // se quedaba en blanco sin que el tendero supiera qué pasó.
-                ? Image.network(
-                    _photoUrl!,
-                    fit: BoxFit.cover,
-                    width: double.infinity,
-                    height: 120,
-                    loadingBuilder: (ctx, child, progress) => progress == null
-                        ? child
-                        : const Center(
-                            child: CircularProgressIndicator(strokeWidth: 2)),
-                    errorBuilder: (ctx, err, st) => const Center(
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(Icons.broken_image_outlined,
-                              size: 28, color: AppUI.inkSoft),
-                          SizedBox(height: 4),
-                          Text('No se pudo cargar la foto. Intente de nuevo.',
-                              textAlign: TextAlign.center, style: AppUI.bodySoft),
-                        ],
+                // Tocar la foto → verla completa y ampliable (el thumbnail usa
+                // cover y recorta; el visor usa contain → se ve íntegra).
+                ? GestureDetector(
+                    onTap: () => _openPhotoViewer(_photoUrl!),
+                    child: Stack(fit: StackFit.expand, children: [
+                      Image.network(
+                        _photoUrl!,
+                        fit: BoxFit.cover,
+                        width: double.infinity,
+                        height: 120,
+                        loadingBuilder: (ctx, child, progress) =>
+                            progress == null
+                                ? child
+                                : const Center(
+                                    child: CircularProgressIndicator(
+                                        strokeWidth: 2)),
+                        errorBuilder: (ctx, err, st) => const Center(
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.broken_image_outlined,
+                                  size: 28, color: AppUI.inkSoft),
+                              SizedBox(height: 4),
+                              Text('No se pudo cargar la foto. Intente de nuevo.',
+                                  textAlign: TextAlign.center,
+                                  style: AppUI.bodySoft),
+                            ],
+                          ),
+                        ),
                       ),
-                    ),
+                      Positioned(
+                        right: 6,
+                        bottom: 6,
+                        child: Container(
+                          padding: const EdgeInsets.all(4),
+                          decoration: BoxDecoration(
+                            color: Colors.black54,
+                            borderRadius: BorderRadius.circular(AppUI.radiusSm),
+                          ),
+                          child: const Icon(Icons.zoom_out_map_rounded,
+                              size: 16, color: Colors.white),
+                        ),
+                      ),
+                    ]),
                   )
                 : const Center(
                     child: Icon(Icons.restaurant_rounded,
                         size: 32, color: AppUI.inkSoft)),
       ),
+      if (hasPhoto && !_photoBusy)
+        const Padding(
+          padding: EdgeInsets.only(top: 4),
+          child: Text('Toque la foto para verla completa.',
+              style: TextStyle(fontSize: 12, color: AppUI.inkSoft)),
+        ),
       const SizedBox(height: AppUI.s8),
       Wrap(spacing: AppUI.s8, runSpacing: AppUI.s8, children: [
         GhostButton(
