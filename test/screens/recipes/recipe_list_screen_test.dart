@@ -50,8 +50,8 @@ void main() {
     await tester.pump();
 
     expect(find.text('Bandeja Paisa'), findsOneWidget);
-    // costo = 4000, ganancia = 21000
-    expect(find.textContaining('Ganancia'), findsOneWidget);
+    // costo = 4000, ganancia = 21000, margen = 84% (badge "+$21.000 · 84%")
+    expect(find.textContaining('84%'), findsOneWidget);
     expect(find.textContaining('2 insumos'), findsOneWidget);
   });
 

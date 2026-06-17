@@ -13,6 +13,7 @@ import '../../services/api_service.dart';
 import '../../services/app_error.dart';
 import '../../services/auth_service.dart';
 import '../../theme/app_theme.dart';
+import '../../theme/app_ui.dart';
 import '../../utils/format_cop.dart';
 import 'recipe_studio_screen.dart';
 
@@ -134,14 +135,23 @@ class _RecipeListScreenState extends State<RecipeListScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppTheme.background,
-      appBar: AppBar(title: const Text('Mis recetas')),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: _createNew,
-        backgroundColor: AppTheme.primary,
-        icon: const Icon(Icons.add_rounded, color: Colors.white),
-        label: const Text('Nueva receta',
-            style: TextStyle(color: Colors.white, fontSize: 16)),
+      backgroundColor: AppUI.pageBg,
+      appBar: AppBar(
+        backgroundColor: AppUI.pageBg,
+        surfaceTintColor: Colors.transparent,
+        elevation: 0,
+        title: const Text('Mis recetas', style: AppUI.title),
+        actions: [
+          Padding(
+            padding: const EdgeInsets.only(right: AppUI.s8),
+            child: GhostButton(
+              icon: Icons.add_rounded,
+              label: 'Nueva',
+              color: AppTheme.primary,
+              onPressed: _createNew,
+            ),
+          ),
+        ],
       ),
       body: RefreshIndicator(onRefresh: _load, child: _body()),
     );
@@ -169,7 +179,7 @@ class _RecipeListScreenState extends State<RecipeListScreen> {
       );
     }
     return ListView.separated(
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 96),
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
       physics: const AlwaysScrollableScrollPhysics(),
       itemCount: _recipes.length,
       separatorBuilder: (_, __) => const SizedBox(height: 12),
@@ -194,21 +204,17 @@ class _RecipeCard extends StatelessWidget {
     final profit = recipe.profitPerUnit;
     final profitColor = profit >= 0 ? AppTheme.success : AppTheme.error;
     return Material(
-      color: Colors.white,
-      borderRadius: BorderRadius.circular(16),
+      color: Colors.transparent,
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(AppUI.radius),
         child: Container(
-          padding: const EdgeInsets.all(14),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: AppTheme.borderColor),
-          ),
+          padding: const EdgeInsets.all(AppUI.s12),
+          decoration: AppUI.card(),
           child: Row(
             children: [
               _thumb(),
-              const SizedBox(width: 12),
+              const SizedBox(width: AppUI.s12),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -216,34 +222,33 @@ class _RecipeCard extends StatelessWidget {
                     Text(recipe.productName,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.w700,
-                            color: AppTheme.textPrimary)),
-                    const SizedBox(height: 4),
+                        style: AppUI.bodyStrong),
+                    const SizedBox(height: 2),
                     Text(
                       'Precio ${formatCOP(recipe.salePrice)} · Costo ${formatCOP(recipe.productionCost)}',
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                          fontSize: 14, color: AppTheme.textSecondary),
+                      style: AppUI.bodySoft,
                     ),
-                    const SizedBox(height: 4),
-                    Text(
-                      'Ganancia ${formatCOP(profit)} (${recipe.profitMargin.toStringAsFixed(0)}%) · ${recipe.ingredients.length} ${recipe.ingredients.length == 1 ? "insumo" : "insumos"}',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w600,
-                          color: profitColor),
-                    ),
+                    const SizedBox(height: 6),
+                    Row(children: [
+                      MinimalBadge(
+                        label:
+                            '${profit >= 0 ? "+" : ""}${formatCOP(profit)} · ${recipe.profitMargin.toStringAsFixed(0)}%',
+                        color: profitColor,
+                      ),
+                      const SizedBox(width: AppUI.s8),
+                      Text(
+                        '${recipe.ingredients.length} ${recipe.ingredients.length == 1 ? "insumo" : "insumos"}',
+                        style: AppUI.bodySoft,
+                      ),
+                    ]),
                   ],
                 ),
               ),
               IconButton(
                 icon: const Icon(Icons.delete_outline_rounded,
-                    color: AppTheme.error, size: 26),
+                    color: AppUI.inkSoft, size: 22),
                 tooltip: 'Eliminar',
                 onPressed: onDelete,
               ),
@@ -295,7 +300,7 @@ class _RecipeDetailSheet extends StatelessWidget {
                 width: 40,
                 height: 4,
                 decoration: BoxDecoration(
-                    color: AppTheme.borderColor,
+                    color: AppUI.border,
                     borderRadius: BorderRadius.circular(2)),
               ),
             ),
@@ -388,15 +393,14 @@ class _RecipeDetailSheet extends StatelessWidget {
   Widget _chip(IconData icon, String label) => Container(
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
         decoration: BoxDecoration(
-          color: AppTheme.surfaceGrey,
-          borderRadius: BorderRadius.circular(8),
+          color: AppUI.pageBg,
+          borderRadius: BorderRadius.circular(AppUI.radiusSm),
+          border: Border.all(color: AppUI.border),
         ),
         child: Row(mainAxisSize: MainAxisSize.min, children: [
-          Icon(icon, size: 14, color: AppTheme.textSecondary),
+          Icon(icon, size: 14, color: AppUI.inkSoft),
           const SizedBox(width: 5),
-          Text(label,
-              style:
-                  const TextStyle(fontSize: 13, color: AppTheme.textSecondary)),
+          Text(label, style: AppUI.bodySoft),
         ]),
       );
 
@@ -405,14 +409,12 @@ class _RecipeDetailSheet extends StatelessWidget {
         child: Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            Text(label,
-                style: const TextStyle(
-                    fontSize: 15, color: AppTheme.textSecondary)),
+            Text(label, style: AppUI.bodySoft),
             Text(value,
                 style: TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.w700,
-                    color: color ?? AppTheme.textPrimary)),
+                    color: color ?? AppUI.ink)),
           ],
         ),
       );
@@ -440,40 +442,29 @@ class _MessageState extends StatelessWidget {
       physics: const AlwaysScrollableScrollPhysics(),
       children: [
         SizedBox(height: MediaQuery.of(context).size.height * 0.18),
-        Icon(icon, size: 72, color: AppTheme.borderColor),
-        const SizedBox(height: 16),
+        Icon(icon, size: 56, color: AppUI.inkSoft),
+        const SizedBox(height: AppUI.s16),
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 24),
           child: Text(title,
               textAlign: TextAlign.center,
-              style: const TextStyle(
-                  fontSize: 20,
-                  fontWeight: FontWeight.bold,
-                  color: AppTheme.textPrimary)),
+              style: AppUI.title),
         ),
         if (subtitle != null) ...[
-          const SizedBox(height: 8),
+          const SizedBox(height: AppUI.s8),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 24),
             child: Text(subtitle!,
-                textAlign: TextAlign.center,
-                style: const TextStyle(
-                    fontSize: 15, color: AppTheme.textSecondary)),
+                textAlign: TextAlign.center, style: AppUI.bodySoft),
           ),
         ],
-        const SizedBox(height: 20),
+        const SizedBox(height: AppUI.s24),
         Center(
-          child: ElevatedButton(
+          child: GhostButton(
+            icon: Icons.add_rounded,
+            label: actionLabel,
+            color: AppTheme.primary,
             onPressed: onAction,
-            style: ElevatedButton.styleFrom(
-              backgroundColor: AppTheme.primary,
-              foregroundColor: Colors.white,
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 28, vertical: 14),
-              shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(14)),
-            ),
-            child: Text(actionLabel, style: const TextStyle(fontSize: 16)),
           ),
         ),
       ],
