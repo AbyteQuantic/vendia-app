@@ -467,14 +467,8 @@ class _RecipeStudioScreenState extends State<RecipeStudioScreen> {
     HapticFeedback.lightImpact();
     final used = _lines.map((l) => l.ingredient.uuid).toSet();
     final pool = _available.where((i) => !used.contains(i.uuid)).toList();
-    if (pool.isEmpty) {
-      _snack(
-          _available.isEmpty
-              ? 'Aún no tiene insumos. Regístrelos primero en Inventario.'
-              : 'Ya agregó todos sus insumos.',
-          color: AppTheme.primary);
-      return;
-    }
+    // NUNCA es un callejón sin salida: aunque ya agregó todos los insumos
+    // existentes (pool vacío), la hoja siempre ofrece "Crear insumo nuevo".
     final result = await showModalBottomSheet<Object>(
       context: context,
       isScrollControlled: true,
@@ -803,14 +797,11 @@ class _RecipeStudioScreenState extends State<RecipeStudioScreen> {
       Container(
         height: 120,
         width: double.infinity,
+        clipBehavior: Clip.antiAlias,
         decoration: BoxDecoration(
           color: AppUI.pageBg,
           borderRadius: BorderRadius.circular(AppUI.radiusSm),
           border: Border.all(color: AppUI.border),
-          image: hasPhoto && !_photoBusy
-              ? DecorationImage(
-                  image: NetworkImage(_photoUrl!), fit: BoxFit.cover)
-              : null,
         ),
         child: _photoBusy
             ? const Center(
@@ -824,11 +815,35 @@ class _RecipeStudioScreenState extends State<RecipeStudioScreen> {
                   ],
                 ),
               )
-            : (hasPhoto
-                ? null
+            : hasPhoto
+                // Image.network (no DecorationImage) para poder mostrar el
+                // progreso de carga y un fallback claro si la URL falla — antes
+                // se quedaba en blanco sin que el tendero supiera qué pasó.
+                ? Image.network(
+                    _photoUrl!,
+                    fit: BoxFit.cover,
+                    width: double.infinity,
+                    height: 120,
+                    loadingBuilder: (ctx, child, progress) => progress == null
+                        ? child
+                        : const Center(
+                            child: CircularProgressIndicator(strokeWidth: 2)),
+                    errorBuilder: (ctx, err, st) => const Center(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.broken_image_outlined,
+                              size: 28, color: AppUI.inkSoft),
+                          SizedBox(height: 4),
+                          Text('No se pudo cargar la foto. Intente de nuevo.',
+                              textAlign: TextAlign.center, style: AppUI.bodySoft),
+                        ],
+                      ),
+                    ),
+                  )
                 : const Center(
                     child: Icon(Icons.restaurant_rounded,
-                        size: 32, color: AppUI.inkSoft))),
+                        size: 32, color: AppUI.inkSoft)),
       ),
       const SizedBox(height: AppUI.s8),
       Wrap(spacing: AppUI.s8, runSpacing: AppUI.s8, children: [
@@ -1349,6 +1364,34 @@ class _CreateIngredientSheetState extends State<_CreateIngredientSheet> {
     return _nameCtrl.text.trim().isNotEmpty && cost > 0;
   }
 
+  // Mismo look que los campos del formulario principal (UI normalizada).
+  InputDecoration _sheetField(String label, String helper, {String? prefixText}) =>
+      InputDecoration(
+        labelText: label,
+        labelStyle: const TextStyle(color: AppUI.inkSoft, fontSize: 14),
+        floatingLabelBehavior: FloatingLabelBehavior.always,
+        helperText: helper,
+        helperStyle: const TextStyle(color: AppUI.inkSoft, fontSize: 12),
+        prefixText: prefixText,
+        isDense: true,
+        contentPadding:
+            const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+        filled: true,
+        fillColor: AppUI.pageBg,
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(AppUI.radiusSm),
+          borderSide: const BorderSide(color: AppUI.border),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(AppUI.radiusSm),
+          borderSide: const BorderSide(color: AppUI.border),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(AppUI.radiusSm),
+          borderSide: const BorderSide(color: AppTheme.primary, width: 1.5),
+        ),
+      );
+
   @override
   Widget build(BuildContext context) {
     return Padding(
@@ -1376,13 +1419,7 @@ class _CreateIngredientSheetState extends State<_CreateIngredientSheet> {
           autofocus: widget.prefillName.isEmpty,
           textCapitalization: TextCapitalization.sentences,
           onChanged: (_) => setState(() {}),
-          decoration: InputDecoration(
-            labelText: 'Nombre del insumo',
-            helperText: 'Ej: Arroz, Aceite, Carne',
-            floatingLabelBehavior: FloatingLabelBehavior.always,
-            border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(AppUI.radiusSm)),
-          ),
+          decoration: _sheetField('Nombre del insumo', 'Ej: Arroz, Aceite, Carne'),
         ),
         const SizedBox(height: AppUI.s16),
         const Align(
@@ -1398,6 +1435,18 @@ class _CreateIngredientSheetState extends State<_CreateIngredientSheet> {
                 label: Text(Ingredient.unitLabels[u] ?? u),
                 selected: _unit == u,
                 onSelected: (_) => setState(() => _unit = u),
+                selectedColor: AppTheme.primary.withValues(alpha: 0.15),
+                showCheckmark: false,
+                labelStyle: TextStyle(
+                  color: _unit == u ? AppTheme.primary : AppUI.ink,
+                  fontWeight: _unit == u ? FontWeight.w600 : FontWeight.normal,
+                ),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(AppUI.radiusSm),
+                  side: BorderSide(
+                      color: _unit == u ? AppTheme.primary : AppUI.border),
+                ),
+                backgroundColor: Colors.white,
               ),
           ],
         ),
@@ -1406,13 +1455,10 @@ class _CreateIngredientSheetState extends State<_CreateIngredientSheet> {
           controller: _costCtrl,
           keyboardType: const TextInputType.numberWithOptions(decimal: true),
           onChanged: (_) => setState(() {}),
-          decoration: InputDecoration(
-            labelText: 'Costo por ${(Ingredient.unitLabels[_unit] ?? _unit).toLowerCase()}',
-            helperText: 'Lo que le cuesta a usted. Ej: 3.000',
-            floatingLabelBehavior: FloatingLabelBehavior.always,
+          decoration: _sheetField(
+            'Costo por ${(Ingredient.unitLabels[_unit] ?? _unit).toLowerCase()}',
+            'Lo que le cuesta a usted. Ej: 3.000',
             prefixText: '\$ ',
-            border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(AppUI.radiusSm)),
           ),
         ),
         const SizedBox(height: AppUI.s16),
