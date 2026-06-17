@@ -860,7 +860,9 @@ class _RecipeStudioScreenState extends State<RecipeStudioScreen> {
                     child: Stack(fit: StackFit.expand, children: [
                       Image.network(
                         _photoUrl!,
-                        fit: BoxFit.cover,
+                        // contain (no cover): muestra el plato COMPLETO en la
+                        // vista previa, sin recortar los bordes.
+                        fit: BoxFit.contain,
                         width: double.infinity,
                         height: 120,
                         loadingBuilder: (ctx, child, progress) =>
@@ -905,7 +907,7 @@ class _RecipeStudioScreenState extends State<RecipeStudioScreen> {
       if (hasPhoto && !_photoBusy)
         const Padding(
           padding: EdgeInsets.only(top: 4),
-          child: Text('Toque la foto para verla completa.',
+          child: Text('Toque la foto para ampliarla.',
               style: TextStyle(fontSize: 12, color: AppUI.inkSoft)),
         ),
       const SizedBox(height: AppUI.s8),
