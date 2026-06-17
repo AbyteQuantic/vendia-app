@@ -54,8 +54,8 @@ void main() {
     await tester.pumpWidget(MaterialApp(home: RecipeStudioScreen(api: api)));
     await tester.pumpAndSettle();
 
-    expect(find.text('Recipe Studio'), findsOneWidget);
-    expect(find.text('Ingredientes'), findsOneWidget);
+    expect(find.text('Nuevo plato'), findsOneWidget);
+    expect(find.textContaining('Ingredientes'), findsWidgets);
     expect(tester.takeException(), isNull); // sin overflow a 360dp
   });
 
@@ -73,9 +73,9 @@ void main() {
     expect(find.text('\$0'), findsWidgets);
 
     // Abre el Spotlight y elige el insumo.
-    await tester.ensureVisible(find.text('Agregar'));
+    await tester.ensureVisible(find.text('Agregar insumo'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Agregar'));
+    await tester.tap(find.text('Agregar insumo'));
     await tester.pumpAndSettle();
     expect(find.byKey(const Key('spotlight_search')), findsOneWidget);
     await tester.tap(find.text('Salchicha').last);
@@ -137,13 +137,18 @@ void main() {
         MaterialApp(home: RecipeStudioScreen(api: api, editing: recipe)));
     await tester.pumpAndSettle();
 
-    expect(find.text('Editar receta'), findsOneWidget);
+    expect(find.text('Editar plato'), findsOneWidget);
     expect(find.text('Paso uno'), findsOneWidget);
     // Costo precargado: 3 × 1.000 = 3.000.
     expect(find.text('\$3.000'), findsWidgets);
 
-    await tester.tap(find.text('Guardar'));
+    await tester.ensureVisible(find.text('Guardar cambios'));
     await tester.pumpAndSettle();
+    await tester.tap(find.text('Guardar cambios'));
+    // No usamos pumpAndSettle: en el test esta pantalla es el home, así que
+    // popUntil no la quita y el spinner de _saving giraría para siempre.
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
 
     expect(api.updated.length, 1);
     expect(api.updated.first.key, 'rec-9');

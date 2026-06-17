@@ -1,10 +1,18 @@
 // Spec: specs/065-recipe-studio/spec.md
 //
-// Recipe Studio — editor profesional "SaaS Professional Density" que reemplaza
-// el wizard lineal de 3 pasos. Doble panel en web/tablet, una columna en móvil.
-// REGLA DE ORO: NO toca la lógica de costeo — el costo se sigue derivando de
-// `_RecipeLine.totalCost = unitCost·quantity` y la suma `_totalCost`, igual que
-// el flujo viejo; el guardado usa el mismo contrato `createRecipe`.
+// "Nuevo plato" — editor de recetas rediseñado por concilio para que un TENDERO
+// lo entienda a la primera (antes era un "ERP look" denso y confuso):
+//   · Secciones numeradas y humanas: 1. El plato → 2. Ingredientes y costo →
+//     3. Preparación (opcional).
+//   · LABELS FIJOS arriba de cada campo + ejemplo como ayuda (nunca
+//     placeholder-como-label que desaparece al escribir).
+//   · IA en UN solo botón opcional ("Que la IA me ayude") con hoja explicativa
+//     y chips de ajuste — no una barra ambigua en medio.
+//   · Ingredientes con ayuda fija ("usted pone la cantidad, el costo se calcula
+//     solo, salen de Inventario") + cantidad editable con decimales.
+//   · Barra inferior fija: Costo · Precio · Ganancia + Guardar.
+// REGLA DE ORO: NO toca la lógica de costeo (Σ insumo·cantidad) ni el contrato
+// createRecipe/updateRecipe — solo UI/flujo/copy.
 import 'dart:async';
 import 'dart:developer' as developer;
 
@@ -20,16 +28,22 @@ import '../../services/auth_service.dart';
 import '../../theme/app_theme.dart';
 import '../../theme/app_ui.dart';
 
-/// Una línea costeada de la receta: un insumo REAL (con uuid + unitCost) y la
-/// cantidad que consume el plato. El costo se deriva igual que antes.
+String _fmtQty(double q) =>
+    q == q.roundToDouble() ? q.toInt().toString() : q.toString();
+
+/// Una línea costeada: un insumo REAL (uuid + unitCost) y la cantidad que
+/// consume el plato. El costo se deriva igual que siempre.
 class _RecipeLine {
   final Ingredient ingredient;
   double quantity;
-  _RecipeLine(this.ingredient, [this.quantity = 1]);
+  final TextEditingController qtyCtrl;
+  _RecipeLine(this.ingredient, [double qty = 1])
+      : quantity = qty,
+        qtyCtrl = TextEditingController(text: _fmtQty(qty));
   double get totalCost => ingredient.unitCost * quantity;
 }
 
-/// Un paso de preparación (editor tipo Notion): texto + foto opcional.
+/// Un paso de preparación: texto + foto opcional.
 class _StepDraft {
   final TextEditingController controller;
   String? photoUrl;
@@ -38,12 +52,11 @@ class _StepDraft {
 }
 
 class RecipeStudioScreen extends StatefulWidget {
-  /// Prefill opcional desde voz/IA: {name, description, yield, prep_time,
+  /// Prefill desde voz/IA: {name, description, yield, prep_time,
   /// ingredients:[{name,quantity,unit}], steps:[String]}.
   final Map<String, dynamic>? initial;
 
-  /// Si viene una receta, el Studio entra en modo EDICIÓN (precarga todo y
-  /// guarda con updateRecipe en vez de createRecipe).
+  /// Si viene una receta, entra en modo EDICIÓN.
   final Recipe? editing;
   final ApiService? api;
 
@@ -70,13 +83,15 @@ class _RecipeStudioScreenState extends State<RecipeStudioScreen> {
   final List<_StepDraft> _steps = [];
   List<Ingredient> _available = [];
 
-  String? _photoUrl; // foto en R2 (IA generada o mejorada)
-  XFile? _localPhoto; // foto cruda elegida, se sube al guardar
+  String? _photoUrl;
+  XFile? _localPhoto;
 
   bool _loading = true;
   bool _saving = false;
   bool _aiBusy = false;
   String? _error;
+
+  bool get _isEdit => widget.editing != null;
 
   @override
   void initState() {
@@ -94,6 +109,9 @@ class _RecipeStudioScreenState extends State<RecipeStudioScreen> {
     }
     for (final s in _steps) {
       s.controller.dispose();
+    }
+    for (final l in _lines) {
+      l.qtyCtrl.dispose();
     }
     super.dispose();
   }
@@ -126,8 +144,7 @@ class _RecipeStudioScreenState extends State<RecipeStudioScreen> {
   // ── Costeo (lógica intacta) ────────────────────────────────────────────
   double get _totalCost => _lines.fold(0.0, (s, l) => s + l.totalCost);
   double get _salePrice => _parsePrice(_priceCtrl.text);
-  double get _marginPct =>
-      _salePrice > 0 ? ((_salePrice - _totalCost) / _salePrice) * 100 : 0;
+  double get _profit => _salePrice - _totalCost;
 
   double _parsePrice(String t) =>
       double.tryParse(t.replaceAll(RegExp(r'[^0-9.]'), '')) ?? 0;
@@ -137,8 +154,16 @@ class _RecipeStudioScreenState extends State<RecipeStudioScreen> {
         (m) => '${m[1]}.',
       )}';
 
-  String _trimQty(double v) =>
-      v == v.roundToDouble() ? v.toInt().toString() : v.toString();
+  bool get _canSave =>
+      _nameCtrl.text.trim().isNotEmpty && _salePrice > 0 && _lines.isNotEmpty;
+
+  String get _missingText {
+    final m = <String>[];
+    if (_nameCtrl.text.trim().isEmpty) m.add('el nombre');
+    if (_salePrice <= 0) m.add('el precio');
+    if (_lines.isEmpty) m.add('al menos un insumo');
+    return 'Falta: ${m.join(', ')}.';
+  }
 
   // ── Prefill desde voz/IA ───────────────────────────────────────────────
   void _applyInitial(Map<String, dynamic> data) {
@@ -155,7 +180,6 @@ class _RecipeStudioScreenState extends State<RecipeStudioScreen> {
       if ((data['prep_time'] as String?)?.isNotEmpty ?? false) {
         _timeCtrl.text = data['prep_time'] as String;
       }
-      // Pasos sugeridos (texto libre): se cargan tal cual.
       final steps = (data['steps'] as List?) ?? const [];
       if (steps.isNotEmpty) {
         for (final s in _steps) {
@@ -165,9 +189,7 @@ class _RecipeStudioScreenState extends State<RecipeStudioScreen> {
           ..clear()
           ..addAll(steps.map((s) => _StepDraft(text: '$s')));
       }
-      // Ingredientes sugeridos: se MATCHEAN contra los insumos reales del
-      // tenant (los únicos costeables, con uuid+unitCost). Los que no existen
-      // como insumo no se pueden costear, así que se omiten del costeo.
+      // Ingredientes sugeridos: se matchean contra insumos reales (costeable).
       final suggested = (data['ingredients'] as List?) ?? const [];
       for (final raw in suggested) {
         if (raw is! Map) continue;
@@ -209,9 +231,6 @@ class _RecipeStudioScreenState extends State<RecipeStudioScreen> {
           ..photoUrl = (m['photo_url'] as String?)?.isNotEmpty ?? false
               ? m['photo_url'] as String
               : null));
-      // Insumos costeados: matchea por uuid contra los insumos vivos (costo
-      // actual); si el insumo fue borrado, reconstruye desde el snapshot de la
-      // receta para no perder la línea al editar.
       _lines.clear();
       for (final ing in r.ingredients) {
         final live = _available.firstWhere(
@@ -229,7 +248,7 @@ class _RecipeStudioScreenState extends State<RecipeStudioScreen> {
     });
   }
 
-  // ── Asistente IA (texto): completar / refinar ──────────────────────────
+  // ── Asistente IA ─────────────────────────────────────────────────────────
   Map<String, dynamic> _currentRecipeMap() => {
         'name': _nameCtrl.text.trim(),
         'description': _descCtrl.text.trim(),
@@ -248,7 +267,7 @@ class _RecipeStudioScreenState extends State<RecipeStudioScreen> {
             .toList(),
       };
 
-  Future<void> _askAI({required bool refine}) async {
+  Future<void> _askAI(String instructions) async {
     final name = _nameCtrl.text.trim();
     if (name.isEmpty) {
       _snack('Escriba el nombre del plato para que la IA ayude.',
@@ -259,13 +278,13 @@ class _RecipeStudioScreenState extends State<RecipeStudioScreen> {
     try {
       final result = await _api.recipeAssist(
         name: name,
-        instructions: refine ? _instructionsCtrl.text.trim() : '',
+        instructions: instructions,
         current: _currentRecipeMap(),
       );
       if (!mounted) return;
       _applyInitial(result);
       _instructionsCtrl.clear();
-      _snack('La IA actualizó la receta. Revísela y edite lo que quiera.',
+      _snack('La IA actualizó el plato. Revíselo y ajuste lo que quiera.',
           color: AppTheme.success);
     } on AppError catch (e) {
       _snack(e.message, color: AppTheme.error);
@@ -277,7 +296,74 @@ class _RecipeStudioScreenState extends State<RecipeStudioScreen> {
     }
   }
 
-  // ── Foto del plato: generar con IA o limpiar la del usuario ────────────
+  void _openAiSheet() {
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(AppUI.radius)),
+      ),
+      builder: (ctx) => Padding(
+        padding: EdgeInsets.only(
+          left: AppUI.s16,
+          right: AppUI.s16,
+          top: AppUI.s16,
+          bottom: MediaQuery.of(ctx).viewInsets.bottom + AppUI.s16,
+        ),
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          const Row(children: [
+            Icon(Icons.auto_awesome_rounded, color: AppTheme.primary),
+            SizedBox(width: 8),
+            Expanded(child: Text('Que la IA me ayude', style: AppUI.title)),
+          ]),
+          const SizedBox(height: AppUI.s8),
+          const Text(
+            'Escriba el nombre del plato arriba y la IA propone ingredientes, '
+            'pasos, porciones y tiempo. Usted revisa y corrige; nada se guarda '
+            'hasta que toque Guardar.',
+            style: AppUI.bodySoft,
+          ),
+          const SizedBox(height: AppUI.s16),
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton.icon(
+              style: FilledButton.styleFrom(backgroundColor: AppTheme.primary),
+              onPressed: () {
+                Navigator.of(ctx).pop();
+                _askAI('');
+              },
+              icon: const Icon(Icons.auto_fix_high_rounded),
+              label: const Text('Proponer ingredientes y pasos'),
+            ),
+          ),
+          const SizedBox(height: AppUI.s16),
+          const Align(
+            alignment: Alignment.centerLeft,
+            child: Text('¿Ya tiene algo y quiere ajustarlo?',
+                style: AppUI.sectionLabel),
+          ),
+          const SizedBox(height: AppUI.s8),
+          Wrap(spacing: AppUI.s8, runSpacing: AppUI.s8, children: [
+            for (final chip in const [
+              'Más económica',
+              'Sin lácteos',
+              'Para más personas',
+            ])
+              ActionChip(
+                label: Text(chip),
+                onPressed: () {
+                  Navigator.of(ctx).pop();
+                  _askAI(chip);
+                },
+              ),
+          ]),
+        ]),
+      ),
+    );
+  }
+
+  // ── Foto del plato ─────────────────────────────────────────────────────
   Future<void> _generatePhoto() async {
     final name = _nameCtrl.text.trim();
     if (name.isEmpty) {
@@ -311,7 +397,7 @@ class _RecipeStudioScreenState extends State<RecipeStudioScreen> {
     }
   }
 
-  Future<void> _cleanPhoto() async {
+  Future<void> _uploadOwnPhoto() async {
     final picker = ImagePicker();
     final XFile? photo = await picker.pickImage(
         source: ImageSource.gallery, imageQuality: 80, maxWidth: 1600);
@@ -338,7 +424,7 @@ class _RecipeStudioScreenState extends State<RecipeStudioScreen> {
     } on AppError catch (e) {
       _snack(e.message, color: AppTheme.error);
     } catch (_) {
-      _snack('No pudimos mejorar la foto.', color: AppTheme.error);
+      _snack('No pudimos subir la foto.', color: AppTheme.error);
     } finally {
       if (mounted) setState(() => _aiBusy = false);
     }
@@ -352,7 +438,7 @@ class _RecipeStudioScreenState extends State<RecipeStudioScreen> {
     if (pool.isEmpty) {
       _snack(
           _available.isEmpty
-              ? 'Primero registre sus insumos en la pantalla de Insumos.'
+              ? 'Aún no tiene insumos. Regístrelos primero en Inventario.'
               : 'Ya agregó todos sus insumos.',
           color: AppTheme.primary);
       return;
@@ -369,6 +455,22 @@ class _RecipeStudioScreenState extends State<RecipeStudioScreen> {
     if (picked != null) {
       setState(() => _lines.add(_RecipeLine(picked)));
     }
+  }
+
+  void _removeLine(_RecipeLine line) {
+    setState(() {
+      _lines.remove(line);
+      line.qtyCtrl.dispose();
+    });
+  }
+
+  void _bumpQty(_RecipeLine line, double delta) {
+    final next = (line.quantity + delta);
+    if (next < 0) return;
+    setState(() {
+      line.quantity = next;
+      line.qtyCtrl.text = _fmtQty(next);
+    });
   }
 
   // ── Pasos ───────────────────────────────────────────────────────────────
@@ -397,17 +499,8 @@ class _RecipeStudioScreenState extends State<RecipeStudioScreen> {
 
   // ── Guardar (contrato intacto + campos nuevos) ─────────────────────────
   Future<void> _save() async {
-    if (_nameCtrl.text.trim().isEmpty) {
-      _snack('El nombre del plato es obligatorio.', color: AppTheme.warning);
-      return;
-    }
-    if (_salePrice <= 0) {
-      _snack('Indique el precio de venta.', color: AppTheme.warning);
-      return;
-    }
-    if (_lines.isEmpty) {
-      _snack('Agregue al menos un insumo para costear el plato.',
-          color: AppTheme.warning);
+    if (!_canSave) {
+      _snack(_missingText, color: AppTheme.warning);
       return;
     }
     setState(() => _saving = true);
@@ -422,8 +515,6 @@ class _RecipeStudioScreenState extends State<RecipeStudioScreen> {
           'description': _descCtrl.text.trim(),
         if (_portionCtrl.text.trim().isNotEmpty)
           'portion': _portionCtrl.text.trim(),
-        // Siempre enviamos yield/prep_time (aunque vacíos) para que al EDITAR
-        // se puedan limpiar; en create un '' es inocuo (default '').
         'yield': _yieldCtrl.text.trim(),
         'prep_time': _timeCtrl.text.trim(),
         'prep_steps': _steps
@@ -439,12 +530,10 @@ class _RecipeStudioScreenState extends State<RecipeStudioScreen> {
             .toList(),
       };
 
-      final isEdit = widget.editing != null;
-      final result = isEdit
+      final result = _isEdit
           ? await _api.updateRecipe(widget.editing!.uuid, payload)
           : await _api.createRecipe(payload);
 
-      // Foto cruda sin mejorar → subir al producto vendible (best-effort).
       final productId = result['product_id'] as String?;
       if (_localPhoto != null && productId != null && productId.isNotEmpty) {
         try {
@@ -454,8 +543,7 @@ class _RecipeStudioScreenState extends State<RecipeStudioScreen> {
               name: 'RecipeStudioScreen', error: e, stackTrace: st);
         }
       }
-      // Costo autoritativo (best-effort, no bloquea).
-      final uuid = isEdit
+      final uuid = _isEdit
           ? widget.editing!.uuid
           : (result['id'] ?? result['uuid']) as String?;
       if (uuid != null && uuid.isNotEmpty) {
@@ -467,9 +555,10 @@ class _RecipeStudioScreenState extends State<RecipeStudioScreen> {
       HapticFeedback.heavyImpact();
       Navigator.of(context).popUntil((r) => r.isFirst);
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text(isEdit
-            ? '"${_nameCtrl.text.trim()}" actualizado'
-            : '"${_nameCtrl.text.trim()}" guardado en el menú'),
+        content: Text(
+          'Listo. "${_nameCtrl.text.trim()}" quedó en su menú con una '
+          'ganancia de ${_money(_profit)} por plato.',
+        ),
         backgroundColor: AppTheme.success,
       ));
     } on AppError catch (e) {
@@ -482,7 +571,7 @@ class _RecipeStudioScreenState extends State<RecipeStudioScreen> {
           name: 'RecipeStudioScreen', error: e, stackTrace: st);
       if (mounted) {
         setState(() => _saving = false);
-        _snack('No se pudo guardar la receta. Intente de nuevo.',
+        _snack('No se pudo guardar el plato. Intente de nuevo.',
             color: AppTheme.error);
       }
     }
@@ -506,22 +595,7 @@ class _RecipeStudioScreenState extends State<RecipeStudioScreen> {
         backgroundColor: AppUI.pageBg,
         surfaceTintColor: Colors.transparent,
         elevation: 0,
-        title: Text(widget.editing != null ? 'Editar receta' : 'Recipe Studio',
-            style: AppUI.title, overflow: TextOverflow.ellipsis),
-        actions: [
-          TextButton.icon(
-            onPressed: _saving ? null : _save,
-            icon: Icon(
-                _saving ? Icons.hourglass_top_rounded : Icons.check_rounded,
-                size: 18,
-                color: AppTheme.success),
-            label: const Text('Guardar',
-                style: TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                    color: AppTheme.success)),
-          ),
-        ],
+        title: Text(_isEdit ? 'Editar plato' : 'Nuevo plato', style: AppUI.title),
       ),
       body: SafeArea(child: _body()),
     );
@@ -541,86 +615,110 @@ class _RecipeStudioScreenState extends State<RecipeStudioScreen> {
         ]),
       );
     }
-    return LayoutBuilder(builder: (ctx, c) {
-      final wide = c.maxWidth >= 900;
-      if (wide) {
-        return Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            SizedBox(
-              width: 340,
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.all(AppUI.s16),
-                child: _infoPanel(),
-              ),
+    return Column(children: [
+      Expanded(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(AppUI.s16),
+          child: Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 720),
+              child: Column(children: [
+                _aiEntry(),
+                const SizedBox(height: AppUI.s16),
+                _section('1. El plato', _section1()),
+                const SizedBox(height: AppUI.s16),
+                _section('2. Ingredientes y costo', _section2()),
+                const SizedBox(height: AppUI.s16),
+                _section('3. Preparación (opcional)', _section3()),
+                const SizedBox(height: AppUI.s24),
+              ]),
             ),
-            const VerticalDivider(width: 1, color: AppUI.border),
-            Expanded(
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.all(AppUI.s16),
-                child: Column(children: [
-                  _costSummary(),
-                  const SizedBox(height: AppUI.s16),
-                  _aiBar(),
-                  const SizedBox(height: AppUI.s16),
-                  _ingredientsTable(),
-                  const SizedBox(height: AppUI.s16),
-                  _stepsEditor(),
-                ]),
-              ),
-            ),
-          ],
-        );
-      }
-      // Móvil 360dp: una columna apilada, resumen fijo arriba.
-      return SingleChildScrollView(
-        padding: const EdgeInsets.all(AppUI.s16),
-        child: Column(children: [
-          _costSummary(),
-          const SizedBox(height: AppUI.s16),
-          _aiBar(),
-          const SizedBox(height: AppUI.s16),
-          _infoPanel(),
-          const SizedBox(height: AppUI.s16),
-          _ingredientsTable(),
-          const SizedBox(height: AppUI.s16),
-          _stepsEditor(),
-          const SizedBox(height: AppUI.s24),
-        ]),
-      );
-    });
+          ),
+        ),
+      ),
+      _stickyBottom(),
+    ]);
   }
 
-  // ── Panel: info técnica ──────────────────────────────────────────────────
-  Widget _infoPanel() {
-    return Container(
-      padding: const EdgeInsets.all(AppUI.s16),
-      decoration: AppUI.borderedCard(),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        const Text('Información del plato', style: AppUI.sectionLabel),
-        const SizedBox(height: AppUI.s12),
-        _photoBox(),
-        const SizedBox(height: AppUI.s12),
-        _field(_nameCtrl, 'Nombre del plato', key: 'studio_name'),
-        const SizedBox(height: AppUI.s8),
-        _field(_priceCtrl, 'Precio de venta',
-            keyboard: TextInputType.number,
-            onChanged: (_) => setState(() {}),
-            key: 'studio_price'),
-        const SizedBox(height: AppUI.s8),
-        Row(children: [
-          Expanded(child: _field(_yieldCtrl, 'Rendimiento (ej: 10 porc.)')),
-          const SizedBox(width: AppUI.s8),
-          Expanded(child: _field(_timeCtrl, 'Tiempo (ej: 30 min)')),
-        ]),
-        const SizedBox(height: AppUI.s8),
-        _field(_categoryCtrl, 'Categoría'),
-        const SizedBox(height: AppUI.s8),
-        _field(_portionCtrl, 'Presentación / porción'),
-        const SizedBox(height: AppUI.s8),
-        _field(_descCtrl, 'Descripción', maxLines: 2),
-      ]),
+  /// Encabezado de sección + tarjeta blanca con el contenido.
+  Widget _section(String title, Widget child) {
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Padding(
+        padding: const EdgeInsets.only(left: 4, bottom: AppUI.s8),
+        child: Text(title,
+            style: const TextStyle(
+                fontSize: 16, fontWeight: FontWeight.w700, color: AppUI.ink)),
+      ),
+      SoftCard(child: child),
+    ]);
+  }
+
+  // ── Atajo de IA (un solo punto de entrada, opcional) ──────────────────────
+  Widget _aiEntry() {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: _aiBusy ? null : _openAiSheet,
+        borderRadius: BorderRadius.circular(AppUI.radius),
+        child: Container(
+          padding: const EdgeInsets.all(AppUI.s16),
+          decoration: BoxDecoration(
+            color: AppTheme.primary.withValues(alpha: 0.06),
+            borderRadius: BorderRadius.circular(AppUI.radius),
+            border: Border.all(color: AppTheme.primary.withValues(alpha: 0.25)),
+          ),
+          child: Row(children: [
+            const Icon(Icons.auto_awesome_rounded, color: AppTheme.primary),
+            const SizedBox(width: AppUI.s12),
+            const Expanded(
+              child: Text(
+                'Que la IA me ayude — propone ingredientes y pasos. Usted revisa.',
+                style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                    color: AppTheme.primary),
+              ),
+            ),
+            if (_aiBusy)
+              const SizedBox(
+                  width: 18,
+                  height: 18,
+                  child: CircularProgressIndicator(strokeWidth: 2))
+            else
+              const Icon(Icons.chevron_right_rounded, color: AppTheme.primary),
+          ]),
+        ),
+      ),
     );
+  }
+
+  // ── Sección 1: el plato ───────────────────────────────────────────────────
+  Widget _section1() {
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      _field(_nameCtrl, 'Nombre del plato',
+          example: 'Ej: Bandeja paisa',
+          onChanged: (_) => setState(() {}),
+          key: 'studio_name'),
+      const SizedBox(height: AppUI.s16),
+      _field(_priceCtrl, 'Precio de venta',
+          example: 'Lo que le cobra al cliente. Ej: 18.000',
+          keyboard: TextInputType.number,
+          onChanged: (_) => setState(() {}),
+          key: 'studio_price'),
+      const SizedBox(height: AppUI.s16),
+      _field(_categoryCtrl, 'Categoría (opcional)',
+          example: 'Ej: Almuerzos, Corrientazo'),
+      const SizedBox(height: AppUI.s16),
+      _field(_portionCtrl, 'Presentación (opcional)',
+          example: 'Cómo se sirve. Ej: Plato hondo, arroz aparte'),
+      const SizedBox(height: AppUI.s16),
+      _field(_descCtrl, 'Descripción (opcional)',
+          example: 'Una frase apetitosa para el catálogo', maxLines: 2),
+      const SizedBox(height: AppUI.s16),
+      const Text('Foto del plato', style: AppUI.sectionLabel),
+      const SizedBox(height: AppUI.s8),
+      _photoBox(),
+    ]);
   }
 
   Widget _photoBox() {
@@ -647,207 +745,131 @@ class _RecipeStudioScreenState extends State<RecipeStudioScreen> {
       const SizedBox(height: AppUI.s8),
       Wrap(spacing: AppUI.s8, runSpacing: AppUI.s8, children: [
         GhostButton(
-            icon: Icons.auto_awesome_rounded,
-            label: 'Foto con IA',
-            onPressed: _aiBusy ? null : _generatePhoto),
+            icon: Icons.photo_library_rounded,
+            label: 'Tomar o subir mi foto',
+            onPressed: _aiBusy ? null : _uploadOwnPhoto),
         GhostButton(
-            icon: Icons.cleaning_services_rounded,
-            label: 'Limpiar mi foto',
-            onPressed: _aiBusy ? null : _cleanPhoto),
+            icon: Icons.auto_awesome_rounded,
+            label: 'Crear foto con IA',
+            onPressed: _aiBusy ? null : _generatePhoto),
       ]),
     ]);
   }
 
-  Widget _field(TextEditingController c, String hint,
-      {TextInputType? keyboard,
-      int maxLines = 1,
-      ValueChanged<String>? onChanged,
-      String? key}) {
-    return TextField(
-      key: key == null ? null : Key(key),
-      controller: c,
-      keyboardType: keyboard,
-      maxLines: maxLines,
-      onChanged: onChanged,
-      style: const TextStyle(fontSize: 14, color: AppUI.ink),
-      decoration: InputDecoration(
-        hintText: hint,
-        hintStyle: const TextStyle(color: AppUI.inkSoft, fontSize: 14),
-        isDense: true,
-        contentPadding:
-            const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-        filled: true,
-        fillColor: AppUI.pageBg,
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(AppUI.radiusSm),
-          borderSide: const BorderSide(color: AppUI.border),
-        ),
-        enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(AppUI.radiusSm),
-          borderSide: const BorderSide(color: AppUI.border),
-        ),
+  // ── Sección 2: ingredientes y costo ───────────────────────────────────────
+  Widget _section2() {
+    final noInsumos = _available.isEmpty;
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      const Text(
+        'Agregue los insumos que ya registró en Inventario y la cantidad que '
+        'usa. El costo se calcula solo.',
+        style: AppUI.bodySoft,
       ),
-    );
-  }
-
-  // ── Card glass de costeo en vivo ─────────────────────────────────────────
-  Widget _costSummary() {
-    return GlassCard(
-      child: Row(children: [
-        _costCell('Costo', _money(_totalCost), AppTheme.error),
-        _divider(),
-        _costCell('Precio', _money(_salePrice), AppUI.ink),
-        _divider(),
-        _costCell(
-          'Margen',
-          '${_marginPct.toStringAsFixed(0)}%',
-          _marginPct >= 0 ? AppTheme.success : AppTheme.error,
-        ),
-      ]),
-    );
-  }
-
-  Widget _costCell(String label, String value, Color color) => Expanded(
-        child: Column(children: [
-          Text(label, style: AppUI.sectionLabel),
-          const SizedBox(height: 4),
-          Text(value,
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.w700,
-                color: color,
-                fontFeatures: const [FontFeature.tabularFigures()],
-              )),
-        ]),
-      );
-
-  Widget _divider() =>
-      Container(width: 1, height: 36, color: AppUI.hairline);
-
-  // ── Barra de asistente IA ────────────────────────────────────────────────
-  Widget _aiBar() {
-    return Container(
-      padding: const EdgeInsets.all(AppUI.s12),
-      decoration: AppUI.borderedCard(),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Row(children: [
-          const Icon(Icons.auto_awesome_rounded,
-              size: 16, color: AppTheme.primary),
-          const SizedBox(width: 6),
-          const Text('Asistente IA', style: AppUI.sectionLabel),
-          const Spacer(),
-          if (_aiBusy)
-            const SizedBox(
-                width: 16,
-                height: 16,
-                child: CircularProgressIndicator(strokeWidth: 2)),
-        ]),
-        const SizedBox(height: AppUI.s8),
-        Wrap(spacing: AppUI.s8, runSpacing: AppUI.s8, children: [
+      const SizedBox(height: AppUI.s12),
+      if (noInsumos)
+        Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          const Text('Aún no tiene insumos. Regístrelos primero para poder costear.',
+              style: TextStyle(fontSize: 14, color: AppTheme.warning)),
+          const SizedBox(height: AppUI.s8),
           GhostButton(
-              icon: Icons.auto_fix_high_rounded,
-              label: 'Completar con IA',
-              color: AppTheme.primary,
-              onPressed: _aiBusy ? null : () => _askAI(refine: false)),
-        ]),
-        const SizedBox(height: AppUI.s8),
-        Row(children: [
-          Expanded(
-            child: _field(_instructionsCtrl,
-                'Indíquele a la IA: "más económica", "sin lácteos"…'),
-          ),
-          const SizedBox(width: AppUI.s8),
-          GhostButton(
-              icon: Icons.send_rounded,
-              label: 'Refinar',
-              color: AppTheme.primary,
-              onPressed: _aiBusy ? null : () => _askAI(refine: true)),
-        ]),
-      ]),
-    );
-  }
-
-  // ── Tabla de ingredientes de alta densidad ───────────────────────────────
-  Widget _ingredientsTable() {
-    return Container(
-      decoration: AppUI.borderedCard(),
-      clipBehavior: Clip.antiAlias,
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(12, 12, 12, 8),
+              icon: Icons.inventory_2_rounded,
+              label: 'Registrar mis insumos',
+              onPressed: () => Navigator.of(context).pop()),
+        ])
+      else ...[
+        // Encabezados de columna (se lee como receta).
+        const Padding(
+          padding: EdgeInsets.symmetric(horizontal: 4),
           child: Row(children: [
-            const Expanded(
-                child: Text('Ingredientes',
-                    style: AppUI.sectionLabel,
-                    overflow: TextOverflow.ellipsis)),
-            GhostButton(
-                icon: Icons.add_rounded,
-                label: 'Agregar',
-                onPressed: _spotlightPick),
+            Expanded(child: Text('Insumo', style: AppUI.sectionLabel)),
+            SizedBox(
+                width: 116,
+                child: Text('Cantidad',
+                    textAlign: TextAlign.center, style: AppUI.sectionLabel)),
+            SizedBox(
+                width: 72,
+                child: Text('Costo',
+                    textAlign: TextAlign.right, style: AppUI.sectionLabel)),
+            SizedBox(width: 36),
           ]),
         ),
-        const Divider(height: 1, color: AppUI.border),
+        const SizedBox(height: AppUI.s8),
         if (_lines.isEmpty)
           const Padding(
-            padding: EdgeInsets.all(16),
-            child: Text('Aún no agrega insumos. Toque "Agregar".',
+            padding: EdgeInsets.symmetric(vertical: 8),
+            child: Text(
+                'Aún no agrega insumos. Toque "Agregar insumo" para escogerlos '
+                'de su inventario.',
                 style: AppUI.bodySoft),
           )
         else
           ..._lines.map(_ingredientRow),
-      ]),
-    );
+        const SizedBox(height: AppUI.s8),
+        GhostButton(
+            icon: Icons.add_rounded,
+            label: 'Agregar insumo',
+            color: AppTheme.primary,
+            onPressed: _spotlightPick),
+      ],
+      const SizedBox(height: AppUI.s16),
+      _costRecap(),
+    ]);
   }
 
   Widget _ingredientRow(_RecipeLine line) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-      decoration: const BoxDecoration(
-        border: Border(bottom: BorderSide(color: AppUI.hairline)),
-      ),
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 6),
       child: Row(children: [
-        const Icon(Icons.circle, size: 6, color: AppUI.inkSoft),
-        const SizedBox(width: 10),
         Expanded(
           child: Text(line.ingredient.name,
-              maxLines: 1,
+              maxLines: 2,
               overflow: TextOverflow.ellipsis,
               style: AppUI.bodyStrong),
         ),
-        _stepper(line),
+        // Cantidad editable (decimales) con +/- de apoyo + la unidad real.
         SizedBox(
-          width: 40,
-          child: Text(line.ingredient.unitLabel.toLowerCase(),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              textAlign: TextAlign.center,
-              style: AppUI.bodySoft),
+          width: 116,
+          child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+            _miniBtn(Icons.remove_rounded, () => _bumpQty(line, -1)),
+            SizedBox(
+              width: 40,
+              child: TextField(
+                controller: line.qtyCtrl,
+                textAlign: TextAlign.center,
+                keyboardType:
+                    const TextInputType.numberWithOptions(decimal: true),
+                style: AppUI.tabularStrong,
+                decoration: const InputDecoration(
+                  isDense: true,
+                  contentPadding: EdgeInsets.symmetric(vertical: 6),
+                  border: InputBorder.none,
+                ),
+                onChanged: (v) {
+                  final q = double.tryParse(v.replaceAll(',', '.'));
+                  if (q != null && q >= 0) setState(() => line.quantity = q);
+                },
+              ),
+            ),
+            _miniBtn(Icons.add_rounded, () => _bumpQty(line, 1)),
+          ]),
         ),
         SizedBox(
           width: 72,
           child: Text(_money(line.totalCost),
               textAlign: TextAlign.right, style: AppUI.tabularStrong),
         ),
-        IconButton(
-          icon: const Icon(Icons.close_rounded, size: 16, color: AppUI.inkSoft),
-          tooltip: 'Quitar',
-          onPressed: () => setState(() => _lines.remove(line)),
+        SizedBox(
+          width: 36,
+          child: IconButton(
+            padding: EdgeInsets.zero,
+            icon:
+                const Icon(Icons.close_rounded, size: 18, color: AppUI.inkSoft),
+            tooltip: 'Quitar',
+            onPressed: () => _removeLine(line),
+          ),
         ),
       ]),
     );
-  }
-
-  Widget _stepper(_RecipeLine line) {
-    return Row(mainAxisSize: MainAxisSize.min, children: [
-      _miniBtn(Icons.remove_rounded, () {
-        if (line.quantity > 1) setState(() => line.quantity -= 1);
-      }),
-      Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 6),
-        child: Text('×${_trimQty(line.quantity)}', style: AppUI.tabularStrong),
-      ),
-      _miniBtn(Icons.add_rounded, () => setState(() => line.quantity += 1)),
-    ]);
   }
 
   Widget _miniBtn(IconData icon, VoidCallback onTap) => InkWell(
@@ -857,54 +879,70 @@ class _RecipeStudioScreenState extends State<RecipeStudioScreen> {
         },
         borderRadius: BorderRadius.circular(AppUI.radiusSm),
         child: Container(
-          width: 28,
-          height: 28,
+          width: 26,
+          height: 26,
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(AppUI.radiusSm),
             border: Border.all(color: AppUI.border),
           ),
-          child: Icon(icon, size: 16, color: AppUI.ink),
+          child: Icon(icon, size: 15, color: AppUI.ink),
         ),
       );
 
-  // ── Editor de pasos tipo Notion (drag & drop) ────────────────────────────
-  Widget _stepsEditor() {
+  /// Recap de costo dentro de la sección (sólido, sin glass) + nota explicativa.
+  Widget _costRecap() {
     return Container(
       padding: const EdgeInsets.all(AppUI.s12),
-      decoration: AppUI.borderedCard(),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Row(children: [
-          const Expanded(
-              child: Text('Preparación',
-                  style: AppUI.sectionLabel,
-                  overflow: TextOverflow.ellipsis)),
-          GhostButton(
-              icon: Icons.add_rounded,
-              label: 'Paso',
-              onPressed: () => setState(() => _steps.add(_StepDraft()))),
+      decoration: BoxDecoration(
+        color: AppUI.pageBg,
+        borderRadius: BorderRadius.circular(AppUI.radiusSm),
+        border: Border.all(color: AppUI.border),
+      ),
+      child: Column(children: [
+        Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+          const Text('Le cuesta', style: AppUI.bodySoft),
+          Text(_money(_totalCost), style: AppUI.tabularStrong),
         ]),
-        const SizedBox(height: AppUI.s8),
-        if (_steps.isEmpty)
-          const Padding(
-            padding: EdgeInsets.symmetric(vertical: 8),
-            child: Text('Agregue los pasos de preparación. Puede arrastrarlos '
-                'para reordenar.', style: AppUI.bodySoft),
-          )
-        else
-          ReorderableListView.builder(
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            buildDefaultDragHandles: false,
-            itemCount: _steps.length,
-            onReorder: (oldI, newI) => setState(() {
-              if (newI > oldI) newI -= 1;
-              final s = _steps.removeAt(oldI);
-              _steps.insert(newI, s);
-            }),
-            itemBuilder: (ctx, i) => _stepRow(i),
-          ),
+        const SizedBox(height: 4),
+        const Text('El costo se suma solo: cada insumo por la cantidad que usa.',
+            style: TextStyle(fontSize: 12, color: AppUI.inkSoft)),
       ]),
     );
+  }
+
+  // ── Sección 3: preparación (opcional) ─────────────────────────────────────
+  Widget _section3() {
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      // Porciones y tiempo APILADOS (nunca 2 columnas a 360dp).
+      _field(_yieldCtrl, 'Porciones', example: 'Cuántas salen. Ej: 10'),
+      const SizedBox(height: AppUI.s16),
+      _field(_timeCtrl, 'Tiempo de preparación', example: 'Ej: 30 minutos'),
+      const SizedBox(height: AppUI.s16),
+      Row(children: [
+        const Expanded(child: Text('Pasos', style: AppUI.sectionLabel)),
+        GhostButton(
+            icon: Icons.add_rounded,
+            label: 'Paso',
+            onPressed: () => setState(() => _steps.add(_StepDraft()))),
+      ]),
+      const SizedBox(height: AppUI.s8),
+      if (_steps.isEmpty)
+        const Text('Escriba los pasos, o deje que la IA los proponga. '
+            'Puede arrastrarlos para reordenar.', style: AppUI.bodySoft)
+      else
+        ReorderableListView.builder(
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          buildDefaultDragHandles: false,
+          itemCount: _steps.length,
+          onReorder: (oldI, newI) => setState(() {
+            if (newI > oldI) newI -= 1;
+            final s = _steps.removeAt(oldI);
+            _steps.insert(newI, s);
+          }),
+          itemBuilder: (ctx, i) => _stepRow(i),
+        ),
+    ]);
   }
 
   Widget _stepRow(int i) {
@@ -927,7 +965,8 @@ class _RecipeStudioScreenState extends State<RecipeStudioScreen> {
         ),
         Expanded(
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            _field(step.controller, 'Describa el paso ${i + 1}', maxLines: 2),
+            _field(step.controller, 'Paso ${i + 1}',
+                example: 'Qué se hace en este paso', maxLines: 2),
             if (step.photoUrl != null && step.photoUrl!.isNotEmpty)
               Padding(
                 padding: const EdgeInsets.only(top: 6),
@@ -954,6 +993,111 @@ class _RecipeStudioScreenState extends State<RecipeStudioScreen> {
       ]),
     );
   }
+
+  // ── Campo con LABEL FIJO + ejemplo de ayuda (no placeholder que se va) ─────
+  Widget _field(TextEditingController c, String label,
+      {String? example,
+      TextInputType? keyboard,
+      int maxLines = 1,
+      ValueChanged<String>? onChanged,
+      String? key}) {
+    return TextField(
+      key: key == null ? null : Key(key),
+      controller: c,
+      keyboardType: keyboard,
+      maxLines: maxLines,
+      onChanged: onChanged,
+      style: const TextStyle(fontSize: 15, color: AppUI.ink),
+      decoration: InputDecoration(
+        labelText: label,
+        labelStyle: const TextStyle(color: AppUI.inkSoft, fontSize: 14),
+        floatingLabelBehavior: FloatingLabelBehavior.always,
+        helperText: example,
+        helperStyle: const TextStyle(color: AppUI.inkSoft, fontSize: 12),
+        isDense: true,
+        contentPadding:
+            const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+        filled: true,
+        fillColor: AppUI.pageBg,
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(AppUI.radiusSm),
+          borderSide: const BorderSide(color: AppUI.border),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(AppUI.radiusSm),
+          borderSide: const BorderSide(color: AppUI.border),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(AppUI.radiusSm),
+          borderSide: const BorderSide(color: AppTheme.primary, width: 1.5),
+        ),
+      ),
+    );
+  }
+
+  // ── Barra inferior fija: costo + precio + ganancia + Guardar ──────────────
+  Widget _stickyBottom() {
+    final profitColor = _profit >= 0 ? AppTheme.success : AppTheme.error;
+    return Container(
+      padding: const EdgeInsets.fromLTRB(AppUI.s16, AppUI.s12, AppUI.s16, AppUI.s12),
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        border: Border(top: BorderSide(color: AppUI.border)),
+      ),
+      child: SafeArea(
+        top: false,
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          Row(children: [
+            _recapCell('Costo', _money(_totalCost), AppUI.ink),
+            _recapCell('Precio', _money(_salePrice), AppUI.ink),
+            _recapCell('Ganancia', _money(_profit), profitColor),
+          ]),
+          const SizedBox(height: AppUI.s8),
+          if (!_canSave)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 6),
+              child: Text(_missingText,
+                  style: const TextStyle(fontSize: 12, color: AppTheme.warning)),
+            ),
+          SizedBox(
+            width: double.infinity,
+            height: 50,
+            child: FilledButton.icon(
+              style: FilledButton.styleFrom(
+                backgroundColor: AppTheme.success,
+                disabledBackgroundColor: AppTheme.success.withValues(alpha: 0.4),
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(AppUI.radiusSm)),
+              ),
+              onPressed: (_canSave && !_saving) ? _save : null,
+              icon: _saving
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(
+                          strokeWidth: 2, color: Colors.white))
+                  : const Icon(Icons.check_rounded),
+              label: Text(_isEdit ? 'Guardar cambios' : 'Guardar plato'),
+            ),
+          ),
+        ]),
+      ),
+    );
+  }
+
+  Widget _recapCell(String label, String value, Color color) => Expanded(
+        child: Column(children: [
+          Text(label, style: AppUI.sectionLabel),
+          const SizedBox(height: 2),
+          Text(value,
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w700,
+                color: color,
+                fontFeatures: const [FontFeature.tabularFigures()],
+              )),
+        ]),
+      );
 }
 
 /// Hoja Spotlight: búsqueda rápida de insumos (reemplaza el dropdown infinito).
