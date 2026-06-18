@@ -2346,6 +2346,62 @@ class ApiService {
     }
   }
 
+  // ── Spec 066 — planear menú ──────────────────────────────────────────────
+
+  /// Plantilla semanal del comercio. Devuelve `{days: {mon:{enabled,items},…}}`.
+  /// Sin plan guardado, el backend responde un mapa vacío (no es error).
+  Future<Map<String, dynamic>> fetchMenuPlan() async {
+    try {
+      final response = await _dio.get('/api/v1/menu-plan');
+      return _extractData(response);
+    } on DioException catch (e) {
+      throw AppError.fromDioException(e);
+    }
+  }
+
+  /// Reemplaza la plantilla semanal. `days` es el mapa día→{enabled, items}.
+  Future<Map<String, dynamic>> saveMenuPlan(
+      Map<String, dynamic> days) async {
+    try {
+      final response =
+          await _dio.put('/api/v1/menu-plan', data: {'days': days});
+      return _extractData(response);
+    } on DioException catch (e) {
+      throw AppError.fromDioException(e);
+    }
+  }
+
+  /// Lista los ajustes por fecha (overrides) de hoy en adelante.
+  Future<List<Map<String, dynamic>>> fetchMenuOverrides() async {
+    try {
+      final response = await _dio.get('/api/v1/menu-plan/overrides');
+      return _extractList(response);
+    } on DioException catch (e) {
+      throw AppError.fromDioException(e);
+    }
+  }
+
+  /// Crea o reemplaza el ajuste de una fecha concreta (AAAA-MM-DD).
+  Future<Map<String, dynamic>> saveMenuOverride(
+      Map<String, dynamic> data) async {
+    try {
+      final response =
+          await _dio.put('/api/v1/menu-plan/overrides', data: data);
+      return _extractData(response);
+    } on DioException catch (e) {
+      throw AppError.fromDioException(e);
+    }
+  }
+
+  /// Borra el ajuste de una fecha; vuelve a regir la plantilla de ese día.
+  Future<void> deleteMenuOverride(String date) async {
+    try {
+      await _dio.delete('/api/v1/menu-plan/overrides/$date');
+    } on DioException catch (e) {
+      throw AppError.fromDioException(e);
+    }
+  }
+
   /// DELETE /api/v1/recipes/:uuid — borra una receta. El backend ya lo expone;
   /// faltaba el método cliente para la lista "Ver mis recetas".
   Future<void> deleteRecipe(String uuid) async {

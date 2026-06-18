@@ -17,8 +17,8 @@ import '../../services/app_error.dart';
 import '../../services/auth_service.dart';
 import '../../theme/app_theme.dart';
 import 'menu_import_screen.dart';
+import 'menu_planner_screen.dart';
 import 'recipe_list_screen.dart';
-import 'recipe_studio_screen.dart';
 import 'recipe_voice_screen.dart';
 
 class RecipesHomeScreen extends StatelessWidget {
@@ -170,13 +170,16 @@ class RecipesHomeScreen extends StatelessWidget {
             onTap: () => _importFromCamera(context),
           ),
           const SizedBox(height: 12),
+          // Spec 066 — reemplaza "Crear plato o receta" (crear sigue
+          // disponible desde "Ver mis recetas", cámara y voz). "Planear menú"
+          // arma el menú semanal que alimenta el link en línea.
           _OptionCard(
-            key: const Key('recipes_option_manual'),
-            icon: Icons.restaurant_menu_rounded,
+            key: const Key('recipes_option_plan'),
+            icon: Icons.calendar_month_rounded,
             color: AppTheme.primary,
-            title: 'Crear plato o receta',
-            subtitle: 'Arme un plato paso a paso y mire su costo y ganancia.',
-            onTap: () => _go(context, const RecipeStudioScreen()),
+            title: 'Planear menú',
+            subtitle: 'Arme el menú de la semana; su link en línea muestra el del día.',
+            onTap: () => _go(context, const MenuPlannerScreen()),
           ),
           const SizedBox(height: 12),
           _OptionCard(

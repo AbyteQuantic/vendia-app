@@ -10,11 +10,12 @@ void main() {
       await tester.pump();
 
       expect(find.byKey(const Key('recipes_option_camera')), findsOneWidget);
-      expect(find.byKey(const Key('recipes_option_manual')), findsOneWidget);
+      // Spec 066 — "Crear plato o receta" se reemplazó por "Planear menú".
+      expect(find.byKey(const Key('recipes_option_plan')), findsOneWidget);
       expect(find.byKey(const Key('recipes_option_voice')), findsOneWidget);
 
       expect(find.text('Importar menú desde la cámara'), findsOneWidget);
-      expect(find.text('Crear plato o receta'), findsOneWidget);
+      expect(find.text('Planear menú'), findsOneWidget);
       expect(find.text('Dictar receta desde el micrófono'), findsOneWidget);
     });
 
