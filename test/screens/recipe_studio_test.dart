@@ -172,6 +172,35 @@ void main() {
     expect(api.updated.first.value['ingredients'], isNotEmpty);
   });
 
+  testWidgets('la ganancia usa las porciones (costo total ÷ rendimiento)',
+      (tester) async {
+    tester.view.physicalSize = const Size(390, 1500);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    final api = _FakeApi()..ingredients = [_ing('i1', 'Carne', cost: 1000)];
+    await tester.pumpWidget(MaterialApp(home: RecipeStudioScreen(api: api)));
+    await tester.pumpAndSettle();
+
+    await tester.enterText(find.byKey(const Key('studio_price')), '13000');
+    // Agrega 1 insumo (costo total = 1000).
+    await tester.ensureVisible(find.text('Agregar insumo'));
+    await tester.tap(find.text('Agregar insumo'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Carne').last);
+    await tester.pumpAndSettle();
+
+    // Rinde 5 porciones → costo x plato = 1000/5 = 200; ganancia = 13000-200.
+    await tester.enterText(find.widgetWithText(TextField, 'Porciones'), '5');
+    await tester.pumpAndSettle();
+
+    expect(find.text('Costo x plato'), findsOneWidget);
+    expect(find.text('Ganancia x plato'), findsOneWidget);
+    expect(find.text('\$200'), findsWidgets); // 1000 / 5
+    expect(find.text('\$12.800'), findsWidgets); // 13.000 - 200
+  });
+
   testWidgets('crear insumo inline (no bloqueante) lo agrega al plato',
       (tester) async {
     tester.view.physicalSize = const Size(390, 1200);

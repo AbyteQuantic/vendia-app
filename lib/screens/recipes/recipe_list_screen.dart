@@ -201,7 +201,7 @@ class _RecipeCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final profit = recipe.profitPerUnit;
+    final profit = recipe.profitPerServing;
     final profitColor = profit >= 0 ? AppTheme.success : AppTheme.error;
     return Material(
       color: Colors.transparent,
@@ -225,7 +225,7 @@ class _RecipeCard extends StatelessWidget {
                         style: AppUI.bodyStrong),
                     const SizedBox(height: 2),
                     Text(
-                      'Precio ${formatCOP(recipe.salePrice)} · Costo ${formatCOP(recipe.productionCost)}',
+                      'Precio ${formatCOP(recipe.salePrice)} · Costo ${formatCOP(recipe.costPerServing)}',
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: AppUI.bodySoft,
@@ -234,7 +234,7 @@ class _RecipeCard extends StatelessWidget {
                     Row(children: [
                       MinimalBadge(
                         label:
-                            '${profit >= 0 ? "+" : ""}${formatCOP(profit)} · ${recipe.profitMargin.toStringAsFixed(0)}%',
+                            '${profit >= 0 ? "+" : ""}${formatCOP(profit)} · ${recipe.marginPerServing.toStringAsFixed(0)}%',
                         color: profitColor,
                       ),
                       const SizedBox(width: AppUI.s8),
@@ -337,12 +337,15 @@ class _RecipeDetailSheet extends StatelessWidget {
                 ]),
               ),
             const SizedBox(height: 16),
-            _row('Precio de venta', formatCOP(recipe.salePrice)),
-            _row('Costo de insumos', formatCOP(recipe.productionCost)),
+            _row('Precio de venta (por porción)', formatCOP(recipe.salePrice)),
+            if (recipe.servings > 1)
+              _row('Costo total (${recipe.servings} porciones)',
+                  formatCOP(recipe.productionCost)),
+            _row('Costo por porción', formatCOP(recipe.costPerServing)),
             _row(
-              'Ganancia por unidad',
-              '${formatCOP(recipe.profitPerUnit)} (${recipe.profitMargin.toStringAsFixed(0)}%)',
-              color: recipe.profitPerUnit >= 0
+              'Ganancia por porción',
+              '${formatCOP(recipe.profitPerServing)} (${recipe.marginPerServing.toStringAsFixed(0)}%)',
+              color: recipe.profitPerServing >= 0
                   ? AppTheme.success
                   : AppTheme.error,
             ),

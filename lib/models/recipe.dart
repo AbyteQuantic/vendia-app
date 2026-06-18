@@ -67,6 +67,20 @@ class Recipe {
   double get profitMargin =>
       salePrice > 0 ? (profitPerUnit / salePrice) * 100 : 0;
 
+  // Spec 065 — costeo POR PORCIÓN. Las cantidades de los insumos rinden
+  // `servings` porciones; el precio es por una. Mín. 1 (vacío ⇒ una porción,
+  // retrocompatible).
+  int get servings {
+    final m = RegExp(r'\d+').firstMatch(recipeYield);
+    final n = m == null ? 1 : int.tryParse(m.group(0)!) ?? 1;
+    return n < 1 ? 1 : n;
+  }
+
+  double get costPerServing => productionCost / servings;
+  double get profitPerServing => salePrice - costPerServing;
+  double get marginPerServing =>
+      salePrice > 0 ? (profitPerServing / salePrice) * 100 : 0;
+
   factory Recipe.fromJson(Map<String, dynamic> json) {
     // El backend serializa el ID del BaseModel como `id` (UUID string).
     // `uuid` queda como respaldo para datos offline viejos. (BUG-6)

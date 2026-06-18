@@ -32,6 +32,17 @@ import '../inventory/ingredients_screen.dart';
 String _fmtQty(double q) =>
     q == q.roundToDouble() ? q.toInt().toString() : q.toString();
 
+// Sugerencias para autocompletar (normalizan los valores que escribe el
+// tendero). Puede elegir una o escribir la suya.
+const List<String> _kCategorySuggestions = [
+  'Almuerzos', 'Corrientazo', 'Ejecutivo', 'Desayunos', 'Cenas', 'Entradas',
+  'Sopas', 'Asados', 'Comidas rápidas', 'Bebidas', 'Jugos', 'Postres',
+];
+const List<String> _kPresentationSuggestions = [
+  'Plato', 'Plato hondo', 'Bandeja', 'Vaso', 'Pocillo', 'Para llevar',
+  'Caja', 'En mesa',
+];
+
 /// Una línea costeada: un insumo REAL (uuid + unitCost) y la cantidad que
 /// consume el plato. El costo se deriva igual que siempre.
 class _RecipeLine {
@@ -78,6 +89,8 @@ class _RecipeStudioScreenState extends State<RecipeStudioScreen> {
   final _yieldCtrl = TextEditingController();
   final _timeCtrl = TextEditingController();
   final _instructionsCtrl = TextEditingController();
+  final _categoryFocus = FocusNode();
+  final _portionFocus = FocusNode();
   String _emoji = '🍽️';
 
   final List<_RecipeLine> _lines = [];
@@ -115,6 +128,8 @@ class _RecipeStudioScreenState extends State<RecipeStudioScreen> {
     for (final l in _lines) {
       l.qtyCtrl.dispose();
     }
+    _categoryFocus.dispose();
+    _portionFocus.dispose();
     super.dispose();
   }
 
@@ -157,9 +172,34 @@ class _RecipeStudioScreenState extends State<RecipeStudioScreen> {
   }
 
   // ── Costeo (lógica intacta) ────────────────────────────────────────────
+  // Costo TOTAL de los insumos = lo que cuesta hacer TODAS las porciones que
+  // el tendero indicó en "Porciones" (lógica Σ intacta).
   double get _totalCost => _lines.fold(0.0, (s, l) => s + l.totalCost);
   double get _salePrice => _parsePrice(_priceCtrl.text);
-  double get _profit => _salePrice - _totalCost;
+
+  /// Cuántas porciones rinde la receta (de "Porciones"). Mínimo 1; vacío ⇒ 1
+  /// (retrocompatible: receta = una porción).
+  int get _servings {
+    final m = RegExp(r'\d+').firstMatch(_yieldCtrl.text);
+    final n = m == null ? 1 : int.tryParse(m.group(0)!) ?? 1;
+    return n < 1 ? 1 : n;
+  }
+
+  /// Costo POR PORCIÓN = costo total ÷ porciones. El precio que pone el tendero
+  /// es por una porción, así que la ganancia se compara contra el costo por
+  /// porción (esto arregla "puse cantidades para 5 pero calculaba 1").
+  double get _costPerServing => _totalCost / _servings;
+  double get _profit => _salePrice - _costPerServing;
+
+  /// Solo los dígitos de un texto (para extraer minutos de "60 minutos"/"30 min").
+  String _digits(String s) => RegExp(r'\d+').firstMatch(s)?.group(0) ?? '';
+
+  /// Tiempo NORMALIZADO a "<n> min" (canónico, parseable más adelante). Vacío
+  /// si no hay número. El campo guarda solo el número; aquí le damos la forma.
+  String _normalizedTime() {
+    final d = _digits(_timeCtrl.text);
+    return d.isEmpty ? '' : '$d min';
+  }
 
   double _parsePrice(String t) =>
       double.tryParse(t.replaceAll(RegExp(r'[^0-9.]'), '')) ?? 0;
@@ -193,7 +233,7 @@ class _RecipeStudioScreenState extends State<RecipeStudioScreen> {
         _yieldCtrl.text = data['yield'] as String;
       }
       if ((data['prep_time'] as String?)?.isNotEmpty ?? false) {
-        _timeCtrl.text = data['prep_time'] as String;
+        _timeCtrl.text = _digits(data['prep_time'] as String);
       }
       final steps = (data['steps'] as List?) ?? const [];
       if (steps.isNotEmpty) {
@@ -236,7 +276,7 @@ class _RecipeStudioScreenState extends State<RecipeStudioScreen> {
       _emoji = r.emoji ?? _emoji;
       _photoUrl = (r.photoUrl?.isNotEmpty ?? false) ? r.photoUrl : null;
       _yieldCtrl.text = r.recipeYield;
-      _timeCtrl.text = r.prepTime;
+      _timeCtrl.text = _digits(r.prepTime);
       for (final s in _steps) {
         s.controller.dispose();
       }
@@ -268,7 +308,7 @@ class _RecipeStudioScreenState extends State<RecipeStudioScreen> {
         'name': _nameCtrl.text.trim(),
         'description': _descCtrl.text.trim(),
         'yield': _yieldCtrl.text.trim(),
-        'prep_time': _timeCtrl.text.trim(),
+        'prep_time': _normalizedTime(),
         'ingredients': _lines
             .map((l) => {
                   'name': l.ingredient.name,
@@ -586,7 +626,7 @@ class _RecipeStudioScreenState extends State<RecipeStudioScreen> {
         if (_portionCtrl.text.trim().isNotEmpty)
           'portion': _portionCtrl.text.trim(),
         'yield': _yieldCtrl.text.trim(),
-        'prep_time': _timeCtrl.text.trim(),
+        'prep_time': _normalizedTime(),
         'prep_steps': _steps
             .where((s) => s.controller.text.trim().isNotEmpty)
             .map((s) => {
@@ -776,11 +816,11 @@ class _RecipeStudioScreenState extends State<RecipeStudioScreen> {
           onChanged: (_) => setState(() {}),
           key: 'studio_price'),
       const SizedBox(height: AppUI.s16),
-      _field(_categoryCtrl, 'Categoría (opcional)',
-          example: 'Ej: Almuerzos, Corrientazo'),
+      _autocompleteField(_categoryCtrl, _categoryFocus, 'Categoría (opcional)',
+          'Elija una o escriba la suya', _kCategorySuggestions),
       const SizedBox(height: AppUI.s16),
-      _field(_portionCtrl, 'Presentación (opcional)',
-          example: 'Cómo se sirve. Ej: Plato hondo, arroz aparte'),
+      _autocompleteField(_portionCtrl, _portionFocus, 'Presentación (opcional)',
+          'Cómo se sirve. Elija o escriba', _kPresentationSuggestions),
       const SizedBox(height: AppUI.s16),
       _field(_descCtrl, 'Descripción (opcional)',
           example: 'Una frase apetitosa para el catálogo', maxLines: 2),
@@ -1086,12 +1126,32 @@ class _RecipeStudioScreenState extends State<RecipeStudioScreen> {
       ),
       child: Column(children: [
         Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-          const Text('Le cuesta', style: AppUI.bodySoft),
+          Expanded(
+            child: Text(
+                _servings > 1
+                    ? 'Le cuesta hacer $_servings porciones'
+                    : 'Le cuesta',
+                style: AppUI.bodySoft),
+          ),
+          const SizedBox(width: AppUI.s8),
           Text(_money(_totalCost), style: AppUI.tabularStrong),
         ]),
+        if (_servings > 1) ...[
+          const SizedBox(height: 2),
+          Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+            const Expanded(
+                child: Text('Costo de cada porción', style: AppUI.bodySoft)),
+            const SizedBox(width: AppUI.s8),
+            Text(_money(_costPerServing), style: AppUI.tabularStrong),
+          ]),
+        ],
         const SizedBox(height: 4),
-        const Text('El costo se suma solo: cada insumo por la cantidad que usa.',
-            style: TextStyle(fontSize: 12, color: AppUI.inkSoft)),
+        Text(
+            _servings > 1
+                ? 'Puso las cantidades para $_servings porciones; el costo por '
+                    'plato es el total ÷ $_servings.'
+                : 'El costo se suma solo: cada insumo por la cantidad que usa.',
+            style: const TextStyle(fontSize: 12, color: AppUI.inkSoft)),
       ]),
     );
   }
@@ -1100,9 +1160,14 @@ class _RecipeStudioScreenState extends State<RecipeStudioScreen> {
   Widget _section3() {
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       // Porciones y tiempo APILADOS (nunca 2 columnas a 360dp).
-      _field(_yieldCtrl, 'Porciones', example: 'Cuántas salen. Ej: 10'),
+      _field(_yieldCtrl, 'Porciones',
+          example: 'Cuántas salen. Ej: 10',
+          keyboard: TextInputType.number,
+          onChanged: (_) => setState(() {})),
       const SizedBox(height: AppUI.s16),
-      _field(_timeCtrl, 'Tiempo de preparación', example: 'Ej: 30 minutos'),
+      _field(_timeCtrl, 'Tiempo de preparación (minutos)',
+          example: 'Solo el número de minutos. Ej: 30',
+          keyboard: TextInputType.number),
       const SizedBox(height: AppUI.s16),
       Row(children: [
         const Expanded(child: Text('Pasos', style: AppUI.sectionLabel)),
@@ -1181,20 +1246,8 @@ class _RecipeStudioScreenState extends State<RecipeStudioScreen> {
   }
 
   // ── Campo con LABEL FIJO + ejemplo de ayuda (no placeholder que se va) ─────
-  Widget _field(TextEditingController c, String label,
-      {String? example,
-      TextInputType? keyboard,
-      int maxLines = 1,
-      ValueChanged<String>? onChanged,
-      String? key}) {
-    return TextField(
-      key: key == null ? null : Key(key),
-      controller: c,
-      keyboardType: keyboard,
-      maxLines: maxLines,
-      onChanged: onChanged,
-      style: const TextStyle(fontSize: 15, color: AppUI.ink),
-      decoration: InputDecoration(
+  InputDecoration _fieldDecoration(String label, String? example) =>
+      InputDecoration(
         labelText: label,
         labelStyle: const TextStyle(color: AppUI.inkSoft, fontSize: 14),
         floatingLabelBehavior: FloatingLabelBehavior.always,
@@ -1217,6 +1270,67 @@ class _RecipeStudioScreenState extends State<RecipeStudioScreen> {
           borderRadius: BorderRadius.circular(AppUI.radiusSm),
           borderSide: const BorderSide(color: AppTheme.primary, width: 1.5),
         ),
+      );
+
+  Widget _field(TextEditingController c, String label,
+      {String? example,
+      TextInputType? keyboard,
+      int maxLines = 1,
+      ValueChanged<String>? onChanged,
+      String? key}) {
+    return TextField(
+      key: key == null ? null : Key(key),
+      controller: c,
+      keyboardType: keyboard,
+      maxLines: maxLines,
+      onChanged: onChanged,
+      style: const TextStyle(fontSize: 15, color: AppUI.ink),
+      decoration: _fieldDecoration(label, example),
+    );
+  }
+
+  // ── Campo con AUTOCOMPLETE de sugerencias (categorías / presentaciones) ────
+  // Usa RawAutocomplete con MI controller (así el texto libre o elegido siempre
+  // queda en el mismo lugar). El tendero puede elegir una sugerencia o escribir.
+  Widget _autocompleteField(TextEditingController c, FocusNode f, String label,
+      String example, List<String> options) {
+    return RawAutocomplete<String>(
+      textEditingController: c,
+      focusNode: f,
+      optionsBuilder: (TextEditingValue v) {
+        final q = v.text.trim().toLowerCase();
+        if (q.isEmpty) return options;
+        return options.where((o) => o.toLowerCase().contains(q));
+      },
+      fieldViewBuilder: (ctx, textCtrl, focusNode, onSubmit) => TextField(
+        controller: textCtrl,
+        focusNode: focusNode,
+        onChanged: (_) => setState(() {}),
+        onSubmitted: (_) => onSubmit(),
+        style: const TextStyle(fontSize: 15, color: AppUI.ink),
+        decoration: _fieldDecoration(label, example),
+      ),
+      optionsViewBuilder: (ctx, onSelected, opts) => Align(
+        alignment: Alignment.topLeft,
+        child: Material(
+          elevation: 3,
+          borderRadius: BorderRadius.circular(AppUI.radiusSm),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxHeight: 220, maxWidth: 360),
+            child: ListView(
+              shrinkWrap: true,
+              padding: EdgeInsets.zero,
+              children: [
+                for (final o in opts)
+                  ListTile(
+                    dense: true,
+                    title: Text(o, style: AppUI.bodyStrong),
+                    onTap: () => onSelected(o),
+                  ),
+              ],
+            ),
+          ),
+        ),
       ),
     );
   }
@@ -1224,6 +1338,7 @@ class _RecipeStudioScreenState extends State<RecipeStudioScreen> {
   // ── Barra inferior fija: costo + precio + ganancia + Guardar ──────────────
   Widget _stickyBottom() {
     final profitColor = _profit >= 0 ? AppTheme.success : AppTheme.error;
+    final perPlate = _servings > 1; // mostrar "x plato" cuando rinde varias
     return Container(
       padding: const EdgeInsets.fromLTRB(AppUI.s16, AppUI.s12, AppUI.s16, AppUI.s12),
       decoration: const BoxDecoration(
@@ -1234,9 +1349,11 @@ class _RecipeStudioScreenState extends State<RecipeStudioScreen> {
         top: false,
         child: Column(mainAxisSize: MainAxisSize.min, children: [
           Row(children: [
-            _recapCell('Costo', _money(_totalCost), AppUI.ink),
+            _recapCell(perPlate ? 'Costo x plato' : 'Costo',
+                _money(_costPerServing), AppUI.ink),
             _recapCell('Precio', _money(_salePrice), AppUI.ink),
-            _recapCell('Ganancia', _money(_profit), profitColor),
+            _recapCell(perPlate ? 'Ganancia x plato' : 'Ganancia',
+                _money(_profit), profitColor),
           ]),
           const SizedBox(height: AppUI.s8),
           if (!_canSave)
