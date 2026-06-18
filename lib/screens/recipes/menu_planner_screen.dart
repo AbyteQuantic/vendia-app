@@ -11,6 +11,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../../config/api_config.dart';
 import '../../services/api_service.dart';
 import '../../services/app_error.dart';
 import '../../services/auth_service.dart';
@@ -65,6 +66,14 @@ class _MenuPlannerScreenState extends State<MenuPlannerScreen> {
   };
   List<Map<String, dynamic>> _overrides = [];
 
+  /// Sedes del comercio (Spec 066 por-sede). Vacío/1 = no se muestra selector;
+  /// el plan es por defecto (branch_id=''). >1 → el tendero elige la sede.
+  List<Map<String, dynamic>> _branches = [];
+  String _selectedBranchId = '';
+  String _storeSlug = '';
+
+  bool get _multiBranch => _branches.length > 1;
+
   @override
   void initState() {
     super.initState();
@@ -77,14 +86,23 @@ class _MenuPlannerScreenState extends State<MenuPlannerScreen> {
       _error = null;
     });
     try {
-      final results = await Future.wait([
+      // Recetas, sedes y slug se cargan una vez; el plan/overrides dependen de
+      // la sede seleccionada.
+      final base = await Future.wait([
         _api.fetchRecipes(),
-        _api.fetchMenuPlan(),
-        _api.fetchMenuOverrides(),
+        _api.fetchBranches(),
+        _api.fetchStoreConfig(),
       ]);
-      _recipes = (results[0] as List).cast<Map<String, dynamic>>();
-      final plan = results[1] as Map<String, dynamic>;
-      _overrides = (results[2] as List).cast<Map<String, dynamic>>();
+      _recipes = (base[0] as List).cast<Map<String, dynamic>>();
+      _branches = (base[1] as List).cast<Map<String, dynamic>>();
+      _storeSlug = ((base[2] as Map)['store_slug'] ?? '').toString();
+
+      final results = await Future.wait([
+        _api.fetchMenuPlan(branchId: _selectedBranchId),
+        _api.fetchMenuOverrides(branchId: _selectedBranchId),
+      ]);
+      final plan = results[0] as Map<String, dynamic>;
+      _overrides = (results[1] as List).cast<Map<String, dynamic>>();
       _applyDays((plan['days'] as Map?)?.cast<String, dynamic>() ?? {});
       if (mounted) setState(() => _loading = false);
     } on AppError catch (e) {
@@ -148,10 +166,31 @@ class _MenuPlannerScreenState extends State<MenuPlannerScreen> {
     return name.isEmpty ? 'Receta' : name;
   }
 
+  /// Cambia la sede seleccionada y recarga su plantilla + ajustes.
+  Future<void> _switchBranch(String branchId) async {
+    if (branchId == _selectedBranchId) return;
+    setState(() {
+      _selectedBranchId = branchId;
+      _loading = true;
+    });
+    try {
+      final results = await Future.wait([
+        _api.fetchMenuPlan(branchId: branchId),
+        _api.fetchMenuOverrides(branchId: branchId),
+      ]);
+      final plan = results[0] as Map<String, dynamic>;
+      _overrides = (results[1] as List).cast<Map<String, dynamic>>();
+      _applyDays((plan['days'] as Map?)?.cast<String, dynamic>() ?? {});
+    } catch (_) {
+      if (mounted) _snack('No pudimos cargar esa sede.', AppTheme.error);
+    }
+    if (mounted) setState(() => _loading = false);
+  }
+
   Future<void> _save() async {
     setState(() => _saving = true);
     try {
-      await _api.saveMenuPlan(_serializeDays());
+      await _api.saveMenuPlan(_serializeDays(), branchId: _selectedBranchId);
       if (!mounted) return;
       HapticFeedback.lightImpact();
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
@@ -238,6 +277,21 @@ class _MenuPlannerScreenState extends State<MenuPlannerScreen> {
             style: TextStyle(fontSize: 14.5, color: Colors.black54, height: 1.3),
           ),
         ),
+        // Spec 066 por-sede: solo aparece cuando el comercio tiene más de una
+        // sede. Cada sede planea su menú y tiene su propio link en línea.
+        if (_multiBranch) ...[
+          _BranchSelector(
+            branches: _branches,
+            selectedId: _selectedBranchId,
+            onChanged: _switchBranch,
+          ),
+          if (_selectedBranchId.isNotEmpty && _storeSlug.isNotEmpty)
+            _BranchLinkCard(
+              url: '${ApiConfig.publicCatalogUrlFor(_storeSlug)}?sede=$_selectedBranchId',
+              onSnack: (m) => _snack(m, AppTheme.success),
+            ),
+          const SizedBox(height: 6),
+        ],
         for (final key in _dayOrder) ...[
           _DayCard(
             dayKey: key,
@@ -255,9 +309,11 @@ class _MenuPlannerScreenState extends State<MenuPlannerScreen> {
           recipes: _recipes,
           recipeName: _recipeName,
           api: _api,
+          branchId: _selectedBranchId,
           onChanged: () async {
             try {
-              final list = await _api.fetchMenuOverrides();
+              final list =
+                  await _api.fetchMenuOverrides(branchId: _selectedBranchId);
               if (mounted) {
                 setState(() =>
                     _overrides = list.cast<Map<String, dynamic>>());
@@ -617,6 +673,7 @@ class _OverridesSection extends StatelessWidget {
   final List<Map<String, dynamic>> recipes;
   final String Function(String) recipeName;
   final ApiService api;
+  final String branchId;
   final Future<void> Function() onChanged;
 
   const _OverridesSection({
@@ -624,6 +681,7 @@ class _OverridesSection extends StatelessWidget {
     required this.recipes,
     required this.recipeName,
     required this.api,
+    required this.branchId,
     required this.onChanged,
   });
 
@@ -666,7 +724,7 @@ class _OverridesSection extends StatelessWidget {
                   'planned_qty': it.plannedQty,
                 })
             .toList(),
-      });
+      }, branchId: branchId);
       await onChanged();
     } catch (_) {/* el snackbar global cubre el error de red */}
   }
@@ -724,13 +782,107 @@ class _OverridesSection extends StatelessWidget {
                   icon: Icon(Icons.delete_outline_rounded,
                       color: Colors.red.shade300),
                   onPressed: () async {
-                    await api.deleteMenuOverride(ov['date'].toString());
+                    await api.deleteMenuOverride(ov['date'].toString(),
+                        branchId: branchId);
                     await onChanged();
                   },
                 ),
               ),
             ),
       ],
+    );
+  }
+}
+
+/// Selector de sede (Spec 066 por-sede). Solo se monta con >1 sede.
+class _BranchSelector extends StatelessWidget {
+  final List<Map<String, dynamic>> branches;
+  final String selectedId;
+  final ValueChanged<String> onChanged;
+
+  const _BranchSelector({
+    required this.branches,
+    required this.selectedId,
+    required this.onChanged,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    // "" = todas las sedes / menú por defecto del comercio.
+    final items = <DropdownMenuItem<String>>[
+      const DropdownMenuItem(value: '', child: Text('Menú general (todas las sedes)')),
+      ...branches.map((b) => DropdownMenuItem(
+            value: (b['id'] ?? '').toString(),
+            child: Text((b['name'] ?? 'Sede').toString()),
+          )),
+    ];
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: InputDecorator(
+        decoration: InputDecoration(
+          labelText: 'Planeando la sede',
+          prefixIcon: const Icon(Icons.store_mall_directory_rounded),
+          border: OutlineInputBorder(borderRadius: BorderRadius.circular(14)),
+          isDense: true,
+          contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        ),
+        child: DropdownButtonHideUnderline(
+          child: DropdownButton<String>(
+            key: const Key('menu_branch_selector'),
+            isExpanded: true,
+            value: selectedId,
+            items: items,
+            onChanged: (v) => onChanged(v ?? ''),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Tarjeta con el link en línea de la sede seleccionada, para compartir (AC-10).
+class _BranchLinkCard extends StatelessWidget {
+  final String url;
+  final ValueChanged<String> onSnack;
+  const _BranchLinkCard({required this.url, required this.onSnack});
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      elevation: 0,
+      color: AppTheme.primary.withValues(alpha: 0.06),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(12, 8, 4, 8),
+        child: Row(
+          children: [
+            const Icon(Icons.link_rounded, color: AppTheme.primary, size: 20),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('Link de esta sede',
+                      style: TextStyle(fontSize: 12, color: Colors.black54)),
+                  Text(url.replaceFirst('https://', ''),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                          fontSize: 13, fontWeight: FontWeight.w600)),
+                ],
+              ),
+            ),
+            IconButton(
+              key: const Key('menu_branch_link_copy'),
+              icon: const Icon(Icons.copy_rounded, size: 20),
+              tooltip: 'Copiar link',
+              onPressed: () async {
+                await Clipboard.setData(ClipboardData(text: url));
+                onSnack('Link de la sede copiado');
+              },
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

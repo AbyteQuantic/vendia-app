@@ -2348,55 +2348,64 @@ class ApiService {
 
   // ── Spec 066 — planear menú ──────────────────────────────────────────────
 
-  /// Plantilla semanal del comercio. Devuelve `{days: {mon:{enabled,items},…}}`.
-  /// Sin plan guardado, el backend responde un mapa vacío (no es error).
-  Future<Map<String, dynamic>> fetchMenuPlan() async {
+  /// `?branch=<id>` para la query del menú por sede; vacío = plan por defecto
+  /// del comercio (single-sede). Helper para no repetir el armado.
+  Map<String, dynamic>? _branchQuery(String branchId) =>
+      branchId.isEmpty ? null : {'branch': branchId};
+
+  /// Plantilla semanal de la sede (o del comercio si branchId vacío). Devuelve
+  /// `{days: {mon:{enabled,items},…}}`. Sin plan, el backend responde vacío.
+  Future<Map<String, dynamic>> fetchMenuPlan({String branchId = ''}) async {
     try {
-      final response = await _dio.get('/api/v1/menu-plan');
+      final response = await _dio.get('/api/v1/menu-plan',
+          queryParameters: _branchQuery(branchId));
       return _extractData(response);
     } on DioException catch (e) {
       throw AppError.fromDioException(e);
     }
   }
 
-  /// Reemplaza la plantilla semanal. `days` es el mapa día→{enabled, items}.
-  Future<Map<String, dynamic>> saveMenuPlan(
-      Map<String, dynamic> days) async {
+  /// Reemplaza la plantilla semanal de la sede. `days` es el mapa día→{enabled, items}.
+  Future<Map<String, dynamic>> saveMenuPlan(Map<String, dynamic> days,
+      {String branchId = ''}) async {
     try {
-      final response =
-          await _dio.put('/api/v1/menu-plan', data: {'days': days});
+      final response = await _dio.put('/api/v1/menu-plan',
+          data: {'days': days}, queryParameters: _branchQuery(branchId));
       return _extractData(response);
     } on DioException catch (e) {
       throw AppError.fromDioException(e);
     }
   }
 
-  /// Lista los ajustes por fecha (overrides) de hoy en adelante.
-  Future<List<Map<String, dynamic>>> fetchMenuOverrides() async {
+  /// Lista los ajustes por fecha (overrides) de la sede, de hoy en adelante.
+  Future<List<Map<String, dynamic>>> fetchMenuOverrides(
+      {String branchId = ''}) async {
     try {
-      final response = await _dio.get('/api/v1/menu-plan/overrides');
+      final response = await _dio.get('/api/v1/menu-plan/overrides',
+          queryParameters: _branchQuery(branchId));
       return _extractList(response);
     } on DioException catch (e) {
       throw AppError.fromDioException(e);
     }
   }
 
-  /// Crea o reemplaza el ajuste de una fecha concreta (AAAA-MM-DD).
-  Future<Map<String, dynamic>> saveMenuOverride(
-      Map<String, dynamic> data) async {
+  /// Crea o reemplaza el ajuste de una fecha concreta (AAAA-MM-DD) de la sede.
+  Future<Map<String, dynamic>> saveMenuOverride(Map<String, dynamic> data,
+      {String branchId = ''}) async {
     try {
-      final response =
-          await _dio.put('/api/v1/menu-plan/overrides', data: data);
+      final response = await _dio.put('/api/v1/menu-plan/overrides',
+          data: data, queryParameters: _branchQuery(branchId));
       return _extractData(response);
     } on DioException catch (e) {
       throw AppError.fromDioException(e);
     }
   }
 
-  /// Borra el ajuste de una fecha; vuelve a regir la plantilla de ese día.
-  Future<void> deleteMenuOverride(String date) async {
+  /// Borra el ajuste de una fecha de la sede; vuelve a regir la plantilla.
+  Future<void> deleteMenuOverride(String date, {String branchId = ''}) async {
     try {
-      await _dio.delete('/api/v1/menu-plan/overrides/$date');
+      await _dio.delete('/api/v1/menu-plan/overrides/$date',
+          queryParameters: _branchQuery(branchId));
     } on DioException catch (e) {
       throw AppError.fromDioException(e);
     }

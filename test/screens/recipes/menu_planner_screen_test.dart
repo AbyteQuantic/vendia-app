@@ -14,22 +14,37 @@ class _FakeApi extends ApiService {
     {'id': 'r1', 'product_name': 'Bandeja paisa', 'category': 'Fuertes'},
     {'id': 'r2', 'product_name': 'Sancocho', 'category': 'Fuertes'},
   ];
-  Map<String, dynamic> plan = {'days': {}};
+  // Por sede: plan por branchId ('' = comercio).
+  Map<String, Map<String, dynamic>> plansByBranch = {'': {'days': {}}};
+  List<Map<String, dynamic>> branches = [];
+  Map<String, dynamic> storeConfig = {'store_slug': 'mi-tienda'};
   List<Map<String, dynamic>> overrides = [];
   Map<String, dynamic>? savedDays;
+  String? savedBranchId;
 
   @override
   Future<List<Map<String, dynamic>>> fetchRecipes() async => recipes;
 
   @override
-  Future<Map<String, dynamic>> fetchMenuPlan() async => plan;
+  Future<List<Map<String, dynamic>>> fetchBranches() async => branches;
 
   @override
-  Future<List<Map<String, dynamic>>> fetchMenuOverrides() async => overrides;
+  Future<Map<String, dynamic>> fetchStoreConfig() async => storeConfig;
 
   @override
-  Future<Map<String, dynamic>> saveMenuPlan(Map<String, dynamic> days) async {
+  Future<Map<String, dynamic>> fetchMenuPlan({String branchId = ''}) async =>
+      plansByBranch[branchId] ?? {'days': {}};
+
+  @override
+  Future<List<Map<String, dynamic>>> fetchMenuOverrides(
+          {String branchId = ''}) async =>
+      overrides;
+
+  @override
+  Future<Map<String, dynamic>> saveMenuPlan(Map<String, dynamic> days,
+      {String branchId = ''}) async {
     savedDays = days;
+    savedBranchId = branchId;
     return {'days': days};
   }
 }
@@ -76,13 +91,15 @@ void main() {
 
   testWidgets('precarga la plantilla existente del backend', (tester) async {
     final api = _FakeApi()
-      ..plan = {
-        'days': {
-          'fri': {
-            'enabled': true,
-            'items': [
-              {'recipe_uuid': 'r1', 'planned_qty': 8}
-            ]
+      ..plansByBranch = {
+        '': {
+          'days': {
+            'fri': {
+              'enabled': true,
+              'items': [
+                {'recipe_uuid': 'r1', 'planned_qty': 8}
+              ]
+            }
           }
         }
       };
@@ -119,5 +136,47 @@ void main() {
     final thu = api.savedDays!['thu'] as Map;
     expect((thu['items'] as List).length, 1);
     expect((thu['items'] as List).first['recipe_uuid'], 'r1');
+  });
+
+  group('por sede (Spec 066)', () {
+    testWidgets('sin selector cuando hay 0 o 1 sede', (tester) async {
+      final api = _FakeApi()..branches = [];
+      await _pump(tester, api);
+      expect(find.byKey(const Key('menu_branch_selector')), findsNothing);
+    });
+
+    testWidgets('con >1 sede muestra selector y guarda en la sede elegida',
+        (tester) async {
+      final api = _FakeApi()
+        ..branches = [
+          {'id': 'b1', 'name': 'Sede Norte', 'address': 'Cra 1'},
+          {'id': 'b2', 'name': 'Sede Sur', 'address': 'Cra 9'},
+        ]
+        ..plansByBranch = {
+          '': {'days': {}},
+          'b1': {'days': {}},
+        };
+      await _pump(tester, api);
+
+      expect(find.byKey(const Key('menu_branch_selector')), findsOneWidget);
+
+      // Elegir la sede Norte (b1).
+      await tester.tap(find.byKey(const Key('menu_branch_selector')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Sede Norte').last);
+      await tester.pumpAndSettle();
+
+      // El link por sede aparece.
+      expect(find.byKey(const Key('menu_branch_link_copy')), findsOneWidget);
+
+      // Prender un día y guardar → se guarda con branchId = b1.
+      await tester.tap(find.byKey(const Key('menu_day_switch_thu')));
+      await tester.pump();
+      await tester.tap(find.byKey(const Key('menu_planner_save')));
+      await tester.pumpAndSettle();
+
+      expect(api.savedBranchId, 'b1');
+      expect((api.savedDays!['thu'] as Map)['enabled'], isTrue);
+    });
   });
 }
