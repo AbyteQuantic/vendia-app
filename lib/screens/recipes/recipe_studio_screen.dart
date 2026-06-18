@@ -28,6 +28,7 @@ import '../../services/auth_service.dart';
 import '../../theme/app_theme.dart';
 import '../../theme/app_ui.dart';
 import '../inventory/ingredients_screen.dart';
+import 'recipe_list_screen.dart';
 
 String _fmtQty(double q) =>
     q == q.roundToDouble() ? q.toInt().toString() : q.toString();
@@ -715,8 +716,24 @@ class _RecipeStudioScreenState extends State<RecipeStudioScreen> {
       }
       if (!mounted) return;
       HapticFeedback.heavyImpact();
-      Navigator.of(context).popUntil((r) => r.isFirst);
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      // El ScaffoldMessenger es de nivel app: capturarlo antes de navegar evita
+      // usar un context que se va a desmontar.
+      final messenger = ScaffoldMessenger.of(context);
+      final navigator = Navigator.of(context);
+      if (_isEdit) {
+        // La edición siempre viene del listado: volver a él (se refresca solo).
+        if (navigator.canPop()) navigator.pop(true);
+      } else {
+        // Tras crear, aterrizar SIEMPRE en el listado de recetas (no en el
+        // Dashboard), venga del listado, del hub o de voz. Deja la pila como
+        // Raíz → Listado, sin acumular el Studio ni duplicar pantallas.
+        navigator.pushAndRemoveUntil(
+          MaterialPageRoute(
+              builder: (_) => RecipeListScreen(apiOverride: widget.api)),
+          (r) => r.isFirst,
+        );
+      }
+      messenger.showSnackBar(SnackBar(
         content: Text(
           'Listo. "${_nameCtrl.text.trim()}" quedó en su menú con una '
           'ganancia de ${_money(_profit)} por plato.',

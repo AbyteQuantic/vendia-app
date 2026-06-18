@@ -6,6 +6,7 @@ import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:vendia_pos/models/recipe.dart';
 import 'package:vendia_pos/services/api_service.dart';
 import 'package:vendia_pos/services/auth_service.dart';
+import 'package:vendia_pos/screens/recipes/recipe_list_screen.dart';
 import 'package:vendia_pos/screens/recipes/recipe_studio_screen.dart';
 
 class _FakeApi extends ApiService {
@@ -14,8 +15,13 @@ class _FakeApi extends ApiService {
   final List<Map<String, dynamic>> created = [];
   final List<MapEntry<String, Map<String, dynamic>>> updated = [];
 
+  List<Map<String, dynamic>> recipes = [];
+
   @override
   Future<List<Map<String, dynamic>>> fetchIngredients() async => ingredients;
+
+  @override
+  Future<List<Map<String, dynamic>>> fetchRecipes() async => recipes;
 
   @override
   Future<Map<String, dynamic>> createRecipe(Map<String, dynamic> data) async {
@@ -261,6 +267,52 @@ void main() {
     expect(find.text('Cebolla'), findsNothing);
     // …y el costeo por porción sigue intacto (1000 / 5 = 200).
     expect(find.text('\$200'), findsWidgets);
+  });
+
+  testWidgets('al crear, aterriza en el listado de recetas (no en la raíz)',
+      (tester) async {
+    tester.view.physicalSize = const Size(390, 1600);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    final api = _FakeApi()..ingredients = [_ing('i1', 'Arroz', cost: 1000)];
+
+    // Pila: raíz ("RAIZ", simula el Dashboard) → push del Studio.
+    await tester.pumpWidget(MaterialApp(
+      home: Builder(
+        builder: (ctx) => Scaffold(
+          body: Center(
+            child: ElevatedButton(
+              onPressed: () => Navigator.of(ctx).push(MaterialPageRoute(
+                  builder: (_) => RecipeStudioScreen(api: api))),
+              child: const Text('RAIZ'),
+            ),
+          ),
+        ),
+      ),
+    ));
+    await tester.tap(find.text('RAIZ'));
+    await tester.pumpAndSettle();
+
+    // Mínimo para guardar: nombre, precio y un insumo.
+    await tester.enterText(
+        find.byKey(const Key('studio_name')), 'Arroz con pollo');
+    await tester.enterText(find.byKey(const Key('studio_price')), '12000');
+    await tester.ensureVisible(find.text('Agregar insumo'));
+    await tester.tap(find.text('Agregar insumo'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Arroz').last);
+    await tester.pumpAndSettle();
+
+    await tester.ensureVisible(find.text('Guardar plato'));
+    await tester.tap(find.text('Guardar plato'));
+    await tester.pumpAndSettle();
+
+    expect(api.created, hasLength(1)); // sí creó
+    expect(find.byType(RecipeStudioScreen), findsNothing); // salió del Studio
+    expect(find.byType(RecipeListScreen), findsOneWidget); // aterrizó en el listado
+    expect(find.text('RAIZ'), findsNothing); // NO volvió a la raíz/Dashboard
   });
 
   testWidgets('crear insumo inline (no bloqueante) lo agrega al plato',
