@@ -49,6 +49,19 @@ class _FakeApi extends ApiService {
   @override
   Future<Map<String, dynamic>> fetchRecipeCost(String uuid) async =>
       {'total_cost': 0};
+
+  Map<String, dynamic>? assistCurrent;
+  Map<String, dynamic> assistResult = const {};
+
+  @override
+  Future<Map<String, dynamic>> recipeAssist({
+    required String name,
+    String instructions = '',
+    Map<String, dynamic>? current,
+  }) async {
+    assistCurrent = current;
+    return assistResult;
+  }
 }
 
 Map<String, dynamic> _ing(String id, String name,
@@ -199,6 +212,55 @@ void main() {
     expect(find.text('Ganancia x plato'), findsOneWidget);
     expect(find.text('\$200'), findsWidgets); // 1000 / 5
     expect(find.text('\$12.800'), findsWidgets); // 13.000 - 200
+  });
+
+  testWidgets('IA propone SOLO los pasos sin perder lo ya ingresado',
+      (tester) async {
+    tester.view.physicalSize = const Size(390, 1600);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    final api = _FakeApi()
+      ..ingredients = [_ing('i1', 'Carne', cost: 1000)]
+      ..assistResult = {
+        // La IA devuelve de todo, pero SOLO los pasos deben aplicarse.
+        'name': 'NO DEBE PISAR EL NOMBRE',
+        'yield': '99',
+        'ingredients': [
+          {'name': 'Cebolla', 'quantity': 2}
+        ],
+        'steps': ['Picar la carne', 'Sofreír', 'Servir'],
+      };
+    await tester.pumpWidget(MaterialApp(home: RecipeStudioScreen(api: api)));
+    await tester.pumpAndSettle();
+
+    // El tendero ya ingresó nombre, precio, un insumo y porciones.
+    await tester.enterText(find.byKey(const Key('studio_name')), 'Lomo');
+    await tester.enterText(find.byKey(const Key('studio_price')), '13000');
+    await tester.ensureVisible(find.text('Agregar insumo'));
+    await tester.tap(find.text('Agregar insumo'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Carne').last);
+    await tester.pumpAndSettle();
+    await tester.enterText(find.widgetWithText(TextField, 'Porciones'), '5');
+    await tester.pumpAndSettle();
+
+    // Pide a la IA que proponga los pasos.
+    await tester.ensureVisible(find.byKey(const Key('ia_steps')));
+    await tester.tap(find.byKey(const Key('ia_steps')));
+    await tester.pumpAndSettle();
+
+    // Llegaron los pasos…
+    expect(find.text('Picar la carne'), findsOneWidget);
+    expect(find.text('Servir'), findsOneWidget);
+    // …y mandó el contexto actual al backend.
+    expect(api.assistCurrent?['name'], 'Lomo');
+    // …sin pisar nombre ni inyectar ingredientes de la IA.
+    expect(find.text('NO DEBE PISAR EL NOMBRE'), findsNothing);
+    expect(find.text('Cebolla'), findsNothing);
+    // …y el costeo por porción sigue intacto (1000 / 5 = 200).
+    expect(find.text('\$200'), findsWidgets);
   });
 
   testWidgets('crear insumo inline (no bloqueante) lo agrega al plato',

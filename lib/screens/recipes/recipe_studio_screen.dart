@@ -351,6 +351,58 @@ class _RecipeStudioScreenState extends State<RecipeStudioScreen> {
     }
   }
 
+  // ── IA: proponer SOLO los pasos ───────────────────────────────────────────
+  // A diferencia del asistente global (que regenera todo el plato vía
+  // `_applyInitial`), esto aplica ÚNICAMENTE los pasos del resultado: conserva
+  // insumos, precio, porciones, nombre y descripción ya ingresados. Los pasos
+  // que el tendero ya escribió se mantienen; solo se descartan los vacíos.
+  Future<void> _suggestSteps() async {
+    final name = _nameCtrl.text.trim();
+    if (name.isEmpty) {
+      _snack('Escriba el nombre del plato para que la IA proponga los pasos.',
+          color: AppTheme.warning);
+      return;
+    }
+    setState(() => _aiBusy = true);
+    try {
+      final result = await _api.recipeAssist(
+        name: name,
+        instructions: 'Propón solo los pasos de preparación. '
+            'No cambies los ingredientes, el precio ni las porciones.',
+        current: _currentRecipeMap(),
+      );
+      if (!mounted) return;
+      final proposed = ((result['steps'] as List?) ?? const [])
+          .map((s) => '$s'.trim())
+          .where((t) => t.isNotEmpty)
+          .toList();
+      if (proposed.isEmpty) {
+        _snack('La IA no propuso pasos. Intente de nuevo.',
+            color: AppTheme.warning);
+        return;
+      }
+      setState(() {
+        // Conserva los pasos con contenido; solo descarta los placeholders vacíos.
+        _steps.removeWhere((s) {
+          final blank = s.controller.text.trim().isEmpty &&
+              (s.photoUrl?.isEmpty ?? true);
+          if (blank) s.controller.dispose();
+          return blank;
+        });
+        _steps.addAll(proposed.map((t) => _StepDraft(text: t)));
+      });
+      _snack('La IA propuso los pasos. Revíselos, edítelos o reordénelos.',
+          color: AppTheme.success);
+    } on AppError catch (e) {
+      _snack(e.message, color: AppTheme.error);
+    } catch (_) {
+      _snack('La IA no pudo proponer los pasos ahora. Intente de nuevo.',
+          color: AppTheme.error);
+    } finally {
+      if (mounted) setState(() => _aiBusy = false);
+    }
+  }
+
   void _openAiSheet() {
     showModalBottomSheet<void>(
       context: context,
@@ -1172,13 +1224,21 @@ class _RecipeStudioScreenState extends State<RecipeStudioScreen> {
       Row(children: [
         const Expanded(child: Text('Pasos', style: AppUI.sectionLabel)),
         GhostButton(
+            key: const Key('ia_steps'),
+            icon: Icons.auto_awesome_rounded,
+            label: 'IA',
+            color: AppTheme.primary,
+            onPressed: _aiBusy ? null : _suggestSteps),
+        const SizedBox(width: AppUI.s8),
+        GhostButton(
             icon: Icons.add_rounded,
             label: 'Paso',
-            onPressed: () => setState(() => _steps.add(_StepDraft()))),
+            onPressed:
+                _aiBusy ? null : () => setState(() => _steps.add(_StepDraft()))),
       ]),
       const SizedBox(height: AppUI.s8),
       if (_steps.isEmpty)
-        const Text('Escriba los pasos, o deje que la IA los proponga. '
+        const Text('Escríbalos, o toque IA arriba para que la IA los proponga. '
             'Puede arrastrarlos para reordenar.', style: AppUI.bodySoft)
       else
         ReorderableListView.builder(
