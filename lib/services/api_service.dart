@@ -2394,6 +2394,19 @@ class ApiService {
     }
   }
 
+  /// Spec 067 — preview "así se ve hoy su menú en línea". Devuelve el menú
+  /// EFECTIVO del día con la misma resolución que el catálogo público:
+  /// `{active, found, is_today, day_label, weekday, items:[{recipe_uuid,name,planned_qty}]}`.
+  Future<Map<String, dynamic>> fetchMenuToday({String branchId = ''}) async {
+    try {
+      final response = await _dio.get('/api/v1/menu-plan/today',
+          queryParameters: _branchQuery(branchId));
+      return _extractData(response);
+    } on DioException catch (e) {
+      throw AppError.fromDioException(e);
+    }
+  }
+
   /// Lista los ajustes por fecha (overrides) de la sede, de hoy en adelante.
   Future<List<Map<String, dynamic>>> fetchMenuOverrides(
       {String branchId = ''}) async {

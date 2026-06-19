@@ -1,28 +1,32 @@
-// Spec: specs/043-menu-restaurante-recetas/spec.md
+// Spec: specs/067-planear-menu-ia-ux/spec.md
 //
-// Pantalla inicial del módulo "Recetas y Platos" (F043). Reemplaza el arranque
-// directo en el formulario manual por TRES caminos para armar el menú, todos
-// asistidos por IA:
-//   1. Importar menú desde la cámara (OCR de la carta → platos).  [Fase 2]
-//   2. Crear plato o receta (flujo manual actual).
-//   3. Dictar receta desde el micrófono (voz → IA).
-// Objetivos táctiles grandes y copy claro (Art. I, tenderos 50+).
+// Pantalla inicial del módulo "Mi menú" (F043 + F067). Caminos asistidos por IA
+// para armar el menú (ver recetas, importar de la cámara, planear, dictar por
+// voz) + un PREVIEW en vivo de "cómo se ve hoy su menú en línea": el catálogo
+// público y el menú del día con los platos activos (misma resolución que el
+// link público). Normalizada al kit AppUI (Spec 062/067).
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:url_launcher/url_launcher.dart';
 
+import '../../config/api_config.dart';
 import '../../services/api_service.dart';
 import '../../services/app_error.dart';
 import '../../services/auth_service.dart';
 import '../../theme/app_theme.dart';
+import '../../theme/app_ui.dart';
+import '../../widgets/shimmer_box.dart';
 import 'menu_import_screen.dart';
 import 'menu_planner_screen.dart';
 import 'recipe_list_screen.dart';
 import 'recipe_voice_screen.dart';
 
 class RecipesHomeScreen extends StatelessWidget {
-  const RecipesHomeScreen({super.key});
+  /// Inyectable para test (el preview usa este API). En producción se crea uno.
+  final ApiService? api;
+  const RecipesHomeScreen({super.key, this.api});
 
   void _go(BuildContext context, Widget screen) {
     HapticFeedback.lightImpact();
@@ -52,7 +56,7 @@ class RecipesHomeScreen extends StatelessWidget {
     if (bytes.lengthInBytes > maxBytes) {
       if (!context.mounted) return;
       _snack(context,
-          'La foto es muy pesada. Tómala con buena luz y un poco más de lejos.',
+          'La foto es muy pesada. Tómela con buena luz y un poco más de lejos.',
           color: AppTheme.warning);
       return;
     }
@@ -66,8 +70,8 @@ class RecipesHomeScreen extends StatelessWidget {
     );
 
     try {
-      final api = ApiService(AuthService());
-      final dishes = await api.scanMenuPhoto(
+      final svc = api ?? ApiService(AuthService());
+      final dishes = await svc.scanMenuPhoto(
         imageBytes: bytes,
         mimeType: photo.mimeType ?? 'image/jpeg',
         filename: photo.name.isNotEmpty ? photo.name : 'menu.jpg',
@@ -77,8 +81,8 @@ class RecipesHomeScreen extends StatelessWidget {
 
       if (dishes.isEmpty) {
         _snack(context,
-            'No encontramos platos en la foto. Asegúrate de que se vea la '
-            'carta con buena luz, o arma tu menú a mano.',
+            'No encontramos platos en la foto. Asegúrese de que se vea la '
+            'carta con buena luz, o arme su menú a mano.',
             color: AppTheme.warning);
         return;
       }
@@ -92,7 +96,7 @@ class RecipesHomeScreen extends StatelessWidget {
     } catch (e) {
       if (!context.mounted) return;
       Navigator.of(context).pop();
-      _snack(context, 'No pudimos leer tu menú. Intenta de nuevo.',
+      _snack(context, 'No pudimos leer su menú. Intente de nuevo.',
           color: AppTheme.error);
     }
   }
@@ -137,21 +141,31 @@ class RecipesHomeScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppTheme.background,
-      appBar: AppBar(title: const Text('Mi menú')),
+      backgroundColor: AppUI.pageBg,
+      appBar: AppBar(
+        backgroundColor: AppUI.pageBg,
+        surfaceTintColor: Colors.transparent,
+        elevation: 0,
+        title: const Text('Mi menú', style: AppUI.title),
+      ),
       body: ListView(
-        padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+        padding: const EdgeInsets.fromLTRB(AppUI.s16, AppUI.s12, AppUI.s16, AppUI.s24),
         children: [
           const Padding(
-            padding: EdgeInsets.only(bottom: 16, left: 4),
+            padding: EdgeInsets.only(bottom: AppUI.s16, left: AppUI.s4),
             child: Text(
               'Arme su menú como le quede más fácil. La IA le ayuda con la foto, '
               'la descripción y las porciones — y todo lo puede editar.',
-              style: TextStyle(fontSize: 15, color: Colors.black54, height: 1.3),
+              style: AppUI.bodySoft,
             ),
           ),
-          // Ver/gestionar las recetas ya creadas (antes no había forma de
-          // listarlas; solo se podían crear — auditoría capacidades).
+          // Preview en vivo de cómo se ve hoy el menú en el link público.
+          _MenuTodayPreview(api: api),
+          const SizedBox(height: AppUI.s16),
+          const Padding(
+            padding: EdgeInsets.only(left: AppUI.s4, bottom: AppUI.s8),
+            child: Text('Arme su menú', style: AppUI.sectionLabel),
+          ),
           _OptionCard(
             key: const Key('recipes_option_list'),
             icon: Icons.menu_book_rounded,
@@ -160,7 +174,7 @@ class RecipesHomeScreen extends StatelessWidget {
             subtitle: 'Revise sus platos, costos y ganancias.',
             onTap: () => _go(context, const RecipeListScreen()),
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: AppUI.s12),
           _OptionCard(
             key: const Key('recipes_option_camera'),
             icon: Icons.photo_camera_rounded,
@@ -169,10 +183,8 @@ class RecipesHomeScreen extends StatelessWidget {
             subtitle: 'Tome una foto de su carta y la IA arma los platos.',
             onTap: () => _importFromCamera(context),
           ),
-          const SizedBox(height: 12),
-          // Spec 066 — reemplaza "Crear plato o receta" (crear sigue
-          // disponible desde "Ver mis recetas", cámara y voz). "Planear menú"
-          // arma el menú semanal que alimenta el link en línea.
+          const SizedBox(height: AppUI.s12),
+          // Spec 066 — "Planear menú" arma el menú semanal que alimenta el link.
           _OptionCard(
             key: const Key('recipes_option_plan'),
             icon: Icons.calendar_month_rounded,
@@ -181,7 +193,7 @@ class RecipesHomeScreen extends StatelessWidget {
             subtitle: 'Arme el menú de la semana; su link en línea muestra el del día.',
             onTap: () => _go(context, const MenuPlannerScreen()),
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: AppUI.s12),
           _OptionCard(
             key: const Key('recipes_option_voice'),
             icon: Icons.mic_rounded,
@@ -192,6 +204,247 @@ class RecipesHomeScreen extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+/// Preview en vivo: el catálogo en línea + el menú del día con los platos
+/// activos, resuelto igual que el link público (Spec 067).
+class _MenuTodayPreview extends StatefulWidget {
+  final ApiService? api;
+  const _MenuTodayPreview({this.api});
+
+  @override
+  State<_MenuTodayPreview> createState() => _MenuTodayPreviewState();
+}
+
+class _MenuTodayPreviewState extends State<_MenuTodayPreview> {
+  late final ApiService _api = widget.api ?? ApiService(AuthService());
+  bool _loading = true;
+  String _slug = '';
+  Map<String, dynamic>? _today;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    try {
+      final res = await Future.wait([
+        _api.fetchStoreConfig(),
+        _api.fetchMenuToday(),
+      ]);
+      if (!mounted) return;
+      setState(() {
+        _slug = (res[0]['store_slug'] ?? '').toString();
+        _today = res[1];
+        _loading = false;
+      });
+    } catch (_) {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  String get _url =>
+      _slug.isEmpty ? '' : ApiConfig.publicCatalogUrlFor(_slug);
+
+  Future<void> _open() async {
+    if (_url.isEmpty) return;
+    HapticFeedback.lightImpact();
+    await launchUrl(Uri.parse(_url), mode: LaunchMode.externalApplication);
+  }
+
+  Future<void> _copy() async {
+    if (_url.isEmpty) return;
+    await Clipboard.setData(ClipboardData(text: _url));
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('Link copiado', style: TextStyle(fontSize: 15)),
+        backgroundColor: AppTheme.success,
+        behavior: SnackBarBehavior.floating,
+      ));
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SoftCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Row(
+            children: [
+              Icon(Icons.public_rounded, color: AppTheme.primary, size: 20),
+              SizedBox(width: AppUI.s8),
+              Expanded(
+                child: Text('Así se ve hoy su menú en línea',
+                    style: AppUI.bodyStrong),
+              ),
+            ],
+          ),
+          const SizedBox(height: AppUI.s12),
+          if (_loading)
+            const _PreviewSkeleton()
+          else ...[
+            _linkRow(),
+            const SizedBox(height: AppUI.s12),
+            const Divider(height: 1, color: AppUI.hairline),
+            const SizedBox(height: AppUI.s12),
+            _menuOfDay(),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _linkRow() {
+    if (_url.isEmpty) {
+      return const Text('Configure su tienda para tener un link en línea.',
+          style: AppUI.bodySoft);
+    }
+    return Row(
+      children: [
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text('Su catálogo en línea', style: AppUI.sectionLabel),
+              Text(_url.replaceFirst('https://', ''),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: AppUI.bodyStrong),
+            ],
+          ),
+        ),
+        IconButton(
+          key: const Key('menu_preview_copy'),
+          icon: const Icon(Icons.copy_rounded, size: 20, color: AppUI.inkSoft),
+          tooltip: 'Copiar link',
+          onPressed: _copy,
+        ),
+        IconButton(
+          key: const Key('menu_preview_open'),
+          icon: const Icon(Icons.open_in_new_rounded,
+              size: 20, color: AppTheme.primary),
+          tooltip: 'Abrir',
+          onPressed: _open,
+        ),
+      ],
+    );
+  }
+
+  Widget _menuOfDay() {
+    final t = _today;
+    if (t == null) {
+      return const Text('No pudimos cargar el menú de hoy.',
+          style: AppUI.bodySoft);
+    }
+    final active = t['active'] == true;
+    final found = t['found'] == true;
+    if (!active) {
+      return const _PreviewHint(
+        icon: Icons.event_note_rounded,
+        text: 'Aún no ha planeado su menú. Use "Planear menú" para que su link '
+            'muestre el plato del día.',
+      );
+    }
+    if (!found) {
+      return const _PreviewHint(
+        icon: Icons.coffee_rounded,
+        text: 'Hoy no hay menú publicado en su link.',
+      );
+    }
+    final items = (t['items'] as List?) ?? [];
+    final dayLabel = (t['day_label'] ?? '').toString();
+    final weekday = (t['weekday'] ?? '').toString();
+    final header = dayLabel.isNotEmpty
+        ? dayLabel
+        : (weekday.isEmpty ? 'Menú de hoy' : 'Menú de hoy · $weekday');
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Expanded(child: Text(header, style: AppUI.bodyStrong)),
+            MinimalBadge(
+                label: '${items.length} plato${items.length == 1 ? '' : 's'}',
+                color: AppTheme.success),
+          ],
+        ),
+        const SizedBox(height: AppUI.s8),
+        Wrap(
+          spacing: AppUI.s8,
+          runSpacing: AppUI.s8,
+          children: [
+            for (final it in items)
+              _DishPill(name: ((it as Map)['name'] ?? 'Plato').toString()),
+          ],
+        ),
+      ],
+    );
+  }
+}
+
+class _DishPill extends StatelessWidget {
+  final String name;
+  const _DishPill({required this.name});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: AppUI.s12, vertical: 6),
+      decoration: BoxDecoration(
+        color: AppUI.pageBg,
+        borderRadius: BorderRadius.circular(AppUI.radiusSm),
+        border: Border.all(color: AppUI.border),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Icon(Icons.restaurant_rounded, size: 14, color: AppTheme.primary),
+          const SizedBox(width: 6),
+          Text(name, style: AppUI.bodyStrong),
+        ],
+      ),
+    );
+  }
+}
+
+class _PreviewHint extends StatelessWidget {
+  final IconData icon;
+  final String text;
+  const _PreviewHint({required this.icon, required this.text});
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Icon(icon, size: 18, color: AppUI.inkSoft),
+        const SizedBox(width: AppUI.s8),
+        Expanded(child: Text(text, style: AppUI.bodySoft)),
+      ],
+    );
+  }
+}
+
+class _PreviewSkeleton extends StatelessWidget {
+  const _PreviewSkeleton();
+
+  @override
+  Widget build(BuildContext context) {
+    return const Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        ShimmerBox(width: 220, height: 14),
+        SizedBox(height: AppUI.s12),
+        ShimmerBox(width: 140, height: 14),
+        SizedBox(height: AppUI.s8),
+        ShimmerBox(width: double.infinity, height: 28),
+      ],
     );
   }
 }
@@ -212,7 +465,7 @@ class _ScanningDialog extends StatelessWidget {
             CircularProgressIndicator(color: AppTheme.primary),
             SizedBox(height: 20),
             Text(
-              'Leyendo tu menú con IA…',
+              'Leyendo su menú con IA…',
               style: TextStyle(
                   fontSize: 16,
                   fontWeight: FontWeight.w700,
@@ -231,6 +484,8 @@ class _ScanningDialog extends StatelessWidget {
   }
 }
 
+/// Tarjeta de opción del hub, normalizada al kit AppUI (tarjeta blanca con
+/// sombra difusa + tile de ícono tintado, sin bordes pesados).
 class _OptionCard extends StatelessWidget {
   final IconData icon;
   final Color color;
@@ -250,51 +505,36 @@ class _OptionCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Material(
-      color: Colors.white,
-      borderRadius: BorderRadius.circular(18),
+      color: Colors.transparent,
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(18),
+        borderRadius: BorderRadius.circular(AppUI.radius),
         child: Container(
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(18),
-            border: Border.all(color: color.withValues(alpha: 0.35), width: 1.5),
-          ),
+          padding: const EdgeInsets.all(AppUI.s12),
+          decoration: AppUI.card(),
           child: Row(
             children: [
               Container(
-                width: 60,
-                height: 60,
+                width: 48,
+                height: 48,
                 decoration: BoxDecoration(
                   color: color.withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(16),
+                  borderRadius: BorderRadius.circular(AppUI.radius),
                 ),
-                child: Icon(icon, color: color, size: 32),
+                child: Icon(icon, color: color, size: 26),
               ),
-              const SizedBox(width: 14),
+              const SizedBox(width: AppUI.s12),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      title,
-                      style: const TextStyle(
-                        fontSize: 17,
-                        fontWeight: FontWeight.w800,
-                        color: AppTheme.textPrimary,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      subtitle,
-                      style: const TextStyle(
-                          fontSize: 13.5, color: Colors.black54, height: 1.25),
-                    ),
+                    Text(title, style: AppUI.bodyStrong),
+                    const SizedBox(height: 2),
+                    Text(subtitle, style: AppUI.bodySoft),
                   ],
                 ),
               ),
-              Icon(Icons.chevron_right_rounded, color: Colors.grey.shade400),
+              const Icon(Icons.chevron_right_rounded, color: AppUI.inkSoft),
             ],
           ),
         ),
