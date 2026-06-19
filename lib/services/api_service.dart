@@ -1998,11 +1998,16 @@ class ApiService {
   // 7. CREDITS (El Fiar)
   // ═══════════════════════════════════════════════════════════════════════════
 
+  /// Lists credit accounts. Optional [customerId] (F40) restricts the
+  /// result to every ledger row for a single customer — used by the
+  /// cuaderno's "Activos" tap path to resolve which account to push
+  /// when the grouped tile only exposes `customer_id` + `accounts_count`.
   Future<Map<String, dynamic>> fetchCredits({
     String? status,
     int page = 1,
     int perPage = 20,
     String? branchId,
+    String? customerId,
   }) async {
     try {
       final bid = branchId ?? currentBranchId;
@@ -2012,6 +2017,9 @@ class ApiService {
       };
       if (status != null) params['status'] = status;
       if (bid != null && bid.isNotEmpty) params['branch_id'] = bid;
+      if (customerId != null && customerId.isNotEmpty) {
+        params['customer_id'] = customerId;
+      }
       final response =
           await _dio.get('/api/v1/credits', queryParameters: params);
       return response.data as Map<String, dynamic>;

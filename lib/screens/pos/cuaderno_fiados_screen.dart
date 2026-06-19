@@ -235,8 +235,172 @@ class _CuadernoFiadosScreenState extends State<CuadernoFiadosScreen> {
   /// `accounts_count > 1` is a soft warning (azul, no rojo) so the
   /// merchant notices duplicates that pre-date the unique constraint
   /// without seeing it as an error.
-  Widget _buildGroupedTile(Map<String, dynamic> row) =>
-      buildGroupedTileForTest(row);
+  ///
+  /// F40 (bug crítico): el row del backend NO trae un `id` de cuenta —
+  /// trae solo `customer_id` + `accounts_count`. Para que el dueño
+  /// pueda registrar abonos desde Activos, envolvemos el tile en un
+  /// GestureDetector que resuelve la(s) cuenta(s) en runtime:
+  ///   - accounts_count == 1 → push directo a _FiadoDetailScreen
+  ///   - accounts_count >  1 → bottom-sheet picker para elegir cuenta
+  /// (PR #28 dejó el tile sin onTap; eso bloqueaba el flujo de cobro.)
+  Widget _buildGroupedTile(Map<String, dynamic> row) {
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: () => _openGroupedRow(row),
+      child: buildGroupedTileForTest(row),
+    );
+  }
+
+  /// Resolves which account(s) belong to a customer and navigates.
+  /// Splits the responsibility so the tile builder stays a pure
+  /// renderer and the routing logic is testable in isolation.
+  Future<void> _openGroupedRow(Map<String, dynamic> row) async {
+    final customerId = (row['customer_id'] as String?) ?? '';
+    final customerName = (row['customer_name'] as String?) ?? 'Cliente';
+    if (customerId.isEmpty) return;
+
+    HapticFeedback.selectionClick();
+
+    // Loading shield — the merchant taps a card and waits ≤1 net hop.
+    // The dialog is dismissible so a flaky network doesn't trap them.
+    showDialog<void>(
+      context: context,
+      barrierDismissible: true,
+      builder: (_) => const Center(
+        child: SizedBox(
+          width: 48,
+          height: 48,
+          child: CircularProgressIndicator(strokeWidth: 3),
+        ),
+      ),
+    );
+
+    List<Map<String, dynamic>> accounts;
+    try {
+      final res = await _api.fetchCredits(
+        customerId: customerId,
+        perPage: 50,
+      );
+      final raw = (res['data'] as List<dynamic>? ?? const [])
+          .cast<Map<String, dynamic>>();
+      // Stay live-debt only — the merchant is on the Activos tab and
+      // does not want to scroll past historical paid rows to find
+      // the one that's still pending.
+      accounts = raw.where((a) {
+        final status = (a['status'] as String?) ?? '';
+        return status == 'open' || status == 'partial';
+      }).toList();
+    } catch (e) {
+      if (!mounted) return;
+      Navigator.of(context).pop(); // dismiss loader
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text('No pudimos abrir la cuenta: $e',
+            style: const TextStyle(fontSize: 16)),
+        backgroundColor: AppTheme.error,
+      ));
+      return;
+    }
+    if (!mounted) return;
+    Navigator.of(context).pop(); // dismiss loader
+
+    if (accounts.isEmpty) {
+      // Edge: the grouped balance said there was debt but no live
+      // account was found (data inconsistency / race with a close).
+      // Telling the merchant beats silently doing nothing.
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text(
+          'Esta cuenta ya está al día. Actualice la lista.',
+          style: TextStyle(fontSize: 16),
+        ),
+      ));
+      _load();
+      return;
+    }
+
+    if (accounts.length == 1) {
+      await _pushFiadoDetail(accounts.first['id'] as String);
+      return;
+    }
+
+    await _pickAccountAndOpen(
+      accounts: accounts,
+      customerName: customerName,
+    );
+  }
+
+  Future<void> _pushFiadoDetail(String creditId) async {
+    if (creditId.isEmpty) return;
+    await Navigator.of(context).push(MaterialPageRoute(
+      builder: (_) => _FiadoDetailScreen(creditId: creditId),
+    ));
+    _load();
+  }
+
+  /// Bottom-sheet picker when a customer has multiple live accounts.
+  /// We render one card per account so the merchant explicitly picks
+  /// which ledger to credit — silently merging them would corrupt
+  /// the customer's statement (Constitución Art. III).
+  Future<void> _pickAccountAndOpen({
+    required List<Map<String, dynamic>> accounts,
+    required String customerName,
+  }) {
+    return showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (sheetCtx) => Container(
+        decoration: const BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+        ),
+        padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
+        child: SafeArea(
+          top: false,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Center(
+                child: Container(
+                  width: 40,
+                  height: 4,
+                  margin: const EdgeInsets.only(bottom: 14),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFD6D0C8),
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+              ),
+              Text(
+                '$customerName tiene ${accounts.length} cuentas activas',
+                style: const TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w800,
+                    color: Colors.black87),
+              ),
+              const SizedBox(height: 4),
+              const Text(
+                'Elija a cuál registrar el abono.',
+                style: TextStyle(fontSize: 14, color: AppTheme.textSecondary),
+              ),
+              const SizedBox(height: 16),
+              for (final a in accounts)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 10),
+                  child: _AccountPickRow(
+                    account: a,
+                    onTap: () {
+                      Navigator.of(sheetCtx).pop();
+                      _pushFiadoDetail(a['id'] as String);
+                    },
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 
   /// Tile for "Pendientes" and "Pagados" — one row per CreditAccount.
   /// On "Pagados" the trailing column carries the `closed_at` cierre
@@ -2043,6 +2207,123 @@ class _ResendChannelTile extends StatelessWidget {
                 size: 18,
                 color: effectiveColor,
               ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// F40 — one selectable row inside the "elija qué cuenta" picker.
+///
+/// Renders a compact summary of a single credit account: balance,
+/// status pill (open/partial), creation date as relative time, and
+/// a chevron. Tapping calls [onTap] — the parent sheet closes itself
+/// and pushes the detail screen so the merchant lands on the same
+/// "Registrar Abono" CTA they expected to reach with one tap.
+class _AccountPickRow extends StatelessWidget {
+  const _AccountPickRow({
+    required this.account,
+    required this.onTap,
+  });
+
+  final Map<String, dynamic> account;
+  final VoidCallback onTap;
+
+  static String _fmt(num v) {
+    final s = v.toStringAsFixed(0);
+    final buf = StringBuffer();
+    for (var i = 0; i < s.length; i++) {
+      if (i > 0 && (s.length - i) % 3 == 0) buf.write('.');
+      buf.write(s[i]);
+    }
+    return '\$${buf.toString()}';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final total = (account['total_amount'] as num?)?.toInt() ?? 0;
+    final paid = (account['paid_amount'] as num?)?.toInt() ?? 0;
+    final balance = total - paid;
+    final status = (account['status'] as String?) ?? 'open';
+    final isPartial = status == 'partial';
+
+    return Material(
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(14),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(14),
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: const Color(0xFFEDE8E0)),
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: 44,
+                height: 44,
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF59E0B).withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: const Icon(Icons.menu_book_rounded,
+                    color: Color(0xFFF59E0B), size: 22),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      _fmt(balance),
+                      style: const TextStyle(
+                        fontSize: 17,
+                        fontWeight: FontWeight.w800,
+                        color: Color(0xFFEA580C),
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 8, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: isPartial
+                                ? const Color(0xFFDBEAFE)
+                                : const Color(0xFFFEF3C7),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Text(
+                            isPartial ? 'Con abonos' : 'Sin abonos',
+                            style: TextStyle(
+                              fontSize: 11.5,
+                              fontWeight: FontWeight.w700,
+                              color: isPartial
+                                  ? const Color(0xFF1D4ED8)
+                                  : const Color(0xFF92400E),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          'Total ${_fmt(total)}',
+                          style: const TextStyle(
+                            fontSize: 12.5,
+                            color: AppTheme.textSecondary,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              const Icon(Icons.chevron_right_rounded,
+                  color: AppTheme.textSecondary, size: 24),
             ],
           ),
         ),
