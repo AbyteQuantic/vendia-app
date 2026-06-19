@@ -1,12 +1,15 @@
-// Spec: specs/066-planear-menu/spec.md
+// Spec: specs/067-planear-menu-ia-ux/spec.md
 //
-// "Planear menú" — arma el menú semanal del comercio. Reemplaza la tarjeta
-// "Crear plato o receta" del hub (crear sigue disponible desde "Ver mis
-// recetas", cámara y voz). El link online refleja el menú del día vigente.
+// "Planear menú" — arma el menú semanal del comercio. El link online refleja el
+// menú del día vigente. Spec 067: normalizado al kit AppUI (como las hermanas
+// del módulo Recetas) + dos ayudas contra la repetición de armar 7 días:
+//   · "Sugerir con IA": el backend propone la semana con las recetas reales
+//     (POST /menu-plan/suggest, stateless). Fusiona aditivo SOLO en días vacíos
+//     y NUNCA auto-guarda — el tendero revisa y toca Guardar.
+//   · "Copiar a otros días": replica los platos de un día a los que elija.
 //
 // Decisiones (plan 066): planned_qty es SOLO guía de preparación (no stock, no
-// viaja al público); el orden online es por categoría/nombre; ámbito MVP por
-// tenant. Diseñado y probado a 360dp (Art. I), copy en modo USTED.
+// viaja al público). Diseñado y probado a 360dp (Art. I), copy en modo USTED.
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -16,6 +19,7 @@ import '../../services/api_service.dart';
 import '../../services/app_error.dart';
 import '../../services/auth_service.dart';
 import '../../theme/app_theme.dart';
+import '../../theme/app_ui.dart';
 
 /// Claves de día en el orden de presentación (lunes primero) y su etiqueta.
 const _dayOrder = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'];
@@ -28,6 +32,10 @@ const _dayNames = {
   'sat': 'Sábado',
   'sun': 'Domingo',
 };
+
+/// Mínimo de recetas para que "Sugerir con IA" valga la pena (alineado con el
+/// corte temprano del backend).
+const _minRecipesForAI = 3;
 
 /// Un plato planeado: la receta + cuántos preparar (guía interna).
 class _PlanItem {
@@ -57,6 +65,7 @@ class _MenuPlannerScreenState extends State<MenuPlannerScreen> {
 
   bool _loading = true;
   bool _saving = false;
+  bool _suggesting = false;
   String? _error;
 
   /// Recetas del comercio (para el selector). uuid → nombre/categoría.
@@ -66,6 +75,9 @@ class _MenuPlannerScreenState extends State<MenuPlannerScreen> {
   };
   List<Map<String, dynamic>> _overrides = [];
 
+  /// Días recién llenados por "Sugerir con IA" (para el badge "IA").
+  final Set<String> _aiFilled = {};
+
   /// Sedes del comercio (Spec 066 por-sede). Vacío/1 = no se muestra selector;
   /// el plan es por defecto (branch_id=''). >1 → el tendero elige la sede.
   List<Map<String, dynamic>> _branches = [];
@@ -73,6 +85,7 @@ class _MenuPlannerScreenState extends State<MenuPlannerScreen> {
   String _storeSlug = '';
 
   bool get _multiBranch => _branches.length > 1;
+  bool get _canSuggest => _recipes.length >= _minRecipesForAI;
 
   @override
   void initState() {
@@ -172,6 +185,7 @@ class _MenuPlannerScreenState extends State<MenuPlannerScreen> {
     setState(() {
       _selectedBranchId = branchId;
       _loading = true;
+      _aiFilled.clear();
     });
     try {
       final results = await Future.wait([
@@ -185,6 +199,74 @@ class _MenuPlannerScreenState extends State<MenuPlannerScreen> {
       if (mounted) _snack('No pudimos cargar esa sede.', AppTheme.error);
     }
     if (mounted) setState(() => _loading = false);
+  }
+
+  /// "Sugerir con IA": pide la propuesta semanal y la fusiona de forma ADITIVA
+  /// (solo en días sin platos). Nunca pisa lo armado ni llama a _save: el
+  /// tendero revisa y toca Guardar.
+  Future<void> _suggest() async {
+    if (!_canSuggest || _suggesting) return;
+    setState(() => _suggesting = true);
+    try {
+      final res = await _api.suggestMenuPlan(branchId: _selectedBranchId);
+      final days = (res['days'] as Map?)?.cast<String, dynamic>() ?? {};
+      final filled = _mergeSuggestion(days);
+      if (!mounted) return;
+      setState(() {
+        _aiFilled
+          ..clear()
+          ..addAll(filled);
+        _suggesting = false;
+      });
+      if (filled.isEmpty) {
+        _snack(
+            'La IA no encontró días nuevos para llenar. Revise su semana o ajústela a mano.',
+            AppTheme.primary);
+      } else {
+        HapticFeedback.lightImpact();
+        _snack('Listo: revise la propuesta y toque Guardar para publicarla.',
+            AppTheme.success);
+      }
+    } on AppError catch (e) {
+      if (mounted) {
+        setState(() => _suggesting = false);
+        _snack(e.message, AppTheme.error);
+      }
+    } catch (_) {
+      if (mounted) {
+        setState(() => _suggesting = false);
+        _snack('No pudimos sugerir su menú. Arme su semana a mano o intente de nuevo.',
+            AppTheme.error);
+      }
+    }
+  }
+
+  /// Fusiona la propuesta de la IA en `_days`. ADITIVO: solo días sin platos.
+  /// Valida cada recipe_uuid contra las recetas reales (defensa en cliente
+  /// además de la whitelist del backend). Devuelve los días efectivamente
+  /// llenados.
+  Set<String> _mergeSuggestion(Map<String, dynamic> days) {
+    final allowed =
+        _recipes.map((r) => (r['id'] ?? r['uuid']).toString()).toSet();
+    final filled = <String>{};
+    for (final key in _dayOrder) {
+      final raw = days[key];
+      if (raw is! Map) continue;
+      if (_days[key]!.items.isNotEmpty) continue; // no pisar lo ya armado.
+      final items = ((raw['items'] as List?) ?? [])
+          .whereType<Map>()
+          .map((it) => _PlanItem(
+                (it['recipe_uuid'] ?? '').toString(),
+                ((it['planned_qty'] ?? 0) as num).toInt(),
+              ))
+          .where((it) =>
+              it.recipeUuid.isNotEmpty && allowed.contains(it.recipeUuid))
+          .toList();
+      if (items.isEmpty) continue;
+      _days[key] = _DayPlan(enabled: true, items: items);
+      filled.add(key);
+    }
+    return filled;
   }
 
   Future<void> _save() async {
@@ -217,6 +299,10 @@ class _MenuPlannerScreenState extends State<MenuPlannerScreen> {
   }
 
   Future<void> _editDay(String dayKey) async {
+    final nonEmpty = {
+      for (final k in _dayOrder)
+        if (k != dayKey && _days[k]!.items.isNotEmpty) k,
+    };
     final result = await showModalBottomSheet<_DayPlan>(
       context: context,
       isScrollControlled: true,
@@ -226,9 +312,24 @@ class _MenuPlannerScreenState extends State<MenuPlannerScreen> {
       ),
       builder: (_) => _DayEditorSheet(
         title: _dayNames[dayKey]!,
+        dayKey: dayKey,
         plan: _days[dayKey]!,
         recipes: _recipes,
         recipeName: _recipeName,
+        nonEmptyDays: nonEmpty,
+        onCopyToDays: (items, targetKeys) {
+          setState(() {
+            for (final k in targetKeys) {
+              _days[k] = _DayPlan(
+                enabled: true,
+                items: items
+                    .map((it) => _PlanItem(it.recipeUuid, it.plannedQty))
+                    .toList(),
+              );
+              _aiFilled.remove(k);
+            }
+          });
+        },
       ),
     );
     if (result != null) setState(() => _days[dayKey] = result);
@@ -237,44 +338,49 @@ class _MenuPlannerScreenState extends State<MenuPlannerScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppTheme.background,
+      backgroundColor: AppUI.pageBg,
       appBar: AppBar(
-        title: const Text('Planear menú'),
+        backgroundColor: AppUI.pageBg,
+        surfaceTintColor: Colors.transparent,
+        elevation: 0,
+        title: const Text('Planear menú', style: AppUI.title),
         actions: [
           if (!_loading)
-            TextButton(
-              key: const Key('menu_planner_save'),
-              onPressed: _saving ? null : _save,
-              child: _saving
-                  ? const SizedBox(
-                      width: 18,
-                      height: 18,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : const Text('Guardar',
-                      style: TextStyle(
-                          color: Colors.white, fontWeight: FontWeight.w700)),
+            Padding(
+              padding: const EdgeInsets.only(right: AppUI.s8),
+              child: GhostButton(
+                key: const Key('menu_planner_save'),
+                icon: Icons.check_rounded,
+                label: 'Guardar',
+                color: AppTheme.primary,
+                onPressed: _saving ? null : _save,
+              ),
             ),
         ],
       ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : _error != null
-              ? _ErrorState(message: _error!, onRetry: _load)
+              ? _MessageState(
+                  icon: Icons.cloud_off_rounded,
+                  title: _error!,
+                  actionLabel: 'Reintentar',
+                  onAction: _load,
+                )
               : _buildBody(),
     );
   }
 
   Widget _buildBody() {
     return ListView(
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 28),
+      padding: const EdgeInsets.fromLTRB(AppUI.s16, AppUI.s12, AppUI.s16, 28),
       children: [
         const Padding(
-          padding: EdgeInsets.only(bottom: 14, left: 4, right: 4),
+          padding: EdgeInsets.only(bottom: AppUI.s12, left: AppUI.s4, right: AppUI.s4),
           child: Text(
             'Arme el menú de cada día. Prenda los días que abre y elija qué platos '
             'ofrece. Su link en línea mostrará solo el menú del día.',
-            style: TextStyle(fontSize: 14.5, color: Colors.black54, height: 1.3),
+            style: AppUI.bodySoft,
           ),
         ),
         // Spec 066 por-sede: solo aparece cuando el comercio tiene más de una
@@ -290,20 +396,32 @@ class _MenuPlannerScreenState extends State<MenuPlannerScreen> {
               url: '${ApiConfig.publicCatalogUrlFor(_storeSlug)}?sede=$_selectedBranchId',
               onSnack: (m) => _snack(m, AppTheme.success),
             ),
-          const SizedBox(height: 6),
+          const SizedBox(height: AppUI.s12),
         ],
-        for (final key in _dayOrder) ...[
-          _DayCard(
-            dayKey: key,
-            name: _dayNames[key]!,
-            plan: _days[key]!,
-            recipeName: _recipeName,
-            onToggle: (v) => setState(() => _days[key]!.enabled = v),
-            onTap: () => _editDay(key),
-          ),
-          const SizedBox(height: 10),
-        ],
-        const SizedBox(height: 8),
+        _SuggestCard(
+          enabled: _canSuggest,
+          suggesting: _suggesting,
+          onSuggest: _suggest,
+        ),
+        const SizedBox(height: AppUI.s16),
+        const Padding(
+          padding: EdgeInsets.only(left: AppUI.s4, bottom: AppUI.s8),
+          child: Text('Menú de la semana', style: AppUI.sectionLabel),
+        ),
+        InsetGroupedList(
+          children: [
+            for (final key in _dayOrder)
+              _DayRow(
+                dayKey: key,
+                name: _dayNames[key]!,
+                plan: _days[key]!,
+                aiFilled: _aiFilled.contains(key),
+                onToggle: (v) => setState(() => _days[key]!.enabled = v),
+                onTap: () => _editDay(key),
+              ),
+          ],
+        ),
+        const SizedBox(height: AppUI.s24),
         _OverridesSection(
           overrides: _overrides,
           recipes: _recipes,
@@ -326,20 +444,89 @@ class _MenuPlannerScreenState extends State<MenuPlannerScreen> {
   }
 }
 
-/// Tarjeta de un día en la lista semanal.
-class _DayCard extends StatelessWidget {
+/// Tarjeta de la acción inteligente "Sugerir con IA".
+class _SuggestCard extends StatelessWidget {
+  final bool enabled;
+  final bool suggesting;
+  final VoidCallback onSuggest;
+
+  const _SuggestCard({
+    required this.enabled,
+    required this.suggesting,
+    required this.onSuggest,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return SoftCard(
+      padding: const EdgeInsets.all(AppUI.s16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Row(
+            children: [
+              Icon(Icons.auto_awesome_rounded,
+                  color: AppTheme.primary, size: 20),
+              SizedBox(width: AppUI.s8),
+              Expanded(
+                child: Text('Arme su semana más rápido', style: AppUI.bodyStrong),
+              ),
+            ],
+          ),
+          const SizedBox(height: AppUI.s4),
+          Text(
+            enabled
+                ? 'La IA propone un menú con sus recetas. Usted lo revisa y guarda; '
+                    'no se publica nada hasta que toque Guardar.'
+                : 'Con al menos $_minRecipesForAI recetas podemos proponerle el menú de la semana.',
+            style: AppUI.bodySoft,
+          ),
+          const SizedBox(height: AppUI.s12),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: suggesting
+                ? const Padding(
+                    padding: EdgeInsets.symmetric(vertical: AppUI.s8),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(strokeWidth: 2)),
+                        SizedBox(width: AppUI.s12),
+                        Text('Armando su menú…', style: AppUI.bodySoft),
+                      ],
+                    ),
+                  )
+                : GhostButton(
+                    key: const Key('menu_suggest_ai'),
+                    icon: Icons.auto_awesome_rounded,
+                    label: 'Sugerir con IA',
+                    color: AppTheme.primary,
+                    onPressed: enabled ? onSuggest : null,
+                  ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Fila de un día dentro de la lista agrupada (InsetGroupedList).
+class _DayRow extends StatelessWidget {
   final String dayKey;
   final String name;
   final _DayPlan plan;
-  final String Function(String) recipeName;
+  final bool aiFilled;
   final ValueChanged<bool> onToggle;
   final VoidCallback onTap;
 
-  const _DayCard({
+  const _DayRow({
     required this.dayKey,
     required this.name,
     required this.plan,
-    required this.recipeName,
+    required this.aiFilled,
     required this.onToggle,
     required this.onTap,
   });
@@ -354,54 +541,52 @@ class _DayCard extends StatelessWidget {
         : '$count receta${count == 1 ? '' : 's'}'
             '${totalDishes > 0 ? ' · $totalDishes por preparar' : ''}';
 
-    return Material(
-      color: Colors.white,
-      borderRadius: BorderRadius.circular(16),
-      child: InkWell(
-        key: Key('menu_day_$dayKey'),
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(16),
-        child: Container(
-          padding: const EdgeInsets.fromLTRB(14, 12, 8, 12),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(
-              color: plan.enabled
-                  ? AppTheme.primary.withValues(alpha: 0.35)
-                  : Colors.grey.withValues(alpha: 0.25),
-              width: 1.4,
+    return InkWell(
+      key: Key('menu_day_$dayKey'),
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(AppUI.s16, AppUI.s12, AppUI.s8, AppUI.s12),
+        child: Row(
+          children: [
+            Icon(Icons.calendar_today_rounded,
+                size: 20,
+                color: plan.enabled ? AppTheme.primary : AppUI.inkSoft),
+            const SizedBox(width: AppUI.s16),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Flexible(
+                        child: Text(name,
+                            overflow: TextOverflow.ellipsis,
+                            style: AppUI.bodyStrong),
+                      ),
+                      const SizedBox(width: AppUI.s8),
+                      MinimalBadge(
+                        label: plan.enabled ? 'Abierto' : 'Cerrado',
+                        color: plan.enabled ? AppTheme.success : AppUI.inkSoft,
+                      ),
+                      if (aiFilled) ...[
+                        const SizedBox(width: AppUI.s4),
+                        const MinimalBadge(label: 'IA', color: AppTheme.primary),
+                      ],
+                    ],
+                  ),
+                  const SizedBox(height: 2),
+                  Text(subtitle, style: AppUI.bodySoft),
+                ],
+              ),
             ),
-          ),
-          child: Row(
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(name,
-                        style: const TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w800,
-                            color: AppTheme.textPrimary)),
-                    const SizedBox(height: 2),
-                    Text(subtitle,
-                        style: TextStyle(
-                            fontSize: 13,
-                            color: plan.enabled
-                                ? Colors.black54
-                                : Colors.grey.shade400)),
-                  ],
-                ),
-              ),
-              Switch(
-                key: Key('menu_day_switch_$dayKey'),
-                value: plan.enabled,
-                activeThumbColor: AppTheme.primary,
-                onChanged: onToggle,
-              ),
-              Icon(Icons.chevron_right_rounded, color: Colors.grey.shade400),
-            ],
-          ),
+            Switch(
+              key: Key('menu_day_switch_$dayKey'),
+              value: plan.enabled,
+              activeThumbColor: AppTheme.primary,
+              onChanged: onToggle,
+            ),
+            const Icon(Icons.chevron_right_rounded, color: AppUI.inkSoft),
+          ],
         ),
       ),
     );
@@ -410,17 +595,26 @@ class _DayCard extends StatelessWidget {
 
 /// Editor del plan de un día (o de un override): lista de recetas con su
 /// cantidad guía, agregar y quitar. Devuelve un _DayPlan al cerrar con guardar.
+/// Spec 067: si es un día de la plantilla (dayKey != null) ofrece "Copiar a
+/// otros días".
 class _DayEditorSheet extends StatefulWidget {
   final String title;
+  final String? dayKey;
   final _DayPlan plan;
   final List<Map<String, dynamic>> recipes;
   final String Function(String) recipeName;
+  final Set<String> nonEmptyDays;
+  final void Function(List<_PlanItem> items, List<String> targetKeys)?
+      onCopyToDays;
 
   const _DayEditorSheet({
     required this.title,
     required this.plan,
     required this.recipes,
     required this.recipeName,
+    this.dayKey,
+    this.nonEmptyDays = const {},
+    this.onCopyToDays,
   });
 
   @override
@@ -431,6 +625,9 @@ class _DayEditorSheetState extends State<_DayEditorSheet> {
   late final List<_PlanItem> _items = widget.plan.items
       .map((it) => _PlanItem(it.recipeUuid, it.plannedQty))
       .toList();
+
+  bool get _canCopy =>
+      widget.dayKey != null && widget.onCopyToDays != null && _items.isNotEmpty;
 
   Future<void> _addRecipe() async {
     final taken = _items.map((e) => e.recipeUuid).toSet();
@@ -451,6 +648,100 @@ class _DayEditorSheetState extends State<_DayEditorSheet> {
     }
   }
 
+  /// Abre el selector de días destino para copiar este día.
+  Future<void> _copyToOtherDays() async {
+    final targets = _dayOrder.where((k) => k != widget.dayKey).toList();
+    final selected = <String>{};
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setLocal) => AlertDialog(
+          title: const Text('Copiar a otros días', style: AppUI.title),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                  'Estos platos se copiarán a los días que marque. Podrá ajustarlos luego.',
+                  style: AppUI.bodySoft),
+              const SizedBox(height: AppUI.s12),
+              Wrap(
+                spacing: AppUI.s8,
+                runSpacing: AppUI.s8,
+                children: [
+                  for (final k in targets)
+                    FilterChip(
+                      key: Key('menu_copy_target_$k'),
+                      label: Text(_dayNames[k]!),
+                      selected: selected.contains(k),
+                      onSelected: (v) => setLocal(() {
+                        v ? selected.add(k) : selected.remove(k);
+                      }),
+                    ),
+                ],
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(false),
+              child: const Text('Cancelar'),
+            ),
+            FilledButton(
+              key: const Key('menu_copy_confirm'),
+              onPressed: selected.isEmpty
+                  ? null
+                  : () => Navigator.of(ctx).pop(true),
+              child: const Text('Copiar'),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    if (confirmed != true || selected.isEmpty || !mounted) return;
+
+    // Si algún destino ya tiene platos, confirmar el reemplazo (no perder
+    // trabajo sin avisar).
+    final overwrites = selected.where(widget.nonEmptyDays.contains).toList();
+    if (overwrites.isNotEmpty) {
+      final ok = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('Reemplazar días con menú', style: AppUI.title),
+          content: Text(
+            'Estos días ya tienen platos y se reemplazarán: '
+            '${overwrites.map((k) => _dayNames[k]!).join(', ')}. ¿Continuar?',
+            style: AppUI.bodySoft,
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(false),
+              child: const Text('Cancelar'),
+            ),
+            FilledButton(
+              key: const Key('menu_copy_overwrite_confirm'),
+              onPressed: () => Navigator.of(ctx).pop(true),
+              child: const Text('Reemplazar'),
+            ),
+          ],
+        ),
+      );
+      if (ok != true || !mounted) return;
+    }
+
+    widget.onCopyToDays!(_items, selected.toList());
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text('Copiado a ${selected.length} día(s)',
+            style: const TextStyle(fontSize: 15)),
+        backgroundColor: AppTheme.success,
+        behavior: SnackBarBehavior.floating,
+      ));
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final bottom = MediaQuery.of(context).viewInsets.bottom;
@@ -460,32 +751,44 @@ class _DayEditorSheetState extends State<_DayEditorSheet> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const SizedBox(height: 8),
+            const SizedBox(height: AppUI.s8),
             Container(
               width: 40,
               height: 4,
               decoration: BoxDecoration(
-                  color: Colors.grey.shade300,
-                  borderRadius: BorderRadius.circular(2)),
+                  color: AppUI.border, borderRadius: BorderRadius.circular(2)),
             ),
             Padding(
-              padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+              padding: const EdgeInsets.fromLTRB(AppUI.s16, AppUI.s12, AppUI.s16, AppUI.s4),
               child: Row(
                 children: [
                   Expanded(
                     child: Text('Menú del ${widget.title.toLowerCase()}',
-                        style: const TextStyle(
-                            fontSize: 18, fontWeight: FontWeight.w800)),
+                        style: AppUI.title),
                   ),
-                  TextButton.icon(
+                  GhostButton(
                     key: const Key('menu_day_add_recipe'),
+                    icon: Icons.add_rounded,
+                    label: 'Agregar',
+                    color: AppTheme.primary,
                     onPressed: widget.recipes.isEmpty ? null : _addRecipe,
-                    icon: const Icon(Icons.add_rounded),
-                    label: const Text('Agregar'),
                   ),
                 ],
               ),
             ),
+            if (_canCopy)
+              Align(
+                alignment: Alignment.centerLeft,
+                child: Padding(
+                  padding: const EdgeInsets.only(left: AppUI.s12, bottom: AppUI.s4),
+                  child: GhostButton(
+                    key: const Key('menu_day_copy'),
+                    icon: Icons.copy_all_rounded,
+                    label: 'Copiar a otros días',
+                    onPressed: _copyToOtherDays,
+                  ),
+                ),
+              ),
             Flexible(
               child: _items.isEmpty
                   ? const Padding(
@@ -494,22 +797,21 @@ class _DayEditorSheetState extends State<_DayEditorSheet> {
                         'Aún no hay platos para este día. Toque "Agregar" para '
                         'elegir de sus recetas.',
                         textAlign: TextAlign.center,
-                        style: TextStyle(fontSize: 14.5, color: Colors.black54),
+                        style: AppUI.bodySoft,
                       ),
                     )
                   : ListView.separated(
                       shrinkWrap: true,
-                      padding: const EdgeInsets.fromLTRB(16, 4, 8, 8),
+                      padding: const EdgeInsets.fromLTRB(AppUI.s16, AppUI.s4, AppUI.s8, AppUI.s8),
                       itemCount: _items.length,
-                      separatorBuilder: (_, __) => const Divider(height: 1),
+                      separatorBuilder: (_, __) => const Divider(
+                          height: 1, color: AppUI.hairline),
                       itemBuilder: (_, i) {
                         final it = _items[i];
                         return ListTile(
                           contentPadding: EdgeInsets.zero,
                           title: Text(widget.recipeName(it.recipeUuid),
-                              style: const TextStyle(
-                                  fontSize: 15.5,
-                                  fontWeight: FontWeight.w600)),
+                              style: AppUI.bodyStrong),
                           subtitle: _QtyStepper(
                             qty: it.plannedQty,
                             onChanged: (v) =>
@@ -527,7 +829,7 @@ class _DayEditorSheetState extends State<_DayEditorSheet> {
                     ),
             ),
             Padding(
-              padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
+              padding: const EdgeInsets.fromLTRB(AppUI.s16, AppUI.s4, AppUI.s16, AppUI.s12),
               child: SizedBox(
                 width: double.infinity,
                 child: FilledButton(
@@ -556,8 +858,7 @@ class _QtyStepper extends StatelessWidget {
   Widget build(BuildContext context) {
     return Row(
       children: [
-        const Text('Preparar: ',
-            style: TextStyle(fontSize: 13, color: Colors.black54)),
+        const Text('Preparar: ', style: AppUI.bodySoft),
         IconButton(
           visualDensity: VisualDensity.compact,
           icon: const Icon(Icons.remove_circle_outline, size: 22),
@@ -606,16 +907,15 @@ class _RecipePickerSheetState extends State<_RecipePickerSheet> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const SizedBox(height: 10),
+            const SizedBox(height: AppUI.s12),
             Container(
               width: 40,
               height: 4,
               decoration: BoxDecoration(
-                  color: Colors.grey.shade300,
-                  borderRadius: BorderRadius.circular(2)),
+                  color: AppUI.border, borderRadius: BorderRadius.circular(2)),
             ),
             Padding(
-              padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+              padding: const EdgeInsets.fromLTRB(AppUI.s16, AppUI.s12, AppUI.s16, AppUI.s8),
               child: TextField(
                 key: const Key('recipe_picker_search'),
                 autofocus: true,
@@ -634,7 +934,7 @@ class _RecipePickerSheetState extends State<_RecipePickerSheet> {
                   ? const Padding(
                       padding: EdgeInsets.all(24),
                       child: Text('No hay recetas para mostrar.',
-                          style: TextStyle(color: Colors.black54)),
+                          style: AppUI.bodySoft),
                     )
                   : ListView.builder(
                       shrinkWrap: true,
@@ -649,12 +949,11 @@ class _RecipePickerSheetState extends State<_RecipePickerSheet> {
                           title: Text(
                               (r['product_name'] ?? r['name'] ?? 'Receta')
                                   .toString(),
-                              style: const TextStyle(
-                                  fontSize: 15.5,
-                                  fontWeight: FontWeight.w600)),
+                              style: AppUI.bodyStrong),
                           subtitle: (r['category'] ?? '').toString().isEmpty
                               ? null
-                              : Text(r['category'].toString()),
+                              : Text(r['category'].toString(),
+                                  style: AppUI.bodySoft),
                           onTap: () => Navigator.of(context).pop(uuid),
                         );
                       },
@@ -734,61 +1033,59 @@ class _OverridesSection extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Divider(height: 28),
         Row(
           children: [
             const Expanded(
-              child: Text('Ajustes por fecha',
-                  style: TextStyle(
-                      fontSize: 16, fontWeight: FontWeight.w800)),
+              child: Text('Ajustes por fecha', style: AppUI.sectionLabel),
             ),
-            TextButton.icon(
+            GhostButton(
               key: const Key('menu_add_override'),
+              icon: Icons.event_rounded,
+              label: 'Ajustar fecha',
+              color: AppTheme.primary,
               onPressed: () => _addOverride(context),
-              icon: const Icon(Icons.event_rounded),
-              label: const Text('Ajustar fecha'),
             ),
           ],
         ),
         const Padding(
-          padding: EdgeInsets.only(bottom: 8),
+          padding: EdgeInsets.only(left: AppUI.s4, top: AppUI.s4, bottom: AppUI.s8),
           child: Text(
             'Cambie el menú de un día puntual (un festivo, un evento) sin tocar '
             'su plantilla semanal.',
-            style: TextStyle(fontSize: 13, color: Colors.black54, height: 1.25),
+            style: AppUI.bodySoft,
           ),
         ),
         if (overrides.isEmpty)
           const Padding(
-            padding: EdgeInsets.symmetric(vertical: 8),
-            child: Text('Sin ajustes próximos.',
-                style: TextStyle(color: Colors.black38)),
+            padding: EdgeInsets.symmetric(vertical: AppUI.s8, horizontal: AppUI.s4),
+            child: Text('Sin ajustes próximos.', style: AppUI.bodySoft),
           )
         else
-          for (final ov in overrides)
-            Card(
-              elevation: 0,
-              color: Colors.grey.shade50,
-              child: ListTile(
-                key: Key('override_${ov['date']}'),
-                leading: const Icon(Icons.event_available_rounded,
-                    color: AppTheme.primary),
-                title: Text(ov['date'].toString(),
-                    style: const TextStyle(fontWeight: FontWeight.w700)),
-                subtitle: Text(ov['enabled'] == true
-                    ? '${((ov['items'] as List?) ?? []).length} plato(s)'
-                    : 'Cerrado ese día'),
-                trailing: IconButton(
-                  icon: Icon(Icons.delete_outline_rounded,
-                      color: Colors.red.shade300),
-                  onPressed: () async {
-                    await api.deleteMenuOverride(ov['date'].toString(),
-                        branchId: branchId);
-                    await onChanged();
-                  },
+          InsetGroupedList(
+            children: [
+              for (final ov in overrides)
+                ListTile(
+                  key: Key('override_${ov['date']}'),
+                  leading: const Icon(Icons.event_available_rounded,
+                      color: AppTheme.primary),
+                  title: Text(ov['date'].toString(), style: AppUI.bodyStrong),
+                  subtitle: Text(
+                      ov['enabled'] == true
+                          ? '${((ov['items'] as List?) ?? []).length} plato(s)'
+                          : 'Cerrado ese día',
+                      style: AppUI.bodySoft),
+                  trailing: IconButton(
+                    icon: Icon(Icons.delete_outline_rounded,
+                        color: Colors.red.shade300),
+                    onPressed: () async {
+                      await api.deleteMenuOverride(ov['date'].toString(),
+                          branchId: branchId);
+                      await onChanged();
+                    },
+                  ),
                 ),
-              ),
-            ),
+            ],
+          ),
       ],
     );
   }
@@ -817,23 +1114,32 @@ class _BranchSelector extends StatelessWidget {
           )),
     ];
     return Padding(
-      padding: const EdgeInsets.only(bottom: 10),
-      child: InputDecorator(
-        decoration: InputDecoration(
-          labelText: 'Planeando la sede',
-          prefixIcon: const Icon(Icons.store_mall_directory_rounded),
-          border: OutlineInputBorder(borderRadius: BorderRadius.circular(14)),
-          isDense: true,
-          contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-        ),
-        child: DropdownButtonHideUnderline(
-          child: DropdownButton<String>(
-            key: const Key('menu_branch_selector'),
-            isExpanded: true,
-            value: selectedId,
-            items: items,
-            onChanged: (v) => onChanged(v ?? ''),
-          ),
+      padding: const EdgeInsets.only(bottom: AppUI.s8),
+      child: SoftCard(
+        padding: const EdgeInsets.symmetric(horizontal: AppUI.s16, vertical: AppUI.s4),
+        child: Row(
+          children: [
+            const Icon(Icons.store_mall_directory_rounded,
+                color: AppTheme.primary, size: 20),
+            const SizedBox(width: AppUI.s12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('Planeando la sede', style: AppUI.sectionLabel),
+                  DropdownButtonHideUnderline(
+                    child: DropdownButton<String>(
+                      key: const Key('menu_branch_selector'),
+                      isExpanded: true,
+                      value: selectedId,
+                      items: items,
+                      onChanged: (v) => onChanged(v ?? ''),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
         ),
       ),
     );
@@ -848,68 +1154,74 @@ class _BranchLinkCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Card(
-      elevation: 0,
-      color: AppTheme.primary.withValues(alpha: 0.06),
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(12, 8, 4, 8),
-        child: Row(
-          children: [
-            const Icon(Icons.link_rounded, color: AppTheme.primary, size: 20),
-            const SizedBox(width: 8),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text('Link de esta sede',
-                      style: TextStyle(fontSize: 12, color: Colors.black54)),
-                  Text(url.replaceFirst('https://', ''),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                          fontSize: 13, fontWeight: FontWeight.w600)),
-                ],
-              ),
+    return SoftCard(
+      padding: const EdgeInsets.fromLTRB(AppUI.s16, AppUI.s8, AppUI.s4, AppUI.s8),
+      child: Row(
+        children: [
+          const Icon(Icons.link_rounded, color: AppTheme.primary, size: 20),
+          const SizedBox(width: AppUI.s8),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('Link de esta sede', style: AppUI.sectionLabel),
+                Text(url.replaceFirst('https://', ''),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: AppUI.bodyStrong),
+              ],
             ),
-            IconButton(
-              key: const Key('menu_branch_link_copy'),
-              icon: const Icon(Icons.copy_rounded, size: 20),
-              tooltip: 'Copiar link',
-              onPressed: () async {
-                await Clipboard.setData(ClipboardData(text: url));
-                onSnack('Link de la sede copiado');
-              },
-            ),
-          ],
-        ),
+          ),
+          IconButton(
+            key: const Key('menu_branch_link_copy'),
+            icon: const Icon(Icons.copy_rounded, size: 20, color: AppUI.inkSoft),
+            tooltip: 'Copiar link',
+            onPressed: () async {
+              await Clipboard.setData(ClipboardData(text: url));
+              onSnack('Link de la sede copiado');
+            },
+          ),
+        ],
       ),
     );
   }
 }
 
-class _ErrorState extends StatelessWidget {
-  final String message;
-  final VoidCallback onRetry;
-  const _ErrorState({required this.message, required this.onRetry});
+/// Estado de mensaje (error/vacío) calcado de recipe_list_screen.
+class _MessageState extends StatelessWidget {
+  final IconData icon;
+  final String title;
+  final String actionLabel;
+  final VoidCallback onAction;
+  const _MessageState({
+    required this.icon,
+    required this.title,
+    required this.actionLabel,
+    required this.onAction,
+  });
 
   @override
   Widget build(BuildContext context) {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(Icons.cloud_off_rounded, size: 48, color: Colors.grey.shade400),
-            const SizedBox(height: 12),
-            Text(message,
-                textAlign: TextAlign.center,
-                style: const TextStyle(fontSize: 15, color: Colors.black54)),
-            const SizedBox(height: 16),
-            FilledButton(onPressed: onRetry, child: const Text('Reintentar')),
-          ],
+    return ListView(
+      physics: const AlwaysScrollableScrollPhysics(),
+      children: [
+        SizedBox(height: MediaQuery.of(context).size.height * 0.18),
+        Icon(icon, size: 56, color: AppUI.inkSoft),
+        const SizedBox(height: AppUI.s16),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 24),
+          child: Text(title, textAlign: TextAlign.center, style: AppUI.title),
         ),
-      ),
+        const SizedBox(height: AppUI.s24),
+        Center(
+          child: GhostButton(
+            icon: Icons.refresh_rounded,
+            label: actionLabel,
+            color: AppTheme.primary,
+            onPressed: onAction,
+          ),
+        ),
+      ],
     );
   }
 }

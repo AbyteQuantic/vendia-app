@@ -169,7 +169,12 @@ void main() {
       // El link por sede aparece.
       expect(find.byKey(const Key('menu_branch_link_copy')), findsOneWidget);
 
-      // Prender un día y guardar → se guarda con branchId = b1.
+      // Prender un día y guardar → se guarda con branchId = b1. El switch del
+      // jueves puede quedar bajo el fold (tarjeta de IA + selector de sede); la
+      // lista agrupada construye las 7 filas de una, así que se usa
+      // ensureVisible (scrollUntilVisible no desplaza si ya está en el árbol).
+      await tester.ensureVisible(find.byKey(const Key('menu_day_switch_thu')));
+      await tester.pumpAndSettle();
       await tester.tap(find.byKey(const Key('menu_day_switch_thu')));
       await tester.pump();
       await tester.tap(find.byKey(const Key('menu_planner_save')));

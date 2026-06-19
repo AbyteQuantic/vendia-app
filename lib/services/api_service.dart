@@ -2377,6 +2377,23 @@ class ApiService {
     }
   }
 
+  /// Spec 067 — "Sugerir con IA". Pide al backend una propuesta de plantilla
+  /// semanal armada por IA con las recetas reales del comercio. STATELESS: no
+  /// guarda nada; devuelve `{days: {...}}` para que la pantalla la fusione y el
+  /// tendero la revise antes de Guardar. Timeout amplio (la IA tarda).
+  Future<Map<String, dynamic>> suggestMenuPlan({String branchId = ''}) async {
+    try {
+      final response = await _dio.post(
+        '/api/v1/menu-plan/suggest',
+        queryParameters: _branchQuery(branchId),
+        options: Options(receiveTimeout: const Duration(seconds: 60)),
+      );
+      return _extractData(response);
+    } on DioException catch (e) {
+      throw AppError.fromDioException(e);
+    }
+  }
+
   /// Lista los ajustes por fecha (overrides) de la sede, de hoy en adelante.
   Future<List<Map<String, dynamic>>> fetchMenuOverrides(
       {String branchId = ''}) async {
