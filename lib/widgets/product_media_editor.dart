@@ -132,6 +132,23 @@ class _ProductMediaEditorState extends State<ProductMediaEditor> {
     if (src != null) await _addVideo(src);
   }
 
+  // Spec 070 — reordenar la media; persiste el nuevo orden en el backend.
+  Future<void> _onReorder(int oldIndex, int newIndex) async {
+    setState(() {
+      if (newIndex > oldIndex) newIndex -= 1;
+      final item = _media.removeAt(oldIndex);
+      _media.insert(newIndex, item);
+    });
+    try {
+      await widget.api.reorderProductMedia(
+        widget.productId,
+        _media.map((m) => (m['id'] ?? '').toString()).toList(),
+      );
+    } catch (_) {
+      _snack('No pudimos guardar el orden. Intente de nuevo.', AppTheme.error);
+    }
+  }
+
   Future<void> _delete(Map<String, dynamic> m) async {
     final id = (m['id'] ?? '').toString();
     if (id.isEmpty) return;
@@ -161,12 +178,30 @@ class _ProductMediaEditorState extends State<ProductMediaEditor> {
             padding: EdgeInsets.symmetric(vertical: 12),
             child: Center(child: CircularProgressIndicator()),
           )
-        else if (_media.isNotEmpty)
-          Wrap(
-            spacing: AppUI.s8,
-            runSpacing: AppUI.s8,
-            children: [for (final m in _media) _thumb(m)],
+        else if (_media.isNotEmpty) ...[
+          if (_media.length > 1)
+            const Padding(
+              padding: EdgeInsets.only(bottom: 6),
+              child: Text('Mantenga presionado y arrastre para cambiar el orden.',
+                  style: AppUI.bodySoft),
+            ),
+          // Spec 070 — reordenar: arrastrar las miniaturas (el primer item es la
+          // foto principal del producto; aquí solo va la media EXTRA).
+          SizedBox(
+            height: 82,
+            child: ReorderableListView.builder(
+              scrollDirection: Axis.horizontal,
+              buildDefaultDragHandles: _media.length > 1,
+              itemCount: _media.length,
+              onReorder: _onReorder,
+              itemBuilder: (_, i) => Padding(
+                key: ValueKey('media_item_${_media[i]['id']}'),
+                padding: const EdgeInsets.only(right: AppUI.s12, top: AppUI.s8),
+                child: _thumb(_media[i]),
+              ),
+            ),
           ),
+        ],
         const SizedBox(height: AppUI.s12),
         Wrap(
           spacing: AppUI.s8,

@@ -16,6 +16,12 @@ class _FakeApi extends ApiService {
   ];
   String? deletedId;
   String? addedYouTube;
+  List<String>? reorderedIds;
+
+  @override
+  Future<void> reorderProductMedia(String productId, List<String> ids) async {
+    reorderedIds = ids;
+  }
 
   @override
   Future<List<Map<String, dynamic>>> fetchProductMedia(String productId) async =>
@@ -68,6 +74,19 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(api.addedYouTube, 'https://youtu.be/dQw4w9WgXcQ');
+    expect(find.byKey(const Key('media_thumb_m2')), findsOneWidget);
+  });
+
+  testWidgets('con 2+ elementos ofrece reordenar (arrastrar)', (tester) async {
+    final api = _FakeApi()
+      ..media = [
+        {'id': 'm1', 'type': 'image', 'url': 'https://r2/a.webp'},
+        {'id': 'm2', 'type': 'youtube', 'url': 'https://youtube.com/watch?v=abc',
+         'thumbnail': 'https://i.ytimg.com/vi/abc/hqdefault.jpg'},
+      ];
+    await _pump(tester, api);
+    expect(find.textContaining('arrastre para cambiar el orden'), findsOneWidget);
+    expect(find.byKey(const Key('media_thumb_m1')), findsOneWidget);
     expect(find.byKey(const Key('media_thumb_m2')), findsOneWidget);
   });
 

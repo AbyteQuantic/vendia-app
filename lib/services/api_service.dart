@@ -785,6 +785,16 @@ class ApiService {
     }
   }
 
+  /// Reordena la media del producto (Spec 070): envía los ids en el nuevo orden.
+  Future<void> reorderProductMedia(String productId, List<String> ids) async {
+    try {
+      await _dio.patch('/api/v1/products/$productId/media/reorder',
+          data: {'ids': ids});
+    } on DioException catch (e) {
+      throw AppError.fromDioException(e);
+    }
+  }
+
   /// Borra un elemento de media (y su objeto en R2 si es subido).
   Future<void> deleteProductMedia(String productId, String mediaId) async {
     try {
