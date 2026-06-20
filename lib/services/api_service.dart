@@ -508,10 +508,16 @@ class ApiService {
   Future<List<String>> fetchProductCategories() async {
     try {
       final response = await _dio.get('/api/v1/products/categories');
-      final data = _extractData(response);
-      final list = (data is List) ? data : (data['data'] ?? data);
+      // OJO: NO usar _extractData aquí — castea `data` a Map y este endpoint
+      // devuelve `data` como LISTA (["Bebidas",…]); el cast lanzaría y el
+      // autocomplete quedaría siempre vacío (bug Spec 069). Se parsea directo.
+      final body = response.data;
+      final list = (body is Map) ? body['data'] : body;
       if (list is List) {
-        return list.map((e) => e.toString()).toList();
+        return list
+            .map((e) => e.toString())
+            .where((s) => s.trim().isNotEmpty)
+            .toList();
       }
       return [];
     } on DioException {
