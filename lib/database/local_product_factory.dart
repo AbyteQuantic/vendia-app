@@ -26,6 +26,9 @@ LocalProduct buildSavedLocalProduct({
   bool requiresContainer = false,
   int containerPrice = 0,
   DateTime? clientUpdatedAt,
+  // Spec 068 — categoría + características (opcionales, aditivos).
+  String? category,
+  String? characteristics,
 }) {
   return LocalProduct()
     ..uuid = uuid
@@ -41,6 +44,8 @@ LocalProduct buildSavedLocalProduct({
     ..barcode = barcode
     ..presentation = presentation
     ..content = content
+    ..category = category
+    ..characteristics = characteristics
     ..expiryDate = expiryDate
     ..clientUpdatedAt = clientUpdatedAt ?? DateTime.now();
 }

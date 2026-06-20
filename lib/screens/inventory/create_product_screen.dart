@@ -1141,6 +1141,8 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
             barcode: _skuCtrl.text.trim(),
             presentation: _presentation,
             content: _contentCtrl.text.trim(),
+            category: _categoryCtrl.text.trim(),
+            characteristics: _characteristicsCtrl.text.trim(),
             expiryDate: _expiryDate,
           );
           await DatabaseService.instance.upsertProduct(product);

@@ -25,6 +25,11 @@ class LocalProduct {
   String? barcode;
   String? presentation;
   String? content;
+  // Spec 068 — categoría (free-text) y características (texto libre). Aditivos,
+  // nullable: viajan en el sync offline dentro del mismo objeto Product, sin
+  // tabla nueva. Productos viejos quedan en null (retrocompatible con Isar).
+  String? category;
+  String? characteristics;
 
   /// Expiration date (YYYY-MM-DD resolution). Nullable because non-perishable
   /// SKUs (cleaning supplies, stationery, liquor) never carry an expiration.
@@ -48,6 +53,8 @@ class LocalProduct {
         'barcode': barcode,
         'presentation': presentation,
         'content': content,
+        'category': category,
+        'characteristics': characteristics,
         // ISO-8601 date (YYYY-MM-DD). Backend column is DATE, so we strip
         // the time component to avoid day-boundary surprises near midnight.
         'expiry_date': expiryDate == null
@@ -88,6 +95,8 @@ class LocalProduct {
       ..barcode = json['barcode'] as String?
       ..presentation = json['presentation'] as String?
       ..content = json['content'] as String?
+      ..category = json['category'] as String?
+      ..characteristics = json['characteristics'] as String?
       ..expiryDate = parsedExpiry
       // tryParse (no parse): una fecha malformada no debe abortar el sync.
       ..clientUpdatedAt =

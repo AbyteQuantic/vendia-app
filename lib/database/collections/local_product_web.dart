@@ -21,6 +21,9 @@ class LocalProduct {
   String? barcode;
   String? presentation;
   String? content;
+  // Spec 068 — espejo del io: categoría + características (aditivos, nullable).
+  String? category;
+  String? characteristics;
   DateTime? expiryDate;
   late DateTime clientUpdatedAt;
   int? serverId;
@@ -39,6 +42,8 @@ class LocalProduct {
         'barcode': barcode,
         'presentation': presentation,
         'content': content,
+        'category': category,
+        'characteristics': characteristics,
         'expiry_date': expiryDate == null
             ? null
             : '${expiryDate!.year.toString().padLeft(4, '0')}-'
@@ -76,6 +81,8 @@ class LocalProduct {
       ..barcode = json['barcode'] as String?
       ..presentation = json['presentation'] as String?
       ..content = json['content'] as String?
+      ..category = json['category'] as String?
+      ..characteristics = json['characteristics'] as String?
       ..expiryDate = parsedExpiry
       ..clientUpdatedAt =
           DateTime.tryParse(json['client_updated_at'] as String? ?? '') ??
