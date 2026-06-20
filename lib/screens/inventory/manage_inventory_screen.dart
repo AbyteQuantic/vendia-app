@@ -14,6 +14,7 @@ import '../../widgets/picked_image_preview.dart';
 import '../../widgets/stock_badge.dart';
 import '../../widgets/advanced_product_options.dart';
 import '../../widgets/catalog_link_card.dart';
+import '../../widgets/product_media_editor.dart';
 import '../pos/scan_screen.dart';
 import 'kardex_screen.dart';
 import 'negative_stock_screen.dart';
@@ -1565,6 +1566,13 @@ class _EditProductSheetState extends State<_EditProductSheet> {
                 characteristicsController: _characteristicsCtrl,
                 categorySuggestions: _categorySuggestions,
               ),
+              const SizedBox(height: 24),
+              // Spec 070 — galería multimedia (fotos extra + video ≤25s + YouTube).
+              if ((widget.product['id'] as String? ?? '').isNotEmpty)
+                ProductMediaEditor(
+                  productId: widget.product['id'] as String,
+                  api: ApiService(AuthService()),
+                ),
               const SizedBox(height: 32),
 
               // Save button

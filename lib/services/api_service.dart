@@ -715,6 +715,79 @@ class ApiService {
     }
   }
 
+  // ── Spec 070 — galería multimedia del producto ──────────────────────────
+
+  /// Lista la media EXTRA del producto (sin la foto principal).
+  Future<List<Map<String, dynamic>>> fetchProductMedia(String productId) async {
+    try {
+      final r = await _dio.get('/api/v1/products/$productId/media');
+      return _extractList(r);
+    } on DioException catch (e) {
+      throw AppError.fromDioException(e);
+    }
+  }
+
+  /// Agrega una imagen extra (web-safe: bytes, nunca dart:io File).
+  Future<Map<String, dynamic>> addProductMediaImage(
+      String productId, XFile photo) async {
+    try {
+      final formData = FormData.fromMap({
+        'photo': await _imageMultipart(photo, prefix: 'media'),
+      });
+      final r = await _dio.post('/api/v1/products/$productId/media/image',
+          data: formData);
+      return _extractData(r);
+    } on DioException catch (e) {
+      throw AppError.fromDioException(e);
+    }
+  }
+
+  /// Agrega un video corto (≤25s). El servidor es la autoridad del límite; este
+  /// lado solo sube los bytes (XFile.readAsBytes → web-safe). Timeout amplio.
+  Future<Map<String, dynamic>> addProductMediaVideo(
+      String productId, XFile video) async {
+    try {
+      final bytes = await video.readAsBytes();
+      final name = video.name.isNotEmpty ? video.name : 'video.mp4';
+      final formData = FormData.fromMap({
+        'video': MultipartFile.fromBytes(
+          bytes,
+          filename: name,
+          contentType: DioMediaType('video', 'mp4'),
+        ),
+      });
+      final r = await _dio.post(
+        '/api/v1/products/$productId/media/video',
+        data: formData,
+        options: Options(receiveTimeout: const Duration(seconds: 90)),
+      );
+      return _extractData(r);
+    } on DioException catch (e) {
+      throw AppError.fromDioException(e);
+    }
+  }
+
+  /// Agrega un video por link de YouTube (el server valida y normaliza).
+  Future<Map<String, dynamic>> addProductMediaYouTube(
+      String productId, String url) async {
+    try {
+      final r = await _dio.post('/api/v1/products/$productId/media/youtube',
+          data: {'url': url});
+      return _extractData(r);
+    } on DioException catch (e) {
+      throw AppError.fromDioException(e);
+    }
+  }
+
+  /// Borra un elemento de media (y su objeto en R2 si es subido).
+  Future<void> deleteProductMedia(String productId, String mediaId) async {
+    try {
+      await _dio.delete('/api/v1/products/$productId/media/$mediaId');
+    } on DioException catch (e) {
+      throw AppError.fromDioException(e);
+    }
+  }
+
   // Spec 016 / D3: AI photo ops are async. The POST kicks off a backend
   // job and returns a job_id immediately (202); the result arrives later
   // via polling. These tune that loop:
