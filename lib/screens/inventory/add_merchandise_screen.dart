@@ -14,6 +14,7 @@ import 'product_import_screen.dart';
 import 'voice_inventory_screen.dart';
 import '../pos/scan_screen.dart';
 import '../suppliers/nearby_suppliers_screen.dart';
+import '../suppliers/supplier_panel_screen.dart';
 
 /// Agregar Mercancia — entry point for the inventory IA module.
 /// Allows the user to photograph a supplier invoice for AI detection,
@@ -286,6 +287,8 @@ class AddMerchandiseScreen extends StatelessWidget {
                   ),
                 ],
               ),
+              // Spec 075 — Panel de proveedor (solo si EnableSupplierMode).
+              const _SupplierPanelEntry(),
             ],
           ),
         ),
@@ -315,6 +318,57 @@ class AddMerchandiseScreen extends StatelessWidget {
             ),
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// Spec 075 — entrada al Panel de proveedor, visible solo si el tenant tiene
+/// EnableSupplierMode (modo "Vendo a tiendas"). Self-contained: lee las flags
+/// de disco y se oculta si no aplica.
+class _SupplierPanelEntry extends StatefulWidget {
+  const _SupplierPanelEntry();
+
+  @override
+  State<_SupplierPanelEntry> createState() => _SupplierPanelEntryState();
+}
+
+class _SupplierPanelEntryState extends State<_SupplierPanelEntry> {
+  bool _show = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _check();
+  }
+
+  Future<void> _check() async {
+    try {
+      final flags = await AuthService().getFeatureFlags();
+      if (mounted && flags.enableSupplierMode) setState(() => _show = true);
+    } catch (_) {/* sin panel */}
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (!_show) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.only(top: AppUI.s16),
+      child: InsetGroupedList(
+        children: [
+          _HubActionRow(
+            rowKey: const Key('btn_supplier_panel'),
+            icon: Icons.agriculture_rounded,
+            accent: true,
+            title: 'Panel de proveedor',
+            subtitle: 'Pedidos entrantes y anti-merma.',
+            onTap: () {
+              HapticFeedback.lightImpact();
+              Navigator.of(context).push(MaterialPageRoute(
+                  builder: (_) => const SupplierPanelScreen()));
+            },
+          ),
+        ],
       ),
     );
   }

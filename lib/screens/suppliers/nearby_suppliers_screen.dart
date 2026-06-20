@@ -5,6 +5,7 @@ import '../../theme/app_ui.dart';
 import '../../services/api_service.dart';
 import '../../services/auth_service.dart';
 import '../../services/app_error.dart';
+import 'supplier_catalog_screen.dart';
 
 /// Mercado cercano (Spec 075 F2): el tendero ve los proveedores con ubicación
 /// real dentro de un radio, ordenados por distancia. Conecta — el pedido se
@@ -133,14 +134,23 @@ class _NearbySuppliersScreenState extends State<NearbySuppliersScreen> {
       padding: const EdgeInsets.fromLTRB(AppUI.s16, AppUI.s8, AppUI.s16, AppUI.s24),
       itemCount: _suppliers.length,
       separatorBuilder: (_, __) => const SizedBox(height: AppUI.s8),
-      itemBuilder: (_, i) => _SupplierCard(data: _suppliers[i]),
+      itemBuilder: (_, i) => _SupplierCard(
+        data: _suppliers[i],
+        onTap: () => Navigator.of(context).push(MaterialPageRoute(
+          builder: (_) => SupplierCatalogScreen(
+            supplierId: _suppliers[i]['id'].toString(),
+            supplierName: (_suppliers[i]['business_name'] ?? '').toString(),
+          ),
+        )),
+      ),
     );
   }
 }
 
 class _SupplierCard extends StatelessWidget {
   final Map<String, dynamic> data;
-  const _SupplierCard({required this.data});
+  final VoidCallback onTap;
+  const _SupplierCard({required this.data, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
@@ -151,10 +161,13 @@ class _SupplierCard extends StatelessWidget {
     final products = (data['product_count'] as num?)?.toInt() ?? 0;
     final expiring = (data['expiring_soon_count'] as num?)?.toInt() ?? 0;
 
-    return Container(
-      padding: const EdgeInsets.all(AppUI.s12),
-      decoration: AppUI.card(r: 10),
-      child: Row(
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(10),
+      child: Container(
+        padding: const EdgeInsets.all(AppUI.s12),
+        decoration: AppUI.card(r: 10),
+        child: Row(
         children: [
           Container(
             width: 44,
@@ -201,7 +214,9 @@ class _SupplierCard extends StatelessWidget {
               ],
             ),
           ),
+          const Icon(Icons.chevron_right_rounded, color: AppUI.inkSoft),
         ],
+        ),
       ),
     );
   }

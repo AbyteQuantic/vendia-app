@@ -795,6 +795,70 @@ class ApiService {
     }
   }
 
+  /// Spec 075 F3 — catálogo público de un proveedor (cross-tenant).
+  Future<Map<String, dynamic>> fetchSupplierCatalog(String supplierId) async {
+    try {
+      final r = await _dio.get('/api/v1/suppliers/$supplierId/catalog');
+      return _extractData(r); // data es Map {supplier, products}
+    } on DioException catch (e) {
+      throw AppError.fromDioException(e);
+    }
+  }
+
+  /// Spec 075 F3 — la tienda hace un pedido al proveedor. Devuelve el link de
+  /// WhatsApp para cerrarlo. items: [{product_id,name,quantity,price}].
+  Future<Map<String, dynamic>> placeSupplierOrder(String supplierId,
+      List<Map<String, dynamic>> items, String deliveryChoice,
+      {String notes = ''}) async {
+    try {
+      final r = await _dio.post('/api/v1/suppliers/$supplierId/orders', data: {
+        'items': items,
+        'delivery_choice': deliveryChoice,
+        'notes': notes,
+      });
+      return _extractData(r); // data es Map {order, whatsapp_url, message}
+    } on DioException catch (e) {
+      throw AppError.fromDioException(e);
+    }
+  }
+
+  /// Spec 075 F3 — buzón de pedidos entrantes del proveedor (lista).
+  Future<List<Map<String, dynamic>>> fetchSupplierInbox() async {
+    try {
+      final r = await _dio.get('/api/v1/supplier/inbox');
+      final list = (r.data is Map) ? r.data['data'] : r.data;
+      return (list is List)
+          ? list.map((e) => Map<String, dynamic>.from(e as Map)).toList()
+          : [];
+    } on DioException catch (e) {
+      throw AppError.fromDioException(e);
+    }
+  }
+
+  /// Spec 075 F3 — el proveedor cambia el estado de un pedido entrante.
+  Future<void> updateSupplierOrderStatus(String orderId, String status) async {
+    try {
+      await _dio.patch('/api/v1/supplier/orders/$orderId', data: {'status': status});
+    } on DioException catch (e) {
+      throw AppError.fromDioException(e);
+    }
+  }
+
+  /// Spec 075 F4 — anti-merma: perecederos por vencer + tiendas cercanas (lista).
+  Future<List<Map<String, dynamic>>> fetchHarvestAlerts(
+      {double radiusKm = 5, int days = 7}) async {
+    try {
+      final r = await _dio.get('/api/v1/supplier/harvest-alerts',
+          queryParameters: {'radius_km': radiusKm, 'days': days});
+      final list = (r.data is Map) ? r.data['data'] : r.data;
+      return (list is List)
+          ? list.map((e) => Map<String, dynamic>.from(e as Map)).toList()
+          : [];
+    } on DioException catch (e) {
+      throw AppError.fromDioException(e);
+    }
+  }
+
   /// Spec 075 — proveedores cercanos a la tienda (descubrimiento por cercanía).
   /// Lista ordenada por distancia. OJO: NO usar _extractData (devuelve LISTA).
   Future<List<Map<String, dynamic>>> fetchNearbySuppliers({double radiusKm = 5}) async {

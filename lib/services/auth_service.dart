@@ -438,6 +438,11 @@ class FeatureFlags {
   /// Espejo de `tenants.feature_flags.enable_events`. Default OFF.
   final bool enableEvents;
 
+  /// Spec 075: modo proveedor ("Vendo a tiendas"). Lo prenden los
+  /// business_type proveedor_agricola / proveedor_mayorista. Habilita el
+  /// Panel de proveedor (pedidos entrantes + anti-merma). Default OFF.
+  final bool enableSupplierMode;
+
   const FeatureFlags({
     this.enableTables = false,
     this.enableKDS = false,
@@ -455,6 +460,7 @@ class FeatureFlags {
     this.enableFurnitureJobs = false,
     this.enablePurchaseOrders = false,
     this.enableEvents = false,
+    this.enableSupplierMode = false,
   });
 
   factory FeatureFlags.fromJson(Map<String, dynamic> json) => FeatureFlags(
@@ -487,5 +493,7 @@ class FeatureFlags {
         enablePurchaseOrders: json['enable_purchase_orders'] == true,
         // F042 — default false: el módulo de eventos se activa self-service.
         enableEvents: json['enable_events'] == true,
+        // Spec 075 — viaja dentro de feature_flags.
+        enableSupplierMode: json['enable_supplier_mode'] == true,
       );
 }
