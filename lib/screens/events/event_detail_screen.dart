@@ -217,6 +217,81 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
     }
   }
 
+  // Spec 069 — Finalizar: archiva el evento (sale del catálogo). Los inscritos
+  // conservan su carné y certificado.
+  Future<void> _finishEvent() async {
+    final ok = await _confirmEventAction(
+      title: 'Finalizar evento',
+      message:
+          'El evento dejará de aparecer en su catálogo en línea. Sus inscritos '
+          'conservan su carné y certificado. ¿Desea finalizarlo?',
+      confirmLabel: 'Finalizar',
+    );
+    if (ok != true) return;
+    try {
+      await _api.archiveEvent(_event.id);
+      if (!mounted) return;
+      setState(() => _event = _event.copyWith(status: EventStatus.archivado));
+      _snack('Evento finalizado. Ya no aparece en su catálogo.',
+          kind: EventSnackKind.success);
+    } catch (_) {
+      _snack('No pudimos finalizar el evento.', kind: EventSnackKind.error);
+    }
+  }
+
+  // Spec 069 — Cancelar: marca el evento cancelado (sale del catálogo). Se
+  // ofrece avisar a los inscritos por WhatsApp.
+  Future<void> _cancelEvent() async {
+    final ok = await _confirmEventAction(
+      title: 'Cancelar evento',
+      message:
+          'El evento se marca como CANCELADO y sale de su catálogo en línea. '
+          'Sus inscritos no se borran; avíseles usted mismo. ¿Desea cancelarlo?',
+      confirmLabel: 'Cancelar evento',
+      danger: true,
+    );
+    if (ok != true) return;
+    try {
+      await _api.cancelEvent(_event.id);
+      if (!mounted) return;
+      setState(() => _event = _event.copyWith(status: EventStatus.cancelado));
+      _snack('Evento cancelado. Ya no aparece en su catálogo.',
+          kind: EventSnackKind.success);
+      // Ofrecer (no forzar) avisar a los inscritos por WhatsApp.
+      _openAttendeeBroadcast();
+    } catch (_) {
+      _snack('No pudimos cancelar el evento.', kind: EventSnackKind.error);
+    }
+  }
+
+  Future<bool?> _confirmEventAction({
+    required String title,
+    required String message,
+    required String confirmLabel,
+    bool danger = false,
+  }) {
+    return showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(title),
+        content: Text(message, style: const TextStyle(fontSize: 15)),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('Volver'),
+          ),
+          FilledButton(
+            style: danger
+                ? FilledButton.styleFrom(backgroundColor: EventUI.danger)
+                : null,
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: Text(confirmLabel),
+          ),
+        ],
+      ),
+    );
+  }
+
   Future<void> _openScanner(String scanType) async {
     await Navigator.of(context).push(
       MaterialPageRoute(
@@ -381,6 +456,26 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
             _aiDesignCard(),
             const SizedBox(height: EventUI.s24),
             _catalogSection(e),
+            // Spec 069 — Finalizar / Cancelar: solo aplican a un evento que está
+            // publicado (en el catálogo). Lo sacan del catálogo en línea.
+            if (e.status == EventStatus.publicado) ...[
+              const SizedBox(height: EventUI.s24),
+              EventSecondaryButton(
+                key: const Key('detail_finish_event'),
+                onPressed: _finishEvent,
+                icon: Icons.flag_rounded,
+                label: 'Finalizar evento',
+                color: EventUI.inkSoft,
+              ),
+              const SizedBox(height: EventUI.s8),
+              EventSecondaryButton(
+                key: const Key('detail_cancel_event'),
+                onPressed: _cancelEvent,
+                icon: Icons.cancel_rounded,
+                label: 'Cancelar evento',
+                color: EventUI.danger,
+              ),
+            ],
             const SizedBox(height: EventUI.s24),
             _attendanceCard(),
             if (_pendingPayments.isNotEmpty) ...[

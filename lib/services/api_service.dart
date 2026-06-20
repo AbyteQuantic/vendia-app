@@ -1503,6 +1503,28 @@ class ApiService {
     }
   }
 
+  /// Spec 069 — Cancelar evento: lo marca cancelado y lo saca del catálogo
+  /// online (sin borrar inscritos ni carné).
+  Future<Map<String, dynamic>> cancelEvent(String id) async {
+    try {
+      final response = await _dio.post('/api/v1/events/$id/cancel');
+      return (response.data as Map<String, dynamic>)['data']
+          as Map<String, dynamic>;
+    } on DioException catch (e) {
+      throw AppError.fromDioException(e);
+    }
+  }
+
+  /// Spec 069 — Finalizar evento: lo archiva (DELETE existente) → sale del
+  /// catálogo online; los inscritos conservan su carné/certificado.
+  Future<void> archiveEvent(String id) async {
+    try {
+      await _dio.delete('/api/v1/events/$id');
+    } on DioException catch (e) {
+      throw AppError.fromDioException(e);
+    }
+  }
+
   /// Registra un abono (cuota o pago total) de un inscrito. Al completar el
   /// precio, el backend confirma la inscripción y activa el carné (F042).
   Future<Map<String, dynamic>> recordEventPayment(

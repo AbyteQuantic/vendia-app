@@ -13,6 +13,13 @@ class _FakeApi extends ApiService {
 
   final List<Map<String, dynamic>> regs;
   String? certifiedRegId;
+  String? cancelledEventId;
+
+  @override
+  Future<Map<String, dynamic>> cancelEvent(String id) async {
+    cancelledEventId = id;
+    return {'id': id, 'status': 'cancelado'};
+  }
 
   @override
   Future<List<Map<String, dynamic>>> listEventRegistrations(String id) async =>
@@ -139,5 +146,28 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(tester.takeException(), isNull);
+  });
+
+  // Spec 069 — un evento publicado expone Finalizar/Cancelar; Cancelar (con
+  // confirmación) llama a la API y saca el evento del catálogo.
+  testWidgets('publicado expone Finalizar/Cancelar y Cancelar llama a la API',
+      (tester) async {
+    final api = _FakeApi();
+    await tester.pumpWidget(_wrap(EventDetailScreen(event: ev, apiOverride: api)));
+    await tester.pumpAndSettle();
+
+    final cancelBtn = find.byKey(const Key('detail_cancel_event'));
+    await tester.scrollUntilVisible(cancelBtn, 300,
+        scrollable: find.byType(Scrollable).first);
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('detail_finish_event')), findsOneWidget);
+
+    await tester.tap(cancelBtn);
+    await tester.pumpAndSettle();
+    // Diálogo de confirmación → confirmar.
+    await tester.tap(find.text('Cancelar evento').last);
+    await tester.pumpAndSettle();
+
+    expect(api.cancelledEventId, 'e1');
   });
 }
