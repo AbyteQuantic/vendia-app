@@ -75,6 +75,21 @@ jobs:
             --dart-define=API_BASE_URL=https://api.vendia.store \
             --dart-define=SUPPORT_WHATSAPP_NUMBER=${{ secrets.SUPPORT_WHATSAPP_NUMBER }}
 
+      - name: Auto-update del PWA (skipWaiting en el service worker)
+        # Spec 069 — el service worker que genera Flutter ESPERA a que se cierren
+        # todas las pestañas para activar un build nuevo (causa de los builds
+        # viejos pegados en iOS). Le agregamos un handler de SKIP_WAITING para
+        # que tome control de inmediato cuando index.html se lo pide; junto con
+        # el listener controllerchange el PWA se actualiza solo. Idempotente.
+        run: |
+          SW=build/web/flutter_service_worker.js
+          if [ -f "$SW" ] && ! grep -q "SKIP_WAITING" "$SW"; then
+            printf "\nself.addEventListener('message', function (e) { if (e.data && e.data.type === 'SKIP_WAITING') { self.skipWaiting(); } });\n" >> "$SW"
+            echo "skipWaiting handler agregado a $SW"
+          else
+            echo "skipWaiting no aplicado (sin SW o ya presente)"
+          fi
+
       - name: Deploy a Vercel (producción)
         working-directory: build/web
         run: npx vercel@latest deploy --prod --yes --token=${{ secrets.VERCEL_TOKEN }}

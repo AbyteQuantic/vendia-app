@@ -80,5 +80,40 @@
     * https://docs.flutter.dev/platform-integration/web/initialization
   -->
   <script src="flutter_bootstrap.js" async></script>
+
+  <!--
+    Spec 069 — auto-actualización del PWA. Los archivos de entrada de Flutter
+    web no llevan hash (main.dart.js, el service worker), así que el PWA de iOS
+    puede quedarse en un build viejo. Junto con los headers Cache-Control
+    (vercel.json), esto fuerza al service worker a buscar versiones nuevas en
+    cada carga y, cuando una toma control, recarga UNA vez para servir el build
+    más reciente sin que el tendero tenga que limpiar caché a mano.
+  -->
+  <script>
+    if ('serviceWorker' in navigator) {
+      var __vendiaReloaded = false;
+      navigator.serviceWorker.addEventListener('controllerchange', function () {
+        if (__vendiaReloaded) return;
+        __vendiaReloaded = true;
+        window.location.reload();
+      });
+      navigator.serviceWorker.ready.then(function (reg) {
+        try { reg.update(); } catch (e) {}
+        // Si ya hay un SW nuevo esperando, pídele que tome control de inmediato.
+        if (reg.waiting) {
+          try { reg.waiting.postMessage({ type: 'SKIP_WAITING' }); } catch (e) {}
+        }
+        reg.addEventListener('updatefound', function () {
+          var sw = reg.installing;
+          if (!sw) return;
+          sw.addEventListener('statechange', function () {
+            if (sw.state === 'installed' && navigator.serviceWorker.controller) {
+              try { sw.postMessage({ type: 'SKIP_WAITING' }); } catch (e) {}
+            }
+          });
+        });
+      }).catch(function () {});
+    }
+  </script>
 </body>
 </html>

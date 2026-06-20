@@ -2026,6 +2026,33 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
                           characteristicsController: _characteristicsCtrl,
                           categorySuggestions: _categorySuggestions,
                         ),
+                        const SizedBox(height: 16),
+                        // Spec 070 — la galería (más fotos, video o YouTube) se
+                        // agrega al EDITAR (el producto debe existir primero).
+                        Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: AppTheme.primary.withValues(alpha: 0.06),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: const Row(
+                            children: [
+                              Icon(Icons.video_library_rounded,
+                                  color: AppTheme.primary, size: 20),
+                              SizedBox(width: 10),
+                              Expanded(
+                                child: Text(
+                                  'Guarde el producto y luego ábralo en Editar '
+                                  'para agregar más fotos, un video corto o un '
+                                  'link de YouTube que sus clientes verán en el '
+                                  'catálogo.',
+                                  style: TextStyle(
+                                      fontSize: 13, color: Colors.black87, height: 1.3),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
                       ]),
                     ],
                   ),
