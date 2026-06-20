@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 import '../../database/database_service.dart';
 import '../../theme/app_theme.dart';
+import '../../theme/app_ui.dart';
 import '../../services/api_service.dart';
 import '../../services/app_error.dart';
 import '../../services/auth_service.dart';
@@ -209,23 +210,17 @@ class _ManageInventoryScreenState extends State<ManageInventoryScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppTheme.background,
+      backgroundColor: AppUI.pageBg,
       appBar: AppBar(
-        backgroundColor: AppTheme.background,
+        backgroundColor: AppUI.pageBg,
+        surfaceTintColor: Colors.transparent,
         elevation: 0,
         leading: IconButton(
           icon: const Icon(Icons.arrow_back_rounded,
-              color: AppTheme.textPrimary, size: 28),
+              color: AppUI.ink, size: 26),
           onPressed: () => Navigator.of(context).pop(),
         ),
-        title: const Text(
-          'Mi Inventario',
-          style: TextStyle(
-            fontSize: 24,
-            fontWeight: FontWeight.bold,
-            color: AppTheme.textPrimary,
-          ),
-        ),
+        title: const Text('Mi inventario', style: AppUI.title),
         // T-16 (F027): botón de importación. El AppBar no tenía acciones
         // previas → se agrega directamente (regla UI_RULES.md: máx 2 acciones).
         actions: [
@@ -283,10 +278,14 @@ class _ManageInventoryScreenState extends State<ManageInventoryScreen> {
                         )
                       : null,
                   filled: true,
-                  fillColor: AppTheme.surfaceGrey,
+                  fillColor: Colors.white,
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(16),
-                    borderSide: BorderSide.none,
+                    borderSide: const BorderSide(color: AppUI.border),
+                  ),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(16),
+                    borderSide: const BorderSide(color: AppUI.border),
                   ),
                   contentPadding:
                       const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
@@ -526,11 +525,7 @@ class _ProductTile extends StatelessWidget {
         child: Container(
           margin: const EdgeInsets.only(bottom: 12),
           padding: const EdgeInsets.all(14),
-          decoration: BoxDecoration(
-            color: AppTheme.surfaceGrey,
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: AppTheme.borderColor, width: 1),
-          ),
+          decoration: AppUI.card(r: 16),
           child: Row(
             children: [
               // Product image
@@ -560,23 +555,13 @@ class _ProductTile extends StatelessWidget {
                   children: [
                     Text(
                       name,
-                      style: const TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.w600,
-                        color: AppTheme.textPrimary,
-                      ),
+                      style: AppUI.bodyStrong,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                     ),
                     if (subtitle.isNotEmpty) ...[
                       const SizedBox(height: 2),
-                      Text(
-                        subtitle,
-                        style: const TextStyle(
-                          fontSize: 14,
-                          color: AppTheme.textSecondary,
-                        ),
-                      ),
+                      Text(subtitle, style: AppUI.bodySoft),
                     ],
                     const SizedBox(height: 4),
                     Row(
