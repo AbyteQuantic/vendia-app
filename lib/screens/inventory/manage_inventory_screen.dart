@@ -1230,23 +1230,19 @@ class _EditProductSheetState extends State<_EditProductSheet> {
     @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppTheme.background,
+      // Spec 071 — densidad SaaS.
+      backgroundColor: AppUI.pageBg,
       appBar: AppBar(
-        backgroundColor: AppTheme.background,
+        backgroundColor: AppUI.pageBg,
+        surfaceTintColor: Colors.transparent,
         elevation: 0,
+        scrolledUnderElevation: 0,
         leading: IconButton(
           icon: const Icon(Icons.arrow_back_rounded,
-              color: AppTheme.textPrimary, size: 28),
+              color: AppUI.ink, size: 26),
           onPressed: () => Navigator.of(context).pop(false),
         ),
-        title: const Text(
-          'Editar Producto',
-          style: TextStyle(
-            fontSize: 24,
-            fontWeight: FontWeight.bold,
-            color: AppTheme.textPrimary,
-          ),
-        ),
+        title: const Text('Editar producto', style: AppUI.title),
       ),
       body: SafeArea(
         child: SingleChildScrollView(
@@ -1501,11 +1497,9 @@ class _EditProductSheetState extends State<_EditProductSheet> {
                           selected ? FontWeight.w600 : FontWeight.normal,
                     ),
                     shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
+                      borderRadius: BorderRadius.circular(AppUI.radiusSm),
                       side: BorderSide(
-                        color: selected
-                            ? AppTheme.primary
-                            : AppTheme.borderColor,
+                        color: selected ? AppTheme.primary : AppUI.border,
                       ),
                     ),
                   );
@@ -1564,19 +1558,26 @@ class _EditProductSheetState extends State<_EditProductSheet> {
               // Save button
               SizedBox(
                 width: double.infinity,
-                height: 64,
+                height: 52,
                 child: ElevatedButton.icon(
                   onPressed: _saving ? null : _save,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppTheme.primary,
+                    foregroundColor: Colors.white,
+                    elevation: 0,
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(AppUI.radiusSm)),
+                  ),
                   icon: _saving
                       ? const SizedBox(
-                          width: 22,
-                          height: 22,
+                          width: 20,
+                          height: 20,
                           child: CircularProgressIndicator(
                               strokeWidth: 2, color: Colors.white))
-                      : const Icon(Icons.save_rounded, size: 24),
+                      : const Icon(Icons.save_rounded, size: 20),
                   label: Text(
                     _saving ? 'Guardando...' : 'Guardar cambios',
-                    style: const TextStyle(fontSize: 20),
+                    style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
                   ),
                 ),
               ),
@@ -1590,15 +1591,23 @@ class _EditProductSheetState extends State<_EditProductSheet> {
   InputDecoration _inputDecoration(String hint) => InputDecoration(
         hintText: hint,
         hintStyle:
-            const TextStyle(fontSize: 18, color: AppTheme.textSecondary),
+            const TextStyle(fontSize: 17, color: AppUI.inkSoft),
         filled: true,
-        fillColor: AppTheme.surfaceGrey,
+        fillColor: Colors.white,
         border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(16),
-          borderSide: BorderSide.none,
+          borderRadius: BorderRadius.circular(AppUI.radiusSm),
+          borderSide: const BorderSide(color: AppUI.border),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(AppUI.radiusSm),
+          borderSide: const BorderSide(color: AppUI.border),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(AppUI.radiusSm),
+          borderSide: const BorderSide(color: AppTheme.primary, width: 1.5),
         ),
         contentPadding:
-            const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
+            const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
       );
 }
 
