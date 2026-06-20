@@ -13,6 +13,7 @@ import 'manage_inventory_screen.dart';
 import 'product_import_screen.dart';
 import 'voice_inventory_screen.dart';
 import '../pos/scan_screen.dart';
+import '../suppliers/nearby_suppliers_screen.dart';
 
 /// Agregar Mercancia — entry point for the inventory IA module.
 /// Allows the user to photograph a supplier invoice for AI detection,
@@ -258,6 +259,19 @@ class AddMerchandiseScreen extends StatelessWidget {
                             builder: (_) =>
                                 CreateProductScreen(initialSku: barcode)));
                       }
+                    },
+                  ),
+                  _HubActionRow(
+                    rowKey: const Key('btn_nearby_suppliers'),
+                    icon: Icons.storefront_rounded,
+                    accent: true,
+                    badge: 'Nuevo',
+                    title: 'Proveedores cerca de usted',
+                    subtitle: 'Compre directo a quien esté más cerca.',
+                    onTap: () {
+                      HapticFeedback.lightImpact();
+                      Navigator.of(context).push(MaterialPageRoute(
+                          builder: (_) => const NearbySuppliersScreen()));
                     },
                   ),
                   _HubActionRow(

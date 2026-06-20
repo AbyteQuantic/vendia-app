@@ -795,6 +795,23 @@ class ApiService {
     }
   }
 
+  /// Spec 075 — proveedores cercanos a la tienda (descubrimiento por cercanía).
+  /// Lista ordenada por distancia. OJO: NO usar _extractData (devuelve LISTA).
+  Future<List<Map<String, dynamic>>> fetchNearbySuppliers({double radiusKm = 5}) async {
+    try {
+      final response = await _dio.get('/api/v1/suppliers/nearby',
+          queryParameters: {'radius_km': radiusKm});
+      final body = response.data;
+      final list = (body is Map) ? body['data'] : body;
+      if (list is List) {
+        return list.map((e) => Map<String, dynamic>.from(e as Map)).toList();
+      }
+      return [];
+    } on DioException catch (e) {
+      throw AppError.fromDioException(e);
+    }
+  }
+
   /// Marca (o desmarca) un elemento como el PRINCIPAL del carrusel (Spec 070).
   /// Con primary=false vuelve al default (la foto principal va primero).
   Future<void> setProductMediaPrimary(
