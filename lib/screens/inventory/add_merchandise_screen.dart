@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 import '../../theme/app_theme.dart';
+import '../../theme/app_ui.dart';
 import 'ia_loading_screen.dart';
 import 'create_product_screen.dart';
 import 'create_service_screen.dart';
@@ -155,255 +156,141 @@ class AddMerchandiseScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppTheme.background,
+      // Spec 071 — SaaS Professional Density: gris nítido + lista agrupada.
+      backgroundColor: AppUI.pageBg,
       appBar: AppBar(
-        backgroundColor: AppTheme.background,
+        backgroundColor: AppUI.pageBg,
+        surfaceTintColor: Colors.transparent,
         elevation: 0,
+        scrolledUnderElevation: 0,
         leading: Semantics(
           button: true,
           label: 'Volver',
           child: IconButton(
             icon: const Icon(Icons.arrow_back_rounded,
-                color: AppTheme.textPrimary, size: 28),
+                color: AppUI.ink, size: 26),
             tooltip: 'Volver',
             onPressed: () => Navigator.of(context).pop(),
           ),
         ),
-        title: const Text(
-          'Agregar Mercancia',
-          style: TextStyle(
-            fontSize: 24,
-            fontWeight: FontWeight.bold,
-            color: AppTheme.textPrimary,
-          ),
-        ),
+        title: const Text('Agregar mercancía', style: AppUI.title),
       ),
       body: SafeArea(
         child: SingleChildScrollView(
-          padding: const EdgeInsets.fromLTRB(24, 16, 24, 20),
+          padding: const EdgeInsets.fromLTRB(AppUI.s16, AppUI.s12, AppUI.s16, AppUI.s24),
           child: Column(
-            crossAxisAlignment: CrossAxisAlignment.center,
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Description
               const Padding(
-                padding: EdgeInsets.symmetric(horizontal: 8),
+                padding: EdgeInsets.only(left: AppUI.s4, bottom: AppUI.s16, right: AppUI.s4),
                 child: Text(
-                  'Tome una foto a la factura del proveedor y la IA '
-                  'detectara los productos automaticamente.',
-                  style: TextStyle(
-                    fontSize: 18,
-                    color: AppTheme.textSecondary,
-                    height: 1.5,
+                  'Cargue su mercancía como le quede más fácil: una foto de la '
+                  'factura, su voz, manual o desde Excel.',
+                  style: AppUI.bodySoft,
+                ),
+              ),
+              // Lista agrupada: un contenedor, filas con hairline (sin cajas
+              // gigantes por acción). Cada fila conserva su Key y su onTap.
+              InsetGroupedList(
+                children: [
+                  _HubActionRow(
+                    rowKey: const Key('btn_read_invoice'),
+                    icon: Icons.receipt_long_rounded,
+                    accent: true,
+                    badge: 'IA',
+                    title: 'Leer factura del proveedor',
+                    subtitle: 'Toque para tomar o subir la foto',
+                    onTap: () => _showImageSourceBottomSheet(context),
                   ),
-                  textAlign: TextAlign.center,
-                ),
-              ),
-
-              const SizedBox(height: 24),
-
-              // Giant camera button (reduced height for small screens)
-              GestureDetector(
-                key: const Key('btn_read_invoice'),
-                onTap: () => _showImageSourceBottomSheet(context),
-                child: Container(
-                  width: double.infinity,
-                  constraints: const BoxConstraints(maxHeight: 280),
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(28),
-                    gradient: const LinearGradient(
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                      colors: [Color(0x10667EEA), Color(0x10764BA2)],
-                    ),
+                  _HubActionRow(
+                    rowKey: const Key('btn_voice_inventory'),
+                    icon: Icons.mic_rounded,
+                    accent: true,
+                    badge: 'IA',
+                    title: 'Dictar inventario por voz',
+                    subtitle: 'Diga sus productos y la IA los organiza.',
+                    onTap: () {
+                      HapticFeedback.lightImpact();
+                      Navigator.of(context).push(MaterialPageRoute(
+                          builder: (_) => const VoiceInventoryScreen()));
+                    },
                   ),
-                  child: CustomPaint(
-                    painter: _DashedBorderPainter(
-                      color: const Color(0x40667EEA),
-                      strokeWidth: 2,
-                      radius: 28,
-                    ),
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Container(
-                          width: 80,
-                          height: 80,
-                          decoration: BoxDecoration(
-                            color: const Color(0x15667EEA),
-                            borderRadius: BorderRadius.circular(24),
-                          ),
-                          child: const Icon(Icons.camera_alt_rounded,
-                              size: 56, color: Color(0xFF667EEA)),
-                        ),
-                        const SizedBox(height: 16),
-                        const Text(
-                          'Leer Factura del Proveedor',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(
-                            fontSize: 22,
-                            fontWeight: FontWeight.bold,
-                            color: Color(0xFF667EEA),
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                        const Text(
-                          'Toque para tomar o subir la foto',
-                          style: TextStyle(
-                              fontSize: 16, color: AppTheme.textSecondary),
-                        ),
-                      ],
-                    ),
+                  _HubActionRow(
+                    icon: Icons.edit_rounded,
+                    title: 'Agregar producto manualmente',
+                    subtitle: 'Llene los datos uno a uno.',
+                    onTap: () {
+                      HapticFeedback.lightImpact();
+                      Navigator.of(context).push(MaterialPageRoute(
+                          builder: (_) => const CreateProductScreen()));
+                    },
                   ),
-                ),
-              ),
-
-              const SizedBox(height: 20),
-
-              // Voice-to-Catalog (Phase 4 killer feature). Sits above
-              // the manual entry so tenderos see it as the "modern"
-              // alternative to camera OCR; press-and-hold UX lives
-              // inside VoiceInventoryScreen.
-              SizedBox(
-                height: 64,
-                width: double.infinity,
-                child: ElevatedButton.icon(
-                  key: const Key('btn_voice_inventory'),
-                  onPressed: () {
-                    HapticFeedback.lightImpact();
-                    Navigator.of(context).push(
-                      MaterialPageRoute(
-                        builder: (_) => const VoiceInventoryScreen(),
-                      ),
-                    );
-                  },
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF2563EB),
-                    foregroundColor: Colors.white,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(18),
-                    ),
+                  _HubActionRow(
+                    rowKey: const Key('add_service_button'),
+                    icon: Icons.room_service_rounded,
+                    title: 'Crear un servicio',
+                    subtitle: 'Publíquelo en su catálogo (sin inventario).',
+                    onTap: () {
+                      HapticFeedback.lightImpact();
+                      Navigator.of(context).push(MaterialPageRoute(
+                          builder: (_) => const CreateServiceScreen()));
+                    },
                   ),
-                  icon: const Icon(Icons.mic_rounded, size: 26),
-                  label: const Text('🎤 Dictar inventario por voz',
-                      style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
-                ),
-              ),
-
-              const SizedBox(height: 12),
-
-              // Secondary: manual product
-              SizedBox(
-                height: 64,
-                width: double.infinity,
-                child: OutlinedButton.icon(
-                  onPressed: () {
-                    HapticFeedback.lightImpact();
-                    Navigator.of(context).push(
-                      MaterialPageRoute(
-                        builder: (_) => const CreateProductScreen(),
-                      ),
-                    );
-                  },
-                  icon: const Icon(Icons.edit_rounded, size: 24),
-                  label: const Text('Agregar producto manualmente'),
-                ),
-              ),
-
-              const SizedBox(height: 12),
-
-              // F044 — Crear servicio (catálogo unificado para todo negocio).
-              // Un servicio se publica en el mismo link público que productos y
-              // platos; no lleva inventario.
-              SizedBox(
-                height: 64,
-                width: double.infinity,
-                child: OutlinedButton.icon(
-                  key: const Key('add_service_button'),
-                  onPressed: () {
-                    HapticFeedback.lightImpact();
-                    Navigator.of(context).push(
-                      MaterialPageRoute(
-                        builder: (_) => const CreateServiceScreen(),
-                      ),
-                    );
-                  },
-                  icon: const Icon(Icons.room_service_rounded, size: 24),
-                  label: const Text('Crear un servicio'),
-                ),
-              ),
-
-              const SizedBox(height: 12),
-
-              // Tertiary: barcode scan
-              SizedBox(
-                height: 64,
-                width: double.infinity,
-                child: OutlinedButton.icon(
-                  onPressed: () async {
-                    HapticFeedback.lightImpact();
-                    final barcode = await Navigator.of(context).push<String>(
-                      MaterialPageRoute(builder: (_) => const ScanScreen()),
-                    );
-                    // If scanner returns a barcode (product found), go to create with SKU
-                    if (barcode != null && barcode.isNotEmpty && context.mounted) {
-                      Navigator.of(context).push(
-                        MaterialPageRoute(
-                          builder: (_) => CreateProductScreen(initialSku: barcode),
-                        ),
-                      );
-                    }
-                  },
-                  icon: const Icon(Icons.qr_code_scanner_rounded, size: 24),
-                  label: const Text('Escanear código de barras'),
-                ),
-              ),
-
-              const SizedBox(height: 12),
-
-              // Quaternary: bulk import desde Excel/CSV (F027).
-              // El tendero que llega aquí pensando "agregar productos" suele
-              // querer cargar TODO su inventario de una si lo tiene en hoja —
-              // por eso queda en esta misma pantalla y no escondido en el
-              // AppBar de Administrar inventario.
-              SizedBox(
-                height: 64,
-                width: double.infinity,
-                child: OutlinedButton.icon(
-                  onPressed: () {
-                    HapticFeedback.lightImpact();
-                    Navigator.of(context).push(
-                      MaterialPageRoute(
-                        builder: (_) => const ProductImportScreen(),
-                      ),
-                    );
-                  },
-                  icon: const Icon(Icons.upload_file_rounded, size: 24),
-                  label: const Text('Importar desde Excel o CSV'),
-                ),
+                  _HubActionRow(
+                    icon: Icons.qr_code_scanner_rounded,
+                    title: 'Escanear código de barras',
+                    subtitle: 'Auto-completa los datos del producto.',
+                    onTap: () async {
+                      HapticFeedback.lightImpact();
+                      final barcode = await Navigator.of(context)
+                          .push<String>(MaterialPageRoute(
+                              builder: (_) => const ScanScreen()));
+                      if (barcode != null &&
+                          barcode.isNotEmpty &&
+                          context.mounted) {
+                        Navigator.of(context).push(MaterialPageRoute(
+                            builder: (_) =>
+                                CreateProductScreen(initialSku: barcode)));
+                      }
+                    },
+                  ),
+                  _HubActionRow(
+                    icon: Icons.upload_file_rounded,
+                    title: 'Importar desde Excel o CSV',
+                    subtitle: 'Cargue todo su inventario de una vez.',
+                    onTap: () {
+                      HapticFeedback.lightImpact();
+                      Navigator.of(context).push(MaterialPageRoute(
+                          builder: (_) => const ProductImportScreen()));
+                    },
+                  ),
+                ],
               ),
             ],
           ),
         ),
       ),
-      // ── Fixed bottom button: Administrar inventario ──
+      // Acción principal fija: administrar inventario.
       bottomNavigationBar: SafeArea(
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+          padding: const EdgeInsets.fromLTRB(AppUI.s16, AppUI.s8, AppUI.s16, AppUI.s16),
           child: SizedBox(
-            height: 64,
+            height: 52,
             child: ElevatedButton.icon(
               onPressed: () {
                 HapticFeedback.lightImpact();
-                Navigator.of(context).push(
-                  MaterialPageRoute(
-                    builder: (_) => const ManageInventoryScreen(),
-                  ),
-                );
+                Navigator.of(context).push(MaterialPageRoute(
+                    builder: (_) => const ManageInventoryScreen()));
               },
-              icon: const Icon(Icons.inventory_rounded, size: 24),
-              label: const Text('Administrar inventario'),
+              icon: const Icon(Icons.inventory_2_rounded, size: 20),
+              label: const Text('Administrar inventario',
+                  style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
               style: ElevatedButton.styleFrom(
-                backgroundColor: AppTheme.success,
+                backgroundColor: AppTheme.primary,
+                foregroundColor: Colors.white,
+                elevation: 0,
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(AppUI.radiusSm)),
               ),
             ),
           ),
@@ -413,48 +300,78 @@ class AddMerchandiseScreen extends StatelessWidget {
   }
 }
 
-/// Draws a dashed rounded-rectangle border.
-class _DashedBorderPainter extends CustomPainter {
-  final Color color;
-  final double strokeWidth;
-  final double radius;
+/// Spec 071 — fila de acción del hub (densidad SaaS): tile sobrio dentro de la
+/// lista agrupada, con chip de ícono, título, subtítulo de una línea y chevron.
+/// Envuelve el onTap/Key existentes (solo presentación).
+class _HubActionRow extends StatelessWidget {
+  final IconData icon;
+  final String title;
+  final String subtitle;
+  final VoidCallback onTap;
+  final Key? rowKey;
+  final bool accent;
+  final String? badge;
 
-  _DashedBorderPainter({
-    required this.color,
-    required this.strokeWidth,
-    required this.radius,
+  const _HubActionRow({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+    required this.onTap,
+    this.rowKey,
+    this.accent = false,
+    this.badge,
   });
 
   @override
-  void paint(Canvas canvas, Size size) {
-    final paint = Paint()
-      ..color = color
-      ..strokeWidth = strokeWidth
-      ..style = PaintingStyle.stroke;
-
-    final rrect = RRect.fromRectAndRadius(
-      Rect.fromLTWH(0, 0, size.width, size.height),
-      Radius.circular(radius),
+  Widget build(BuildContext context) {
+    final tint = accent ? AppTheme.primary : AppUI.inkSoft;
+    return InkWell(
+      key: rowKey,
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: AppUI.s16, vertical: 14),
+        child: Row(
+          children: [
+            Container(
+              width: 40,
+              height: 40,
+              decoration: BoxDecoration(
+                color: tint.withValues(alpha: accent ? 0.12 : 0.06),
+                borderRadius: BorderRadius.circular(AppUI.radiusSm),
+              ),
+              child: Icon(icon, size: 20, color: tint),
+            ),
+            const SizedBox(width: AppUI.s16),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Flexible(
+                        child: Text(title,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: AppUI.bodyStrong),
+                      ),
+                      if (badge != null) ...[
+                        const SizedBox(width: AppUI.s8),
+                        MinimalBadge(label: badge!, color: AppTheme.primary),
+                      ],
+                    ],
+                  ),
+                  const SizedBox(height: 2),
+                  Text(subtitle,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: AppUI.bodySoft),
+                ],
+              ),
+            ),
+            const Icon(Icons.chevron_right_rounded, color: AppUI.inkSoft),
+          ],
+        ),
+      ),
     );
-
-    final path = Path()..addRRect(rrect);
-    final metrics = path.computeMetrics();
-
-    const dashLength = 10.0;
-    const gapLength = 6.0;
-
-    for (final metric in metrics) {
-      double distance = 0;
-      while (distance < metric.length) {
-        final end = (distance + dashLength).clamp(0.0, metric.length);
-        final segment = metric.extractPath(distance, end);
-        canvas.drawPath(segment, paint);
-        distance += dashLength + gapLength;
-      }
-    }
   }
-
-  @override
-  bool shouldRepaint(_DashedBorderPainter old) =>
-      old.color != color || old.strokeWidth != strokeWidth;
 }
