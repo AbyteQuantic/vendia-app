@@ -525,7 +525,7 @@ class _ProductTile extends StatelessWidget {
         child: Container(
           margin: const EdgeInsets.only(bottom: 12),
           padding: const EdgeInsets.all(14),
-          decoration: AppUI.card(r: 16),
+          decoration: AppUI.card(r: 10),
           child: Row(
             children: [
               // Product image
@@ -569,9 +569,10 @@ class _ProductTile extends StatelessWidget {
                         Text(
                           _formatPrice(price),
                           style: const TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.bold,
+                            fontSize: 15,
+                            fontWeight: FontWeight.w700,
                             color: AppTheme.primary,
+                            fontFeatures: [FontFeature.tabularFigures()],
                           ),
                         ),
                         const SizedBox(width: 12),
@@ -587,7 +588,7 @@ class _ProductTile extends StatelessWidget {
                 children: [
                   IconButton(
                     icon: const Icon(Icons.edit_rounded,
-                        size: 22, color: AppTheme.primary),
+                        size: 20, color: AppUI.inkSoft),
                     onPressed: () {
                       HapticFeedback.lightImpact();
                       onEdit();
@@ -597,7 +598,7 @@ class _ProductTile extends StatelessWidget {
                   if (onHistory != null)
                     IconButton(
                       icon: const Icon(Icons.history_rounded,
-                          size: 22, color: AppTheme.warning),
+                          size: 20, color: AppUI.inkSoft),
                       onPressed: () {
                         HapticFeedback.lightImpact();
                         onHistory!();
