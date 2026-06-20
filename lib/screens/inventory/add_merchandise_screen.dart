@@ -3,6 +3,9 @@ import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 import '../../theme/app_theme.dart';
 import '../../theme/app_ui.dart';
+import '../../services/api_service.dart';
+import '../../services/auth_service.dart';
+import '../../widgets/catalog_link_card.dart';
 import 'ia_loading_screen.dart';
 import 'create_product_screen.dart';
 import 'create_service_screen.dart';
@@ -189,6 +192,9 @@ class AddMerchandiseScreen extends StatelessWidget {
                   style: AppUI.bodySoft,
                 ),
               ),
+              // Spec 071/069 — preview del catálogo en línea como ancla de la
+              // vista (se oculta solo si no hay slug).
+              const _CatalogPreviewLoader(),
               // Lista agrupada: un contenedor, filas con hairline (sin cajas
               // gigantes por acción). Cada fila conserva su Key y su onTap.
               InsetGroupedList(
@@ -295,6 +301,46 @@ class AddMerchandiseScreen extends StatelessWidget {
             ),
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// Spec 069/071 — carga el store_slug y muestra la tarjeta del catálogo en
+/// línea en el hub. Self-contained para no convertir todo el hub en Stateful;
+/// se oculta solo si no hay slug (fire-and-forget, no rompe el flujo).
+class _CatalogPreviewLoader extends StatefulWidget {
+  const _CatalogPreviewLoader();
+
+  @override
+  State<_CatalogPreviewLoader> createState() => _CatalogPreviewLoaderState();
+}
+
+class _CatalogPreviewLoaderState extends State<_CatalogPreviewLoader> {
+  String _slug = '';
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    try {
+      final cfg = await ApiService(AuthService()).fetchStoreConfig();
+      final slug = (cfg['store_slug'] ?? '').toString();
+      if (mounted && slug.isNotEmpty) setState(() => _slug = slug);
+    } catch (_) {/* sin link; no se muestra */}
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_slug.isEmpty) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.only(bottom: AppUI.s16),
+      child: CatalogLinkCard(
+        storeSlug: _slug,
+        keyPrefix: 'hub_catalog_preview',
       ),
     );
   }

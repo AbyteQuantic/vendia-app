@@ -14,7 +14,6 @@ import '../../widgets/negative_stock_banner.dart';
 import '../../widgets/picked_image_preview.dart';
 import '../../widgets/stock_badge.dart';
 import '../../widgets/advanced_product_options.dart';
-import '../../widgets/catalog_link_card.dart';
 import '../../widgets/product_media_editor.dart';
 import '../pos/scan_screen.dart';
 import 'kardex_screen.dart';
@@ -44,24 +43,12 @@ class _ManageInventoryScreenState extends State<ManageInventoryScreen> {
   String? _error;
   bool _filterNoSku = false;
   bool _filterNoPrice = false;
-  // Spec 069 — acceso directo al catálogo en línea.
-  String _storeSlug = '';
 
   @override
   void initState() {
     super.initState();
     _loadProducts();
-    _loadStoreSlug();
     _searchCtrl.addListener(_applyFilter);
-  }
-
-  // Spec 069 — slug del comercio para la tarjeta "Su catálogo en línea".
-  Future<void> _loadStoreSlug() async {
-    try {
-      final cfg = await _api.fetchStoreConfig();
-      final slug = (cfg['store_slug'] ?? '').toString();
-      if (mounted && slug.isNotEmpty) setState(() => _storeSlug = slug);
-    } catch (_) {/* sin link; la tarjeta no se muestra */}
   }
 
   @override
@@ -375,15 +362,8 @@ class _ManageInventoryScreenState extends State<ManageInventoryScreen> {
             ),
             const SizedBox(height: 8),
 
-            // Spec 069 — acceso directo al catálogo en línea (se oculta sin slug).
-            if (_storeSlug.isNotEmpty)
-              Padding(
-                padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
-                child: CatalogLinkCard(
-                  storeSlug: _storeSlug,
-                  keyPrefix: 'inventory_catalog_preview',
-                ),
-              ),
+            // Spec 071 — el acceso al catálogo en línea se movió al hub
+            // "Agregar mercancía" (vista de entrada, más visible).
 
             // Product list
             Expanded(
