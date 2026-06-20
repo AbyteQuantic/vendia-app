@@ -17,10 +17,19 @@ class _FakeApi extends ApiService {
   String? deletedId;
   String? addedYouTube;
   List<String>? reorderedIds;
+  String? primaryId;
+  bool? primaryValue;
 
   @override
   Future<void> reorderProductMedia(String productId, List<String> ids) async {
     reorderedIds = ids;
+  }
+
+  @override
+  Future<void> setProductMediaPrimary(
+      String productId, String mediaId, bool primary) async {
+    primaryId = mediaId;
+    primaryValue = primary;
   }
 
   @override
@@ -88,6 +97,15 @@ void main() {
     expect(find.textContaining('arrastre para cambiar el orden'), findsOneWidget);
     expect(find.byKey(const Key('media_thumb_m1')), findsOneWidget);
     expect(find.byKey(const Key('media_thumb_m2')), findsOneWidget);
+  });
+
+  testWidgets('la estrella marca el elemento como principal', (tester) async {
+    final api = _FakeApi();
+    await _pump(tester, api);
+    await tester.tap(find.byKey(const Key('media_primary_m1')));
+    await tester.pumpAndSettle();
+    expect(api.primaryId, 'm1');
+    expect(api.primaryValue, true);
   });
 
   testWidgets('eliminar un elemento llama a la API y lo quita', (tester) async {

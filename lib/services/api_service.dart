@@ -795,6 +795,18 @@ class ApiService {
     }
   }
 
+  /// Marca (o desmarca) un elemento como el PRINCIPAL del carrusel (Spec 070).
+  /// Con primary=false vuelve al default (la foto principal va primero).
+  Future<void> setProductMediaPrimary(
+      String productId, String mediaId, bool primary) async {
+    try {
+      await _dio.patch('/api/v1/products/$productId/media/$mediaId/primary',
+          data: {'primary': primary});
+    } on DioException catch (e) {
+      throw AppError.fromDioException(e);
+    }
+  }
+
   /// Borra un elemento de media (y su objeto en R2 si es subido).
   Future<void> deleteProductMedia(String productId, String mediaId) async {
     try {

@@ -132,6 +132,23 @@ class _ProductMediaEditorState extends State<ProductMediaEditor> {
     if (src != null) await _addVideo(src);
   }
 
+  // Spec 070 — marcar/quitar el principal del carrusel. Single-primary: al
+  // marcar uno, los demás se desmarcan (local + backend). Sin principal, el
+  // default es la foto del producto.
+  Future<void> _setPrimary(Map<String, dynamic> m, bool primary) async {
+    final id = (m['id'] ?? '').toString();
+    setState(() {
+      for (final e in _media) {
+        e['is_primary'] = primary && e['id'] == id;
+      }
+    });
+    try {
+      await widget.api.setProductMediaPrimary(widget.productId, id, primary);
+    } catch (_) {
+      _snack('No pudimos cambiar el principal. Intente de nuevo.', AppTheme.error);
+    }
+  }
+
   // Spec 070 — reordenar la media; persiste el nuevo orden en el backend.
   Future<void> _onReorder(int oldIndex, int newIndex) async {
     setState(() {
@@ -169,7 +186,8 @@ class _ProductMediaEditorState extends State<ProductMediaEditor> {
         const SizedBox(height: 4),
         const Text(
           'Agregue más fotos, un video corto (máx. 25 seg) o un link de YouTube. '
-          'Sus clientes los verán en un carrusel.',
+          'Sus clientes los verán en un carrusel. La ⭐ marca cuál se muestra '
+          'primero; por defecto es la foto principal del producto.',
           style: AppUI.bodySoft,
         ),
         const SizedBox(height: AppUI.s12),
@@ -240,6 +258,7 @@ class _ProductMediaEditorState extends State<ProductMediaEditor> {
     final url = (m['url'] ?? '').toString();
     final isVideo = type == 'video';
     final isYouTube = type == 'youtube';
+    final isPrimary = m['is_primary'] == true;
     final img = thumb.isNotEmpty ? thumb : (type == 'image' ? url : '');
     return SizedBox(
       key: Key('media_thumb_${m['id']}'),
@@ -247,6 +266,7 @@ class _ProductMediaEditorState extends State<ProductMediaEditor> {
       height: 72,
       child: Stack(
         fit: StackFit.expand,
+        clipBehavior: Clip.none,
         children: [
           ClipRRect(
             borderRadius: BorderRadius.circular(AppUI.radiusSm),
@@ -255,11 +275,34 @@ class _ProductMediaEditorState extends State<ProductMediaEditor> {
                     errorBuilder: (_, __, ___) => _placeholder(isVideo, isYouTube))
                 : _placeholder(isVideo, isYouTube),
           ),
+          // Borde de "principal".
+          if (isPrimary)
+            Container(
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(AppUI.radiusSm),
+                border: Border.all(color: AppTheme.primary, width: 2.5),
+              ),
+            ),
           if (isVideo || isYouTube)
             const Center(
               child: Icon(Icons.play_circle_fill_rounded,
                   color: Colors.white, size: 28),
             ),
+          // Estrella: marcar/quitar como principal del carrusel.
+          Positioned(
+            bottom: -6,
+            left: -6,
+            child: IconButton(
+              key: Key('media_primary_${m['id']}'),
+              iconSize: 18,
+              tooltip: isPrimary ? 'Quitar como principal' : 'Hacer principal',
+              icon: Icon(
+                isPrimary ? Icons.star_rounded : Icons.star_outline_rounded,
+                color: isPrimary ? AppTheme.warning : Colors.black45,
+              ),
+              onPressed: () => _setPrimary(m, !isPrimary),
+            ),
+          ),
           Positioned(
             top: -6,
             right: -6,
