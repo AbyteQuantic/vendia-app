@@ -20,6 +20,7 @@ import '../../theme/app_theme.dart';
 import '../../utils/barcode_validator.dart';
 import '../../utils/currency_input.dart';
 import '../../widgets/dashboard_ui_kit.dart';
+import '../../widgets/advanced_product_options.dart';
 import '../../widgets/picked_image_preview.dart';
 import '../pos/scan_screen.dart';
 
@@ -95,6 +96,11 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
   final _priceTier2Ctrl = TextEditingController();
   final _priceTier3Ctrl = TextEditingController();
 
+  // Spec 068 — categoría (con autocomplete antitypo) y características.
+  final _categoryCtrl = TextEditingController();
+  final _characteristicsCtrl = TextEditingController();
+  List<String> _categorySuggestions = [];
+
   static const _presentationOptions = [
     {'value': 'botella', 'label': 'Botella', 'icon': '🍾'},
     {'value': 'lata', 'label': 'Lata', 'icon': '🥫'},
@@ -131,6 +137,8 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
     // de los tiers. Fail-closed: si la red falla o el storage está
     // corrupto, los inputs extra no aparecen (cero UI nueva por accidente).
     _loadPriceTierConfig();
+    // Spec 068 — categorías ya usadas por el tenant (sugerencias antitypo).
+    _loadCategorySuggestions();
     // Pre-fill SKU if coming from scanner
     if (widget.initialSku != null && widget.initialSku!.isNotEmpty) {
       _skuCtrl.text = widget.initialSku!;
@@ -186,6 +194,17 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
     }
   }
 
+  // Spec 068 — sugerencias de categoría: endpoint del tenant (primario) con
+  // degradación silenciosa a vacío (el campo sigue siendo libre).
+  Future<void> _loadCategorySuggestions() async {
+    try {
+      final cats = await ApiService(AuthService()).fetchProductCategories();
+      if (mounted && cats.isNotEmpty) {
+        setState(() => _categorySuggestions = cats);
+      }
+    } catch (_) {/* sin sugerencias; no rompe el flujo */}
+  }
+
   @override
   void dispose() {
     // No pasamos por _removeOverlay() aquí: ahora hace setState (la lista es
@@ -204,6 +223,8 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
     _priceTier1Ctrl.dispose();
     _priceTier2Ctrl.dispose();
     _priceTier3Ctrl.dispose();
+    _categoryCtrl.dispose();
+    _characteristicsCtrl.dispose();
     super.dispose();
   }
 
@@ -749,6 +770,8 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
         'image_url': _photoUrl,
         'presentation': _presentation,
         'content': _contentCtrl.text.trim(),
+        'category': _categoryCtrl.text.trim(),
+        'characteristics': _characteristicsCtrl.text.trim(),
         'is_age_restricted': _isAgeRestricted,
       });
 
@@ -1040,6 +1063,8 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
               'barcode': _skuCtrl.text.trim(),
               'presentation': _presentation,
               'content': _contentCtrl.text.trim(),
+              'category': _categoryCtrl.text.trim(),
+              'characteristics': _characteristicsCtrl.text.trim(),
               'expiry_date': expiryIso ?? '',
               'is_age_restricted': _isAgeRestricted,
               if (_pendingCatalogImageId != null)
@@ -1059,6 +1084,8 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
               'barcode': _skuCtrl.text.trim(),
               'presentation': _presentation,
               'content': _contentCtrl.text.trim(),
+              'category': _categoryCtrl.text.trim(),
+              'characteristics': _characteristicsCtrl.text.trim(),
               'is_age_restricted': _isAgeRestricted,
               if (expiryIso != null) 'expiry_date': expiryIso,
               if (_pendingCatalogImageId != null)
@@ -1990,26 +2017,12 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
                         const SizedBox(height: 6),
                         _expiryDateField(),
                         const SizedBox(height: 14),
-                        _fieldLabel('Categoría'),
-                        const SizedBox(height: 6),
-                        TextFormField(
-                          style: const TextStyle(fontSize: 18),
-                          decoration: _inputDecoration(
-                            hint: 'Ej: Bebidas, Aseo, Snacks',
-                            icon: Icons.category_rounded,
-                            iconColor: AppTheme.textSecondary,
-                          ),
-                        ),
-                        const SizedBox(height: 14),
-                        _fieldLabel('Proveedor'),
-                        const SizedBox(height: 6),
-                        TextFormField(
-                          style: const TextStyle(fontSize: 18),
-                          decoration: _inputDecoration(
-                            hint: 'Ej: Coca-Cola, Postobón',
-                            icon: Icons.local_shipping_rounded,
-                            iconColor: AppTheme.textSecondary,
-                          ),
+                        // Spec 068 — categoría (autocomplete antitypo) +
+                        // características, en un bloque compartido con editar.
+                        AdvancedProductOptions(
+                          categoryController: _categoryCtrl,
+                          characteristicsController: _characteristicsCtrl,
+                          categorySuggestions: _categorySuggestions,
                         ),
                       ]),
                     ],

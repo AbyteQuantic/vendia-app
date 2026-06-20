@@ -503,6 +503,22 @@ class ApiService {
     }
   }
 
+  /// Spec 068 — categorías que el tenant ya usó, por frecuencia, para sugerir
+  /// al crear/editar (evita typos y NO pierde las existentes). Lista de strings.
+  Future<List<String>> fetchProductCategories() async {
+    try {
+      final response = await _dio.get('/api/v1/products/categories');
+      final data = _extractData(response);
+      final list = (data is List) ? data : (data['data'] ?? data);
+      if (list is List) {
+        return list.map((e) => e.toString()).toList();
+      }
+      return [];
+    } on DioException {
+      return []; // degradación silenciosa: sin sugerencias, el campo sigue libre
+    }
+  }
+
   // Spec 029: createProduct / updateProduct aceptan opcionalmente
   // `price_tier_1`, `price_tier_2`, `price_tier_3` (números > 0). El
   // backend valida; este lado pasa el payload tal cual.

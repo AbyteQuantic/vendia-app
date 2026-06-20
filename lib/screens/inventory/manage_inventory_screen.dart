@@ -12,6 +12,7 @@ import '../../utils/currency_input.dart';
 import '../../widgets/negative_stock_banner.dart';
 import '../../widgets/picked_image_preview.dart';
 import '../../widgets/stock_badge.dart';
+import '../../widgets/advanced_product_options.dart';
 import '../pos/scan_screen.dart';
 import 'kardex_screen.dart';
 import 'negative_stock_screen.dart';
@@ -644,6 +645,10 @@ class _EditProductSheetState extends State<_EditProductSheet> {
   late final TextEditingController _minStockCtrl; // Spec 050 — punto de reorden
   late final TextEditingController _contentCtrl;
   late final TextEditingController _skuCtrl;
+  // Spec 068 — categoría (autocomplete) + características, igual que crear.
+  late final TextEditingController _categoryCtrl;
+  late final TextEditingController _characteristicsCtrl;
+  List<String> _categorySuggestions = [];
   late String _presentation;
   // Spec 063 — venta solo para mayores de 18.
   bool _isAgeRestricted = false;
@@ -687,6 +692,12 @@ class _EditProductSheetState extends State<_EditProductSheet> {
         TextEditingController(text: p['content'] as String? ?? '');
     _skuCtrl =
         TextEditingController(text: p['barcode'] as String? ?? '');
+    // Spec 068 — precarga categoría y características existentes (NO se pierden).
+    _categoryCtrl =
+        TextEditingController(text: p['category'] as String? ?? '');
+    _characteristicsCtrl =
+        TextEditingController(text: p['characteristics'] as String? ?? '');
+    _loadCategorySuggestions();
     _presentation = p['presentation'] as String? ?? '';
     _isAgeRestricted = p['is_age_restricted'] as bool? ?? false;
     final photo = p['photo_url'] as String?;
@@ -702,7 +713,19 @@ class _EditProductSheetState extends State<_EditProductSheet> {
     _minStockCtrl.dispose();
     _contentCtrl.dispose();
     _skuCtrl.dispose();
+    _categoryCtrl.dispose();
+    _characteristicsCtrl.dispose();
     super.dispose();
+  }
+
+  // Spec 068 — categorías ya usadas por el tenant (sugerencias antitypo).
+  Future<void> _loadCategorySuggestions() async {
+    try {
+      final cats = await ApiService(AuthService()).fetchProductCategories();
+      if (mounted && cats.isNotEmpty) {
+        setState(() => _categorySuggestions = cats);
+      }
+    } catch (_) {/* sin sugerencias; no rompe el flujo */}
   }
 
   Future<void> _pickPhoto(ImageSource source) async {
@@ -956,6 +979,9 @@ class _EditProductSheetState extends State<_EditProductSheet> {
         'presentation': _presentation,
         'content': _contentCtrl.text.trim(),
         'barcode': _skuCtrl.text.trim(),
+        // Spec 068 — categoría (con autocomplete) + características.
+        'category': _categoryCtrl.text.trim(),
+        'characteristics': _characteristicsCtrl.text.trim(),
         // Spec 063 — venta para mayores de 18 (licor, cigarrillos).
         'is_age_restricted': _isAgeRestricted,
       });
@@ -1503,6 +1529,14 @@ class _EditProductSheetState extends State<_EditProductSheet> {
                   'Licor, cigarrillos. El catálogo pedirá confirmar edad.',
                   style: TextStyle(fontSize: 13),
                 ),
+              ),
+              const SizedBox(height: 18),
+              // Spec 068 — mismas opciones avanzadas que crear: categoría
+              // (autocomplete) + características.
+              AdvancedProductOptions(
+                categoryController: _categoryCtrl,
+                characteristicsController: _characteristicsCtrl,
+                categorySuggestions: _categorySuggestions,
               ),
               const SizedBox(height: 32),
 
