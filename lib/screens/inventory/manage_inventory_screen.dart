@@ -991,12 +991,16 @@ class _EditProductSheetState extends State<_EditProductSheet> {
     } catch (e) {
       if (!mounted) return;
       setState(() => _saving = false);
+      // Spec 068 — superficie el error REAL (mensaje del backend / red) en vez
+      // de un genérico, para que un guardado fallido nunca sea silencioso.
+      final detail = e is AppError ? e.message : 'Revise su conexión e intente de nuevo.';
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: const Text('Error al guardar cambios',
-              style: TextStyle(fontSize: 16)),
+          content: Text('No se guardó: $detail',
+              style: const TextStyle(fontSize: 16)),
           backgroundColor: AppTheme.error,
           behavior: SnackBarBehavior.floating,
+          duration: const Duration(seconds: 5),
           shape:
               RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
         ),
