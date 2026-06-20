@@ -20,6 +20,7 @@ import '../../theme/app_theme.dart';
 import '../../utils/barcode_validator.dart';
 import '../../utils/currency_input.dart';
 import '../../widgets/dashboard_ui_kit.dart';
+import '../../theme/app_ui.dart';
 import '../../widgets/advanced_product_options.dart';
 import '../../widgets/picked_image_preview.dart';
 import '../pos/scan_screen.dart';
@@ -1359,23 +1360,12 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
                 GestureDetector(
                   onTap: _lookingUp ? null : _scanBarcode,
                   child: Container(
-                    height: 64,
+                    height: 56,
                     decoration: BoxDecoration(
-                      // Azul marino con degradado sutil — mismo hero que el
-                      // dashboard, en vez del índigo/morado anterior.
-                      gradient: const LinearGradient(
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
-                        colors: [Color(0xFF1E3A8A), Color(0xFF3B82F6)],
-                      ),
-                      borderRadius: BorderRadius.circular(16),
-                      boxShadow: [
-                        BoxShadow(
-                          color: const Color(0xFF1E3A8A).withValues(alpha: 0.18),
-                          blurRadius: 20,
-                          offset: const Offset(0, 8),
-                        ),
-                      ],
+                      // Spec 071 — densidad SaaS: acción primaria sólida y
+                      // sobria (sin degradado ni sombra azul pesada).
+                      color: AppTheme.primary,
+                      borderRadius: BorderRadius.circular(AppUI.radiusSm),
                     ),
                     child: Row(
                       mainAxisAlignment: MainAxisAlignment.center,
@@ -1389,15 +1379,15 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
                           )
                         else
                           const Icon(Icons.qr_code_scanner_rounded,
-                              color: Colors.white, size: 26),
-                        const SizedBox(width: 12),
+                              color: Colors.white, size: 22),
+                        const SizedBox(width: 10),
                         Text(
                           _lookingUp
                               ? 'Buscando producto...'
-                              : 'Escanear Código de Barras',
+                              : 'Escanear código de barras',
                           style: const TextStyle(
-                            fontSize: 20,
-                            fontWeight: FontWeight.bold,
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600,
                             color: Colors.white,
                           ),
                         ),
@@ -2077,7 +2067,7 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(12),
         border: Border.all(color: const Color(0x0D000000), width: 1),
         boxShadow: DashUI.softShadow,
       ),
