@@ -10,6 +10,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../services/api_service.dart';
 import '../../services/app_error.dart';
@@ -474,17 +475,38 @@ class _DishCardState extends State<_DishCard> {
   /// cierra la hoja sin decidir (en cuyo caso no se genera nada).
   Future<String?> _askPresentation() async {
     final controller = TextEditingController();
+    final customCtrl = TextEditingController();
     const styles = ['En plato', 'Para llevar', 'En vaso', 'En bandeja'];
     // Acompañamientos típicos para que la muestra IA se parezca al plato real
     // (un corrientazo: sopa, arroz, proteína, acompañamientos, jugo).
-    const sides = [
+    const defaultSides = [
       'Sopa', 'Arroz', 'Plátano maduro', 'Papa a la francesa',
       'Ensalada', 'Aguacate', 'Arepa', 'Frijoles', 'Jugo',
     ];
+    // Los que el tenant agregó antes (persisten para todos los platos).
+    final prefs = await SharedPreferences.getInstance();
+    final custom = prefs.getStringList('custom_sides') ?? <String>[];
+    final sides = <String>[...defaultSides, ...custom]; // mutable: crece al agregar
     String style = '';
     final selectedSides = <String>{};
     final apartSides = <String>{}; // acompañamientos que van en plato APARTE
 
+    Future<void> addCustom(StateSetter setSheet) async {
+      final v = customCtrl.text.trim();
+      if (v.isEmpty) return;
+      final exists = sides.any((s) => s.toLowerCase() == v.toLowerCase());
+      setSheet(() {
+        if (!exists) {
+          sides.add(v);
+          custom.add(v);
+          prefs.setStringList('custom_sides', custom); // persiste para otros platos
+        }
+        selectedSides.add(exists ? sides.firstWhere((s) => s.toLowerCase() == v.toLowerCase()) : v);
+        customCtrl.clear();
+      });
+    }
+
+    if (!mounted) return null; // se cargó prefs de forma async
     final result = await showModalBottomSheet<String>(
       context: context,
       isScrollControlled: true,
@@ -552,6 +574,30 @@ class _DishCardState extends State<_DishCard> {
                           ))
                       .toList(),
                 ),
+                const SizedBox(height: 8),
+                // Agregar un acompañamiento propio (se guarda para los demás platos).
+                Row(children: [
+                  Expanded(
+                    child: TextField(
+                      key: const Key('custom_side_field'),
+                      controller: customCtrl,
+                      style: const TextStyle(fontSize: 15),
+                      textCapitalization: TextCapitalization.sentences,
+                      decoration: const InputDecoration(
+                        isDense: true,
+                        hintText: 'Agregar otro (ej: chicharrón)',
+                      ),
+                      onSubmitted: (_) => addCustom(setSheet),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  TextButton.icon(
+                    key: const Key('add_custom_side'),
+                    onPressed: () => addCustom(setSheet),
+                    icon: const Icon(Icons.add_rounded, size: 18),
+                    label: const Text('Agregar'),
+                  ),
+                ]),
                 // ¿Cuáles van en plato aparte? (sopa/jugo casi siempre) — para que
                 // la muestra IA salga realista: incluido vs aparte.
                 if (selectedSides.isNotEmpty) ...[
@@ -619,6 +665,7 @@ class _DishCardState extends State<_DishCard> {
       ),
     );
     controller.dispose();
+    customCtrl.dispose();
     return result;
   }
 

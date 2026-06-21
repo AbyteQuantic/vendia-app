@@ -4,6 +4,7 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 // ignore: depend_on_referenced_packages
 import 'package:image_picker_platform_interface/image_picker_platform_interface.dart';
 // ignore: depend_on_referenced_packages
@@ -74,6 +75,7 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   setUpAll(() =>
       dotenv.testLoad(fileInput: 'API_BASE_URL=http://localhost:8080'));
+  setUp(() => SharedPreferences.setMockInitialValues({}));
 
   group('EditableDish (F043)', () {
     test('fromScan mapea los campos del plato escaneado', () {
@@ -198,6 +200,8 @@ void main() {
 
     testWidgets('muestra IA: pregunta presentación (omitible) y pinta "Muestra (IA)"',
         (tester) async {
+      await tester.binding.setSurfaceSize(const Size(420, 1800));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
       final api = _FakeMenuApi('', imageUrl: 'https://r2.vendia.co/menu/abc.png');
       await tester.pumpWidget(MaterialApp(
         home: MenuImportScreen(
@@ -226,6 +230,8 @@ void main() {
 
     testWidgets('muestra IA: acompañamientos componen la presentación',
         (tester) async {
+      await tester.binding.setSurfaceSize(const Size(420, 1800));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
       final api = _FakeMenuApi('', imageUrl: 'https://r2.vendia.co/menu/abc.png');
       await tester.pumpWidget(MaterialApp(
         home: MenuImportScreen(
@@ -260,6 +266,28 @@ void main() {
       expect(api.lastGenPresentation, contains('En plato'));
       expect(api.lastGenPresentation, contains('arroz en el mismo plato'));
       expect(api.lastGenPresentation, contains('jugo en plato aparte'));
+    });
+
+    testWidgets('muestra IA: ofrece agregar un acompañamiento propio',
+        (tester) async {
+      await tester.binding.setSurfaceSize(const Size(420, 1800));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      // Acompañamiento personalizado guardado antes → aparece para este plato.
+      SharedPreferences.setMockInitialValues({'custom_sides': ['Chicharrón']});
+      final api = _FakeMenuApi('', imageUrl: 'https://r2.vendia.co/menu/abc.png');
+      await tester.pumpWidget(MaterialApp(
+        home: MenuImportScreen(apiOverride: api, scannedDishes: const [
+          {'name': 'Bandeja Paisa', 'price': 25000},
+        ]),
+      ));
+      await tester.pump();
+      await tester.tap(find.byKey(const Key('menu_dish_ai_photo_0')));
+      await tester.pumpAndSettle();
+
+      // El campo para agregar + el botón están; y el guardado previo aparece.
+      expect(find.byKey(const Key('custom_side_field')), findsOneWidget);
+      expect(find.byKey(const Key('add_custom_side')), findsOneWidget);
+      expect(find.text('Chicharrón'), findsOneWidget); // persistió de antes
     });
 
     testWidgets('subir foto de galería → mejora fiel → badge "Su foto" + Mejorar',
