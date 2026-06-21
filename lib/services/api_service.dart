@@ -859,6 +859,19 @@ class ApiService {
     }
   }
 
+  /// Spec 077 F1 — lista de compra: lo que el menú necesita menos el stock.
+  /// needs: [{ingredient_id, name, unit, qty}] → {items, total_estimated, ...}.
+  Future<Map<String, dynamic>> fetchShoppingList(
+      List<Map<String, dynamic>> needs) async {
+    try {
+      final r = await _dio.post('/api/v1/supplies/shopping-list',
+          data: {'needs': needs});
+      return _extractData(r);
+    } on DioException catch (e) {
+      throw AppError.fromDioException(e);
+    }
+  }
+
   /// Spec 072 — guarda la ubicación del negocio (lat/long + precisión +
   /// referencias) y deriva la ciudad server-side. Devuelve {city, address}.
   Future<Map<String, dynamic>> updateStoreLocation({

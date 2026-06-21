@@ -5,6 +5,7 @@ import '../../theme/app_ui.dart';
 import '../../services/api_service.dart';
 import '../../services/auth_service.dart';
 import '../../services/app_error.dart';
+import 'shopping_list_screen.dart';
 
 /// Alistar insumos del día (Spec 076): toma el menú planeado para HOY o MAÑANA,
 /// muestra cada plato con sus porciones esperadas (editables) y calcula EN VIVO
@@ -77,7 +78,12 @@ class _SuppliesPrepScreenState extends State<SuppliesPrepScreen> {
         final m = Map<String, dynamic>.from(ing as Map);
         final id = (m['ingredient_id'] ?? m['name']).toString();
         final qpp = (m['qty_per_portion'] as num?)?.toDouble() ?? 0;
-        acc.putIfAbsent(id, () => {'name': m['name'], 'unit': m['unit'], 'qty': 0.0});
+        acc.putIfAbsent(id, () => {
+              'ingredient_id': m['ingredient_id'] ?? '',
+              'name': m['name'],
+              'unit': m['unit'],
+              'qty': 0.0,
+            });
         acc[id]!['qty'] = (acc[id]!['qty'] as double) + qpp * p;
       }
     }
@@ -120,6 +126,40 @@ class _SuppliesPrepScreenState extends State<SuppliesPrepScreen> {
           ],
         ),
       ),
+      bottomNavigationBar: (_loading || _error != null || _dishes.isEmpty)
+          ? null
+          : SafeArea(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(AppUI.s16, AppUI.s8, AppUI.s16, AppUI.s12),
+                child: SizedBox(
+                  height: 50,
+                  child: ElevatedButton.icon(
+                    key: const Key('btn_buy_missing'),
+                    onPressed: () {
+                      final needs = _totals
+                          .map((t) => {
+                                'ingredient_id': t['ingredient_id'],
+                                'name': t['name'],
+                                'unit': t['unit'],
+                                'qty': t['qty'],
+                              })
+                          .toList();
+                      Navigator.of(context).push(MaterialPageRoute(
+                          builder: (_) => ShoppingListScreen(needs: needs)));
+                    },
+                    icon: const Icon(Icons.shopping_cart_rounded, size: 20),
+                    label: const Text('Comprar lo que falta'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppTheme.primary,
+                      foregroundColor: Colors.white,
+                      elevation: 0,
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(AppUI.radiusSm)),
+                    ),
+                  ),
+                ),
+              ),
+            ),
     );
   }
 
