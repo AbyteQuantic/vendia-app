@@ -25,7 +25,10 @@ import '../../widgets/supplier_price_editor.dart';
     case 'scraped_chain':
       return (label: 'Cadena', color: AppTheme.warning);
     case 'ultima_compra':
-      return (label: 'Tu costo', color: AppTheme.warning);
+      return (label: 'Últ. compra', color: AppTheme.warning);
+    case 'ninguno':
+    case '':
+      return (label: 'Sin precio', color: AppUI.inkSoft);
     default:
       return (label: 'Sin precio', color: AppUI.inkSoft);
   }
@@ -261,12 +264,18 @@ class _ShoppingListScreenState extends State<ShoppingListScreen> {
     final leftover = (it['leftover'] as num?)?.toDouble() ?? 0;
     final packUnknown = it['pack_unknown'] == true;
     final supplier = (it['supplier'] ?? '').toString();
-    final src = _sourceBadge((it['price_source'] ?? '').toString());
+    final source = (it['price_source'] ?? '').toString();
+    final noPrice = source.isEmpty || source == 'ninguno';
+    final src = _sourceBadge(source);
     // COMPRA REAL: nadie vende fracciones. Si se conoce el empaque, se compra el
     // empaque entero y queda un sobrante reservado; si no, costo aproximado.
     final String calc;
     final String? leftoverNote;
-    if (packs != null && !packUnknown) {
+    if (noPrice) {
+      // Sin precio real (sin compra previa ni proveedor) — no inventamos un número.
+      calc = 'Faltan ${_fmt(shortfall)} $unit · sin precio aún';
+      leftoverNote = 'Elija un proveedor o cadena para ver el costo.';
+    } else if (packs != null && !packUnknown) {
       final pres = packLabel.isNotEmpty ? packLabel : 'empaque';
       calc = 'Compre $packs ${packs == 1 ? pres : '${pres}s'}';
       leftoverNote = leftover > 0
@@ -284,12 +293,12 @@ class _ShoppingListScreenState extends State<ShoppingListScreen> {
           Row(children: [
             Expanded(child: Text(it['name'].toString(), maxLines: 1, overflow: TextOverflow.ellipsis, style: AppUI.bodyStrong)),
             const SizedBox(width: AppUI.s8),
-            // Costo del empaque entero con moneda COP.
-            Text(formatCOP(cost),
-                style: const TextStyle(
+            // Costo del empaque entero (o "—" si no hay precio real aún).
+            Text(noPrice ? '—' : formatCOP(cost),
+                style: TextStyle(
                     fontSize: 15, fontWeight: FontWeight.w700,
-                    color: AppTheme.primary,
-                    fontFeatures: [FontFeature.tabularFigures()])),
+                    color: noPrice ? AppUI.inkSoft : AppTheme.primary,
+                    fontFeatures: const [FontFeature.tabularFigures()])),
           ]),
           const SizedBox(height: 3),
           Text(calc, style: AppUI.bodyStrong.copyWith(fontSize: 13)),
