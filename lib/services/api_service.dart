@@ -880,6 +880,7 @@ class ApiService {
     required String ingredientId,
     required String rawName,
     required double unitPrice,
+    String supplierId = '',
     String supplierName = '',
     String packUnit = '',
     double packQty = 0,
@@ -889,12 +890,76 @@ class ApiService {
         'ingredient_id': ingredientId,
         'raw_name': rawName,
         'unit_price': unitPrice,
+        'supplier_id': supplierId,
         'supplier_name': supplierName,
         'pack_unit': packUnit,
         'pack_qty': packQty,
       });
     } on DioException catch (e) {
       throw AppError.fromDioException(e);
+    }
+  }
+
+  /// Spec 077 — crea un MANDADO de compra (lista + a quién se asigna). Devuelve
+  /// {errand, whatsapp_url}.
+  Future<Map<String, dynamic>> createErrand({
+    required List<Map<String, dynamic>> lines,
+    String assigneeType = 'self',
+    String assigneeId = '',
+    String assigneeName = '',
+    String assigneePhone = '',
+    String title = '',
+    String note = '',
+  }) async {
+    try {
+      final r = await _dio.post('/api/v1/errands', data: {
+        'lines': lines,
+        'assignee_type': assigneeType,
+        'assignee_id': assigneeId,
+        'assignee_name': assigneeName,
+        'assignee_phone': assigneePhone,
+        'title': title,
+        'note': note,
+      });
+      return _extractData(r);
+    } on DioException catch (e) {
+      throw AppError.fromDioException(e);
+    }
+  }
+
+  /// Spec 077 — lista de mandados (opcional por estado).
+  Future<List<Map<String, dynamic>>> fetchErrands({String status = ''}) async {
+    try {
+      final r = await _dio.get('/api/v1/errands',
+          queryParameters: status.isEmpty ? null : {'status': status});
+      final list = (r.data is Map) ? r.data['data'] : r.data;
+      return (list is List)
+          ? list.map((e) => Map<String, dynamic>.from(e as Map)).toList()
+          : [];
+    } on DioException catch (e) {
+      throw AppError.fromDioException(e);
+    }
+  }
+
+  /// Spec 077 — cambia el estado de un mandado.
+  Future<void> updateErrandStatus(String id, String status) async {
+    try {
+      await _dio.patch('/api/v1/errands/$id', data: {'status': status});
+    } on DioException catch (e) {
+      throw AppError.fromDioException(e);
+    }
+  }
+
+  /// Spec 077 — "reenviar pedido del día": si hoy ya hay un mandado con los
+  /// MISMOS insumos, lo devuelve (o null).
+  Future<Map<String, dynamic>?> matchTodayErrand(List<String> ingredientIds) async {
+    try {
+      final r = await _dio.post('/api/v1/errands/match-today',
+          data: {'ingredient_ids': ingredientIds});
+      final data = (r.data is Map) ? r.data['data'] : null;
+      return data is Map ? Map<String, dynamic>.from(data) : null;
+    } on DioException {
+      return null; // degradación silenciosa
     }
   }
 

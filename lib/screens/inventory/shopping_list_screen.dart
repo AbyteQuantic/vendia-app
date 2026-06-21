@@ -1,6 +1,7 @@
 // Spec: specs/077-compra-inteligente-insumos/spec.md
 import 'package:flutter/material.dart';
-import 'package:url_launcher/url_launcher.dart';
+import 'package:share_plus/share_plus.dart';
+import '../../widgets/dispatch_sheet.dart';
 import '../../theme/app_theme.dart';
 import '../../theme/app_ui.dart';
 import '../../services/api_service.dart';
@@ -8,6 +9,8 @@ import '../../services/auth_service.dart';
 import '../../services/app_error.dart';
 import '../../utils/format_cop.dart';
 import '../suppliers/nearby_suppliers_screen.dart';
+import '../mandados/mandados_screen.dart';
+import '../../widgets/supplier_price_editor.dart';
 
 /// Etiqueta + color del ORIGEN de un precio (Spec 077): el tenant ve de qué
 /// mercado viene cada precio y si es estimado.
@@ -48,6 +51,7 @@ class _ShoppingListScreenState extends State<ShoppingListScreen> {
   double _total = 0;
   bool _hasEstimate = false;
   String _disclaimer = '';
+  Map<String, dynamic>? _todayErrand; // pedido de hoy con los mismos insumos
 
   @override
   void initState() {
@@ -70,6 +74,7 @@ class _ShoppingListScreenState extends State<ShoppingListScreen> {
         _disclaimer = (data['disclaimer'] ?? '').toString();
         _loading = false;
       });
+      _loadRepeat();
     } catch (e) {
       if (!mounted) return;
       setState(() {
@@ -79,21 +84,35 @@ class _ShoppingListScreenState extends State<ShoppingListScreen> {
     }
   }
 
-  String _buildMessage() {
-    final b = StringBuffer('Buenos días, necesito comprar:\n');
-    for (final it in _items) {
-      final n = (it['shortfall'] as num?)?.toDouble() ?? 0;
-      b.writeln('• ${it['name']} — ${_fmt(n)} ${it['unit']}');
-    }
-    b.writeln('\nTotal aprox: ${formatCOP(_total)}');
-    return b.toString();
+  /// Abre el selector de destino (Spec 077): compartir con el picker nativo
+  /// (WhatsApp/contacto/otra app), enviar a un proveedor/empleado/número, o solo
+  /// guardar como mandado. Tras enviar, recarga (refleja el reenviar del día).
+  Future<void> _openDispatch() async {
+    final sent = await showDispatchSheet(context, _items, _total);
+    if (sent == true && mounted) _loadRepeat();
   }
 
-  /// Abre WhatsApp con la lista ya escrita para elegir el contacto a quién
-  /// enviarla (proveedor, empleado, etc.). Sin número → WhatsApp deja elegir.
-  Future<void> _sendByWhatsApp() async {
-    final url = 'https://wa.me/?text=${Uri.encodeComponent(_buildMessage())}';
-    await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
+  /// "Reenviar pedido del día": busca un mandado de HOY con los mismos insumos.
+  Future<void> _loadRepeat() async {
+    final ids = _items
+        .map((it) => (it['ingredient_id'] ?? '').toString())
+        .where((s) => s.isNotEmpty)
+        .toList();
+    if (ids.isEmpty) return;
+    final e = await _api.matchTodayErrand(ids);
+    if (mounted) setState(() => _todayErrand = e);
+  }
+
+  /// Reenvía el pedido del día con el selector nativo (mismo mensaje).
+  Future<void> _resend(Map<String, dynamic> errand) async {
+    final lines = (errand['lines'] as List?) ?? [];
+    final b = StringBuffer('Buenos días, necesito comprar:\n');
+    for (final l in lines) {
+      final m = Map<String, dynamic>.from(l as Map);
+      final q = (m['qty'] as num?)?.toDouble() ?? 0;
+      b.writeln('• ${m['name']} — ${_fmt(q)} ${m['unit']}');
+    }
+    await Share.share(b.toString(), subject: 'Lista de compra');
   }
 
   String _fmt(double v) =>
@@ -113,6 +132,15 @@ class _ShoppingListScreenState extends State<ShoppingListScreen> {
           onPressed: () => Navigator.of(context).pop(),
         ),
         title: const Text('Comprar lo que falta', style: AppUI.title),
+        actions: [
+          IconButton(
+            key: const Key('btn_open_mandados'),
+            tooltip: 'Pendientes de compra',
+            icon: const Icon(Icons.fact_check_rounded, color: AppTheme.primary),
+            onPressed: () => Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const MandadosScreen())),
+          ),
+        ],
       ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
@@ -135,6 +163,7 @@ class _ShoppingListScreenState extends State<ShoppingListScreen> {
       key: const Key('shopping_list'),
       padding: const EdgeInsets.fromLTRB(AppUI.s16, AppUI.s12, AppUI.s16, 150),
       children: [
+        if (_todayErrand != null) ...[_repeatCard(_todayErrand!), const SizedBox(height: AppUI.s12)],
         Container(
           decoration: AppUI.card(r: 10),
           padding: const EdgeInsets.symmetric(vertical: 4),
@@ -162,6 +191,34 @@ class _ShoppingListScreenState extends State<ShoppingListScreen> {
           ),
         ],
       ],
+    );
+  }
+
+  Widget _repeatCard(Map<String, dynamic> errand) {
+    final who = (errand['assignee_name'] ?? '').toString();
+    return Container(
+      key: const Key('repeat_order_card'),
+      padding: const EdgeInsets.all(AppUI.s12),
+      decoration: BoxDecoration(
+        color: AppTheme.primary.withValues(alpha: 0.07),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: AppTheme.primary.withValues(alpha: 0.25)),
+      ),
+      child: Row(children: [
+        const Icon(Icons.history_rounded, color: AppTheme.primary, size: 22),
+        const SizedBox(width: AppUI.s12),
+        Expanded(
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            const Text('Ya pidió esto hoy', style: AppUI.bodyStrong),
+            Text(who.isNotEmpty ? 'A $who · solo reenvíelo.' : 'Solo reenvíelo.', style: AppUI.bodySoft),
+          ]),
+        ),
+        TextButton(
+          key: const Key('btn_resend'),
+          onPressed: () => _resend(errand),
+          child: const Text('Reenviar'),
+        ),
+      ]),
     );
   }
 
@@ -274,9 +331,10 @@ class _ShoppingListScreenState extends State<ShoppingListScreen> {
                 width: double.infinity,
                 child: OutlinedButton.icon(
                   key: Key('register_price_${it['ingredient_id']}'),
-                  onPressed: () {
+                  onPressed: () async {
                     Navigator.pop(ctx);
-                    _editPrice(it);
+                    final saved = await showSupplierPriceEditor(context, it);
+                    if (saved == true && mounted) _load();
                   },
                   icon: const Icon(Icons.sell_rounded, size: 18),
                   label: const Text('Registrar mi precio de proveedor'),
@@ -287,54 +345,6 @@ class _ShoppingListScreenState extends State<ShoppingListScreen> {
         },
       ),
     );
-  }
-
-  Future<void> _editPrice(Map<String, dynamic> it) async {
-    final ctrl = TextEditingController();
-    final supplierCtrl = TextEditingController();
-    final saved = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text('Precio de ${it['name']}'),
-        content: Column(mainAxisSize: MainAxisSize.min, children: [
-          TextField(
-            key: const Key('price_input'),
-            controller: ctrl,
-            keyboardType: TextInputType.number,
-            decoration: InputDecoration(labelText: 'Precio por ${it['unit']} (\$)'),
-          ),
-          TextField(
-            controller: supplierCtrl,
-            decoration: const InputDecoration(labelText: 'Proveedor (opcional)'),
-          ),
-        ]),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancelar')),
-          ElevatedButton(
-            key: const Key('price_save'),
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Guardar'),
-          ),
-        ],
-      ),
-    );
-    if (saved != true) return;
-    final price = double.tryParse(ctrl.text.replaceAll(',', '.')) ?? 0;
-    if (price <= 0) return;
-    try {
-      await _api.addSupplyPrice(
-        ingredientId: it['ingredient_id'].toString(),
-        rawName: it['name'].toString(),
-        unitPrice: price,
-        supplierName: supplierCtrl.text.trim(),
-      );
-      await _load(); // recalcula con el nuevo precio (ya no estimado)
-    } catch (_) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-            content: Text('No se pudo guardar el precio.'), backgroundColor: AppTheme.error));
-      }
-    }
   }
 
   Widget _bottomBar() {
@@ -362,7 +372,7 @@ class _ShoppingListScreenState extends State<ShoppingListScreen> {
             height: 48,
             child: ElevatedButton.icon(
               key: const Key('btn_send_list'),
-              onPressed: _sendByWhatsApp,
+              onPressed: _openDispatch,
               icon: const Icon(Icons.chat_rounded, size: 18),
               label: const Text('Enviar por WhatsApp'),
               style: ElevatedButton.styleFrom(

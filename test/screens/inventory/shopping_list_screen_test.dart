@@ -10,6 +10,8 @@ class _FakeApi extends ApiService {
   _FakeApi() : super(AuthService());
   List<Map<String, dynamic>>? sentNeeds;
   @override
+  Future<Map<String, dynamic>?> matchTodayErrand(List<String> ids) async => null;
+  @override
   Future<Map<String, dynamic>> fetchShoppingList(List<Map<String, dynamic>> needs) async {
     sentNeeds = needs;
     return {
