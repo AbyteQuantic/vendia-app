@@ -157,13 +157,72 @@ class _ShoppingListScreenState extends State<ShoppingListScreen> {
             ]),
           ]),
         ),
-        Text('\$${cost.toStringAsFixed(0)}',
-            style: const TextStyle(
-                fontSize: 15, fontWeight: FontWeight.w700,
-                color: AppTheme.primary,
-                fontFeatures: [FontFeature.tabularFigures()])),
+        Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
+          Text('\$${cost.toStringAsFixed(0)}',
+              style: const TextStyle(
+                  fontSize: 15, fontWeight: FontWeight.w700,
+                  color: AppTheme.primary,
+                  fontFeatures: [FontFeature.tabularFigures()])),
+          InkWell(
+            key: Key('set_price_${it['ingredient_id']}'),
+            onTap: () => _editPrice(it),
+            child: const Padding(
+              padding: EdgeInsets.only(top: 2),
+              child: Text('Tengo mejor precio',
+                  style: TextStyle(fontSize: 11, color: AppTheme.primary, decoration: TextDecoration.underline)),
+            ),
+          ),
+        ]),
       ]),
     );
+  }
+
+  Future<void> _editPrice(Map<String, dynamic> it) async {
+    final ctrl = TextEditingController();
+    final supplierCtrl = TextEditingController();
+    final saved = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text('Precio de ${it['name']}'),
+        content: Column(mainAxisSize: MainAxisSize.min, children: [
+          TextField(
+            key: const Key('price_input'),
+            controller: ctrl,
+            keyboardType: TextInputType.number,
+            decoration: InputDecoration(labelText: 'Precio por ${it['unit']} (\$)'),
+          ),
+          TextField(
+            controller: supplierCtrl,
+            decoration: const InputDecoration(labelText: 'Proveedor (opcional)'),
+          ),
+        ]),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancelar')),
+          ElevatedButton(
+            key: const Key('price_save'),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Guardar'),
+          ),
+        ],
+      ),
+    );
+    if (saved != true) return;
+    final price = double.tryParse(ctrl.text.replaceAll(',', '.')) ?? 0;
+    if (price <= 0) return;
+    try {
+      await _api.addSupplyPrice(
+        ingredientId: it['ingredient_id'].toString(),
+        rawName: it['name'].toString(),
+        unitPrice: price,
+        supplierName: supplierCtrl.text.trim(),
+      );
+      await _load(); // recalcula con el nuevo precio (ya no estimado)
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+            content: Text('No se pudo guardar el precio.'), backgroundColor: AppTheme.error));
+      }
+    }
   }
 
   Widget _bottomBar() {

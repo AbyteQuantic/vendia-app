@@ -859,6 +859,29 @@ class ApiService {
     }
   }
 
+  /// Spec 077 F2 — registra un precio manual de un insumo (source=manual).
+  Future<void> addSupplyPrice({
+    required String ingredientId,
+    required String rawName,
+    required double unitPrice,
+    String supplierName = '',
+    String packUnit = '',
+    double packQty = 0,
+  }) async {
+    try {
+      await _dio.post('/api/v1/supplies/prices', data: {
+        'ingredient_id': ingredientId,
+        'raw_name': rawName,
+        'unit_price': unitPrice,
+        'supplier_name': supplierName,
+        'pack_unit': packUnit,
+        'pack_qty': packQty,
+      });
+    } on DioException catch (e) {
+      throw AppError.fromDioException(e);
+    }
+  }
+
   /// Spec 077 F1 — lista de compra: lo que el menú necesita menos el stock.
   /// needs: [{ingredient_id, name, unit, qty}] → {items, total_estimated, ...}.
   Future<Map<String, dynamic>> fetchShoppingList(
