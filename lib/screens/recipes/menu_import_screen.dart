@@ -483,6 +483,7 @@ class _DishCardState extends State<_DishCard> {
     ];
     String style = '';
     final selectedSides = <String>{};
+    final apartSides = <String>{}; // acompañamientos que van en plato APARTE
 
     final result = await showModalBottomSheet<String>(
       context: context,
@@ -540,11 +541,46 @@ class _DishCardState extends State<_DishCard> {
                             backgroundColor: AppTheme.surfaceGrey,
                             selectedColor: _purple.withValues(alpha: 0.18),
                             checkmarkColor: _purple,
-                            onSelected: (sel) => setSheet(() =>
-                                sel ? selectedSides.add(c) : selectedSides.remove(c)),
+                            onSelected: (sel) => setSheet(() {
+                              if (sel) {
+                                selectedSides.add(c);
+                              } else {
+                                selectedSides.remove(c);
+                                apartSides.remove(c); // limpiar si se deselecciona
+                              }
+                            }),
                           ))
                       .toList(),
                 ),
+                // ¿Cuáles van en plato aparte? (sopa/jugo casi siempre) — para que
+                // la muestra IA salga realista: incluido vs aparte.
+                if (selectedSides.isNotEmpty) ...[
+                  const SizedBox(height: 18),
+                  const Text('¿Alguno va en plato aparte?',
+                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+                  const SizedBox(height: 4),
+                  const Text('Toque los que NO van sobre el plato principal (ej: sopa, jugo).',
+                      style: TextStyle(fontSize: 13, color: Colors.black54)),
+                  const SizedBox(height: 10),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: selectedSides
+                        .map((c) => FilterChip(
+                              label: Text(c, style: const TextStyle(fontSize: 15)),
+                              selected: apartSides.contains(c),
+                              avatar: apartSides.contains(c)
+                                  ? const Icon(Icons.call_split_rounded, size: 16, color: _purple)
+                                  : null,
+                              backgroundColor: AppTheme.surfaceGrey,
+                              selectedColor: _purple.withValues(alpha: 0.18),
+                              showCheckmark: false,
+                              onSelected: (sel) => setSheet(() =>
+                                  sel ? apartSides.add(c) : apartSides.remove(c)),
+                            ))
+                        .toList(),
+                  ),
+                ],
                 const SizedBox(height: 16),
                 TextField(
                   controller: controller,
@@ -569,8 +605,8 @@ class _DishCardState extends State<_DishCard> {
                           backgroundColor: _purple,
                           foregroundColor: Colors.white,
                         ),
-                        onPressed: () =>
-                            Navigator.of(ctx).pop(_composePresentation(style, selectedSides, controller.text.trim())),
+                        onPressed: () => Navigator.of(ctx).pop(
+                            _composePresentation(style, selectedSides, apartSides, controller.text.trim())),
                         child: const Text('Crear foto', style: TextStyle(fontSize: 16)),
                       ),
                     ),
@@ -586,14 +622,20 @@ class _DishCardState extends State<_DishCard> {
     return result;
   }
 
-  /// Compone la presentación para el prompt de IA: estilo + acompañamientos +
-  /// detalle libre, en una frase natural (ej: "En plato, con sopa, arroz y jugo").
-  String _composePresentation(String style, Set<String> sides, String extra) {
+  /// Compone la presentación para el prompt de IA: estilo + acompañamientos
+  /// (distinguiendo los que van EN EL MISMO PLATO de los que van APARTE) +
+  /// detalle libre. Ej: "En plato, con arroz y frijoles en el mismo plato,
+  /// sopa y jugo en plato aparte".
+  String _composePresentation(
+      String style, Set<String> sides, Set<String> apart, String extra) {
     final parts = <String>[];
     if (style.isNotEmpty) parts.add(style);
-    if (sides.isNotEmpty) {
-      parts.add('con ${sides.map((s) => s.toLowerCase()).join(', ')}');
-    }
+    final enPlato =
+        sides.where((s) => !apart.contains(s)).map((s) => s.toLowerCase()).toList();
+    final aparte =
+        sides.where((s) => apart.contains(s)).map((s) => s.toLowerCase()).toList();
+    if (enPlato.isNotEmpty) parts.add('con ${enPlato.join(', ')} en el mismo plato');
+    if (aparte.isNotEmpty) parts.add('${aparte.join(', ')} en plato aparte');
     if (extra.isNotEmpty) parts.add(extra);
     return parts.join(', ');
   }

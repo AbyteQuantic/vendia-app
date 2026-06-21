@@ -245,13 +245,21 @@ void main() {
       await tester.tap(find.text('Arroz'));
       await tester.tap(find.text('Jugo'));
       await tester.pumpAndSettle();
-      await tester.tap(find.text('Crear foto'));
+      // Sección nueva: marcar que el jugo va en plato APARTE (el 2º 'Jugo').
+      expect(find.text('¿Alguno va en plato aparte?'), findsOneWidget);
+      final aparteJugo = find.text('Jugo').last;
+      await tester.ensureVisible(aparteJugo);
+      await tester.tap(aparteJugo);
+      await tester.pumpAndSettle();
+      final crear = find.text('Crear foto');
+      await tester.ensureVisible(crear);
+      await tester.tap(crear);
       await tester.pumpAndSettle();
 
-      // La presentación enviada a la IA incluye estilo + acompañamientos.
+      // El prompt distingue lo del plato (arroz) de lo aparte (jugo).
       expect(api.lastGenPresentation, contains('En plato'));
-      expect(api.lastGenPresentation, contains('arroz'));
-      expect(api.lastGenPresentation, contains('jugo'));
+      expect(api.lastGenPresentation, contains('arroz en el mismo plato'));
+      expect(api.lastGenPresentation, contains('jugo en plato aparte'));
     });
 
     testWidgets('subir foto de galería → mejora fiel → badge "Su foto" + Mejorar',
