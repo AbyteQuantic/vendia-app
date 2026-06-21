@@ -8,6 +8,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:uuid/uuid.dart';
 import '../../database/database_service.dart';
 import '../../database/collections/local_catalog_product.dart';
+import '../recipes/recipe_studio_screen.dart';
 import '../../database/collections/local_product.dart';
 import '../../database/sync/pending_product_push.dart';
 import '../../database/local_product_factory.dart';
@@ -435,8 +436,59 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
     if (changed) setState(() {});
   }
 
+  // #10 — true cuando el nombre parece un PLATO PREPARABLE (empanada, sopa,
+  // almuerzo…). Sugiere registrarlo como receta para controlar insumos.
+  bool _suggestRecipe = false;
+
+  static const _preparableHints = [
+    'empanada', 'arepa', 'sopa', 'sancocho', 'caldo', 'almuerzo', 'bandeja',
+    'plato', 'guiso', 'sudado', 'asado', 'frito', 'seco', 'ensalada', 'jugo',
+    'frijol', 'lenteja', 'arroz', 'pasta', 'lasaña', 'pizza', 'hamburguesa',
+    'perro', 'salchipapa', 'tamal', 'mondongo', 'ajiaco', 'menú', 'menu',
+    'desayuno', 'comida', 'porción', 'porcion', 'combo',
+  ];
+
+  bool _looksPreparable(String name) {
+    final n = name.toLowerCase();
+    return _preparableHints.any((k) => n.contains(k));
+  }
+
+  Widget _recipeSuggestionCard() {
+    return Container(
+      margin: const EdgeInsets.only(top: 12),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: AppTheme.primary.withValues(alpha: 0.06),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: AppTheme.primary.withValues(alpha: 0.25)),
+      ),
+      child: Row(children: [
+        const Icon(Icons.restaurant_menu_rounded, color: AppTheme.primary, size: 24),
+        const SizedBox(width: 10),
+        const Expanded(
+          child: Text(
+            '¿Esto lo prepara usted? Regístrelo como RECETA y le controlamos los '
+            'insumos y la lista de compras.',
+            style: TextStyle(fontSize: 13, color: AppTheme.textPrimary, height: 1.3),
+          ),
+        ),
+        TextButton(
+          key: const Key('suggest_recipe_cta'),
+          onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => const RecipeStudioScreen())),
+          child: const Text('Crear receta'),
+        ),
+      ]),
+    );
+  }
+
   void _onNameChanged(String query) {
     _debounce?.cancel();
+    // #10 — pista de "esto lo prepara usted" para sugerir receta.
+    final prep = _looksPreparable(query.trim());
+    if (prep != _suggestRecipe && mounted) {
+      setState(() => _suggestRecipe = prep);
+    }
     // FR-03/FR-04: the name now describes a (possibly) different product.
     // Drop any image/catalog data that belonged to an earlier name so the
     // screen never keeps a stale, unrelated photo pinned. A photo the
@@ -1600,6 +1652,8 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
                   // Sugerencias INLINE (no overlay) — se desplazan y se tocan
                   // como parte del formulario; nunca se cierran al moverlas.
                   if (_suggestions.isNotEmpty) _inlineSuggestions(),
+                  // #10 — si el nombre parece un plato preparable, sugiere receta.
+                  if (_suggestRecipe) _recipeSuggestionCard(),
                 ]),
 
                 const SizedBox(height: 14),
