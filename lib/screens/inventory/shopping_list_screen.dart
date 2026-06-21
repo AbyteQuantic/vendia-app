@@ -48,10 +48,38 @@ class _ShoppingListScreenState extends State<ShoppingListScreen> {
   bool _loading = true;
   String? _error;
   List<Map<String, dynamic>> _items = [];
-  double _total = 0;
   bool _hasEstimate = false;
   String _disclaimer = '';
   Map<String, dynamic>? _todayErrand; // pedido de hoy con los mismos insumos
+  // Opción de proveedor elegida por insumo (cliente): ingredient_id → opción.
+  final Map<String, Map<String, dynamic>> _chosen = {};
+
+  /// Valores EFECTIVOS de un ítem: si el tenant eligió un proveedor, mandan los
+  /// de la opción; si no, los sugeridos por el backend.
+  Map<String, dynamic> _eff(Map<String, dynamic> it) {
+    final ch = _chosen[(it['ingredient_id'] ?? '').toString()];
+    if (ch == null) return it;
+    return {
+      ...it,
+      'estimated_cost': ch['cost'],
+      'packs': ch['packs'],
+      'pack_label': ch['label'],
+      'pack_unit': ch['pack_unit'],
+      'leftover': ch['leftover'],
+      'pack_unknown': ch['pack_unknown'],
+      'price_source': ch['source'],
+      'supplier': ch['supplier'],
+    };
+  }
+
+  /// Total = suma de los costos EFECTIVOS (refleja las elecciones del tenant).
+  double get _displayTotal {
+    double t = 0;
+    for (final it in _items) {
+      t += (_eff(it)['estimated_cost'] as num?)?.toDouble() ?? 0;
+    }
+    return t;
+  }
 
   @override
   void initState() {
@@ -69,7 +97,7 @@ class _ShoppingListScreenState extends State<ShoppingListScreen> {
       if (!mounted) return;
       setState(() {
         _items = items;
-        _total = (data['total_estimated'] as num?)?.toDouble() ?? 0;
+        _chosen.clear(); // recálculo desde el backend descarta elecciones viejas
         _hasEstimate = data['has_estimate'] == true;
         _disclaimer = (data['disclaimer'] ?? '').toString();
         _loading = false;
@@ -88,7 +116,7 @@ class _ShoppingListScreenState extends State<ShoppingListScreen> {
   /// (WhatsApp/contacto/otra app), enviar a un proveedor/empleado/número, o solo
   /// guardar como mandado. Tras enviar, recarga (refleja el reenviar del día).
   Future<void> _openDispatch() async {
-    final sent = await showDispatchSheet(context, _items, _total);
+    final sent = await showDispatchSheet(context, _items.map(_eff).toList(), _displayTotal);
     if (sent == true && mounted) _loadRepeat();
   }
 
@@ -222,7 +250,8 @@ class _ShoppingListScreenState extends State<ShoppingListScreen> {
     );
   }
 
-  Widget _itemRow(Map<String, dynamic> it) {
+  Widget _itemRow(Map<String, dynamic> raw) {
+    final it = _eff(raw); // valores efectivos (con la opción elegida si la hay)
     final shortfall = (it['shortfall'] as num?)?.toDouble() ?? 0;
     final cost = (it['estimated_cost'] as num?)?.toDouble() ?? 0;
     final unit = (it['unit'] ?? '').toString();
@@ -231,6 +260,7 @@ class _ShoppingListScreenState extends State<ShoppingListScreen> {
     final packUnit = (it['pack_unit'] ?? '').toString();
     final leftover = (it['leftover'] as num?)?.toDouble() ?? 0;
     final packUnknown = it['pack_unknown'] == true;
+    final supplier = (it['supplier'] ?? '').toString();
     final src = _sourceBadge((it['price_source'] ?? '').toString());
     // COMPRA REAL: nadie vende fracciones. Si se conoce el empaque, se compra el
     // empaque entero y queda un sobrante reservado; si no, costo aproximado.
@@ -270,15 +300,23 @@ class _ShoppingListScreenState extends State<ShoppingListScreen> {
           const SizedBox(height: 4),
           Row(children: [
             MinimalBadge(label: src.label, color: src.color),
+            if (supplier.isNotEmpty) ...[
+              const SizedBox(width: AppUI.s8),
+              Flexible(
+                child: Text('· $supplier',
+                    maxLines: 1, overflow: TextOverflow.ellipsis,
+                    style: AppUI.bodySoft.copyWith(fontSize: 12)),
+              ),
+            ],
             const Spacer(),
-            // Una sola acción clara para explorar mercados/precios por producto.
+            // Elegir de cuál proveedor/cadena comprar este producto.
             InkWell(
-              key: Key('options_${it['ingredient_id']}'),
-              onTap: () => _showChainPrices(it),
-              child: const Padding(
-                padding: EdgeInsets.all(2),
-                child: Text('Ver opciones',
-                    style: TextStyle(fontSize: 12, color: AppTheme.primary, decoration: TextDecoration.underline)),
+              key: Key('options_${raw['ingredient_id']}'),
+              onTap: () => _showOptions(raw),
+              child: Padding(
+                padding: const EdgeInsets.all(2),
+                child: Text(_chosen.containsKey((raw['ingredient_id'] ?? '').toString()) ? 'Cambiar' : 'Elegir proveedor',
+                    style: const TextStyle(fontSize: 12, color: AppTheme.primary, decoration: TextDecoration.underline)),
               ),
             ),
           ]),
@@ -287,79 +325,133 @@ class _ShoppingListScreenState extends State<ShoppingListScreen> {
     );
   }
 
-  Future<void> _showChainPrices(Map<String, dynamic> it) async {
+  /// Selector de PROVEEDOR por producto: muestra todas las opciones (mis
+  /// proveedores + cadenas + última compra), cada una con cuántos empaques
+  /// comprar, el costo del empaque entero y el sobrante. El tenant elige y la
+  /// fila + el total reflejan esa elección (Spec 077).
+  Future<void> _showOptions(Map<String, dynamic> raw) async {
+    final id = (raw['ingredient_id'] ?? '').toString();
+    final shortfall = (raw['shortfall'] as num?)?.toDouble() ?? 0;
     showModalBottomSheet(
       context: context,
+      isScrollControlled: true,
       backgroundColor: Colors.white,
-      builder: (ctx) => FutureBuilder<List<Map<String, dynamic>>>(
-        future: _api.fetchChainPrices(it['name'].toString()),
-        builder: (ctx, snap) {
-          const pad = EdgeInsets.all(AppUI.s16);
-          if (!snap.hasData) {
-            return const Padding(
-                padding: EdgeInsets.all(AppUI.s24),
-                child: Center(child: CircularProgressIndicator()));
-          }
-          final m = snap.data!;
-          return Padding(
-            padding: pad,
-            child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text('${it['name']} · opciones de precio', style: AppUI.bodyStrong),
-              const SizedBox(height: AppUI.s4),
-              const Text('Precios en cadenas (referencia)', style: AppUI.sectionLabel),
-              const SizedBox(height: 4),
-              if (m.isEmpty)
-                const Text('Aún no tenemos precios de cadenas para este insumo.', style: AppUI.bodySoft)
-              else
-                ...m.map((c) {
-                  final dropped = c['dropped'] == true;
-                  final pct = (c['drop_pct'] as num?)?.toDouble() ?? 0;
-                  final rawName = (c['raw_name'] ?? '').toString();
-                  return Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 7),
-                    child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                      Expanded(
-                        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                          // Producto + presentación (deja claro si es por unidad, kg o libra).
-                          Text(rawName.isNotEmpty ? rawName : (c['chain'] ?? '').toString(),
-                              maxLines: 2, overflow: TextOverflow.ellipsis, style: AppUI.bodyStrong),
-                          const SizedBox(height: 2),
-                          MinimalBadge(label: (c['chain'] ?? '').toString().toUpperCase(), color: AppTheme.primary),
-                        ]),
-                      ),
-                      const SizedBox(width: AppUI.s8),
-                      Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
-                        Text(formatCOP((c['price'] as num?)?.toDouble() ?? 0),
-                            style: const TextStyle(fontWeight: FontWeight.w700, color: AppTheme.primary,
-                                fontFeatures: [FontFeature.tabularFigures()])),
-                        if (dropped) ...[
-                          const SizedBox(height: 2),
-                          MinimalBadge(label: 'bajó ${pct.toStringAsFixed(0)}%', color: AppTheme.success),
-                        ],
-                      ]),
-                    ]),
-                  );
-                }),
-              const SizedBox(height: AppUI.s8),
-              const Text('Precios de referencia de catálogos en línea; pueden variar.',
-                  style: TextStyle(fontSize: 11, color: AppUI.inkSoft)),
-              const SizedBox(height: AppUI.s12),
-              SizedBox(
-                width: double.infinity,
-                child: OutlinedButton.icon(
-                  key: Key('register_price_${it['ingredient_id']}'),
-                  onPressed: () async {
-                    Navigator.pop(ctx);
-                    final saved = await showSupplierPriceEditor(context, it);
-                    if (saved == true && mounted) _load();
-                  },
-                  icon: const Icon(Icons.sell_rounded, size: 18),
-                  label: const Text('Registrar mi precio de proveedor'),
+      shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(16))),
+      builder: (ctx) => DraggableScrollableSheet(
+        expand: false,
+        initialChildSize: 0.6,
+        maxChildSize: 0.9,
+        builder: (ctx, scroll) => FutureBuilder<List<Map<String, dynamic>>>(
+          future: _api.fetchSupplyOptions(
+              ingredientId: id, name: raw['name'].toString(), unit: (raw['unit'] ?? '').toString(), shortfall: shortfall),
+          builder: (ctx, snap) {
+            if (!snap.hasData) {
+              return const Padding(
+                  padding: EdgeInsets.all(AppUI.s24), child: Center(child: CircularProgressIndicator()));
+            }
+            final opts = snap.data!;
+            return ListView(
+              controller: scroll,
+              padding: const EdgeInsets.all(AppUI.s16),
+              children: [
+                Text('${raw['name']} · de cuál proveedor', style: AppUI.bodyStrong),
+                const SizedBox(height: 2),
+                const Text('Escoja de dónde lo compra. Le mostramos el empaque y lo que sobra.',
+                    style: AppUI.bodySoft),
+                const SizedBox(height: AppUI.s12),
+                if (opts.isEmpty)
+                  const Text('Aún no hay opciones para este insumo. Registre el precio de su proveedor.',
+                      style: AppUI.bodySoft)
+                else
+                  ...opts.map((o) => _optionTile(ctx, id, o)),
+                const SizedBox(height: AppUI.s12),
+                SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton.icon(
+                    key: Key('register_price_$id'),
+                    onPressed: () async {
+                      Navigator.pop(ctx);
+                      final saved = await showSupplierPriceEditor(context, raw);
+                      if (saved == true && mounted) _load();
+                    },
+                    icon: const Icon(Icons.sell_rounded, size: 18),
+                    label: const Text('Registrar mi precio de proveedor'),
+                  ),
                 ),
+              ],
+            );
+          },
+        ),
+      ),
+    );
+  }
+
+  Widget _optionTile(BuildContext ctx, String ingredientId, Map<String, dynamic> o) {
+    final selected = _chosen[ingredientId]?['id'] == o['id'];
+    final recommended = o['recommended'] == true;
+    final packs = (o['packs'] as num?)?.toInt();
+    final cost = (o['cost'] as num?)?.toDouble() ?? 0;
+    final leftover = (o['leftover'] as num?)?.toDouble() ?? 0;
+    final label = (o['label'] ?? '').toString();
+    final supplier = (o['supplier'] ?? '').toString();
+    final unknown = o['pack_unknown'] == true;
+    final dropped = o['dropped'] == true;
+    final src = _sourceBadge((o['source'] ?? '').toString());
+    return InkWell(
+      key: Key('option_${o['id']}'),
+      onTap: () {
+        setState(() => _chosen[ingredientId] = o);
+        Navigator.pop(ctx);
+      },
+      borderRadius: BorderRadius.circular(10),
+      child: Container(
+        margin: const EdgeInsets.only(bottom: AppUI.s8),
+        padding: const EdgeInsets.all(AppUI.s12),
+        decoration: BoxDecoration(
+          color: selected ? AppTheme.primary.withValues(alpha: 0.06) : Colors.white,
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: selected ? AppTheme.primary : AppUI.border, width: selected ? 1.5 : 1),
+        ),
+        child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Icon(selected ? Icons.radio_button_checked_rounded : Icons.radio_button_unchecked_rounded,
+              color: selected ? AppTheme.primary : AppUI.inkSoft, size: 22),
+          const SizedBox(width: AppUI.s12),
+          Expanded(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Row(children: [
+                Flexible(child: Text(supplier, maxLines: 1, overflow: TextOverflow.ellipsis, style: AppUI.bodyStrong)),
+                const SizedBox(width: AppUI.s8),
+                MinimalBadge(label: src.label, color: src.color),
+                if (recommended) ...[
+                  const SizedBox(width: 6),
+                  const MinimalBadge(label: 'Recomendado', color: AppTheme.success),
+                ],
+              ]),
+              if (label.isNotEmpty) ...[
+                const SizedBox(height: 2),
+                Text(label, maxLines: 2, overflow: TextOverflow.ellipsis, style: AppUI.bodySoft),
+              ],
+              const SizedBox(height: 2),
+              Text(
+                unknown
+                    ? 'Costo aproximado (sin presentación)'
+                    : 'Compre ${packs ?? 1} empaque(s)${leftover > 0 ? ' · sobran ~${_fmt(leftover)}' : ''}',
+                style: AppUI.bodySoft.copyWith(fontSize: 12),
               ),
             ]),
-          );
-        },
+          ),
+          const SizedBox(width: AppUI.s8),
+          Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
+            Text(formatCOP(cost),
+                style: const TextStyle(fontWeight: FontWeight.w700, color: AppTheme.primary,
+                    fontFeatures: [FontFeature.tabularFigures()])),
+            if (dropped) ...[
+              const SizedBox(height: 2),
+              MinimalBadge(label: 'bajó ${((o['drop_pct'] as num?)?.toDouble() ?? 0).toStringAsFixed(0)}%', color: AppTheme.success),
+            ],
+          ]),
+        ]),
       ),
     );
   }
@@ -375,7 +467,7 @@ class _ShoppingListScreenState extends State<ShoppingListScreen> {
         child: Column(mainAxisSize: MainAxisSize.min, children: [
           Row(children: [
             const Expanded(child: Text('Total estimado', style: AppUI.bodyStrong)),
-            Text(formatCOP(_total),
+            Text(formatCOP(_displayTotal),
                 style: const TextStyle(
                     fontSize: 18, fontWeight: FontWeight.w800,
                     color: AppTheme.primary,

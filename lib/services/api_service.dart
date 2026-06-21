@@ -900,6 +900,31 @@ class ApiService {
     }
   }
 
+  /// Spec 077 — opciones de compra de un insumo (mis proveedores + cadenas +
+  /// última compra), cada una con el costo empaque-completo resuelto.
+  Future<List<Map<String, dynamic>>> fetchSupplyOptions({
+    required String ingredientId,
+    required String name,
+    required String unit,
+    required double shortfall,
+  }) async {
+    try {
+      final r = await _dio.get('/api/v1/supplies/options', queryParameters: {
+        'ingredient_id': ingredientId,
+        'name': name,
+        'unit': unit,
+        'shortfall': shortfall,
+      });
+      final data = (r.data is Map) ? r.data['data'] : null;
+      final list = (data is Map) ? data['options'] : null;
+      return (list is List)
+          ? list.map((e) => Map<String, dynamic>.from(e as Map)).toList()
+          : [];
+    } on DioException catch (e) {
+      throw AppError.fromDioException(e);
+    }
+  }
+
   /// Spec 077 — crea un MANDADO de compra (lista + a quién se asigna). Devuelve
   /// {errand, whatsapp_url}.
   Future<Map<String, dynamic>> createErrand({
