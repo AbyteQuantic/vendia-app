@@ -5,9 +5,11 @@
 // PRECARGADO para que el usuario revise/edite (nunca publica a ciegas).
 import 'dart:developer' as developer;
 
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:record/record.dart';
+import 'package:permission_handler/permission_handler.dart';
 
 import '../../services/api_service.dart';
 import '../../services/app_error.dart';
@@ -34,6 +36,7 @@ class _RecipeVoiceScreenState extends State<RecipeVoiceScreen> {
 
   _VoiceState _state = _VoiceState.idle;
   String _message = '';
+  bool _permanentlyDenied = false; // micrófono bloqueado → ofrecer ajustes
 
   @override
   void dispose() {
@@ -44,12 +47,31 @@ class _RecipeVoiceScreenState extends State<RecipeVoiceScreen> {
   Future<void> _start() async {
     try {
       if (!await _recorder.hasPermission()) {
+        // hasPermission() ya intentó pedir el permiso. Si sigue denegado puede
+        // ser PERMANENTE (iOS no re-pregunta) → hay que ir a los ajustes.
+        bool permanent = false;
+        if (!kIsWeb) {
+          try {
+            final st = await Permission.microphone.status;
+            permanent = st.isPermanentlyDenied || st.isRestricted;
+          } catch (_) {}
+        }
         setState(() {
           _state = _VoiceState.error;
-          _message = 'Necesitamos permiso del micrófono para dictar la receta.';
+          // En web, openAppSettings no aplica: el permiso se cambia en el
+          // navegador (Safari → aA → Ajustes del sitio / micrófono).
+          _permanentlyDenied = permanent; // solo nativo ofrece "Abrir ajustes"
+          _message = kIsWeb
+              ? 'El micrófono está bloqueado para este sitio. Actívelo en los '
+                  'ajustes de su navegador (en Safari: aA → Ajustes del sitio web '
+                  '→ Micrófono → Permitir) y vuelva a intentar. O escríbala a mano.'
+              : permanent
+                  ? 'El micrófono está bloqueado. Actívelo en los ajustes del teléfono.'
+                  : 'Necesitamos permiso del micrófono. Toque el micrófono y acepte el permiso.';
         });
         return;
       }
+      _permanentlyDenied = false;
       final config = await resolveRecordConfig(_recorder);
       final path = await recordingPath();
       await _recorder.start(config, path: path);
@@ -165,6 +187,21 @@ class _RecipeVoiceScreenState extends State<RecipeVoiceScreen> {
                       textAlign: TextAlign.center,
                       style: const TextStyle(
                           fontSize: 14, color: AppTheme.error)),
+                ],
+                // Micrófono bloqueado: única salida es habilitarlo en ajustes.
+                if (_permanentlyDenied) ...[
+                  const SizedBox(height: AppUI.s12),
+                  ElevatedButton.icon(
+                    key: const Key('recipe_voice_open_settings'),
+                    onPressed: openAppSettings,
+                    icon: const Icon(Icons.settings_rounded, size: 18),
+                    label: const Text('Abrir ajustes del teléfono'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppTheme.primary,
+                      foregroundColor: Colors.white,
+                      elevation: 0,
+                    ),
+                  ),
                 ],
                 const SizedBox(height: AppUI.s24),
                 GhostButton(
