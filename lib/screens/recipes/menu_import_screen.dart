@@ -474,7 +474,16 @@ class _DishCardState extends State<_DishCard> {
   /// cierra la hoja sin decidir (en cuyo caso no se genera nada).
   Future<String?> _askPresentation() async {
     final controller = TextEditingController();
-    const chips = ['En plato', 'Para llevar', 'En vaso', 'En bandeja'];
+    const styles = ['En plato', 'Para llevar', 'En vaso', 'En bandeja'];
+    // Acompañamientos típicos para que la muestra IA se parezca al plato real
+    // (un corrientazo: sopa, arroz, proteína, acompañamientos, jugo).
+    const sides = [
+      'Sopa', 'Arroz', 'Plátano maduro', 'Papa a la francesa',
+      'Ensalada', 'Aguacate', 'Arepa', 'Frijoles', 'Jugo',
+    ];
+    String style = '';
+    final selectedSides = <String>{};
+
     final result = await showModalBottomSheet<String>(
       context: context,
       isScrollControlled: true,
@@ -482,74 +491,111 @@ class _DishCardState extends State<_DishCard> {
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
-      builder: (ctx) => Padding(
-        padding: EdgeInsets.only(
-          left: 20,
-          right: 20,
-          top: 20,
-          bottom: MediaQuery.of(ctx).viewInsets.bottom + 20,
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text('¿Cómo se sirve el plato? (opcional)',
-                style: TextStyle(
-                    fontSize: 19, fontWeight: FontWeight.bold)),
-            const SizedBox(height: 6),
-            const Text('Así la foto de muestra queda más parecida.',
-                style: TextStyle(fontSize: 14, color: Colors.black54)),
-            const SizedBox(height: 14),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: chips
-                  .map((c) => ActionChip(
-                        label: Text(c, style: const TextStyle(fontSize: 15)),
-                        backgroundColor: AppTheme.surfaceGrey,
-                        onPressed: () => Navigator.of(ctx).pop(c),
-                      ))
-                  .toList(),
-            ),
-            const SizedBox(height: 14),
-            TextField(
-              controller: controller,
-              style: const TextStyle(fontSize: 16),
-              decoration: const InputDecoration(
-                hintText: 'O escríbalo (ej: en hoja de plátano)',
-              ),
-            ),
-            const SizedBox(height: 16),
-            Row(
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setSheet) => Padding(
+          padding: EdgeInsets.only(
+            left: 20,
+            right: 20,
+            top: 20,
+            bottom: MediaQuery.of(ctx).viewInsets.bottom + 20,
+          ),
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Expanded(
-                  child: TextButton(
-                    onPressed: () => Navigator.of(ctx).pop(''),
-                    child: const Text('Omitir',
-                        style: TextStyle(fontSize: 16)),
+                const Text('¿Cómo se sirve el plato? (opcional)',
+                    style: TextStyle(fontSize: 19, fontWeight: FontWeight.bold)),
+                const SizedBox(height: 6),
+                const Text('Entre más detalle, más parecida queda la muestra.',
+                    style: TextStyle(fontSize: 14, color: Colors.black54)),
+                const SizedBox(height: 14),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: styles
+                      .map((c) => ChoiceChip(
+                            label: Text(c, style: const TextStyle(fontSize: 15)),
+                            selected: style == c,
+                            backgroundColor: AppTheme.surfaceGrey,
+                            selectedColor: _purple.withValues(alpha: 0.18),
+                            onSelected: (_) => setSheet(() => style = style == c ? '' : c),
+                          ))
+                      .toList(),
+                ),
+                const SizedBox(height: 18),
+                const Text('¿Con qué acompañamientos?',
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+                const SizedBox(height: 4),
+                const Text('Escoja los que trae el plato.',
+                    style: TextStyle(fontSize: 13, color: Colors.black54)),
+                const SizedBox(height: 10),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: sides
+                      .map((c) => FilterChip(
+                            label: Text(c, style: const TextStyle(fontSize: 15)),
+                            selected: selectedSides.contains(c),
+                            backgroundColor: AppTheme.surfaceGrey,
+                            selectedColor: _purple.withValues(alpha: 0.18),
+                            checkmarkColor: _purple,
+                            onSelected: (sel) => setSheet(() =>
+                                sel ? selectedSides.add(c) : selectedSides.remove(c)),
+                          ))
+                      .toList(),
+                ),
+                const SizedBox(height: 16),
+                TextField(
+                  controller: controller,
+                  style: const TextStyle(fontSize: 16),
+                  decoration: const InputDecoration(
+                    hintText: 'Otro detalle (ej: en hoja de plátano)',
                   ),
                 ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: ElevatedButton(
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: _purple,
-                      foregroundColor: Colors.white,
+                const SizedBox(height: 16),
+                Row(
+                  children: [
+                    Expanded(
+                      child: TextButton(
+                        onPressed: () => Navigator.of(ctx).pop(''),
+                        child: const Text('Omitir', style: TextStyle(fontSize: 16)),
+                      ),
                     ),
-                    onPressed: () =>
-                        Navigator.of(ctx).pop(controller.text.trim()),
-                    child: const Text('Crear foto',
-                        style: TextStyle(fontSize: 16)),
-                  ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: ElevatedButton(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: _purple,
+                          foregroundColor: Colors.white,
+                        ),
+                        onPressed: () =>
+                            Navigator.of(ctx).pop(_composePresentation(style, selectedSides, controller.text.trim())),
+                        child: const Text('Crear foto', style: TextStyle(fontSize: 16)),
+                      ),
+                    ),
+                  ],
                 ),
               ],
             ),
-          ],
+          ),
         ),
       ),
     );
     controller.dispose();
     return result;
+  }
+
+  /// Compone la presentación para el prompt de IA: estilo + acompañamientos +
+  /// detalle libre, en una frase natural (ej: "En plato, con sopa, arroz y jugo").
+  String _composePresentation(String style, Set<String> sides, String extra) {
+    final parts = <String>[];
+    if (style.isNotEmpty) parts.add(style);
+    if (sides.isNotEmpty) {
+      parts.add('con ${sides.map((s) => s.toLowerCase()).join(', ')}');
+    }
+    if (extra.isNotEmpty) parts.add(extra);
+    return parts.join(', ');
   }
 
   /// Genera la descripción del plato con IA a partir del nombre + categoría

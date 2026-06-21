@@ -224,6 +224,36 @@ void main() {
       expect(find.byKey(const Key('menu_dish_enhance_0')), findsNothing);
     });
 
+    testWidgets('muestra IA: acompañamientos componen la presentación',
+        (tester) async {
+      final api = _FakeMenuApi('', imageUrl: 'https://r2.vendia.co/menu/abc.png');
+      await tester.pumpWidget(MaterialApp(
+        home: MenuImportScreen(
+          apiOverride: api,
+          scannedDishes: const [
+            {'name': 'Bandeja Paisa', 'price': 25000},
+          ],
+        ),
+      ));
+      await tester.pump();
+
+      await tester.tap(find.byKey(const Key('menu_dish_ai_photo_0')));
+      await tester.pumpAndSettle();
+      // Nueva sección de acompañamientos.
+      expect(find.text('¿Con qué acompañamientos?'), findsOneWidget);
+      await tester.tap(find.text('En plato'));
+      await tester.tap(find.text('Arroz'));
+      await tester.tap(find.text('Jugo'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Crear foto'));
+      await tester.pumpAndSettle();
+
+      // La presentación enviada a la IA incluye estilo + acompañamientos.
+      expect(api.lastGenPresentation, contains('En plato'));
+      expect(api.lastGenPresentation, contains('arroz'));
+      expect(api.lastGenPresentation, contains('jugo'));
+    });
+
     testWidgets('subir foto de galería → mejora fiel → badge "Su foto" + Mejorar',
         (tester) async {
       ImagePickerPlatform.instance = _FakePicker();
