@@ -73,6 +73,18 @@ class _ManageInventoryScreenState extends State<ManageInventoryScreen> {
         _loading = false;
       });
       _applyFilter();
+      // #9 — si venimos de "Agregar referencia" con un producto existente,
+      // abrir su edición directamente.
+      if (widget.focusProductId != null && widget.focusProductId!.isNotEmpty) {
+        final id = widget.focusProductId!;
+        final match = _products.where((p) => (p['id'] ?? '').toString() == id);
+        if (match.isNotEmpty) {
+          final p = match.first;
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted) _editProduct(p);
+          });
+        }
+      }
     } catch (e) {
       if (!mounted) return;
       setState(() {

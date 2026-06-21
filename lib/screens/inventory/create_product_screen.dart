@@ -9,6 +9,7 @@ import 'package:uuid/uuid.dart';
 import '../../database/database_service.dart';
 import '../../database/collections/local_catalog_product.dart';
 import '../recipes/recipe_studio_screen.dart';
+import 'manage_inventory_screen.dart';
 import '../../database/collections/local_product.dart';
 import '../../database/sync/pending_product_push.dart';
 import '../../database/local_product_factory.dart';
@@ -453,6 +454,30 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
     return _preparableHints.any((k) => n.contains(k));
   }
 
+  /// #9 — el producto ya existe en la tienda: ofrece editarlo (no duplicar) y
+  /// lleva a su edición en el inventario.
+  Future<void> _confirmEditExisting(String name, String uuid) async {
+    final go = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Ya tiene este producto'),
+        content: Text('«$name» ya está en su inventario. ¿Quiere editarlo en vez de crear otro?'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Crear otro')),
+          ElevatedButton(
+            key: const Key('edit_existing_cta'),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Editar'),
+          ),
+        ],
+      ),
+    );
+    if (go == true && mounted) {
+      Navigator.of(context).pushReplacement(
+          MaterialPageRoute(builder: (_) => ManageInventoryScreen(focusProductId: uuid)));
+    }
+  }
+
   Widget _recipeSuggestionCard() {
     return Container(
       margin: const EdgeInsets.only(top: 12),
@@ -544,6 +569,7 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
             brand: '',
             imageUrl: p.imageUrl,
             isLocal: true,
+            productUuid: p.uuid, // para enrutar a EDITAR este producto propio
           ));
         }
         if (matches.length >= 6) break;
@@ -666,6 +692,14 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
   }
 
   void _selectSuggestion(_ProductSuggestion s) {
+    // #9 — si ya EXISTE en esta tienda (sugerencia local), no duplicar: ofrecer
+    // editarlo y llevar a su edición.
+    if (s.isLocal && s.productUuid != null && s.productUuid!.isNotEmpty) {
+      _removeOverlay();
+      setState(() => _suggestions = []);
+      _confirmEditExisting(s.name, s.productUuid!);
+      return;
+    }
     final fullName = s.brand.isNotEmpty ? '${s.name} (${s.brand})' : s.name;
     _nameCtrl.text = fullName;
     _removeOverlay();
@@ -2418,6 +2452,7 @@ class _ProductSuggestion {
   final String? content;
   final String? barcode;
   final String? sku; // SKU normalizado del catálogo (otra tienda) — Spec 077/068
+  final String? productUuid; // uuid del producto PROPIO (sugerencia local) → editar
   final String source; // "off", "user", or "local"
   final List<String> images; // accepted catalog images (max 3)
 
@@ -2430,6 +2465,7 @@ class _ProductSuggestion {
     this.content,
     this.barcode,
     this.sku,
+    this.productUuid,
     this.source = 'off',
     this.images = const [],
   });
