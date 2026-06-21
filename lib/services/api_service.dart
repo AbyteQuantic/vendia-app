@@ -866,6 +866,7 @@ class ApiService {
     required double longitude,
     double accuracy = 0,
     String references = '',
+    String city = '',
   }) async {
     try {
       final r = await _dio.patch('/api/v1/store/location', data: {
@@ -873,6 +874,7 @@ class ApiService {
         'longitude': longitude,
         'accuracy': accuracy,
         'references': references,
+        'city': city,
       });
       return _extractData(r);
     } on DioException catch (e) {

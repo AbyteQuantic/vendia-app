@@ -313,12 +313,14 @@ class _BusinessProfileScreenState extends State<BusinessProfileScreen> {
         });
       }
 
-      // Reverse geocode to fill address
+      // Reverse geocode NATIVO (móvil) → dirección + ciudad (locality).
+      String localCity = '';
       try {
         final placemarks = await placemarkFromCoordinates(
             pos.latitude, pos.longitude);
         if (placemarks.isNotEmpty && mounted) {
           final p = placemarks.first;
+          localCity = p.locality ?? '';
           final addr = [p.street, p.locality, p.administrativeArea]
               .where((s) => s != null && s.isNotEmpty)
               .join(', ');
@@ -328,14 +330,15 @@ class _BusinessProfileScreenState extends State<BusinessProfileScreen> {
         }
       } catch (_) {} // geocoding may fail, GPS coords still saved
 
-      // Spec 072 — persiste ubicación + deriva la CIUDAD server-side (alimenta
-      // el scraping por ciudad). Best-effort: si falla, los coords ya quedan.
+      // Spec 072 — persiste ubicación + ciudad. La ciudad del geocoder nativo
+      // (móvil) es la primaria; si vino vacía (web), el backend usa Photon.
       String city = '';
       try {
         final res = await ApiService(AuthService()).updateStoreLocation(
           latitude: pos.latitude,
           longitude: pos.longitude,
           accuracy: pos.accuracy,
+          city: localCity,
         );
         city = (res['city'] ?? '').toString();
       } catch (_) {}
