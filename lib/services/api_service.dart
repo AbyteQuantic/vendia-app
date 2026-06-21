@@ -859,6 +859,27 @@ class ApiService {
     }
   }
 
+  /// Spec 072 — guarda la ubicación del negocio (lat/long + precisión +
+  /// referencias) y deriva la ciudad server-side. Devuelve {city, address}.
+  Future<Map<String, dynamic>> updateStoreLocation({
+    required double latitude,
+    required double longitude,
+    double accuracy = 0,
+    String references = '',
+  }) async {
+    try {
+      final r = await _dio.patch('/api/v1/store/location', data: {
+        'latitude': latitude,
+        'longitude': longitude,
+        'accuracy': accuracy,
+        'references': references,
+      });
+      return _extractData(r);
+    } on DioException catch (e) {
+      throw AppError.fromDioException(e);
+    }
+  }
+
   /// Spec 076 — alistar insumos del día: menú de la fecha → recetas → insumos
   /// por-porción. Devuelve {date, weekday, dishes:[...]}.
   Future<Map<String, dynamic>> fetchSuppliesPrepList({required String date}) async {

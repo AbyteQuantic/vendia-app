@@ -328,7 +328,21 @@ class _BusinessProfileScreenState extends State<BusinessProfileScreen> {
         }
       } catch (_) {} // geocoding may fail, GPS coords still saved
 
-      if (mounted) _showSnack('Ubicacion capturada');
+      // Spec 072 — persiste ubicación + deriva la CIUDAD server-side (alimenta
+      // el scraping por ciudad). Best-effort: si falla, los coords ya quedan.
+      String city = '';
+      try {
+        final res = await ApiService(AuthService()).updateStoreLocation(
+          latitude: pos.latitude,
+          longitude: pos.longitude,
+          accuracy: pos.accuracy,
+        );
+        city = (res['city'] ?? '').toString();
+      } catch (_) {}
+
+      if (mounted) {
+        _showSnack(city.isNotEmpty ? 'Ubicación guardada · $city' : 'Ubicación capturada');
+      }
     } catch (e) {
       if (mounted) _showSnack('Error al obtener ubicacion: $e', isError: true);
     } finally {
