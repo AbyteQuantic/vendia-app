@@ -8,7 +8,9 @@ import '../../models/ingredient.dart';
 import '../../services/api_service.dart';
 import '../../services/auth_service.dart';
 import '../../theme/app_theme.dart';
+import '../../theme/app_ui.dart';
 import 'ingredient_form_screen.dart';
+import 'supplies_prep_screen.dart';
 
 /// Pantalla de gestión de insumos — materia prima del negocio (Feature 001).
 ///
@@ -162,32 +164,26 @@ class _IngredientsScreenState extends State<IngredientsScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppTheme.background,
+      // Spec 076 — densidad AppUI como los otros módulos.
+      backgroundColor: AppUI.pageBg,
       appBar: AppBar(
-        backgroundColor: AppTheme.background,
+        backgroundColor: AppUI.pageBg,
+        surfaceTintColor: Colors.transparent,
         elevation: 0,
+        scrolledUnderElevation: 0,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back_rounded,
-              color: AppTheme.textPrimary, size: 28),
+          icon: const Icon(Icons.arrow_back_rounded, color: AppUI.ink, size: 26),
           tooltip: 'Volver',
           onPressed: () {
             HapticFeedback.lightImpact();
             Navigator.of(context).pop();
           },
         ),
-        title: const Text(
-          'Insumos',
-          style: TextStyle(
-            fontSize: 22,
-            fontWeight: FontWeight.bold,
-            color: AppTheme.textPrimary,
-          ),
-        ),
+        title: const Text('Insumos', style: AppUI.title),
         actions: [
           IconButton(
             key: const Key('btn_add_ingredient'),
-            icon: const Icon(Icons.add_rounded,
-                color: AppTheme.primary, size: 30),
+            icon: const Icon(Icons.add_rounded, color: AppTheme.primary, size: 28),
             tooltip: 'Agregar insumo',
             onPressed: () => _openForm(),
           ),
@@ -210,14 +206,60 @@ class _IngredientsScreenState extends State<IngredientsScreen> {
     return RefreshIndicator(
       onRefresh: _load,
       child: ListView.separated(
-        padding: const EdgeInsets.fromLTRB(20, 20, 20, 24),
+        padding: const EdgeInsets.fromLTRB(AppUI.s16, AppUI.s12, AppUI.s16, AppUI.s24),
         physics: const AlwaysScrollableScrollPhysics(),
-        itemCount: _ingredients.length,
-        separatorBuilder: (_, __) => const SizedBox(height: 12),
-        itemBuilder: (_, i) => _IngredientCard(
-          ingredient: _ingredients[i],
-          onEdit: () => _openForm(existing: _ingredients[i]),
-          onDelete: () => _confirmDelete(_ingredients[i]),
+        itemCount: _ingredients.length + 1,
+        separatorBuilder: (_, __) => const SizedBox(height: AppUI.s8),
+        itemBuilder: (_, i) {
+          if (i == 0) return const _PrepDayBanner();
+          final ing = _ingredients[i - 1];
+          return _IngredientCard(
+            ingredient: ing,
+            onEdit: () => _openForm(existing: ing),
+            onDelete: () => _confirmDelete(ing),
+          );
+        },
+      ),
+    );
+  }
+}
+
+/// Spec 076 — atajo destacado: alistar los insumos según el menú del día.
+class _PrepDayBanner extends StatelessWidget {
+  const _PrepDayBanner();
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: AppUI.s8),
+      child: InkWell(
+        key: const Key('btn_prep_day'),
+        borderRadius: BorderRadius.circular(12),
+        onTap: () {
+          HapticFeedback.lightImpact();
+          Navigator.of(context).push(MaterialPageRoute(
+              builder: (_) => const SuppliesPrepScreen()));
+        },
+        child: Container(
+          padding: const EdgeInsets.all(AppUI.s16),
+          decoration: BoxDecoration(
+            color: AppTheme.primary.withValues(alpha: 0.08),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: AppTheme.primary.withValues(alpha: 0.25)),
+          ),
+          child: const Row(children: [
+            Icon(Icons.event_available_rounded, color: AppTheme.primary, size: 24),
+            SizedBox(width: AppUI.s12),
+            Expanded(
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text('Alistar del día', style: AppUI.bodyStrong),
+                SizedBox(height: 2),
+                Text('Vea qué insumos necesita hoy o mañana según su menú.',
+                    style: AppUI.bodySoft),
+              ]),
+            ),
+            Icon(Icons.chevron_right_rounded, color: AppUI.inkSoft),
+          ]),
         ),
       ),
     );
@@ -245,13 +287,14 @@ class _IngredientCard extends StatelessWidget {
     return GestureDetector(
       onTap: onEdit,
       child: Container(
-        padding: const EdgeInsets.all(20),
+        padding: const EdgeInsets.all(AppUI.s12),
         decoration: BoxDecoration(
-          color: AppTheme.surfaceGrey,
-          borderRadius: BorderRadius.circular(24),
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(10),
           border: low
-              ? Border.all(color: AppTheme.warning, width: 2)
-              : Border.all(color: AppTheme.borderColor, width: 1),
+              ? Border.all(color: AppTheme.warning, width: 1.5)
+              : Border.all(color: AppUI.border, width: 1),
+          boxShadow: AppUI.shadow,
         ),
         child: Row(
           children: [
@@ -263,18 +306,15 @@ class _IngredientCard extends StatelessWidget {
                     ingredient.name,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      fontSize: 20,
-                      fontWeight: FontWeight.w600,
-                      color: AppTheme.textPrimary,
-                    ),
+                    style: AppUI.bodyStrong,
                   ),
-                  const SizedBox(height: 4),
+                  const SizedBox(height: 2),
                   Text(
                     '${_trim(ingredient.stock)} ${ingredient.unitLabel.toLowerCase()}',
                     style: const TextStyle(
-                      fontSize: 18,
-                      color: AppTheme.textSecondary,
+                      fontSize: 14,
+                      color: AppUI.inkSoft,
+                      fontFeatures: [FontFeature.tabularFigures()],
                     ),
                   ),
                   if (low) ...[

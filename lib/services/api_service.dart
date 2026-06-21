@@ -859,6 +859,18 @@ class ApiService {
     }
   }
 
+  /// Spec 076 — alistar insumos del día: menú de la fecha → recetas → insumos
+  /// por-porción. Devuelve {date, weekday, dishes:[...]}.
+  Future<Map<String, dynamic>> fetchSuppliesPrepList({required String date}) async {
+    try {
+      final r = await _dio.get('/api/v1/supplies/prep-list',
+          queryParameters: {'date': date});
+      return _extractData(r); // data es Map {date, weekday, dishes}
+    } on DioException catch (e) {
+      throw AppError.fromDioException(e);
+    }
+  }
+
   /// Spec 075 — proveedores cercanos a la tienda (descubrimiento por cercanía).
   /// Lista ordenada por distancia. OJO: NO usar _extractData (devuelve LISTA).
   Future<List<Map<String, dynamic>>> fetchNearbySuppliers({double radiusKm = 5}) async {
