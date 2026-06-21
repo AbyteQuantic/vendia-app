@@ -141,6 +141,20 @@ void main() {
 
       expect(ctrl.activeCart.length, equals(2));
     });
+
+    // Spec 077 — la venta mixta (producto/almuerzo + SERVICIO) en el mismo
+    // carrito suma bien el total y compone 2 líneas (la de servicio marcada).
+    test('producto ×2 + servicio: total = 2×precio + servicio, 2 líneas', () {
+      final p = CartController.mockProducts[0];
+      ctrl.addProduct(p);
+      ctrl.addProduct(p); // qty 2
+      ctrl.addServiceCharge(description: 'Domicilio', unitPrice: 5000);
+
+      expect(ctrl.activeCart.length, equals(2));
+      final servicio = ctrl.activeCart.firstWhere((i) => i.isService);
+      expect(servicio.customUnitPrice, equals(5000));
+      expect(ctrl.activeTotal, equals(p.price * 2 + 5000));
+    });
   });
 
   // ── Incrementar / Decrementar ──────────────────────────────────────────────
