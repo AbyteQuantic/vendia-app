@@ -25,7 +25,7 @@ import '../../widgets/supplier_price_editor.dart';
     case 'scraped_chain':
       return (label: 'Cadena', color: AppTheme.warning);
     case 'ultima_compra':
-      return (label: 'Últ. compra', color: AppTheme.warning);
+      return (label: 'Tu costo', color: AppTheme.warning);
     default:
       return (label: 'Sin precio', color: AppUI.inkSoft);
   }
