@@ -44,7 +44,7 @@ void main() {
     expect(find.byKey(const Key('shopping_list')), findsOneWidget);
     expect(find.text('Arroz'), findsOneWidget);
     expect(find.textContaining('Faltan 3 kg'), findsOneWidget);
-    expect(find.textContaining('por kg'), findsOneWidget); // desglose del cálculo
+    expect(find.textContaining('aproximado'), findsWidgets); // sin empaque → aproximado
     expect(find.text('Últ. compra'), findsOneWidget); // badge de origen
     expect(find.text('\$8.400'), findsWidgets); // costo + total con formato COP
     expect(find.byKey(const Key('btn_send_list')), findsOneWidget); // enviar por WhatsApp

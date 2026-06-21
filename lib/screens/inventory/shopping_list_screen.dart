@@ -225,13 +225,27 @@ class _ShoppingListScreenState extends State<ShoppingListScreen> {
   Widget _itemRow(Map<String, dynamic> it) {
     final shortfall = (it['shortfall'] as num?)?.toDouble() ?? 0;
     final cost = (it['estimated_cost'] as num?)?.toDouble() ?? 0;
-    final unitPrice = (it['price_per_unit'] as num?)?.toDouble() ?? 0;
     final unit = (it['unit'] ?? '').toString();
+    final packs = (it['packs'] as num?)?.toInt();
+    final packLabel = (it['pack_label'] ?? '').toString();
+    final packUnit = (it['pack_unit'] ?? '').toString();
+    final leftover = (it['leftover'] as num?)?.toDouble() ?? 0;
+    final packUnknown = it['pack_unknown'] == true;
     final src = _sourceBadge((it['price_source'] ?? '').toString());
-    // Explica el cálculo: cantidad × precio unitario = total.
-    final calc = unitPrice > 0
-        ? 'Faltan ${_fmt(shortfall)} $unit × ${formatCOP(unitPrice)} por $unit'
-        : 'Faltan ${_fmt(shortfall)} $unit · sin precio aún';
+    // COMPRA REAL: nadie vende fracciones. Si se conoce el empaque, se compra el
+    // empaque entero y queda un sobrante reservado; si no, costo aproximado.
+    final String calc;
+    final String? leftoverNote;
+    if (packs != null && !packUnknown) {
+      final pres = packLabel.isNotEmpty ? packLabel : 'empaque';
+      calc = 'Compre $packs ${packs == 1 ? pres : '${pres}s'}';
+      leftoverNote = leftover > 0
+          ? 'Le sobran ~${_fmt(leftover)} ${packUnit.isNotEmpty ? packUnit : unit} para la próxima (estimado)'
+          : null;
+    } else {
+      calc = 'Faltan ${_fmt(shortfall)} $unit · costo aproximado';
+      leftoverNote = 'Sin presentación conocida; confirme con su proveedor.';
+    }
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: AppUI.s12, vertical: 12),
       child: Column(
@@ -240,7 +254,7 @@ class _ShoppingListScreenState extends State<ShoppingListScreen> {
           Row(children: [
             Expanded(child: Text(it['name'].toString(), maxLines: 1, overflow: TextOverflow.ellipsis, style: AppUI.bodyStrong)),
             const SizedBox(width: AppUI.s8),
-            // Costo total con moneda COP.
+            // Costo del empaque entero con moneda COP.
             Text(formatCOP(cost),
                 style: const TextStyle(
                     fontSize: 15, fontWeight: FontWeight.w700,
@@ -248,8 +262,11 @@ class _ShoppingListScreenState extends State<ShoppingListScreen> {
                     fontFeatures: [FontFeature.tabularFigures()])),
           ]),
           const SizedBox(height: 3),
-          // Desglose del cálculo (por qué ese valor).
-          Text(calc, style: AppUI.bodySoft),
+          Text(calc, style: AppUI.bodyStrong.copyWith(fontSize: 13)),
+          if (leftoverNote != null) ...[
+            const SizedBox(height: 1),
+            Text(leftoverNote, style: AppUI.bodySoft),
+          ],
           const SizedBox(height: 4),
           Row(children: [
             MinimalBadge(label: src.label, color: src.color),
