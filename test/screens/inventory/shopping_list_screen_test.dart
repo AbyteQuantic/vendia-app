@@ -42,8 +42,9 @@ void main() {
     expect(find.byKey(const Key('shopping_list')), findsOneWidget);
     expect(find.text('Arroz'), findsOneWidget);
     expect(find.textContaining('Faltan 3 kg'), findsOneWidget);
-    expect(find.text('Estimado'), findsWidgets);
-    expect(find.text('\$8400'), findsWidgets); // costo + total
+    expect(find.text('Últ. compra'), findsOneWidget); // badge de origen
+    expect(find.text('\$8.400'), findsWidgets); // costo + total con formato COP
+    expect(find.byKey(const Key('btn_send_list')), findsOneWidget); // enviar por WhatsApp
     expect(find.byKey(const Key('btn_nearby_from_shopping')), findsOneWidget);
     // los needs se enviaron al backend
     expect(api.sentNeeds!.first['ingredient_id'], 'arroz');

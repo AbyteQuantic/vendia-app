@@ -5,6 +5,7 @@ import '../../theme/app_ui.dart';
 import '../../services/api_service.dart';
 import '../../services/auth_service.dart';
 import '../../services/app_error.dart';
+import '../../widgets/use_my_location_button.dart';
 import 'supplier_catalog_screen.dart';
 
 /// Mercado cercano (Spec 075 F2): el tendero ve los proveedores con ubicación
@@ -117,10 +118,16 @@ class _NearbySuppliersScreenState extends State<NearbySuppliersScreen> {
   Widget _body() {
     if (_loading) return const Center(child: CircularProgressIndicator());
     if (_error != null) {
+      // Si falta la ubicación, el empty-state es ACCIONABLE: capturar GPS aquí
+      // mismo y recargar (no solo "Reintentar" en loop).
+      final needsLocation = _error!.toLowerCase().contains('ubicación') ||
+          _error!.toLowerCase().contains('ubicacion');
       return _Centered(
         icon: Icons.location_off_rounded,
         title: _error!,
-        action: TextButton(onPressed: _load, child: const Text('Reintentar')),
+        action: needsLocation
+            ? UseMyLocationButton(onDone: _load)
+            : TextButton(onPressed: _load, child: const Text('Reintentar')),
       );
     }
     if (_suppliers.isEmpty) {

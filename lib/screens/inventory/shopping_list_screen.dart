@@ -1,12 +1,32 @@
 // Spec: specs/077-compra-inteligente-insumos/spec.md
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../../theme/app_theme.dart';
 import '../../theme/app_ui.dart';
 import '../../services/api_service.dart';
 import '../../services/auth_service.dart';
 import '../../services/app_error.dart';
+import '../../utils/format_cop.dart';
 import '../suppliers/nearby_suppliers_screen.dart';
+
+/// Etiqueta + color del ORIGEN de un precio (Spec 077): el tenant ve de qué
+/// mercado viene cada precio y si es estimado.
+({String label, Color color}) _sourceBadge(String source) {
+  switch (source) {
+    case 'vendia_catalog':
+      return (label: 'VendIA', color: AppTheme.primary);
+    case 'manual':
+      return (label: 'Mi precio', color: AppTheme.success);
+    case 'invoice_ocr':
+      return (label: 'Factura', color: AppUI.inkSoft);
+    case 'scraped_chain':
+      return (label: 'Cadena', color: AppTheme.warning);
+    case 'ultima_compra':
+      return (label: 'Últ. compra', color: AppTheme.warning);
+    default:
+      return (label: 'Sin precio', color: AppUI.inkSoft);
+  }
+}
 
 /// Comprar lo que falta (Spec 077 F1): de los insumos del menú menos el stock,
 /// muestra el faltante + precio sugerido (con su origen) + costo estimado, y
@@ -60,12 +80,20 @@ class _ShoppingListScreenState extends State<ShoppingListScreen> {
   }
 
   String _buildMessage() {
-    final b = StringBuffer('Necesito comprar:\n');
+    final b = StringBuffer('Buenos días, necesito comprar:\n');
     for (final it in _items) {
       final n = (it['shortfall'] as num?)?.toDouble() ?? 0;
       b.writeln('• ${it['name']} — ${_fmt(n)} ${it['unit']}');
     }
+    b.writeln('\nTotal aprox: ${formatCOP(_total)}');
     return b.toString();
+  }
+
+  /// Abre WhatsApp con la lista ya escrita para elegir el contacto a quién
+  /// enviarla (proveedor, empleado, etc.). Sin número → WhatsApp deja elegir.
+  Future<void> _sendByWhatsApp() async {
+    final url = 'https://wa.me/?text=${Uri.encodeComponent(_buildMessage())}';
+    await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
   }
 
   String _fmt(double v) =>
@@ -140,51 +168,41 @@ class _ShoppingListScreenState extends State<ShoppingListScreen> {
   Widget _itemRow(Map<String, dynamic> it) {
     final shortfall = (it['shortfall'] as num?)?.toDouble() ?? 0;
     final cost = (it['estimated_cost'] as num?)?.toDouble() ?? 0;
-    final estimate = it['is_estimate'] == true;
+    final src = _sourceBadge((it['price_source'] ?? '').toString());
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: AppUI.s12, vertical: 11),
-      child: Row(children: [
-        Expanded(
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(it['name'].toString(), style: AppUI.bodyStrong),
-            const SizedBox(height: 2),
-            Row(children: [
-              Text('Faltan ${_fmt(shortfall)} ${it['unit']}', style: AppUI.bodySoft),
-              if (estimate) ...[
-                const SizedBox(width: AppUI.s8),
-                const MinimalBadge(label: 'Estimado', color: AppTheme.warning),
-              ],
-            ]),
+      padding: const EdgeInsets.symmetric(horizontal: AppUI.s12, vertical: 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(children: [
+            Expanded(child: Text(it['name'].toString(), maxLines: 1, overflow: TextOverflow.ellipsis, style: AppUI.bodyStrong)),
+            const SizedBox(width: AppUI.s8),
+            // Costo con moneda COP + origen del precio (de qué mercado viene).
+            Text(formatCOP(cost),
+                style: const TextStyle(
+                    fontSize: 15, fontWeight: FontWeight.w700,
+                    color: AppTheme.primary,
+                    fontFeatures: [FontFeature.tabularFigures()])),
           ]),
-        ),
-        Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
-          Text('\$${cost.toStringAsFixed(0)}',
-              style: const TextStyle(
-                  fontSize: 15, fontWeight: FontWeight.w700,
-                  color: AppTheme.primary,
-                  fontFeatures: [FontFeature.tabularFigures()])),
-          Row(mainAxisSize: MainAxisSize.min, children: [
+          const SizedBox(height: 4),
+          Row(children: [
+            Text('Faltan ${_fmt(shortfall)} ${it['unit']}', style: AppUI.bodySoft),
+            const SizedBox(width: AppUI.s8),
+            MinimalBadge(label: src.label, color: src.color),
+            const Spacer(),
+            // Una sola acción clara para explorar mercados/precios por producto.
             InkWell(
-              key: Key('chains_${it['ingredient_id']}'),
+              key: Key('options_${it['ingredient_id']}'),
               onTap: () => _showChainPrices(it),
               child: const Padding(
-                padding: EdgeInsets.only(top: 2, right: 10),
-                child: Text('En cadenas',
-                    style: TextStyle(fontSize: 11, color: AppUI.inkSoft, decoration: TextDecoration.underline)),
-              ),
-            ),
-            InkWell(
-              key: Key('set_price_${it['ingredient_id']}'),
-              onTap: () => _editPrice(it),
-              child: const Padding(
-                padding: EdgeInsets.only(top: 2),
-                child: Text('Tengo mejor precio',
-                    style: TextStyle(fontSize: 11, color: AppTheme.primary, decoration: TextDecoration.underline)),
+                padding: EdgeInsets.all(2),
+                child: Text('Ver opciones',
+                    style: TextStyle(fontSize: 12, color: AppTheme.primary, decoration: TextDecoration.underline)),
               ),
             ),
           ]),
-        ]),
-      ]),
+        ],
+      ),
     );
   }
 
@@ -205,8 +223,10 @@ class _ShoppingListScreenState extends State<ShoppingListScreen> {
           return Padding(
             padding: pad,
             child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text('${it['name']} · en cadenas', style: AppUI.bodyStrong),
-              const SizedBox(height: AppUI.s8),
+              Text('${it['name']} · opciones de precio', style: AppUI.bodyStrong),
+              const SizedBox(height: AppUI.s4),
+              const Text('Precios en cadenas (referencia)', style: AppUI.sectionLabel),
+              const SizedBox(height: 4),
               if (m.isEmpty)
                 const Text('Aún no tenemos precios de cadenas para este insumo.', style: AppUI.bodySoft)
               else
@@ -221,7 +241,7 @@ class _ShoppingListScreenState extends State<ShoppingListScreen> {
                         MinimalBadge(label: 'bajó ${pct.toStringAsFixed(0)}%', color: AppTheme.success),
                         const SizedBox(width: AppUI.s8),
                       ],
-                      Text('\$${((c['price'] as num?)?.toDouble() ?? 0).toStringAsFixed(0)}',
+                      Text(formatCOP((c['price'] as num?)?.toDouble() ?? 0),
                           style: const TextStyle(fontWeight: FontWeight.w700, color: AppTheme.primary,
                               fontFeatures: [FontFeature.tabularFigures()])),
                     ]),
@@ -230,6 +250,19 @@ class _ShoppingListScreenState extends State<ShoppingListScreen> {
               const SizedBox(height: AppUI.s8),
               const Text('Precios de referencia de catálogos en línea; pueden variar.',
                   style: TextStyle(fontSize: 11, color: AppUI.inkSoft)),
+              const SizedBox(height: AppUI.s12),
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  key: Key('register_price_${it['ingredient_id']}'),
+                  onPressed: () {
+                    Navigator.pop(ctx);
+                    _editPrice(it);
+                  },
+                  icon: const Icon(Icons.sell_rounded, size: 18),
+                  label: const Text('Registrar mi precio de proveedor'),
+                ),
+              ),
             ]),
           );
         },
@@ -296,45 +329,42 @@ class _ShoppingListScreenState extends State<ShoppingListScreen> {
         child: Column(mainAxisSize: MainAxisSize.min, children: [
           Row(children: [
             const Expanded(child: Text('Total estimado', style: AppUI.bodyStrong)),
-            Text('\$${_total.toStringAsFixed(0)}',
+            Text(formatCOP(_total),
                 style: const TextStyle(
                     fontSize: 18, fontWeight: FontWeight.w800,
                     color: AppTheme.primary,
                     fontFeatures: [FontFeature.tabularFigures()])),
           ]),
           const SizedBox(height: AppUI.s8),
-          Row(children: [
-            Expanded(
-              child: OutlinedButton.icon(
-                key: const Key('btn_share_list'),
-                onPressed: () {
-                  Clipboard.setData(ClipboardData(text: _buildMessage()));
-                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-                      content: Text('Lista copiada. Péguela en WhatsApp.'),
-                      backgroundColor: AppTheme.success));
-                },
-                icon: const Icon(Icons.copy_rounded, size: 18),
-                label: const Text('Copiar lista'),
+          // Acción primaria única (sin sobreposición): enviar la lista por
+          // WhatsApp (abre WhatsApp con el mensaje listo para elegir contacto).
+          SizedBox(
+            width: double.infinity,
+            height: 48,
+            child: ElevatedButton.icon(
+              key: const Key('btn_send_list'),
+              onPressed: _sendByWhatsApp,
+              icon: const Icon(Icons.chat_rounded, size: 18),
+              label: const Text('Enviar por WhatsApp'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF25D366),
+                foregroundColor: Colors.white,
+                elevation: 0,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppUI.radiusSm)),
               ),
             ),
-            const SizedBox(width: AppUI.s8),
-            Expanded(
-              child: ElevatedButton.icon(
-                key: const Key('btn_nearby_from_shopping'),
-                onPressed: () => Navigator.of(context).push(MaterialPageRoute(
-                    builder: (_) => const NearbySuppliersScreen())),
-                icon: const Icon(Icons.storefront_rounded, size: 18),
-                label: const Text('Proveedores cerca'),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: AppTheme.primary,
-                  foregroundColor: Colors.white,
-                  elevation: 0,
-                  shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(AppUI.radiusSm)),
-                ),
-              ),
+          ),
+          const SizedBox(height: 6),
+          SizedBox(
+            width: double.infinity,
+            child: TextButton.icon(
+              key: const Key('btn_nearby_from_shopping'),
+              onPressed: () => Navigator.of(context).push(MaterialPageRoute(
+                  builder: (_) => const NearbySuppliersScreen())),
+              icon: const Icon(Icons.storefront_rounded, size: 18, color: AppTheme.primary),
+              label: const Text('Ver proveedores cerca', style: TextStyle(color: AppTheme.primary)),
             ),
-          ]),
+          ),
         ]),
       ),
     );
