@@ -549,6 +549,7 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
               presentation: map['presentation'] as String?,
               content: map['content'] as String?,
               barcode: map['barcode'] as String?,
+              sku: map['sku'] as String?, // SKU normalizado de otra tienda
               source: map['source'] as String? ?? 'off',
               images: imagesList,
             );
@@ -638,8 +639,13 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
         _contentCtrl.text = s.content!;
       }
 
-      // Auto-fill barcode/SKU
-      if (s.barcode != null && s.barcode!.isNotEmpty) {
+      // Auto-fill SKU: si la referencia ya está normalizada en el catálogo
+      // (otra tienda) con un SKU válido, ese SKU manda; si no, el código de
+      // barras. Así el tenant hereda la referencia normalizada (Spec 077/068).
+      final normalizedSku = (s.sku != null && s.sku!.trim().isNotEmpty) ? s.sku!.trim() : null;
+      if (normalizedSku != null) {
+        _skuCtrl.text = normalizedSku;
+      } else if (s.barcode != null && s.barcode!.isNotEmpty) {
         _skuCtrl.text = s.barcode!;
       }
 
@@ -2357,6 +2363,7 @@ class _ProductSuggestion {
   final String? presentation;
   final String? content;
   final String? barcode;
+  final String? sku; // SKU normalizado del catálogo (otra tienda) — Spec 077/068
   final String source; // "off", "user", or "local"
   final List<String> images; // accepted catalog images (max 3)
 
@@ -2368,6 +2375,7 @@ class _ProductSuggestion {
     this.presentation,
     this.content,
     this.barcode,
+    this.sku,
     this.source = 'off',
     this.images = const [],
   });
