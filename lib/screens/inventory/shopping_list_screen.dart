@@ -168,7 +168,13 @@ class _ShoppingListScreenState extends State<ShoppingListScreen> {
   Widget _itemRow(Map<String, dynamic> it) {
     final shortfall = (it['shortfall'] as num?)?.toDouble() ?? 0;
     final cost = (it['estimated_cost'] as num?)?.toDouble() ?? 0;
+    final unitPrice = (it['price_per_unit'] as num?)?.toDouble() ?? 0;
+    final unit = (it['unit'] ?? '').toString();
     final src = _sourceBadge((it['price_source'] ?? '').toString());
+    // Explica el cálculo: cantidad × precio unitario = total.
+    final calc = unitPrice > 0
+        ? 'Faltan ${_fmt(shortfall)} $unit × ${formatCOP(unitPrice)} por $unit'
+        : 'Faltan ${_fmt(shortfall)} $unit · sin precio aún';
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: AppUI.s12, vertical: 12),
       child: Column(
@@ -177,17 +183,18 @@ class _ShoppingListScreenState extends State<ShoppingListScreen> {
           Row(children: [
             Expanded(child: Text(it['name'].toString(), maxLines: 1, overflow: TextOverflow.ellipsis, style: AppUI.bodyStrong)),
             const SizedBox(width: AppUI.s8),
-            // Costo con moneda COP + origen del precio (de qué mercado viene).
+            // Costo total con moneda COP.
             Text(formatCOP(cost),
                 style: const TextStyle(
                     fontSize: 15, fontWeight: FontWeight.w700,
                     color: AppTheme.primary,
                     fontFeatures: [FontFeature.tabularFigures()])),
           ]),
+          const SizedBox(height: 3),
+          // Desglose del cálculo (por qué ese valor).
+          Text(calc, style: AppUI.bodySoft),
           const SizedBox(height: 4),
           Row(children: [
-            Text('Faltan ${_fmt(shortfall)} ${it['unit']}', style: AppUI.bodySoft),
-            const SizedBox(width: AppUI.s8),
             MinimalBadge(label: src.label, color: src.color),
             const Spacer(),
             // Una sola acción clara para explorar mercados/precios por producto.
@@ -233,17 +240,29 @@ class _ShoppingListScreenState extends State<ShoppingListScreen> {
                 ...m.map((c) {
                   final dropped = c['dropped'] == true;
                   final pct = (c['drop_pct'] as num?)?.toDouble() ?? 0;
+                  final rawName = (c['raw_name'] ?? '').toString();
                   return Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 6),
-                    child: Row(children: [
-                      Expanded(child: Text((c['chain'] ?? '').toString().toUpperCase(), style: AppUI.bodyStrong)),
-                      if (dropped) ...[
-                        MinimalBadge(label: 'bajó ${pct.toStringAsFixed(0)}%', color: AppTheme.success),
-                        const SizedBox(width: AppUI.s8),
-                      ],
-                      Text(formatCOP((c['price'] as num?)?.toDouble() ?? 0),
-                          style: const TextStyle(fontWeight: FontWeight.w700, color: AppTheme.primary,
-                              fontFeatures: [FontFeature.tabularFigures()])),
+                    padding: const EdgeInsets.symmetric(vertical: 7),
+                    child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      Expanded(
+                        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                          // Producto + presentación (deja claro si es por unidad, kg o libra).
+                          Text(rawName.isNotEmpty ? rawName : (c['chain'] ?? '').toString(),
+                              maxLines: 2, overflow: TextOverflow.ellipsis, style: AppUI.bodyStrong),
+                          const SizedBox(height: 2),
+                          MinimalBadge(label: (c['chain'] ?? '').toString().toUpperCase(), color: AppTheme.primary),
+                        ]),
+                      ),
+                      const SizedBox(width: AppUI.s8),
+                      Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
+                        Text(formatCOP((c['price'] as num?)?.toDouble() ?? 0),
+                            style: const TextStyle(fontWeight: FontWeight.w700, color: AppTheme.primary,
+                                fontFeatures: [FontFeature.tabularFigures()])),
+                        if (dropped) ...[
+                          const SizedBox(height: 2),
+                          MinimalBadge(label: 'bajó ${pct.toStringAsFixed(0)}%', color: AppTheme.success),
+                        ],
+                      ]),
                     ]),
                   );
                 }),
