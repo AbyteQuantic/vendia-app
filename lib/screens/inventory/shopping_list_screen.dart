@@ -163,17 +163,77 @@ class _ShoppingListScreenState extends State<ShoppingListScreen> {
                   fontSize: 15, fontWeight: FontWeight.w700,
                   color: AppTheme.primary,
                   fontFeatures: [FontFeature.tabularFigures()])),
-          InkWell(
-            key: Key('set_price_${it['ingredient_id']}'),
-            onTap: () => _editPrice(it),
-            child: const Padding(
-              padding: EdgeInsets.only(top: 2),
-              child: Text('Tengo mejor precio',
-                  style: TextStyle(fontSize: 11, color: AppTheme.primary, decoration: TextDecoration.underline)),
+          Row(mainAxisSize: MainAxisSize.min, children: [
+            InkWell(
+              key: Key('chains_${it['ingredient_id']}'),
+              onTap: () => _showChainPrices(it),
+              child: const Padding(
+                padding: EdgeInsets.only(top: 2, right: 10),
+                child: Text('En cadenas',
+                    style: TextStyle(fontSize: 11, color: AppUI.inkSoft, decoration: TextDecoration.underline)),
+              ),
             ),
-          ),
+            InkWell(
+              key: Key('set_price_${it['ingredient_id']}'),
+              onTap: () => _editPrice(it),
+              child: const Padding(
+                padding: EdgeInsets.only(top: 2),
+                child: Text('Tengo mejor precio',
+                    style: TextStyle(fontSize: 11, color: AppTheme.primary, decoration: TextDecoration.underline)),
+              ),
+            ),
+          ]),
         ]),
       ]),
+    );
+  }
+
+  Future<void> _showChainPrices(Map<String, dynamic> it) async {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.white,
+      builder: (ctx) => FutureBuilder<List<Map<String, dynamic>>>(
+        future: _api.fetchChainPrices(it['name'].toString()),
+        builder: (ctx, snap) {
+          const pad = EdgeInsets.all(AppUI.s16);
+          if (!snap.hasData) {
+            return const Padding(
+                padding: EdgeInsets.all(AppUI.s24),
+                child: Center(child: CircularProgressIndicator()));
+          }
+          final m = snap.data!;
+          return Padding(
+            padding: pad,
+            child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text('${it['name']} · en cadenas', style: AppUI.bodyStrong),
+              const SizedBox(height: AppUI.s8),
+              if (m.isEmpty)
+                const Text('Aún no tenemos precios de cadenas para este insumo.', style: AppUI.bodySoft)
+              else
+                ...m.map((c) {
+                  final dropped = c['dropped'] == true;
+                  final pct = (c['drop_pct'] as num?)?.toDouble() ?? 0;
+                  return Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 6),
+                    child: Row(children: [
+                      Expanded(child: Text((c['chain'] ?? '').toString().toUpperCase(), style: AppUI.bodyStrong)),
+                      if (dropped) ...[
+                        MinimalBadge(label: 'bajó ${pct.toStringAsFixed(0)}%', color: AppTheme.success),
+                        const SizedBox(width: AppUI.s8),
+                      ],
+                      Text('\$${((c['price'] as num?)?.toDouble() ?? 0).toStringAsFixed(0)}',
+                          style: const TextStyle(fontWeight: FontWeight.w700, color: AppTheme.primary,
+                              fontFeatures: [FontFeature.tabularFigures()])),
+                    ]),
+                  );
+                }),
+              const SizedBox(height: AppUI.s8),
+              const Text('Precios de referencia de catálogos en línea; pueden variar.',
+                  style: TextStyle(fontSize: 11, color: AppUI.inkSoft)),
+            ]),
+          );
+        },
+      ),
     );
   }
 

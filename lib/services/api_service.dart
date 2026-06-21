@@ -859,6 +859,22 @@ class ApiService {
     }
   }
 
+  /// Spec 077 F4 — precios de referencia de cadenas para un insumo + "bajó de
+  /// precio". Lee del catálogo scrapeado (rápido). Lista en data.matches.
+  Future<List<Map<String, dynamic>>> fetchChainPrices(String name) async {
+    try {
+      final r = await _dio.get('/api/v1/supplies/chain-prices',
+          queryParameters: {'name': name});
+      final data = _extractData(r);
+      final list = data['matches'];
+      return (list is List)
+          ? list.map((e) => Map<String, dynamic>.from(e as Map)).toList()
+          : [];
+    } on DioException catch (e) {
+      throw AppError.fromDioException(e);
+    }
+  }
+
   /// Spec 077 F2 — registra un precio manual de un insumo (source=manual).
   Future<void> addSupplyPrice({
     required String ingredientId,
