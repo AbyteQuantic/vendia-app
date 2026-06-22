@@ -3,16 +3,19 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../models/task.dart';
+import '../models/app_notification.dart';
+import '../services/api_service.dart';
+import '../services/auth_service.dart';
 import '../services/task_center_controller.dart';
 import '../theme/app_theme.dart';
 import '../theme/app_ui.dart';
 import '../utils/format_cop.dart';
 
 /// showTaskCenter — el ÚNICO Centro de Tareas y Notificaciones. Reemplaza las dos
-/// campanas dispersas. Agrupa por urgencia temporal (AHORA/HOY/ESTA SEMANA), con
-/// acción inline por tarjeta y posponer para las agregadas. Spec 078, Fase 2.
-/// [onOpenTask] lo provee el host para navegar a la pantalla dueña (el sheet no
-/// importa pantallas → se mantiene puro y testeable).
+/// superficies dispersas (campana del Dashboard + feed del POS). Dos pestañas:
+/// "Por hacer" (tareas accionables agrupadas por urgencia, con acción inline y
+/// posponer) y "Novedades" (la bandeja de eventos/avisos). Spec 078, Fase 2-3.
+/// [onOpenTask] lo provee el host para navegar a la pantalla dueña.
 Future<void> showTaskCenter(
   BuildContext context, {
   required void Function(Task task) onOpenTask,
@@ -25,11 +28,64 @@ Future<void> showTaskCenter(
         borderRadius: BorderRadius.vertical(top: Radius.circular(16))),
     builder: (ctx) => DraggableScrollableSheet(
       expand: false,
-      initialChildSize: 0.7,
+      initialChildSize: 0.75,
       maxChildSize: 0.95,
-      builder: (ctx, scroll) => _TaskCenterBody(scroll: scroll, onOpenTask: onOpenTask),
+      builder: (ctx, scroll) => _TaskCenter(scroll: scroll, onOpenTask: onOpenTask),
     ),
   );
+}
+
+class _TaskCenter extends StatefulWidget {
+  const _TaskCenter({required this.scroll, required this.onOpenTask});
+  final ScrollController scroll;
+  final void Function(Task) onOpenTask;
+
+  @override
+  State<_TaskCenter> createState() => _TaskCenterState();
+}
+
+class _TaskCenterState extends State<_TaskCenter> with SingleTickerProviderStateMixin {
+  late final TabController _tabs = TabController(length: 2, vsync: this);
+
+  @override
+  void dispose() {
+    _tabs.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    int open = 0;
+    try {
+      open = context.watch<TaskCenterController>().openCount;
+    } catch (_) {}
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        const SizedBox(height: AppUI.s8),
+        Container(width: 40, height: 4, decoration: BoxDecoration(color: AppUI.border, borderRadius: BorderRadius.circular(2))),
+        TabBar(
+          controller: _tabs,
+          labelColor: AppTheme.primary,
+          unselectedLabelColor: AppUI.inkSoft,
+          indicatorColor: AppTheme.primary,
+          tabs: [
+            Tab(text: open > 0 ? 'Por hacer ($open)' : 'Por hacer'),
+            const Tab(text: 'Novedades'),
+          ],
+        ),
+        Expanded(
+          child: TabBarView(
+            controller: _tabs,
+            children: [
+              _TaskCenterBody(scroll: widget.scroll, onOpenTask: widget.onOpenTask),
+              const _NovedadesTab(),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
 }
 
 class _Bucket {
@@ -54,34 +110,12 @@ class _TaskCenterBody extends StatelessWidget {
   Widget build(BuildContext context) {
     final ctrl = context.watch<TaskCenterController>();
     final tasks = ctrl.tasks;
-
-    return Column(
-      mainAxisSize: MainAxisSize.min,
+    if (tasks.isEmpty) return const _AllDone();
+    return ListView(
+      controller: scroll,
+      padding: const EdgeInsets.fromLTRB(AppUI.s16, AppUI.s8, AppUI.s16, AppUI.s24),
       children: [
-        const SizedBox(height: AppUI.s8),
-        Container(width: 40, height: 4, decoration: BoxDecoration(color: AppUI.border, borderRadius: BorderRadius.circular(2))),
-        Padding(
-          padding: const EdgeInsets.fromLTRB(AppUI.s16, AppUI.s12, AppUI.s16, AppUI.s8),
-          child: Row(children: [
-            const Icon(Icons.checklist_rounded, size: 22, color: AppTheme.primary),
-            const SizedBox(width: AppUI.s8),
-            const Expanded(child: Text('Por hacer', style: AppUI.title)),
-            if (tasks.isNotEmpty)
-              MinimalBadge(label: '${tasks.length}', color: ctrl.hasUrgent ? AppTheme.error : AppTheme.warning),
-          ]),
-        ),
-        Expanded(
-          child: tasks.isEmpty
-              ? const _AllDone()
-              : ListView(
-                  controller: scroll,
-                  padding: const EdgeInsets.fromLTRB(AppUI.s16, 0, AppUI.s16, AppUI.s24),
-                  children: [
-                    for (final b in _buckets)
-                      ..._section(context, b.label, tasks.where(b.match).toList(), ctrl),
-                  ],
-                ),
-        ),
+        for (final b in _buckets) ..._section(context, b.label, tasks.where(b.match).toList(), ctrl),
       ],
     );
   }
@@ -181,6 +215,89 @@ class _TaskCard extends StatelessWidget {
           ]),
         ),
       ]),
+    );
+  }
+}
+
+/// _NovedadesTab — la bandeja de eventos/avisos (tabla Notification): fiado,
+/// pagos, recordatorios. Coexiste con las tareas; se marca leída al abrir.
+class _NovedadesTab extends StatefulWidget {
+  const _NovedadesTab();
+  @override
+  State<_NovedadesTab> createState() => _NovedadesTabState();
+}
+
+class _NovedadesTabState extends State<_NovedadesTab> {
+  ApiService? _api;
+  late Future<List<AppNotification>> _future;
+
+  @override
+  void initState() {
+    super.initState();
+    try {
+      _api = ApiService(AuthService());
+    } catch (_) {
+      _api = null; // tests sin dotenv/keychain
+    }
+    _future = _load();
+  }
+
+  Future<List<AppNotification>> _load() async {
+    final api = _api;
+    if (api == null) return const [];
+    try {
+      final res = await api.fetchNotifications();
+      final list = ((res['data'] as List?) ?? const []).cast<Map<String, dynamic>>();
+      final parsed = list.map(AppNotification.fromApi).whereType<AppNotification>().toList();
+      // Marca leídas (al abrir Novedades el tendero ya las vio).
+      api.markNotificationsRead().catchError((_) {});
+      return parsed;
+    } catch (_) {
+      return const [];
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<List<AppNotification>>(
+      future: _future,
+      builder: (ctx, snap) {
+        if (snap.connectionState == ConnectionState.waiting) {
+          return const Center(child: Padding(padding: EdgeInsets.all(AppUI.s24), child: CircularProgressIndicator()));
+        }
+        final items = snap.data ?? const <AppNotification>[];
+        if (items.isEmpty) {
+          return const Center(
+            child: Padding(
+              padding: EdgeInsets.all(AppUI.s24),
+              child: Text('Sin novedades por ahora.', style: AppUI.bodySoft),
+            ),
+          );
+        }
+        return ListView.separated(
+          padding: const EdgeInsets.all(AppUI.s16),
+          itemCount: items.length,
+          separatorBuilder: (_, __) => const SizedBox(height: AppUI.s8),
+          itemBuilder: (_, i) {
+            final n = items[i];
+            return Container(
+              padding: const EdgeInsets.all(AppUI.s12),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: AppUI.border),
+              ),
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text(n.title, style: AppUI.bodyStrong, maxLines: 2, overflow: TextOverflow.ellipsis),
+                if (n.body.isNotEmpty) ...[
+                  const SizedBox(height: 2),
+                  Text(n.body, style: AppUI.bodySoft, maxLines: 3, overflow: TextOverflow.ellipsis),
+                ],
+              ]),
+            );
+          },
+        );
+      },
     );
   }
 }
