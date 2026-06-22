@@ -15,16 +15,18 @@ import '../../widgets/supplier_price_editor.dart';
 
 /// Etiqueta + color del ORIGEN de un precio (Spec 077): el tenant ve de qué
 /// mercado viene cada precio y si es estimado.
-({String label, Color color}) _sourceBadge(String source) {
+({String label, Color color}) _sourceBadge(String source, [String supplier = '']) {
+  final s = supplier.trim();
   switch (source) {
     case 'vendia_catalog':
       return (label: 'VendIA', color: AppTheme.primary);
     case 'manual':
-      return (label: 'Mi precio', color: AppTheme.success);
+      return (label: s.isNotEmpty ? s : 'Mi precio', color: AppTheme.success);
     case 'invoice_ocr':
-      return (label: 'Factura', color: AppUI.inkSoft);
+      return (label: s.isNotEmpty ? s : 'Factura', color: AppUI.inkSoft);
     case 'scraped_chain':
-      return (label: 'Cadena', color: AppTheme.warning);
+      // El nombre de la cadena (Éxito/Olímpica), no un genérico "Cadena".
+      return (label: s.isNotEmpty ? s : 'Cadena', color: AppTheme.warning);
     case 'ultima_compra':
       return (label: 'Últ. compra', color: AppTheme.warning);
     case 'ninguno':
@@ -267,7 +269,7 @@ class _ShoppingListScreenState extends State<ShoppingListScreen> {
     final supplier = (it['supplier'] ?? '').toString();
     final source = (it['price_source'] ?? '').toString();
     final noPrice = source.isEmpty || source == 'ninguno';
-    final src = _sourceBadge(source);
+    final src = _sourceBadge(source, supplier);
     // COMPRA REAL: nadie vende fracciones. Si se conoce el empaque, se compra el
     // empaque entero y queda un sobrante reservado; si no, costo aproximado.
     final String calc;
@@ -310,7 +312,7 @@ class _ShoppingListScreenState extends State<ShoppingListScreen> {
           const SizedBox(height: 4),
           Row(children: [
             MinimalBadge(label: src.label, color: src.color),
-            if (supplier.isNotEmpty) ...[
+            if (supplier.isNotEmpty && supplier != src.label) ...[
               const SizedBox(width: AppUI.s8),
               Flexible(
                 child: Text('· $supplier',

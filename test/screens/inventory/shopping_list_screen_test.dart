@@ -33,7 +33,7 @@ class _FakeApi extends ApiService {
       'items': [
         {'ingredient_id': 'arroz', 'name': 'Arroz', 'unit': 'kg', 'needed': 5,
          'stock': 2, 'shortfall': 3, 'price_per_unit': 2800, 'estimated_cost': 8400,
-         'price_source': 'ultima_compra', 'is_estimate': true},
+         'price_source': 'scraped_chain', 'supplier': 'Éxito', 'is_estimate': true},
       ],
       'total_estimated': 8400,
       'has_estimate': true,
@@ -60,7 +60,7 @@ void main() {
     expect(find.text('Arroz'), findsOneWidget);
     expect(find.textContaining('Faltan 3 kg'), findsOneWidget);
     expect(find.textContaining('aproximado'), findsWidgets); // sin empaque → aproximado
-    expect(find.text('Últ. compra'), findsOneWidget); // badge de origen
+    expect(find.text('Éxito'), findsOneWidget); // badge = nombre de la cadena, no "Cadena"
     expect(find.text('\$8.400'), findsWidgets); // costo + total con formato COP
     expect(find.byKey(const Key('btn_send_list')), findsOneWidget); // enviar por WhatsApp
     expect(find.byKey(const Key('btn_nearby_from_shopping')), findsOneWidget);
