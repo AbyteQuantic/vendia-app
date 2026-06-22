@@ -128,6 +128,27 @@ class _MandadosScreenState extends State<MandadosScreen> {
         ]),
         const SizedBox(height: 4),
         Text('${lines.length} producto(s) · ${formatCOP(total)}', style: AppUI.bodySoft),
+        // Detalle: QUÉ comprar (nombre · cantidad unidad). Antes solo el resumen.
+        if (lines.isNotEmpty) ...[
+          const SizedBox(height: AppUI.s8),
+          ...lines.take(12).map((l) {
+            final m = (l as Map).cast<String, dynamic>();
+            final name = (m['name'] ?? '').toString();
+            final qty = (m['qty'] as num?)?.toDouble() ?? 0;
+            final unit = (m['unit'] ?? '').toString();
+            final qtyStr = qty == qty.roundToDouble() ? qty.toInt().toString() : qty.toString();
+            return Padding(
+              padding: const EdgeInsets.only(top: 2),
+              child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                const Text('•  ', style: AppUI.bodySoft),
+                Expanded(child: Text(name, style: AppUI.bodyStrong.copyWith(fontSize: 13), maxLines: 1, overflow: TextOverflow.ellipsis)),
+                if (qty > 0) Text('$qtyStr ${unit.isNotEmpty ? unit : ''}'.trim(), style: AppUI.bodySoft.copyWith(fontSize: 13)),
+              ]),
+            );
+          }),
+          if (lines.length > 12)
+            Padding(padding: const EdgeInsets.only(top: 2), child: Text('y ${lines.length - 12} más…', style: AppUI.bodySoft.copyWith(fontSize: 12))),
+        ],
         const SizedBox(height: AppUI.s8),
         Row(children: [
           TextButton.icon(
