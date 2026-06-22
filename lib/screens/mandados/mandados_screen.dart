@@ -132,16 +132,21 @@ class _MandadosScreenState extends State<MandadosScreen> {
                       child: Text('Aún no tiene mandados.\nEnvíe una lista de compra desde "Comprar lo que falta".',
                           textAlign: TextAlign.center, style: AppUI.bodySoft),
                     ))
-                  : RefreshIndicator(
-                      onRefresh: _load,
-                      child: ListView.separated(
-                        key: const Key('mandados_list'),
-                        padding: const EdgeInsets.all(AppUI.s16),
-                        itemCount: _errands.length,
-                        separatorBuilder: (_, __) => const SizedBox(height: AppUI.s8),
-                        itemBuilder: (_, i) => _card(_errands[i]),
+                  : Column(children: [
+                      const _IngresoHint(),
+                      Expanded(
+                        child: RefreshIndicator(
+                          onRefresh: _load,
+                          child: ListView.separated(
+                            key: const Key('mandados_list'),
+                            padding: const EdgeInsets.all(AppUI.s16),
+                            itemCount: _errands.length,
+                            separatorBuilder: (_, __) => const SizedBox(height: AppUI.s8),
+                            itemBuilder: (_, i) => _card(_errands[i]),
+                          ),
+                        ),
                       ),
-                    ),
+                    ]),
     );
   }
 
@@ -197,12 +202,13 @@ class _MandadosScreenState extends State<MandadosScreen> {
               style: TextButton.styleFrom(foregroundColor: AppTheme.error),
               child: const Text('Cancelar'),
             ),
-            ElevatedButton(
+            ElevatedButton.icon(
               key: Key('done_$id'),
               onPressed: () => _markBought(e),
               style: ElevatedButton.styleFrom(
                   backgroundColor: AppTheme.success, foregroundColor: Colors.white, elevation: 0),
-              child: const Text('Ya compré'),
+              icon: const Icon(Icons.inventory_2_rounded, size: 16),
+              label: const Text('Ya compré'),
             ),
           ],
         ]),
@@ -219,6 +225,34 @@ class _MandadosScreenState extends State<MandadosScreen> {
                 ? AppTheme.primary
                 : AppTheme.warning;
     return MinimalBadge(label: s, color: color);
+  }
+}
+
+/// Banner que deja CLARO que el registro de entrada de inventario se hace aquí:
+/// al tocar "Ya compré" en un pedido, lo comprado entra al inventario. Spec 078.
+class _IngresoHint extends StatelessWidget {
+  const _IngresoHint();
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.fromLTRB(AppUI.s16, AppUI.s12, AppUI.s16, 0),
+      padding: const EdgeInsets.all(AppUI.s12),
+      decoration: BoxDecoration(
+        color: AppTheme.success.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: AppTheme.success.withValues(alpha: 0.25)),
+      ),
+      child: const Row(children: [
+        Icon(Icons.inventory_2_rounded, size: 18, color: AppTheme.success),
+        SizedBox(width: AppUI.s8),
+        Expanded(
+          child: Text(
+            'Cuando tenga lo que compró, toque «Ya compré» en el pedido. Eso ingresa los productos a su inventario.',
+            style: AppUI.bodySoft,
+          ),
+        ),
+      ]),
+    );
   }
 }
 

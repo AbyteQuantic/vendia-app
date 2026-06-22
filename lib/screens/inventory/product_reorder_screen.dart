@@ -6,6 +6,7 @@ import '../../services/auth_service.dart';
 import '../../theme/app_theme.dart';
 import '../../theme/app_ui.dart';
 import '../../utils/format_cop.dart';
+import '../mandados/mandados_screen.dart';
 
 /// 🏪 Productos de tienda por reordenar (en/bajo su mínimo). Distinto de los
 /// INSUMOS del menú: aquí se compra el PRODUCTO mismo. "Crear mandado" arma una
@@ -72,10 +73,18 @@ class _ProductReorderScreenState extends State<ProductReorderScreen> {
       }).toList();
       await _api.createErrand(lines: lines, assigneeType: 'self', title: 'Reposición de productos');
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-          content: Text('Mandado de reposición creado. Cuando compre, márquelo en Pendientes.'),
-          backgroundColor: AppTheme.success));
-      Navigator.of(context).pop(true);
+      final nav = Navigator.of(context);
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: const Text('Mandado creado. Cuando compre, márquelo en Pendientes para ingresarlo al inventario.'),
+        backgroundColor: AppTheme.success,
+        duration: const Duration(seconds: 6),
+        action: SnackBarAction(
+          label: 'Ver pendientes',
+          textColor: Colors.white,
+          onPressed: () => nav.push(MaterialPageRoute(builder: (_) => const MandadosScreen())),
+        ),
+      ));
+      nav.pop(true);
     } catch (_) {
       if (mounted) {
         setState(() => _creating = false);

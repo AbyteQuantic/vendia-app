@@ -123,7 +123,19 @@ class _ShoppingListScreenState extends State<ShoppingListScreen> {
   /// guardar como mandado. Tras enviar, recarga (refleja el reenviar del día).
   Future<void> _openDispatch() async {
     final sent = await showDispatchSheet(context, _items.map(_eff).toList(), _displayTotal);
-    if (sent == true && mounted) _loadRepeat();
+    if (sent == true && mounted) {
+      _loadRepeat();
+      // Guía clara: dónde se registra la ENTRADA al inventario tras comprar.
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: const Text('Mandado creado. Cuando compre, regístrelo en Pendientes para ingresarlo al inventario.'),
+        duration: const Duration(seconds: 6),
+        action: SnackBarAction(
+          label: 'Ver pendientes',
+          onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => const MandadosScreen())),
+        ),
+      ));
+    }
   }
 
   /// "Reenviar pedido del día": busca un mandado de HOY con los mismos insumos.
