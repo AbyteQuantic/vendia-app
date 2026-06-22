@@ -52,6 +52,15 @@ class _FakeApi extends ApiService {
     };
   }
 
+  final List<MapEntry<String, Map<String, dynamic>>> updatedIngredients = [];
+
+  @override
+  Future<Map<String, dynamic>> updateIngredient(
+      String uuid, Map<String, dynamic> data) async {
+    updatedIngredients.add(MapEntry(uuid, data));
+    return {...data, 'id': uuid};
+  }
+
   @override
   Future<Map<String, dynamic>> fetchRecipeCost(String uuid) async =>
       {'total_cost': 0};
@@ -346,5 +355,38 @@ void main() {
     expect(api.createdIngredients.first['name'], 'Cebolla');
     // Queda agregado como línea del plato.
     expect(find.text('Cebolla'), findsWidgets);
+  });
+
+  testWidgets('corregir el costo unitario de un insumo lo persiste y recalcula',
+      (tester) async {
+    final api = _FakeApi()..ingredients = [_ing('i1', 'Arroz', cost: 1000)];
+    final recipe = Recipe(
+      uuid: 'rec-9',
+      productName: 'Arroz',
+      salePrice: 9000,
+      ingredients: [
+        RecipeIngredient(
+            ingredientUuid: 'i1', productName: 'Arroz', quantity: 3, unitCost: 1000),
+      ],
+    );
+    await tester.pumpWidget(
+        MaterialApp(home: RecipeStudioScreen(api: api, editing: recipe)));
+    await tester.pumpAndSettle();
+
+    // Costo precargado: 3 x 1.000 = 3.000.
+    expect(find.text('\$3.000'), findsWidgets);
+
+    // Tocar el costo del insumo y corregirlo a 2.000.
+    await tester.ensureVisible(find.byKey(const Key('edit_cost_i1')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('edit_cost_i1')));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byKey(const Key('unit_cost_field')), '2000');
+    await tester.tap(find.text('Guardar'));
+    await tester.pumpAndSettle();
+
+    // Persistió en el insumo y recalculó (3 x 2.000 = 6.000).
+    expect(api.updatedIngredients.any((e) => e.key == 'i1' && e.value['unit_cost'] == 2000.0), isTrue);
+    expect(find.text('\$6.000'), findsWidgets);
   });
 }

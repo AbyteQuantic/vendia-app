@@ -47,7 +47,7 @@ const List<String> _kPresentationSuggestions = [
 /// Una línea costeada: un insumo REAL (uuid + unitCost) y la cantidad que
 /// consume el plato. El costo se deriva igual que siempre.
 class _RecipeLine {
-  final Ingredient ingredient;
+  Ingredient ingredient; // mutable: se puede corregir el costo unitario del insumo
   double quantity;
   final TextEditingController qtyCtrl;
   _RecipeLine(this.ingredient, [double qty = 1])
@@ -644,6 +644,67 @@ class _RecipeStudioScreenState extends State<RecipeStudioScreen> {
     });
   }
 
+  /// Corrige el COSTO UNITARIO del insumo (ej. Agua quedó en $6 por error). Lo
+  /// persiste en el inventario (PATCH /ingredients) y recalcula el costo del
+  /// plato. No toca la fórmula de costeo (Σ insumo·cantidad). Spec 078.
+  Future<void> _editUnitCost(_RecipeLine line) async {
+    if (line.ingredient.uuid.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('Este insumo no se puede editar desde aquí.')));
+      return;
+    }
+    final cur = line.ingredient.unitCost;
+    final ctrl = TextEditingController(
+        text: cur == cur.roundToDouble() ? cur.round().toString() : cur.toString());
+    final result = await showDialog<double>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Text('Costo de ${line.ingredient.name}', style: const TextStyle(fontSize: 19)),
+        content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text('Costo por ${line.ingredient.unitLabel}. Se corrige también en su inventario.',
+              style: AppUI.bodySoft),
+          const SizedBox(height: AppUI.s12),
+          TextField(
+            key: const Key('unit_cost_field'),
+            controller: ctrl,
+            autofocus: true,
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            decoration: const InputDecoration(prefixText: '\$ ', border: OutlineInputBorder()),
+          ),
+        ]),
+        actions: [
+          TextButton(onPressed: () => Navigator.of(ctx).pop(), child: const Text('Cancelar')),
+          TextButton(
+            onPressed: () {
+              final clean = ctrl.text
+                  .replaceAll(RegExp(r'[^0-9,.]'), '')
+                  .replaceAll('.', '')
+                  .replaceAll(',', '.');
+              final v = double.tryParse(clean);
+              Navigator.of(ctx).pop((v != null && v >= 0) ? v : null);
+            },
+            child: const Text('Guardar'),
+          ),
+        ],
+      ),
+    );
+    if (result == null || !mounted) return;
+    try {
+      await _api.updateIngredient(line.ingredient.uuid, {'unit_cost': result});
+      if (!mounted) return;
+      setState(() => line.ingredient = line.ingredient.copyWith(unitCost: result));
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text('Costo de ${line.ingredient.name} actualizado.'),
+          backgroundColor: AppTheme.success));
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(e is AppError ? e.message : 'No se pudo actualizar el costo.'),
+          backgroundColor: AppTheme.error));
+    }
+  }
+
   // ── Pasos ───────────────────────────────────────────────────────────────
   Future<void> _attachStepPhoto(_StepDraft step) async {
     final picker = ImagePicker();
@@ -1049,7 +1110,7 @@ class _RecipeStudioScreenState extends State<RecipeStudioScreen> {
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       const Text(
         'Agregue los insumos que ya registró en Inventario y la cantidad que '
-        'usa. El costo se calcula solo.',
+        'usa. El costo se calcula solo. Toque el costo de un insumo para corregirlo.',
         style: AppUI.bodySoft,
       ),
       const SizedBox(height: AppUI.s12),
@@ -1158,13 +1219,31 @@ class _RecipeStudioScreenState extends State<RecipeStudioScreen> {
             _miniBtn(Icons.add_rounded, () => _bumpQty(line, 1)),
           ]),
         ),
+        // Costo TOCABLE: corrige el costo unitario del insumo (ej. Agua quedó en $6).
         SizedBox(
-          width: 72,
-          child: Text(_money(line.totalCost),
-              textAlign: TextAlign.right, style: AppUI.tabularStrong),
+          width: 80,
+          child: InkWell(
+            key: Key('edit_cost_${line.ingredient.uuid}'),
+            onTap: () => _editUnitCost(line),
+            borderRadius: BorderRadius.circular(6),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 4),
+              child: Row(mainAxisAlignment: MainAxisAlignment.end, children: [
+                Flexible(
+                  child: Text(_money(line.totalCost),
+                      textAlign: TextAlign.right,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: AppUI.tabularStrong.copyWith(color: AppTheme.primary)),
+                ),
+                const SizedBox(width: 2),
+                const Icon(Icons.edit_outlined, size: 13, color: AppTheme.primary),
+              ]),
+            ),
+          ),
         ),
         SizedBox(
-          width: 36,
+          width: 32,
           child: IconButton(
             padding: EdgeInsets.zero,
             icon:
