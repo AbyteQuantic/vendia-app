@@ -47,18 +47,17 @@ class _RecipeListScreenState extends State<RecipeListScreen> {
       final list = raw
           .map((e) => Recipe.fromJson(Map<String, dynamic>.from(e)))
           .toList(growable: false);
-      // Platos importados/creados sin receta (Incompletos) — best-effort.
-      List<Map<String, dynamic>> incomplete = const [];
-      try {
-        incomplete = await _api.fetchIncompleteMenuItems();
-      } catch (_) {}
       if (!mounted) return;
       setState(() {
         _recipes = list;
-        _incomplete = incomplete;
         _loading = false;
         _error = null;
       });
+      // Platos sin receta (Incompletos) — en SEGUNDO PLANO: no bloquea el listado
+      // ni el spinner (best-effort). Se actualiza cuando llega.
+      _api.fetchIncompleteMenuItems().then((inc) {
+        if (mounted) setState(() => _incomplete = inc);
+      }).catchError((_) {});
     } catch (e) {
       if (!mounted) return;
       setState(() {

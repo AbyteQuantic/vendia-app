@@ -53,6 +53,19 @@ void main() {
     expect(c.tasks, isEmpty);
   });
 
+  test('toastCandidate = la urgente; dismissToast no vuelve a interrumpir', () async {
+    final api = _FakeApi();
+    api.next = [
+      _t('reorder:t', 'normal'), // no urgente → no toast
+      _t('online_order:1', 'critical'),
+    ];
+    final c = TaskCenterController(api);
+    await c.refresh();
+    expect(c.toastCandidate?.id, 'online_order:1'); // solo lo urgente
+    c.dismissToast();
+    expect(c.toastCandidate, isNull); // cerrada → no reaparece
+  });
+
   test('dismiss llama al API y oculta la tarea agregada', () async {
     final api = _FakeApi();
     api.next = [_t('reorder:t', 'normal')];

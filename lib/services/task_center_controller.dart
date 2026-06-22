@@ -25,6 +25,9 @@ class TaskCenterController extends ChangeNotifier {
   // se ocultan hasta que el server confirme que ya no vienen (anti-flicker).
   final Set<String> _locallyResolved = {};
 
+  // Toasts ya cerrados por el usuario: una tarea urgente interrumpe UNA vez.
+  final Set<String> _toastDismissed = {};
+
   List<Task> get tasks =>
       _tasks.where((t) => !_locallyResolved.contains(t.id)).toList(growable: false);
   bool get loading => _loading;
@@ -34,6 +37,24 @@ class TaskCenterController extends ChangeNotifier {
 
   /// Hay al menos una tarea urgente (badge rojo).
   bool get hasUrgent => tasks.any((t) => t.isUrgent);
+
+  /// La tarea URGENTE (critical/high) más prioritaria que el usuario no haya
+  /// cerrado en el toast. null = no interrumpir. Solo lo urgente interrumpe, y
+  /// una sola vez (Spec 078 F3 — regla anti-ruido).
+  Task? get toastCandidate {
+    for (final t in tasks) {
+      if (t.isUrgent && !_toastDismissed.contains(t.id)) return t;
+    }
+    return null;
+  }
+
+  /// Cierra el toast de tareas (no vuelve a interrumpir con esa tarea).
+  void dismissToast() {
+    final c = toastCandidate;
+    if (c == null) return;
+    _toastDismissed.add(c.id);
+    notifyListeners();
+  }
 
   /// Arranca el polling único (idempotente). Llamar una vez sobre el MaterialApp.
   void start({String branchId = ''}) {
@@ -63,6 +84,7 @@ class TaskCenterController extends ChangeNotifier {
       // Limpia resoluciones locales ya confirmadas por el server (ya no vienen).
       final present = _tasks.map((t) => t.id).toSet();
       _locallyResolved.removeWhere((id) => !present.contains(id));
+      _toastDismissed.removeWhere((id) => !present.contains(id));
     } catch (_) {
       // best-effort: mantiene el último snapshot; el centro nunca se cae por red.
     } finally {
