@@ -1430,6 +1430,23 @@ class ApiService {
     }
   }
 
+  /// Igual que [scanInvoice] pero recibe un [XFile] y sube los BYTES
+  /// (web-safe: en web no hay filesystem y XFile.path es un blob URL). Spec 078.
+  Future<Map<String, dynamic>> scanInvoiceXFile(XFile image) async {
+    try {
+      final bytes = await image.readAsBytes();
+      final formData = FormData.fromMap({
+        'image': MultipartFile.fromBytes(bytes, filename: image.name.isNotEmpty ? image.name : 'factura.jpg'),
+      });
+      final response = await _dio.post('/api/v1/inventory/scan-invoice',
+          data: formData,
+          options: Options(receiveTimeout: const Duration(seconds: 30)));
+      return _extractData(response);
+    } on DioException catch (e) {
+      throw AppError.fromDioException(e);
+    }
+  }
+
   /// Spec 043 (menú restaurante): envía una foto de la CARTA/MENÚ a Gemini y
   /// recibe los platos extraídos `[{name, description, price, portion,
   /// category}]` para que el tendero los revise/edite antes de publicarlos.

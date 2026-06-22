@@ -69,4 +69,22 @@ void main() {
     expect(api.receivedLines!.first['line_id'], 'l1');
     expect(find.textContaining('ingresado'), findsOneWidget);
   });
+
+  testWidgets('"Faltó" marca la línea en 0 (omitir → pendiente) y ofrece foto de factura', (tester) async {
+    final api = _FakeApi();
+    await tester.pumpWidget(MaterialApp(home: MandadosScreen(api: api)));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const Key('done_e1')));
+    await tester.pumpAndSettle();
+    // Hay opción de leer la factura por foto.
+    expect(find.byKey(const Key('scan_factura')), findsOneWidget);
+    // "Faltó" en la primera línea → su cantidad recibida queda en 0.
+    await tester.tap(find.byKey(const Key('missing_l1')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('confirm_bought')));
+    await tester.pumpAndSettle();
+    final l1 = api.receivedLines!.firstWhere((e) => e['line_id'] == 'l1');
+    expect(l1['received_qty'], 0);
+  });
 }

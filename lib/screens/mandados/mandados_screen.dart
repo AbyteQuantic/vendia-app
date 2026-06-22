@@ -1,5 +1,6 @@
 // Spec: specs/077-compra-inteligente-insumos/spec.md
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:share_plus/share_plus.dart';
 import '../../theme/app_theme.dart';
 import '../../theme/app_ui.dart';
@@ -71,7 +72,7 @@ class _MandadosScreenState extends State<MandadosScreen> {
       isScrollControlled: true,
       backgroundColor: Colors.white,
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(16))),
-      builder: (_) => _WhatBoughtSheet(errand: e),
+      builder: (_) => _WhatBoughtSheet(errand: e, api: _api),
     );
     if (lines == null) return; // canceló
     try {
@@ -188,6 +189,25 @@ class _MandadosScreenState extends State<MandadosScreen> {
             Padding(padding: const EdgeInsets.only(top: 2), child: Text('y ${lines.length - 12} más…', style: AppUI.bodySoft.copyWith(fontSize: 12))),
         ],
         const SizedBox(height: AppUI.s8),
+        // Acción PRINCIPAL de ancho completo (antes se recortaba al meterla en un
+        // Row junto a Reenviar+Cancelar en 360dp → desaparecía). Spec 078.
+        if (status != 'comprado' && status != 'cancelado') ...[
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton.icon(
+              key: Key('done_$id'),
+              onPressed: () => _markBought(e),
+              style: ElevatedButton.styleFrom(
+                  backgroundColor: AppTheme.success,
+                  foregroundColor: Colors.white,
+                  elevation: 0,
+                  padding: const EdgeInsets.symmetric(vertical: 12)),
+              icon: const Icon(Icons.inventory_2_rounded, size: 18),
+              label: const Text('Registrar compra'),
+            ),
+          ),
+          const SizedBox(height: 2),
+        ],
         Row(children: [
           TextButton.icon(
             key: Key('resend_$id'),
@@ -196,21 +216,13 @@ class _MandadosScreenState extends State<MandadosScreen> {
             label: const Text('Reenviar'),
           ),
           const Spacer(),
-          if (status != 'comprado' && status != 'cancelado') ...[
+          if (status != 'comprado' && status != 'cancelado')
             TextButton(
+              key: Key('cancel_$id'),
               onPressed: () => _setStatus(id, 'cancelado'),
               style: TextButton.styleFrom(foregroundColor: AppTheme.error),
               child: const Text('Cancelar'),
             ),
-            ElevatedButton.icon(
-              key: Key('done_$id'),
-              onPressed: () => _markBought(e),
-              style: ElevatedButton.styleFrom(
-                  backgroundColor: AppTheme.success, foregroundColor: Colors.white, elevation: 0),
-              icon: const Icon(Icons.inventory_2_rounded, size: 16),
-              label: const Text('Ya compré'),
-            ),
-          ],
         ]),
       ]),
     );
@@ -259,8 +271,9 @@ class _IngresoHint extends StatelessWidget {
 /// "¿Cuánto compró?" — por cada línea, la cantidad realmente comprada (default =
 /// la pedida). Lo que se reduzca queda pendiente. Devuelve [{line_id, received_qty}].
 class _WhatBoughtSheet extends StatefulWidget {
-  const _WhatBoughtSheet({required this.errand});
+  const _WhatBoughtSheet({required this.errand, required this.api});
   final Map<String, dynamic> errand;
+  final ApiService api;
   @override
   State<_WhatBoughtSheet> createState() => _WhatBoughtSheetState();
 }
@@ -268,8 +281,70 @@ class _WhatBoughtSheet extends StatefulWidget {
 class _WhatBoughtSheetState extends State<_WhatBoughtSheet> {
   late final List<Map<String, dynamic>> _raw;
   late final List<TextEditingController> _ctrls;
+  bool _scanning = false;
 
   String _fmt(double v) => v == v.roundToDouble() ? v.toInt().toString() : v.toString();
+  String _norm(String s) => s.toLowerCase().trim();
+
+  /// Foto de la factura (propia o la que llegó por WhatsApp): OCR Gemini lee los
+  /// productos y AUTO-LLENA las cantidades por nombre. El tendero revisa y ajusta
+  /// antes de ingresar (no se confía ciego). Spec 078.
+  Future<void> _scanFactura() async {
+    final source = await showModalBottomSheet<ImageSource>(
+      context: context,
+      builder: (ctx) => SafeArea(
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          ListTile(
+            leading: const Icon(Icons.camera_alt_rounded),
+            title: const Text('Tomar foto de la factura'),
+            onTap: () => Navigator.pop(ctx, ImageSource.camera),
+          ),
+          ListTile(
+            leading: const Icon(Icons.photo_library_rounded),
+            title: const Text('Elegir de la galería (ej. WhatsApp)'),
+            onTap: () => Navigator.pop(ctx, ImageSource.gallery),
+          ),
+        ]),
+      ),
+    );
+    if (source == null || !mounted) return;
+    final picked = await ImagePicker().pickImage(source: source, imageQuality: 80, maxWidth: 1600);
+    if (picked == null || !mounted) return;
+    setState(() => _scanning = true);
+    try {
+      final data = await widget.api.scanInvoiceXFile(picked);
+      final products = (data['products'] as List?) ?? (data['items'] as List?) ?? [];
+      var matched = 0;
+      for (final p in products) {
+        final pm = (p as Map).cast<String, dynamic>();
+        final pname = _norm((pm['name'] ?? '').toString());
+        final qty = (pm['quantity'] as num?)?.toDouble() ?? (pm['qty'] as num?)?.toDouble() ?? 0;
+        if (pname.isEmpty || qty <= 0) continue;
+        for (var i = 0; i < _raw.length; i++) {
+          final ln = _norm((_raw[i]['name'] ?? '').toString());
+          if (ln.isEmpty) continue;
+          if (ln == pname || ln.contains(pname) || pname.contains(ln)) {
+            final full = (_raw[i]['qty'] as num?)?.toDouble() ?? 0;
+            _ctrls[i].text = _fmt(qty > full ? full : qty);
+            matched++;
+            break;
+          }
+        }
+      }
+      if (!mounted) return;
+      setState(() => _scanning = false);
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(matched > 0
+            ? 'Factura leída: $matched producto(s) reconocido(s). Revise y ajuste.'
+            : 'No reconocimos productos en la factura. Ajuste manualmente.'),
+      ));
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _scanning = false);
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('No se pudo leer la factura. Intente de nuevo.')));
+    }
+  }
 
   @override
   void initState() {
@@ -319,6 +394,17 @@ class _WhatBoughtSheetState extends State<_WhatBoughtSheet> {
           const SizedBox(height: 2),
           const Text('Lo que marque entra al inventario. Lo que faltó queda pendiente.', style: AppUI.bodySoft),
           const SizedBox(height: AppUI.s12),
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton.icon(
+              key: const Key('scan_factura'),
+              onPressed: _scanning ? null : _scanFactura,
+              icon: _scanning
+                  ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                  : const Icon(Icons.receipt_long_rounded, size: 18),
+              label: Text(_scanning ? 'Leyendo factura…' : 'Foto de la factura'),
+            ),
+          ),
           Align(
             alignment: Alignment.centerRight,
             child: TextButton.icon(
@@ -337,8 +423,20 @@ class _WhatBoughtSheetState extends State<_WhatBoughtSheet> {
                 final unit = (_raw[i]['unit'] ?? '').toString();
                 return Row(children: [
                   Expanded(child: Text((_raw[i]['name'] ?? '').toString(), style: AppUI.bodyStrong, maxLines: 1, overflow: TextOverflow.ellipsis)),
+                  // "Faltó": no lo consiguió → cantidad 0 → queda pendiente (re-comprar).
+                  TextButton(
+                    key: Key('missing_${_raw[i]['id']}'),
+                    onPressed: () => setState(() => _ctrls[i].text = '0'),
+                    style: TextButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(horizontal: 6),
+                      minimumSize: Size.zero,
+                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      foregroundColor: AppTheme.error,
+                    ),
+                    child: const Text('Faltó'),
+                  ),
                   SizedBox(
-                    width: 70,
+                    width: 54,
                     child: TextField(
                       key: Key('qty_${_raw[i]['id']}'),
                       controller: _ctrls[i],
@@ -347,7 +445,7 @@ class _WhatBoughtSheetState extends State<_WhatBoughtSheet> {
                       decoration: const InputDecoration(isDense: true, contentPadding: EdgeInsets.symmetric(vertical: 8)),
                     ),
                   ),
-                  if (unit.isNotEmpty) ...[const SizedBox(width: 6), Text(unit, style: AppUI.bodySoft)],
+                  if (unit.isNotEmpty) ...[const SizedBox(width: 4), Text(unit, style: AppUI.bodySoft.copyWith(fontSize: 12))],
                 ]);
               },
             ),
