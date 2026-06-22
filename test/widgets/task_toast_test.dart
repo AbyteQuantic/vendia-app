@@ -8,6 +8,7 @@ import 'package:vendia_pos/services/auth_service.dart';
 import 'package:vendia_pos/services/task_center_controller.dart';
 import 'package:vendia_pos/services/notification_toast_controller.dart';
 import 'package:vendia_pos/widgets/notification_toast.dart';
+import 'package:vendia_pos/widgets/draggable_toast_host.dart';
 
 class _FakeApi extends ApiService {
   _FakeApi(this._tasks) : super(AuthService());
@@ -62,5 +63,27 @@ void main() {
     ));
     await tester.pump();
     expect(find.byKey(const Key('task_toast')), findsNothing);
+  });
+
+  testWidgets('DraggableToastHost muestra el toast y se puede arrastrar', (tester) async {
+    final tc = TaskCenterController(_FakeApi([
+      {'id': 'online_order:1', 'kind': 'online_order', 'urgency': 'critical',
+       'title': 'Pedido de Ana', 'action_label': 'Aceptar'},
+    ]));
+    await tc.refresh();
+    await tester.pumpWidget(MultiProvider(
+      providers: [
+        ChangeNotifierProvider.value(value: tc),
+        ChangeNotifierProvider(create: (_) => NotificationToastController()),
+      ],
+      child: const MaterialApp(home: Scaffold(body: Stack(children: [DraggableToastHost()]))),
+    ));
+    await tester.pump();
+    expect(find.byKey(const Key('task_toast')), findsOneWidget);
+
+    // Arrastrar el toast hacia abajo no lo rompe y sigue visible.
+    await tester.drag(find.byKey(const Key('task_toast')), const Offset(0, 120));
+    await tester.pump();
+    expect(find.byKey(const Key('task_toast')), findsOneWidget);
   });
 }

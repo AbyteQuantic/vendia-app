@@ -25,7 +25,7 @@ import 'theme/app_theme.dart';
 import 'screens/splash/animated_splash_screen.dart';
 import 'utils/notification_navigation.dart';
 import 'utils/notification_router.dart';
-import 'widgets/notification_toast.dart';
+import 'widgets/draggable_toast_host.dart';
 import 'widgets/premium_upsell_sheet.dart';
 
 Future<void> main() async {
@@ -232,12 +232,9 @@ class _VendIAAppState extends State<VendIAApp> {
           return Stack(
             children: [
               if (child != null) child,
-              const Positioned(
-                top: 0,
-                left: 0,
-                right: 0,
-                child: SafeArea(child: NotificationToast()),
-              ),
+              // Toast arrastrable (Spec 056/078): el usuario lo mueve para que no
+              // le tape la información; por default arriba bajo la barra de estado.
+              const DraggableToastHost(),
             ],
           );
         },

@@ -20,7 +20,27 @@ import 'premium_upsell_sheet.dart';
 import 'task_center_sheet.dart';
 
 class NotificationToast extends StatelessWidget {
-  const NotificationToast({super.key});
+  const NotificationToast({super.key, this.grip = false});
+
+  /// Muestra una asita arriba para indicar que el toast se puede arrastrar.
+  final bool grip;
+
+  // Asita de arrastre + envoltura del contenido (cuando grip = true).
+  Widget _withGrip(Widget body) {
+    if (!grip) return body;
+    return Column(mainAxisSize: MainAxisSize.min, children: [
+      Padding(
+        padding: const EdgeInsets.only(bottom: 6),
+        child: Center(
+          child: Container(
+            width: 36, height: 4,
+            decoration: BoxDecoration(color: Colors.black.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(2)),
+          ),
+        ),
+      ),
+      body,
+    ]);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -54,7 +74,7 @@ class NotificationToast extends StatelessWidget {
             borderRadius: BorderRadius.circular(16),
             border: Border.all(color: visual.color.withValues(alpha: 0.30)),
           ),
-          child: Row(
+          child: _withGrip(Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Container(
@@ -141,7 +161,7 @@ class NotificationToast extends StatelessWidget {
                     context.read<NotificationToastController>().dismiss(),
               ),
             ],
-          ),
+          )),
         ),
       ),
     );
@@ -165,7 +185,7 @@ class NotificationToast extends StatelessWidget {
             borderRadius: BorderRadius.circular(16),
             border: Border.all(color: color.withValues(alpha: 0.30)),
           ),
-          child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          child: _withGrip(Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Container(
               width: 40, height: 40,
               decoration: BoxDecoration(color: color.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(12)),
@@ -211,7 +231,7 @@ class NotificationToast extends StatelessWidget {
               color: AppTheme.textSecondary,
               onPressed: () => context.read<TaskCenterController>().dismissToast(),
             ),
-          ]),
+          ])),
         ),
       ),
     );
