@@ -9,11 +9,15 @@ import 'package:vendia_pos/screens/mandados/mandados_screen.dart';
 class _FakeApi extends ApiService {
   _FakeApi() : super(AuthService());
   String? receivedId;
+  List<Map<String, dynamic>>? receivedLines;
   @override
-  Future<({int received, int skipped})> receiveErrand(String errandId) async {
+  Future<({int received, int skipped, String status})> receiveErrand(String errandId,
+      {List<Map<String, dynamic>>? lines}) async {
     receivedId = errandId;
-    return (received: 2, skipped: 0);
+    receivedLines = lines;
+    return (received: 2, skipped: 0, status: 'comprado');
   }
+
   @override
   Future<List<Map<String, dynamic>>> fetchErrands({String status = ''}) async => [
         {
@@ -22,8 +26,8 @@ class _FakeApi extends ApiService {
           'assignee_name': 'Yo mismo',
           'total_estimated': 12000,
           'lines': [
-            {'name': 'Arroz', 'qty': 2, 'unit': 'kg'},
-            {'name': 'Crema de leche', 'qty': 500, 'unit': 'ml'},
+            {'id': 'l1', 'name': 'Arroz', 'qty': 2, 'unit': 'kg'},
+            {'id': 'l2', 'name': 'Crema de leche', 'qty': 500, 'unit': 'ml'},
           ],
         },
       ];
@@ -46,14 +50,23 @@ void main() {
     expect(find.byKey(const Key('done_e1')), findsOneWidget);
   });
 
-  testWidgets('"Ya compré" ingresa el inventario (llama a receiveErrand)', (tester) async {
+  testWidgets('"Ya compré" abre "¿Cuánto compró?" e ingresa lo comprado', (tester) async {
     final api = _FakeApi();
     await tester.pumpWidget(MaterialApp(home: MandadosScreen(api: api)));
     await tester.pumpAndSettle();
 
     await tester.tap(find.byKey(const Key('done_e1')));
     await tester.pumpAndSettle();
-    expect(api.receivedId, 'e1'); // ingresó el inventario, no solo cambió estado
+    // Aparece la hoja de compra parcial.
+    expect(find.text('¿Cuánto compró?'), findsOneWidget);
+    expect(find.byKey(const Key('bought_all')), findsOneWidget);
+    // Confirmar → ingresa con las líneas (cantidad por línea).
+    await tester.tap(find.byKey(const Key('confirm_bought')));
+    await tester.pumpAndSettle();
+    expect(api.receivedId, 'e1');
+    expect(api.receivedLines, isNotNull);
+    expect(api.receivedLines!.length, 2);
+    expect(api.receivedLines!.first['line_id'], 'l1');
     expect(find.textContaining('ingresado'), findsOneWidget);
   });
 }

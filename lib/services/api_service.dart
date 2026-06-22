@@ -939,15 +939,38 @@ class ApiService {
     }
   }
 
-  /// Spec 077 — marca un mandado como COMPRADO e INGRESA el inventario (sube
-  /// stock + registra compra real + costo). Devuelve cuántos insumos se ingresaron.
-  Future<({int received, int skipped})> receiveErrand(String errandId) async {
+  /// Spec 077/078 — marca un mandado como COMPRADO (o PARCIAL) e INGRESA el
+  /// inventario (sube stock + registra compra real + costo). [lines] opcional para
+  /// COMPRA PARCIAL: [{line_id, received_qty}] — ingresa solo lo que se compró.
+  Future<({int received, int skipped, String status})> receiveErrand(
+    String errandId, {
+    List<Map<String, dynamic>>? lines,
+  }) async {
     try {
-      final r = await _dio.post('/api/v1/errands/$errandId/receive');
+      final r = await _dio.post('/api/v1/errands/$errandId/receive',
+          data: lines != null ? {'lines': lines} : null);
       final data = (r.data is Map) ? r.data['data'] : null;
       final received = (data is Map) ? ((data['received'] as num?)?.toInt() ?? 0) : 0;
       final skipped = (data is Map) ? ((data['skipped'] as num?)?.toInt() ?? 0) : 0;
-      return (received: received, skipped: skipped);
+      final status = (data is Map) ? (data['status'] ?? 'comprado').toString() : 'comprado';
+      return (received: received, skipped: skipped, status: status);
+    } on DioException catch (e) {
+      throw AppError.fromDioException(e);
+    }
+  }
+
+  /// Spec 078 B2 — productos de tienda en/bajo su mínimo (para reordenar al mismo
+  /// flujo de mandado/ingreso). Devuelve {items, total_estimated}.
+  Future<({List<Map<String, dynamic>> items, double total})> fetchProductReorderList() async {
+    try {
+      final r = await _dio.get('/api/v1/products/reorder-list');
+      final data = (r.data is Map) ? r.data['data'] : null;
+      final list = (data is Map) ? data['items'] : null;
+      final total = (data is Map) ? ((data['total_estimated'] as num?)?.toDouble() ?? 0) : 0.0;
+      final items = (list is List)
+          ? list.map((e) => Map<String, dynamic>.from(e as Map)).toList()
+          : <Map<String, dynamic>>[];
+      return (items: items, total: total);
     } on DioException catch (e) {
       throw AppError.fromDioException(e);
     }

@@ -61,16 +61,28 @@ class _MandadosScreenState extends State<MandadosScreen> {
     }
   }
 
-  /// Marcar COMPRADO ingresa el inventario al sistema (sube stock + costo + compra
-  /// real), no solo cambia el estado. Spec 077.
-  Future<void> _markBought(String id) async {
+  /// Marcar COMPRADO abre "¿Cuánto compró?" (default = todo; ajusta lo que faltó)
+  /// e INGRESA al inventario lo realmente comprado (sube stock + costo + compra
+  /// real). Lo que faltó queda pendiente. Spec 077/078 B3.
+  Future<void> _markBought(Map<String, dynamic> e) async {
+    final id = e['id'].toString();
+    final lines = await showModalBottomSheet<List<Map<String, dynamic>>>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(16))),
+      builder: (_) => _WhatBoughtSheet(errand: e),
+    );
+    if (lines == null) return; // canceló
     try {
-      final res = await _api.receiveErrand(id);
+      final res = await _api.receiveErrand(id, lines: lines);
       await _load();
       if (mounted) {
-        final msg = res.received > 0
-            ? 'Listo: ${res.received} producto(s) ingresado(s) al inventario.'
-            : 'Mandado marcado como comprado.';
+        final msg = res.status == 'parcial'
+            ? 'Ingresado lo comprado. Lo que faltó quedó pendiente.'
+            : (res.received > 0
+                ? 'Listo: ${res.received} producto(s) ingresado(s) al inventario.'
+                : 'Mandado marcado como comprado.');
         ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(content: Text(msg), backgroundColor: AppTheme.success));
       }
@@ -187,7 +199,7 @@ class _MandadosScreenState extends State<MandadosScreen> {
             ),
             ElevatedButton(
               key: Key('done_$id'),
-              onPressed: () => _markBought(id),
+              onPressed: () => _markBought(e),
               style: ElevatedButton.styleFrom(
                   backgroundColor: AppTheme.success, foregroundColor: Colors.white, elevation: 0),
               child: const Text('Ya compré'),
@@ -207,5 +219,117 @@ class _MandadosScreenState extends State<MandadosScreen> {
                 ? AppTheme.primary
                 : AppTheme.warning;
     return MinimalBadge(label: s, color: color);
+  }
+}
+
+/// "¿Cuánto compró?" — por cada línea, la cantidad realmente comprada (default =
+/// la pedida). Lo que se reduzca queda pendiente. Devuelve [{line_id, received_qty}].
+class _WhatBoughtSheet extends StatefulWidget {
+  const _WhatBoughtSheet({required this.errand});
+  final Map<String, dynamic> errand;
+  @override
+  State<_WhatBoughtSheet> createState() => _WhatBoughtSheetState();
+}
+
+class _WhatBoughtSheetState extends State<_WhatBoughtSheet> {
+  late final List<Map<String, dynamic>> _raw;
+  late final List<TextEditingController> _ctrls;
+
+  String _fmt(double v) => v == v.roundToDouble() ? v.toInt().toString() : v.toString();
+
+  @override
+  void initState() {
+    super.initState();
+    _raw = ((widget.errand['lines'] as List?) ?? []).map((l) => (l as Map).cast<String, dynamic>()).toList();
+    _ctrls = _raw.map((m) => TextEditingController(text: _fmt((m['qty'] as num?)?.toDouble() ?? 0))).toList();
+  }
+
+  @override
+  void dispose() {
+    for (final c in _ctrls) {
+      c.dispose();
+    }
+    super.dispose();
+  }
+
+  void _all() {
+    setState(() {
+      for (var i = 0; i < _raw.length; i++) {
+        _ctrls[i].text = _fmt((_raw[i]['qty'] as num?)?.toDouble() ?? 0);
+      }
+    });
+  }
+
+  void _confirm() {
+    final lines = <Map<String, dynamic>>[];
+    for (var i = 0; i < _raw.length; i++) {
+      final id = (_raw[i]['id'] ?? '').toString();
+      final full = (_raw[i]['qty'] as num?)?.toDouble() ?? 0;
+      var got = double.tryParse(_ctrls[i].text.replaceAll(',', '.')) ?? full;
+      if (got < 0) got = 0;
+      if (got > full) got = full;
+      if (id.isNotEmpty) lines.add({'line_id': id, 'received_qty': got});
+    }
+    Navigator.pop(context, lines);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      child: Padding(
+        padding: EdgeInsets.fromLTRB(AppUI.s16, AppUI.s8, AppUI.s16, MediaQuery.of(context).viewInsets.bottom + AppUI.s16),
+        child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Center(child: Container(width: 40, height: 4, decoration: BoxDecoration(color: AppUI.border, borderRadius: BorderRadius.circular(2)))),
+          const SizedBox(height: AppUI.s16),
+          const Text('¿Cuánto compró?', style: AppUI.title),
+          const SizedBox(height: 2),
+          const Text('Lo que marque entra al inventario. Lo que faltó queda pendiente.', style: AppUI.bodySoft),
+          const SizedBox(height: AppUI.s12),
+          Align(
+            alignment: Alignment.centerRight,
+            child: TextButton.icon(
+              key: const Key('bought_all'),
+              onPressed: _all,
+              icon: const Icon(Icons.done_all_rounded, size: 18),
+              label: const Text('Compré todo'),
+            ),
+          ),
+          Flexible(
+            child: ListView.separated(
+              shrinkWrap: true,
+              itemCount: _raw.length,
+              separatorBuilder: (_, __) => const SizedBox(height: AppUI.s8),
+              itemBuilder: (_, i) {
+                final unit = (_raw[i]['unit'] ?? '').toString();
+                return Row(children: [
+                  Expanded(child: Text((_raw[i]['name'] ?? '').toString(), style: AppUI.bodyStrong, maxLines: 1, overflow: TextOverflow.ellipsis)),
+                  SizedBox(
+                    width: 70,
+                    child: TextField(
+                      key: Key('qty_${_raw[i]['id']}'),
+                      controller: _ctrls[i],
+                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                      textAlign: TextAlign.center,
+                      decoration: const InputDecoration(isDense: true, contentPadding: EdgeInsets.symmetric(vertical: 8)),
+                    ),
+                  ),
+                  if (unit.isNotEmpty) ...[const SizedBox(width: 6), Text(unit, style: AppUI.bodySoft)],
+                ]);
+              },
+            ),
+          ),
+          const SizedBox(height: AppUI.s12),
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton(
+              key: const Key('confirm_bought'),
+              onPressed: _confirm,
+              style: ElevatedButton.styleFrom(backgroundColor: AppTheme.success, foregroundColor: Colors.white, padding: const EdgeInsets.symmetric(vertical: 14)),
+              child: const Text('Ingresar al inventario'),
+            ),
+          ),
+        ]),
+      ),
+    );
   }
 }
