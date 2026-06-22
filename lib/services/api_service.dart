@@ -571,6 +571,30 @@ class ApiService {
     }
   }
 
+  /// Spec 078 — IA sugiere categorías para los productos SIN categoría (no aplica).
+  /// Devuelve [{id, name, suggested}] para que el tenant revise/edite.
+  Future<List<Map<String, dynamic>>> suggestProductCategories() async {
+    try {
+      final r = await _dio.post('/api/v1/products/suggest-categories',
+          options: Options(receiveTimeout: const Duration(seconds: 35)));
+      final data = (r.data is Map) ? r.data['data'] : null;
+      return (data is List) ? data.map((e) => Map<String, dynamic>.from(e as Map)).toList() : [];
+    } on DioException catch (e) {
+      throw AppError.fromDioException(e);
+    }
+  }
+
+  /// Spec 078 — aplica las categorías que el tenant confirmó/editó. items: [{id, category}].
+  Future<int> bulkUpdateCategories(List<Map<String, dynamic>> items) async {
+    try {
+      final r = await _dio.post('/api/v1/products/categories/bulk', data: {'items': items});
+      final data = (r.data is Map) ? r.data['data'] : null;
+      return (data is Map) ? ((data['updated'] as num?)?.toInt() ?? 0) : 0;
+    } on DioException catch (e) {
+      throw AppError.fromDioException(e);
+    }
+  }
+
   Future<void> deleteProduct(String id) async {
     try {
       await _dio.delete('/api/v1/products/$id');

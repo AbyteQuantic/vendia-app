@@ -19,6 +19,7 @@ import '../pos/scan_screen.dart';
 import 'kardex_screen.dart';
 import 'negative_stock_screen.dart';
 import 'product_import_screen.dart';
+import 'organize_categories_screen.dart';
 
 class ManageInventoryScreen extends StatefulWidget {
   const ManageInventoryScreen({super.key, this.focusProductId});
@@ -223,6 +224,17 @@ class _ManageInventoryScreenState extends State<ManageInventoryScreen> {
         // T-16 (F027): botón de importación. El AppBar no tenía acciones
         // previas → se agrega directamente (regla UI_RULES.md: máx 2 acciones).
         actions: [
+          IconButton(
+            icon: const Icon(Icons.category_rounded,
+                color: AppTheme.textPrimary, size: 24),
+            tooltip: 'Organizar categorías (IA)',
+            onPressed: () async {
+              final changed = await Navigator.of(context).push<bool>(
+                MaterialPageRoute(builder: (_) => const OrganizeCategoriesScreen()),
+              );
+              if (changed == true && mounted) _loadProducts();
+            },
+          ),
           IconButton(
             icon: const Icon(Icons.upload_file_rounded,
                 color: AppTheme.textPrimary, size: 26),
