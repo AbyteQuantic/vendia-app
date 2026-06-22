@@ -925,6 +925,20 @@ class ApiService {
     }
   }
 
+  /// Spec 078 — platos de menú importados/creados SIN receta (Incompletos), para
+  /// el badge + la alerta en "Mis recetas".
+  Future<List<Map<String, dynamic>>> fetchIncompleteMenuItems() async {
+    try {
+      final r = await _dio.get('/api/v1/menu/incomplete');
+      final list = (r.data is Map) ? r.data['data'] : null;
+      return (list is List)
+          ? list.map((e) => Map<String, dynamic>.from(e as Map)).toList()
+          : [];
+    } on DioException catch (e) {
+      throw AppError.fromDioException(e);
+    }
+  }
+
   /// Spec 077 — marca un mandado como COMPRADO e INGRESA el inventario (sube
   /// stock + registra compra real + costo). Devuelve cuántos insumos se ingresaron.
   Future<({int received, int skipped})> receiveErrand(String errandId) async {

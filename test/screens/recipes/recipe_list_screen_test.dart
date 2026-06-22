@@ -8,9 +8,10 @@ import 'package:vendia_pos/services/app_error.dart';
 import 'package:vendia_pos/services/auth_service.dart';
 
 class _FakeApi extends ApiService {
-  _FakeApi(this._recipes, {this.fail = false}) : super(AuthService());
+  _FakeApi(this._recipes, {this.fail = false, this.incomplete = const []}) : super(AuthService());
   final List<Map<String, dynamic>> _recipes;
   final bool fail;
+  final List<Map<String, dynamic>> incomplete;
   final List<String> deleted = [];
 
   @override
@@ -20,6 +21,9 @@ class _FakeApi extends ApiService {
     }
     return _recipes;
   }
+
+  @override
+  Future<List<Map<String, dynamic>>> fetchIncompleteMenuItems() async => incomplete;
 
   @override
   Future<void> deleteRecipe(String uuid) async => deleted.add(uuid);
@@ -37,6 +41,20 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   setUpAll(() =>
       dotenv.testLoad(fileInput: 'API_BASE_URL=http://localhost:8080'));
+
+  testWidgets('platos importados sin receta aparecen como Incompleto + alerta', (tester) async {
+    final api = _FakeApi(const [], incomplete: [
+      {'id': 'p1', 'name': 'Bandeja Paisa', 'price': 18000},
+    ]);
+    await tester.pumpWidget(MaterialApp(home: RecipeListScreen(apiOverride: api)));
+    await tester.pumpAndSettle();
+
+    // Banner de alerta + tarjeta con badge Incompleto + acción para completar.
+    expect(find.textContaining('sin receta'), findsWidgets);
+    expect(find.text('Bandeja Paisa'), findsOneWidget);
+    expect(find.text('Incompleto'), findsOneWidget);
+    expect(find.byKey(const Key('complete_p1')), findsOneWidget);
+  });
 
   testWidgets('lista recetas con precio, costo y ganancia', (tester) async {
     final api = _FakeApi([

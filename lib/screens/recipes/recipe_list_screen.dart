@@ -29,6 +29,7 @@ class RecipeListScreen extends StatefulWidget {
 class _RecipeListScreenState extends State<RecipeListScreen> {
   late final ApiService _api;
   List<Recipe> _recipes = [];
+  List<Map<String, dynamic>> _incomplete = []; // platos sin receta (Spec 078)
   bool _loading = true;
   String? _error;
 
@@ -46,9 +47,15 @@ class _RecipeListScreenState extends State<RecipeListScreen> {
       final list = raw
           .map((e) => Recipe.fromJson(Map<String, dynamic>.from(e)))
           .toList(growable: false);
+      // Platos importados/creados sin receta (Incompletos) — best-effort.
+      List<Map<String, dynamic>> incomplete = const [];
+      try {
+        incomplete = await _api.fetchIncompleteMenuItems();
+      } catch (_) {}
       if (!mounted) return;
       setState(() {
         _recipes = list;
+        _incomplete = incomplete;
         _loading = false;
         _error = null;
       });
@@ -169,7 +176,7 @@ class _RecipeListScreenState extends State<RecipeListScreen> {
         onAction: _load,
       );
     }
-    if (_recipes.isEmpty) {
+    if (_recipes.isEmpty && _incomplete.isEmpty) {
       return _MessageState(
         icon: Icons.restaurant_menu_rounded,
         title: 'Aún no tiene recetas',
@@ -178,15 +185,107 @@ class _RecipeListScreenState extends State<RecipeListScreen> {
         onAction: _createNew,
       );
     }
-    return ListView.separated(
+    return ListView(
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
       physics: const AlwaysScrollableScrollPhysics(),
-      itemCount: _recipes.length,
-      separatorBuilder: (_, __) => const SizedBox(height: 12),
-      itemBuilder: (_, i) => _RecipeCard(
-        recipe: _recipes[i],
-        onTap: () => _showDetail(_recipes[i]),
-        onDelete: () => _confirmDelete(_recipes[i]),
+      children: [
+        if (_incomplete.isNotEmpty) ...[
+          _IncompleteBanner(count: _incomplete.length),
+          const SizedBox(height: 12),
+          ..._incomplete.map((m) => Padding(
+                padding: const EdgeInsets.only(bottom: 12),
+                child: _IncompleteCard(dish: m, onComplete: () => _completeDish(m)),
+              )),
+        ],
+        ..._recipes.map((r) => Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: _RecipeCard(
+                recipe: r,
+                onTap: () => _showDetail(r),
+                onDelete: () => _confirmDelete(r),
+              ),
+            )),
+      ],
+    );
+  }
+
+  /// Completar un plato importado: abre el Studio ligado a ese producto (sin
+  /// duplicar) para agregarle insumos. Al volver, recarga. Spec 078.
+  Future<void> _completeDish(Map<String, dynamic> dish) async {
+    await Navigator.of(context).push(MaterialPageRoute(
+      builder: (_) => RecipeStudioScreen(initial: {
+        'name': (dish['name'] ?? '').toString(),
+        'price': dish['price'],
+        'description': (dish['description'] ?? '').toString(),
+        'link_product_id': (dish['id'] ?? '').toString(),
+      }),
+    ));
+    if (mounted) _load();
+  }
+}
+
+/// Banner de alerta: hay platos sin receta por completar.
+class _IncompleteBanner extends StatelessWidget {
+  const _IncompleteBanner({required this.count});
+  final int count;
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: AppTheme.warning.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppTheme.warning.withValues(alpha: 0.4)),
+      ),
+      child: Row(children: [
+        const Icon(Icons.info_outline_rounded, color: AppTheme.warning, size: 20),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Text(
+            count == 1
+                ? 'Tiene 1 plato sin receta. Complételo para ver su costo y ganancia.'
+                : 'Tiene $count platos sin receta. Complételos para ver su costo y ganancia.',
+            style: AppUI.bodySoft.copyWith(fontSize: 13),
+          ),
+        ),
+      ]),
+    );
+  }
+}
+
+/// Tarjeta de un plato INCOMPLETO (sin receta): nombre + badge + acción completar.
+class _IncompleteCard extends StatelessWidget {
+  const _IncompleteCard({required this.dish, required this.onComplete});
+  final Map<String, dynamic> dish;
+  final VoidCallback onComplete;
+  @override
+  Widget build(BuildContext context) {
+    final name = (dish['name'] ?? 'Plato').toString();
+    return InkWell(
+      key: Key('complete_${dish['id']}'),
+      onTap: onComplete,
+      borderRadius: BorderRadius.circular(12),
+      child: Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: AppUI.border),
+        ),
+        child: Row(children: [
+          Expanded(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Row(children: [
+                Flexible(child: Text(name, maxLines: 1, overflow: TextOverflow.ellipsis, style: AppUI.bodyStrong)),
+                const SizedBox(width: 8),
+                const MinimalBadge(label: 'Incompleto', color: AppTheme.warning),
+              ]),
+              const SizedBox(height: 2),
+              Text('Sin insumos ni costo · toque para completar', style: AppUI.bodySoft.copyWith(fontSize: 12)),
+            ]),
+          ),
+          const Icon(Icons.chevron_right_rounded, color: AppUI.inkSoft),
+        ]),
       ),
     );
   }

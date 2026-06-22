@@ -82,6 +82,9 @@ class RecipeStudioScreen extends StatefulWidget {
 class _RecipeStudioScreenState extends State<RecipeStudioScreen> {
   late final ApiService _api = widget.api ?? ApiService(AuthService());
 
+  /// Plato de menú existente a completar (importado sin receta). Spec 078.
+  String? _linkProductId;
+
   final _nameCtrl = TextEditingController();
   final _priceCtrl = TextEditingController();
   final _categoryCtrl = TextEditingController();
@@ -224,8 +227,13 @@ class _RecipeStudioScreenState extends State<RecipeStudioScreen> {
   // ── Prefill desde voz/IA ───────────────────────────────────────────────
   void _applyInitial(Map<String, dynamic> data) {
     setState(() {
+      // Completar un plato importado: liga la receta a ese producto (Spec 078).
+      _linkProductId = (data['link_product_id'] as String?);
       if ((data['name'] as String?)?.isNotEmpty ?? false) {
         _nameCtrl.text = data['name'] as String;
+      }
+      if ((data['price'] as num?) != null && _priceCtrl.text.trim().isEmpty) {
+        _priceCtrl.text = (data['price'] as num).round().toString();
       }
       if ((data['description'] as String?)?.isNotEmpty ?? false) {
         _descCtrl.text = data['description'] as String;
@@ -669,6 +677,8 @@ class _RecipeStudioScreenState extends State<RecipeStudioScreen> {
     setState(() => _saving = true);
     try {
       final payload = <String, dynamic>{
+        if (_linkProductId != null && _linkProductId!.isNotEmpty)
+          'link_product_id': _linkProductId,
         'product_name': _nameCtrl.text.trim(),
         'sale_price': _salePrice.round(),
         'category': _categoryCtrl.text.trim(),
