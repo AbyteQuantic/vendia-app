@@ -350,7 +350,8 @@ class _WhatBoughtSheetState extends State<_WhatBoughtSheet> {
   void initState() {
     super.initState();
     _raw = ((widget.errand['lines'] as List?) ?? []).map((l) => (l as Map).cast<String, dynamic>()).toList();
-    _ctrls = _raw.map((m) => TextEditingController(text: _fmt((m['qty'] as num?)?.toDouble() ?? 0))).toList();
+    _ctrls = _raw.map((m) => TextEditingController(
+        text: _fmt(_defaultReceived((m['qty'] as num?)?.toDouble() ?? 0, (m['unit'] ?? '').toString())))).toList();
   }
 
   @override
@@ -361,10 +362,29 @@ class _WhatBoughtSheetState extends State<_WhatBoughtSheet> {
     super.dispose();
   }
 
+  // Productos por unidad NO admiten fracciones al comprar (no se compran 7.8 ajos):
+  // el recibido por defecto se redondea HACIA ARRIBA a entero. Insumos por peso/
+  // volumen (kg/g/ml/l) sí admiten decimales. Spec 078.
+  bool _isDiscrete(String unit) {
+    final u = unit.toLowerCase().trim();
+    return u.isEmpty || u == 'unidad' || u == 'unidades' || u == 'und' || u == 'u';
+  }
+
+  double _defaultReceived(double needed, String unit) =>
+      _isDiscrete(unit) ? needed.ceilToDouble() : needed;
+
+  double _curr(int i) => double.tryParse(_ctrls[i].text.replaceAll(',', '.')) ?? 0;
+
+  void _setQty(int i, double v) {
+    if (v < 0) v = 0;
+    _ctrls[i].text = _fmt(v);
+    setState(() {});
+  }
+
   void _all() {
     setState(() {
       for (var i = 0; i < _raw.length; i++) {
-        _ctrls[i].text = _fmt((_raw[i]['qty'] as num?)?.toDouble() ?? 0);
+        _ctrls[i].text = _fmt(_defaultReceived((_raw[i]['qty'] as num?)?.toDouble() ?? 0, (_raw[i]['unit'] ?? '').toString()));
       }
     });
   }
@@ -373,13 +393,22 @@ class _WhatBoughtSheetState extends State<_WhatBoughtSheet> {
     final lines = <Map<String, dynamic>>[];
     for (var i = 0; i < _raw.length; i++) {
       final id = (_raw[i]['id'] ?? '').toString();
-      final full = (_raw[i]['qty'] as num?)?.toDouble() ?? 0;
-      var got = double.tryParse(_ctrls[i].text.replaceAll(',', '.')) ?? full;
-      if (got < 0) got = 0;
-      if (got > full) got = full;
+      var got = _curr(i);
+      if (got < 0) got = 0; // sin tope superior: se registra TODO lo que llegó
       if (id.isNotEmpty) lines.add({'line_id': id, 'received_qty': got});
     }
     Navigator.pop(context, lines);
+  }
+
+  /// (label, color) del RESTANTE: no llegó / falta X / completo / sobra X.
+  (String, Color) _statusFor(double needed, double got, String unit) {
+    if (got <= 0) return ('No llegó', AppTheme.error);
+    if (got >= needed) {
+      final over = got - needed;
+      if (over > 0.001) return ('Sobra ${_fmt(over)} $unit'.trim(), AppTheme.primary);
+      return ('Completo', AppTheme.success);
+    }
+    return ('Falta ${_fmt(needed - got)} $unit'.trim(), AppTheme.warning);
   }
 
   @override
@@ -392,62 +421,39 @@ class _WhatBoughtSheetState extends State<_WhatBoughtSheet> {
           const SizedBox(height: AppUI.s16),
           const Text('¿Cuánto compró?', style: AppUI.title),
           const SizedBox(height: 2),
-          const Text('Lo que marque entra al inventario. Lo que faltó queda pendiente.', style: AppUI.bodySoft),
+          const Text('Registre lo que realmente llegó. Calculamos lo que falta o sobra.', style: AppUI.bodySoft),
           const SizedBox(height: AppUI.s12),
-          SizedBox(
-            width: double.infinity,
-            child: OutlinedButton.icon(
-              key: const Key('scan_factura'),
-              onPressed: _scanning ? null : _scanFactura,
-              icon: _scanning
-                  ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
-                  : const Icon(Icons.receipt_long_rounded, size: 18),
-              label: Text(_scanning ? 'Leyendo factura…' : 'Foto de la factura'),
+          Row(children: [
+            Expanded(
+              child: OutlinedButton.icon(
+                key: const Key('scan_factura'),
+                onPressed: _scanning ? null : _scanFactura,
+                icon: _scanning
+                    ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                    : const Icon(Icons.receipt_long_rounded, size: 18),
+                label: Text(_scanning ? 'Leyendo…' : 'Foto de la factura'),
+                style: OutlinedButton.styleFrom(
+                    foregroundColor: AppTheme.primary,
+                    side: const BorderSide(color: AppUI.border),
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))),
+              ),
             ),
-          ),
-          Align(
-            alignment: Alignment.centerRight,
-            child: TextButton.icon(
+            const SizedBox(width: AppUI.s8),
+            TextButton.icon(
               key: const Key('bought_all'),
               onPressed: _all,
               icon: const Icon(Icons.done_all_rounded, size: 18),
-              label: const Text('Compré todo'),
+              label: const Text('Todo'),
             ),
-          ),
+          ]),
+          const SizedBox(height: AppUI.s8),
           Flexible(
             child: ListView.separated(
               shrinkWrap: true,
               itemCount: _raw.length,
               separatorBuilder: (_, __) => const SizedBox(height: AppUI.s8),
-              itemBuilder: (_, i) {
-                final unit = (_raw[i]['unit'] ?? '').toString();
-                return Row(children: [
-                  Expanded(child: Text((_raw[i]['name'] ?? '').toString(), style: AppUI.bodyStrong, maxLines: 1, overflow: TextOverflow.ellipsis)),
-                  // "Faltó": no lo consiguió → cantidad 0 → queda pendiente (re-comprar).
-                  TextButton(
-                    key: Key('missing_${_raw[i]['id']}'),
-                    onPressed: () => setState(() => _ctrls[i].text = '0'),
-                    style: TextButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(horizontal: 6),
-                      minimumSize: Size.zero,
-                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                      foregroundColor: AppTheme.error,
-                    ),
-                    child: const Text('Faltó'),
-                  ),
-                  SizedBox(
-                    width: 54,
-                    child: TextField(
-                      key: Key('qty_${_raw[i]['id']}'),
-                      controller: _ctrls[i],
-                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                      textAlign: TextAlign.center,
-                      decoration: const InputDecoration(isDense: true, contentPadding: EdgeInsets.symmetric(vertical: 8)),
-                    ),
-                  ),
-                  if (unit.isNotEmpty) ...[const SizedBox(width: 4), Text(unit, style: AppUI.bodySoft.copyWith(fontSize: 12))],
-                ]);
-              },
+              itemBuilder: (_, i) => _row(i),
             ),
           ),
           const SizedBox(height: AppUI.s12),
@@ -456,11 +462,81 @@ class _WhatBoughtSheetState extends State<_WhatBoughtSheet> {
             child: ElevatedButton(
               key: const Key('confirm_bought'),
               onPressed: _confirm,
-              style: ElevatedButton.styleFrom(backgroundColor: AppTheme.success, foregroundColor: Colors.white, padding: const EdgeInsets.symmetric(vertical: 14)),
-              child: const Text('Ingresar al inventario'),
+              style: ElevatedButton.styleFrom(
+                  backgroundColor: AppTheme.success,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
+              child: const Text('Ingresar al inventario', style: TextStyle(fontWeight: FontWeight.w600)),
             ),
           ),
         ]),
+      ),
+    );
+  }
+
+  Widget _row(int i) {
+    final m = _raw[i];
+    final unit = (m['unit'] ?? '').toString();
+    final needed = (m['qty'] as num?)?.toDouble() ?? 0;
+    final got = _curr(i);
+    final discrete = _isDiscrete(unit);
+    final (statusLabel, statusColor) = _statusFor(needed, got, unit);
+    return Container(
+      padding: const EdgeInsets.all(AppUI.s12),
+      decoration: AppUI.borderedCard(r: 10),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          Expanded(child: Text((m['name'] ?? '').toString(), style: AppUI.bodyStrong, maxLines: 1, overflow: TextOverflow.ellipsis)),
+          MinimalBadge(label: statusLabel, color: statusColor),
+        ]),
+        const SizedBox(height: 2),
+        Text('Pedido: ${_fmt(needed)} $unit'.trim(), style: AppUI.bodySoft.copyWith(fontSize: 12)),
+        const SizedBox(height: AppUI.s8),
+        Row(children: [
+          _stepBtn(Icons.remove_rounded, () => _setQty(i, got - 1), key: Key('minus_${m['id']}')),
+          SizedBox(
+            width: 60,
+            child: TextField(
+              key: Key('qty_${m['id']}'),
+              controller: _ctrls[i],
+              onChanged: (_) => setState(() {}),
+              keyboardType: TextInputType.numberWithOptions(decimal: !discrete),
+              textAlign: TextAlign.center,
+              style: AppUI.tabularStrong,
+              decoration: const InputDecoration(isDense: true, contentPadding: EdgeInsets.symmetric(vertical: 8)),
+            ),
+          ),
+          _stepBtn(Icons.add_rounded, () => _setQty(i, got + 1), key: Key('plus_${m['id']}')),
+          if (unit.isNotEmpty) ...[const SizedBox(width: 6), Text(unit, style: AppUI.bodySoft)],
+          const Spacer(),
+          TextButton(
+            key: Key('missing_${m['id']}'),
+            onPressed: () => _setQty(i, 0),
+            style: TextButton.styleFrom(
+              padding: const EdgeInsets.symmetric(horizontal: 6),
+              minimumSize: Size.zero,
+              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              foregroundColor: AppTheme.error,
+            ),
+            child: const Text('No llegó'),
+          ),
+        ]),
+      ]),
+    );
+  }
+
+  Widget _stepBtn(IconData icon, VoidCallback onTap, {Key? key}) {
+    return InkWell(
+      key: key,
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(8),
+      child: Container(
+        width: 34,
+        height: 34,
+        decoration: BoxDecoration(
+            color: AppUI.pageBg, borderRadius: BorderRadius.circular(8), border: Border.all(color: AppUI.border)),
+        child: Icon(icon, size: 18, color: AppUI.ink),
       ),
     );
   }
