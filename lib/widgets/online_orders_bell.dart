@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 import '../models/task.dart';
 import '../screens/online_orders/online_orders_screen.dart';
 import '../screens/mandados/mandados_screen.dart';
+import '../screens/recipes/recipes_home_screen.dart';
 import '../services/task_center_controller.dart';
 import '../theme/app_theme.dart';
 import 'task_center_sheet.dart';
@@ -68,8 +69,11 @@ class _OnlineOrdersBellState extends State<OnlineOrdersBell> {
       case 'reorder':
         screen = const MandadosScreen();
         break;
+      case 'menu_incomplete':
+        screen = const RecipesHomeScreen();
+        break;
       default:
-        screen = null; // perishable/otros: refinado en F3
+        screen = null; // perishable/otros: refinado luego
     }
     if (screen == null) return;
     Navigator.of(context)
