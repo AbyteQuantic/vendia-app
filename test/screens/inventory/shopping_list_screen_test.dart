@@ -19,6 +19,14 @@ class _FakeApi extends ApiService {
          'packs': 1, 'cost': 12000, 'leftover': 2000, 'pack_unknown': false, 'recommended': true, 'is_estimate': true},
       ];
   @override
+  Future<List<Map<String, dynamic>>> fetchSupplySearch(
+          {required String query, required String unit, required double shortfall}) async =>
+      [
+        {'id': 'chain:exito:Aguacate Hass', 'label': 'Aguacate Hass Und', 'supplier': 'Éxito',
+         'source': 'scraped_chain', 'packs': 1, 'cost': 5390, 'leftover': 0, 'pack_unknown': true,
+         'recommended': true, 'is_estimate': true},
+      ];
+  @override
   Future<Map<String, dynamic>> fetchShoppingList(List<Map<String, dynamic>> needs) async {
     sentNeeds = needs;
     return {
@@ -80,5 +88,26 @@ void main() {
     expect(find.textContaining('Éxito'), findsWidgets);
     expect(find.text('\$12.000'), findsWidgets); // costo de la opción + total
     expect(find.text('\$8.400'), findsNothing); // ya no manda el sugerido
+  });
+
+  testWidgets('buscador: cambia la sugerencia por un resultado del catálogo', (tester) async {
+    final api = _FakeApi();
+    await tester.pumpWidget(MaterialApp(
+        home: ShoppingListScreen(
+            needs: const [{'ingredient_id': 'arroz', 'name': 'Arroz', 'unit': 'kg', 'qty': 5}],
+            api: api)));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const Key('options_arroz')));
+    await tester.pumpAndSettle();
+    // Escribe en el buscador → aparece el resultado del catálogo.
+    await tester.enterText(find.byKey(const Key('supply_search_arroz')), 'aguacate');
+    await tester.pump(const Duration(milliseconds: 400)); // debounce
+    await tester.pumpAndSettle();
+    expect(find.text('Aguacate Hass Und'), findsOneWidget);
+    // Elige el resultado → la fila refleja ese costo.
+    await tester.tap(find.byKey(const Key('option_chain:exito:Aguacate Hass')));
+    await tester.pumpAndSettle();
+    expect(find.text('\$5.390'), findsWidgets);
   });
 }

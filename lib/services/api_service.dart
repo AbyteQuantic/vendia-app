@@ -925,6 +925,29 @@ class ApiService {
     }
   }
 
+  /// Spec 077 — buscador libre: productos del catálogo scrapeado + compras
+  /// previas que matcheen [query], con el costo resuelto contra [shortfall].
+  Future<List<Map<String, dynamic>>> fetchSupplySearch({
+    required String query,
+    required String unit,
+    required double shortfall,
+  }) async {
+    try {
+      final r = await _dio.get('/api/v1/supplies/search', queryParameters: {
+        'q': query,
+        'unit': unit,
+        'shortfall': shortfall,
+      });
+      final data = (r.data is Map) ? r.data['data'] : null;
+      final list = (data is Map) ? data['options'] : null;
+      return (list is List)
+          ? list.map((e) => Map<String, dynamic>.from(e as Map)).toList()
+          : [];
+    } on DioException catch (e) {
+      throw AppError.fromDioException(e);
+    }
+  }
+
   /// Spec 077 — crea un MANDADO de compra (lista + a quién se asigna). Devuelve
   /// {errand, whatsapp_url}.
   Future<Map<String, dynamic>> createErrand({

@@ -1,4 +1,5 @@
 // Spec: specs/077-compra-inteligente-insumos/spec.md
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:share_plus/share_plus.dart';
 import '../../widgets/dispatch_sheet.dart';
@@ -340,7 +341,18 @@ class _ShoppingListScreenState extends State<ShoppingListScreen> {
   /// fila + el total reflejan esa elección (Spec 077).
   Future<void> _showOptions(Map<String, dynamic> raw) async {
     final id = (raw['ingredient_id'] ?? '').toString();
+    final name = raw['name'].toString();
+    final unit = (raw['unit'] ?? '').toString();
     final shortfall = (raw['shortfall'] as num?)?.toDouble() ?? 0;
+
+    // Estado del sheet (closure): opciones base, resultados de búsqueda y carga.
+    List<Map<String, dynamic>>? baseOpts;
+    List<Map<String, dynamic>>? searchResults;
+    bool started = false, searching = false;
+    String queryText = '';
+    Timer? debounce;
+    final searchCtrl = TextEditingController();
+
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -349,31 +361,99 @@ class _ShoppingListScreenState extends State<ShoppingListScreen> {
           borderRadius: BorderRadius.vertical(top: Radius.circular(16))),
       builder: (ctx) => DraggableScrollableSheet(
         expand: false,
-        initialChildSize: 0.6,
-        maxChildSize: 0.9,
-        builder: (ctx, scroll) => FutureBuilder<List<Map<String, dynamic>>>(
-          future: _api.fetchSupplyOptions(
-              ingredientId: id, name: raw['name'].toString(), unit: (raw['unit'] ?? '').toString(), shortfall: shortfall),
-          builder: (ctx, snap) {
-            if (!snap.hasData) {
-              return const Padding(
-                  padding: EdgeInsets.all(AppUI.s24), child: Center(child: CircularProgressIndicator()));
+        initialChildSize: 0.7,
+        maxChildSize: 0.95,
+        builder: (ctx, scroll) => StatefulBuilder(
+          builder: (ctx, setSheet) {
+            // Carga las opciones base una sola vez.
+            if (!started) {
+              started = true;
+              _api
+                  .fetchSupplyOptions(ingredientId: id, name: name, unit: unit, shortfall: shortfall)
+                  .then((r) {
+                baseOpts = r;
+                if (ctx.mounted) setSheet(() {});
+              }).catchError((_) {
+                baseOpts = [];
+                if (ctx.mounted) setSheet(() {});
+              });
             }
-            final opts = snap.data!;
+
+            // Busca en el catálogo + compras previas (con debounce).
+            void runSearch(String q) {
+              queryText = q;
+              debounce?.cancel();
+              if (q.trim().length < 2) {
+                searchResults = null;
+                setSheet(() {});
+                return;
+              }
+              searching = true;
+              setSheet(() {});
+              debounce = Timer(const Duration(milliseconds: 350), () async {
+                try {
+                  final r = await _api.fetchSupplySearch(query: q, unit: unit, shortfall: shortfall);
+                  searchResults = r;
+                } catch (_) {
+                  searchResults = [];
+                }
+                searching = false;
+                if (ctx.mounted) setSheet(() {});
+              });
+            }
+
+            final isSearch = queryText.trim().length >= 2;
+            final showing = isSearch ? (searchResults ?? const []) : (baseOpts ?? const []);
+            final loadingBase = !isSearch && baseOpts == null;
+
             return ListView(
               controller: scroll,
               padding: const EdgeInsets.all(AppUI.s16),
               children: [
-                Text('${raw['name']} · de cuál proveedor', style: AppUI.bodyStrong),
+                Text('$name · de cuál proveedor', style: AppUI.bodyStrong),
                 const SizedBox(height: 2),
-                const Text('Escoja de dónde lo compra. Le mostramos el empaque y lo que sobra.',
+                const Text('Escoja de dónde lo compra, o busque otro producto para cambiar la sugerencia.',
                     style: AppUI.bodySoft),
                 const SizedBox(height: AppUI.s12),
-                if (opts.isEmpty)
-                  const Text('Aún no hay opciones para este insumo. Registre el precio de su proveedor.',
+                // Buscador dinámico (catálogo de cadenas + compras previas).
+                TextField(
+                  key: Key('supply_search_$id'),
+                  controller: searchCtrl,
+                  onChanged: runSearch,
+                  textInputAction: TextInputAction.search,
+                  decoration: InputDecoration(
+                    hintText: 'Buscar otro producto (ej. aguacate hass)',
+                    prefixIcon: const Icon(Icons.search_rounded, size: 20),
+                    suffixIcon: queryText.isEmpty
+                        ? null
+                        : IconButton(
+                            icon: const Icon(Icons.close_rounded, size: 18),
+                            onPressed: () {
+                              searchCtrl.clear();
+                              runSearch('');
+                            },
+                          ),
+                    isDense: true,
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                  ),
+                ),
+                const SizedBox(height: AppUI.s12),
+                if (loadingBase || searching)
+                  const Padding(padding: EdgeInsets.all(AppUI.s24), child: Center(child: CircularProgressIndicator()))
+                else if (showing.isEmpty)
+                  Text(
+                      isSearch
+                          ? 'Sin resultados para "$queryText". Pruebe otro nombre o registre el precio de su proveedor.'
+                          : 'Aún no hay opciones para este insumo. Busque arriba o registre el precio de su proveedor.',
                       style: AppUI.bodySoft)
-                else
-                  ...opts.map((o) => _optionTile(ctx, id, o)),
+                else ...[
+                  if (isSearch)
+                    const Padding(
+                      padding: EdgeInsets.only(bottom: AppUI.s8),
+                      child: Text('Resultados de la búsqueda', style: AppUI.bodySoft),
+                    ),
+                  ...showing.map((o) => _optionTile(ctx, id, o)),
+                ],
                 const SizedBox(height: AppUI.s12),
                 SizedBox(
                   width: double.infinity,
