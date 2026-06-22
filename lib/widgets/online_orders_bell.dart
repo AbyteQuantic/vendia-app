@@ -1,23 +1,18 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:provider/provider.dart';
 
+import '../models/task.dart';
 import '../screens/online_orders/online_orders_screen.dart';
-import '../services/api_service.dart';
-import '../services/auth_service.dart';
+import '../screens/mandados/mandados_screen.dart';
+import '../services/task_center_controller.dart';
 import '../theme/app_theme.dart';
+import 'task_center_sheet.dart';
 
-/// Dashboard bell for pending web orders.
-///
-/// Polls GET /online-orders?status=pending every 15 s (brief's
-/// cadence) and renders a red badge with the count when there is
-/// at least one pedido waiting for a decision. Tapping opens the
-/// dedicated KDS screen.
-///
-/// Polling is opt-in via the [enabled] flag so tests (and the
-/// onboarding dashboard before a tenant has configured anything)
-/// can mount the widget without burning network round-trips.
+/// Campana ÚNICA del Centro de Tareas (Spec 078). Reemplaza el polling propio:
+/// el badge lee el [TaskCenterController] (un solo poller app-wide) y al tocar
+/// abre el Centro de Tareas unificado. Lectura defensiva del Provider para que
+/// los tests que montan la campana sin Provider la rendericen en cero.
 class OnlineOrdersBell extends StatefulWidget {
   const OnlineOrdersBell({
     super.key,
@@ -37,85 +32,68 @@ class OnlineOrdersBell extends StatefulWidget {
 }
 
 class _OnlineOrdersBellState extends State<OnlineOrdersBell> {
-  ApiService? _api;
-  int _count = 0;
-  Timer? _pollTimer;
-
-  @override
-  void initState() {
-    super.initState();
-    if (widget.enabled) {
-      _startPolling();
-    }
-  }
-
-  @override
-  void didUpdateWidget(OnlineOrdersBell oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    // If the screen toggles the bell off (e.g., logout), kill the
-    // timer so we don't keep hitting the API with a stale token.
-    if (oldWidget.enabled != widget.enabled) {
-      _pollTimer?.cancel();
-      if (widget.enabled) {
-        _startPolling();
-      }
-    }
-  }
-
-  @override
-  void dispose() {
-    _pollTimer?.cancel();
-    super.dispose();
-  }
-
-  void _startPolling() {
-    // Fire-and-forget the first fetch so initState stays synchronous
-    // and ApiService (which reads dotenv) can fail gracefully in
-    // widget tests without tearing down the tree.
-    unawaited(_refresh());
-    _pollTimer = Timer.periodic(widget.pollInterval, (_) => _refresh());
-  }
-
-  ApiService? _ensureApi() {
-    if (_api != null) return _api;
+  TaskCenterController? _ctrl() {
     try {
-      _api = ApiService(AuthService());
+      return context.read<TaskCenterController>();
     } catch (_) {
-      // dotenv / keychain not initialised (typical in widget tests
-      // without .env fixtures). Keep the bell visually static at
-      // zero so the surrounding dashboard renders cleanly.
-      return null;
+      return null; // sin Provider (tests) → campana estática en cero
     }
-    return _api;
   }
 
-  Future<void> _refresh() async {
-    final api = _ensureApi();
-    if (api == null) return;
-    try {
-      final list = await api.fetchOnlineOrders(status: 'pending');
-      if (!mounted) return;
-      setState(() => _count = list.length);
-    } catch (_) {
-      // Offline / 401 / 5xx: keep the last known count so the
-      // badge doesn't flicker to 0 on a transient failure.
-    }
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (widget.enabled) _ctrl()?.start(); // idempotente (un solo Timer)
   }
 
   void _open() {
     HapticFeedback.lightImpact();
+    final ctrl = _ctrl();
+    if (ctrl == null) {
+      Navigator.of(context).push(MaterialPageRoute(builder: (_) => const OnlineOrdersScreen()));
+      return;
+    }
+    showTaskCenter(context, onOpenTask: _navigateToTask);
+  }
+
+  // Navega a la pantalla dueña de la tarea; al volver, refresca el Centro.
+  void _navigateToTask(Task t) {
+    Widget? screen;
+    switch (t.kind) {
+      case 'online_order':
+      case 'table_account':
+        screen = const OnlineOrdersScreen();
+        break;
+      case 'errand':
+      case 'reorder':
+        screen = const MandadosScreen();
+        break;
+      default:
+        screen = null; // perishable/otros: refinado en F3
+    }
+    if (screen == null) return;
     Navigator.of(context)
-        .push(MaterialPageRoute(builder: (_) => const OnlineOrdersScreen()))
-        .then((_) => _refresh());
+        .push(MaterialPageRoute(builder: (_) => screen!))
+        .then((_) => _ctrl()?.refresh());
   }
 
   @override
   Widget build(BuildContext context) {
+    int count = 0;
+    bool urgent = false;
+    try {
+      final ctrl = context.watch<TaskCenterController>();
+      count = ctrl.openCount;
+      urgent = ctrl.hasUrgent;
+    } catch (_) {
+      // sin Provider → cero
+    }
+    final active = count > 0;
+    final badgeColor = urgent ? AppTheme.error : AppTheme.warning;
+
     return Semantics(
       button: true,
-      label: _count > 0
-          ? 'Pedidos web pendientes: $_count'
-          : 'Pedidos web, ninguno pendiente',
+      label: active ? 'Tareas pendientes: $count' : 'Tareas, ninguna pendiente',
       child: GestureDetector(
         key: const Key('dashboard_orders_bell'),
         onTap: _open,
@@ -130,45 +108,33 @@ class _OnlineOrdersBellState extends State<OnlineOrdersBell> {
                   width: widget.size,
                   height: widget.size,
                   decoration: BoxDecoration(
-                    color: _count > 0
-                        ? AppTheme.error.withValues(alpha: 0.08)
-                        : Colors.grey.shade100,
+                    color: active ? badgeColor.withValues(alpha: 0.08) : Colors.grey.shade100,
                     shape: BoxShape.circle,
                   ),
                   child: Icon(
-                    _count > 0
-                        ? Icons.notifications_active_rounded
-                        : Icons.notifications_none_rounded,
-                    color: _count > 0 ? AppTheme.error : (widget.iconColor ?? AppTheme.textSecondary),
+                    active ? Icons.notifications_active_rounded : Icons.notifications_none_rounded,
+                    color: active ? badgeColor : (widget.iconColor ?? AppTheme.textSecondary),
                     size: 24,
                   ),
                 ),
               ),
-              if (_count > 0)
+              if (active)
                 Positioned(
                   right: 0,
                   top: 0,
                   child: Container(
                     key: const Key('dashboard_orders_badge'),
-                    constraints: const BoxConstraints(
-                      minWidth: 20,
-                      minHeight: 20,
-                    ),
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    constraints: const BoxConstraints(minWidth: 20, minHeight: 20),
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                     decoration: BoxDecoration(
-                      color: AppTheme.error,
+                      color: badgeColor,
                       borderRadius: BorderRadius.circular(999),
                       border: Border.all(color: Colors.white, width: 2),
                     ),
                     alignment: Alignment.center,
                     child: Text(
-                      _count > 99 ? '99+' : '$_count',
-                      style: const TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w800,
-                        color: Colors.white,
-                      ),
+                      count > 99 ? '99+' : '$count',
+                      style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: Colors.white),
                     ),
                   ),
                 ),

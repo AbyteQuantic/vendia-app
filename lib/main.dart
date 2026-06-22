@@ -12,6 +12,7 @@ import 'database/sync/sync_service.dart';
 import 'services/active_fiado_service.dart';
 import 'services/api_service.dart';
 import 'services/auth_service.dart';
+import 'services/task_center_controller.dart';
 import 'services/backend_warmup.dart';
 import 'services/push_service.dart';
 import 'services/hardware_service.dart';
@@ -210,6 +211,8 @@ class _VendIAAppState extends State<VendIAApp> {
         ChangeNotifierProvider.value(value: _activeFiado),
         ChangeNotifierProvider.value(value: _branchProvider),
         ChangeNotifierProvider(create: (_) => NotificationToastController()),
+        // Spec 078 — Centro de Tareas unificado: poller único app-wide.
+        ChangeNotifierProvider(create: (_) => TaskCenterController(ApiService(AuthService()))),
       ],
       child: MaterialApp(
         title: 'VendIA',
