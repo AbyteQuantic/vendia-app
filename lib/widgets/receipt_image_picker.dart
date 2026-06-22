@@ -1,5 +1,3 @@
-import 'dart:io';
-
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
@@ -40,10 +38,9 @@ class ReceiptImagePicker extends StatefulWidget {
 }
 
 class _ReceiptImagePickerState extends State<ReceiptImagePicker> {
-  /// `null` while the cashier hasn't picked anything; populated as
-  /// soon as the local file is selected so we can preview while the
-  /// upload is in flight.
-  File? _localFile;
+  /// Bytes de la imagen elegida (web-safe: NUNCA `dart:io File`/`XFile.path`).
+  /// Se previsualizan con Image.memory mientras sube. null = nada elegido.
+  Uint8List? _localBytes;
   String? _uploadedUrl;
   bool _uploading = false;
 
@@ -57,8 +54,11 @@ class _ReceiptImagePickerState extends State<ReceiptImagePicker> {
     );
     if (picked == null || !mounted) return;
 
+    // Lee los BYTES (funciona en web e iOS); el path es un blob URL en web.
+    final bytes = await picked.readAsBytes();
+    if (!mounted) return;
     setState(() {
-      _localFile = File(picked.path);
+      _localBytes = bytes;
       _uploading = true;
       _uploadedUrl = null;
     });
@@ -69,8 +69,7 @@ class _ReceiptImagePickerState extends State<ReceiptImagePicker> {
     widget.onImageReady(null);
 
     try {
-      final url =
-          await ApiService(AuthService()).uploadReceipt(_localFile!);
+      final url = await ApiService(AuthService()).uploadReceipt(picked);
       if (!mounted) return;
       setState(() {
         _uploadedUrl = url;
@@ -80,7 +79,7 @@ class _ReceiptImagePickerState extends State<ReceiptImagePicker> {
     } catch (_) {
       if (!mounted) return;
       setState(() {
-        _localFile = null;
+        _localBytes = null;
         _uploadedUrl = null;
         _uploading = false;
       });
@@ -98,7 +97,7 @@ class _ReceiptImagePickerState extends State<ReceiptImagePicker> {
 
   void _remove() {
     setState(() {
-      _localFile = null;
+      _localBytes = null;
       _uploadedUrl = null;
     });
     widget.onImageReady(null);
@@ -151,7 +150,7 @@ class _ReceiptImagePickerState extends State<ReceiptImagePicker> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        if (_localFile == null)
+        if (_localBytes == null)
           ElevatedButton.icon(
             onPressed: _uploading ? null : _showSourceSheet,
             icon: const Icon(Icons.attach_file_rounded, size: 22),
@@ -177,7 +176,7 @@ class _ReceiptImagePickerState extends State<ReceiptImagePicker> {
               children: [
                 ClipRRect(
                   borderRadius: BorderRadius.circular(8),
-                  child: Image.file(_localFile!,
+                  child: Image.memory(_localBytes!,
                       width: 64, height: 64, fit: BoxFit.cover),
                 ),
                 const SizedBox(width: 12),

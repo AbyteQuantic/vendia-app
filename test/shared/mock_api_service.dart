@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'package:image_picker/image_picker.dart';
 import 'dart:typed_data';
 
 import 'package:vendia_pos/services/api_service.dart';
@@ -404,7 +405,7 @@ class MockApiService extends ApiService {
   }
 
   @override
-  Future<String> uploadReceipt(File image) async {
+  Future<String> uploadReceipt(XFile image) async {
     _log('uploadReceipt');
     return _handle('uploadReceipt', {'image': image.path}) as String;
   }

@@ -653,8 +653,13 @@ class ApiService {
   /// Returns the public URL of the stored object. The Sale or
   /// CreditPayment row keeps that URL as audit trail even after the
   /// blob itself is purged at day 8.
-  Future<String> uploadReceipt(File image) async {
-    final ext = image.path.toLowerCase().endsWith('.png') ? 'png' : 'jpg';
+  // Spec 056 / web-safe: recibe un [XFile] (NUNCA `dart:io File`) y sube sus BYTES
+  // (XFile.readAsBytes → funciona en Flutter web, donde no hay filesystem y
+  // `XFile.path` es solo un blob URL). Causa del bug del comprobante de abono que
+  // no subía ni mostraba miniatura en iPhone PWA (misma lección que el logo F007).
+  Future<String> uploadReceipt(XFile image) async {
+    final lower = image.name.toLowerCase();
+    final ext = lower.endsWith('.png') ? 'png' : 'jpg';
     final mime = ext == 'png' ? 'image/png' : 'image/jpeg';
     final fileName =
         '${DateTime.now().millisecondsSinceEpoch}_${const Uuid().v4()}.$ext';
@@ -664,18 +669,19 @@ class ApiService {
     final path = 'public/$fileName';
     final url = '$supabaseUrl/storage/v1/object/$supabaseReceiptsBucket/$path';
 
+    final bytes = await image.readAsBytes();
     final dio = Dio();
     try {
       final res = await dio.post<dynamic>(
         url,
-        data: image.openRead(),
+        data: Stream.fromIterable([bytes]),
         options: Options(
           headers: {
             'apikey': supabaseAnonKey,
             'Authorization': 'Bearer $supabaseAnonKey',
             'Content-Type': mime,
             'x-upsert': 'false',
-            Headers.contentLengthHeader: await image.length(),
+            Headers.contentLengthHeader: bytes.length,
           },
           // Supabase responds 200/201 on success; treat anything else
           // as failure so the picker shows an error and the cashier
