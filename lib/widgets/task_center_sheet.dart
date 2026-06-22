@@ -10,6 +10,8 @@ import '../services/task_center_controller.dart';
 import '../screens/online_orders/online_orders_screen.dart';
 import '../screens/mandados/mandados_screen.dart';
 import '../screens/recipes/recipes_home_screen.dart';
+import '../screens/tables/tables_screen.dart';
+import '../screens/promotions/promotions_list_screen.dart';
 import '../theme/app_theme.dart';
 import '../theme/app_ui.dart';
 import '../utils/format_cop.dart';
@@ -33,8 +35,10 @@ void navigateToTask(BuildContext context, Task t) {
   Widget? screen;
   switch (t.kind) {
     case 'online_order':
-    case 'table_account':
       screen = const OnlineOrdersScreen();
+      break;
+    case 'table_account':
+      screen = const TablesScreen(); // mesa por cobrar → pantalla de mesas
       break;
     case 'errand':
     case 'reorder':
@@ -43,8 +47,11 @@ void navigateToTask(BuildContext context, Task t) {
     case 'menu_incomplete':
       screen = const RecipesHomeScreen();
       break;
+    case 'perishable':
+      screen = const PromotionsListScreen(); // por vencer → crear promoción
+      break;
     default:
-      screen = null; // perishable/otros: refinado luego
+      screen = null;
   }
   if (screen == null) return;
   final s = screen;
