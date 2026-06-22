@@ -8,6 +8,12 @@ import 'package:vendia_pos/screens/mandados/mandados_screen.dart';
 
 class _FakeApi extends ApiService {
   _FakeApi() : super(AuthService());
+  String? receivedId;
+  @override
+  Future<({int received, int skipped})> receiveErrand(String errandId) async {
+    receivedId = errandId;
+    return (received: 2, skipped: 0);
+  }
   @override
   Future<List<Map<String, dynamic>>> fetchErrands({String status = ''}) async => [
         {
@@ -38,5 +44,16 @@ void main() {
     expect(find.text('500 ml'), findsOneWidget);
     // Y la acción para marcar comprado.
     expect(find.byKey(const Key('done_e1')), findsOneWidget);
+  });
+
+  testWidgets('"Ya compré" ingresa el inventario (llama a receiveErrand)', (tester) async {
+    final api = _FakeApi();
+    await tester.pumpWidget(MaterialApp(home: MandadosScreen(api: api)));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const Key('done_e1')));
+    await tester.pumpAndSettle();
+    expect(api.receivedId, 'e1'); // ingresó el inventario, no solo cambió estado
+    expect(find.textContaining('ingresado'), findsOneWidget);
   });
 }

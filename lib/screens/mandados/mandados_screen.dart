@@ -61,6 +61,27 @@ class _MandadosScreenState extends State<MandadosScreen> {
     }
   }
 
+  /// Marcar COMPRADO ingresa el inventario al sistema (sube stock + costo + compra
+  /// real), no solo cambia el estado. Spec 077.
+  Future<void> _markBought(String id) async {
+    try {
+      final res = await _api.receiveErrand(id);
+      await _load();
+      if (mounted) {
+        final msg = res.received > 0
+            ? 'Listo: ${res.received} producto(s) ingresado(s) al inventario.'
+            : 'Mandado marcado como comprado.';
+        ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(msg), backgroundColor: AppTheme.success));
+      }
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+            content: Text('No se pudo ingresar el inventario.'), backgroundColor: AppTheme.error));
+      }
+    }
+  }
+
   Future<void> _resend(Map<String, dynamic> e) async {
     final lines = (e['lines'] as List?) ?? [];
     final b = StringBuffer('Buenos días, necesito comprar:\n');
@@ -166,10 +187,10 @@ class _MandadosScreenState extends State<MandadosScreen> {
             ),
             ElevatedButton(
               key: Key('done_$id'),
-              onPressed: () => _setStatus(id, 'comprado'),
+              onPressed: () => _markBought(id),
               style: ElevatedButton.styleFrom(
                   backgroundColor: AppTheme.success, foregroundColor: Colors.white, elevation: 0),
-              child: const Text('Comprado'),
+              child: const Text('Ya compré'),
             ),
           ],
         ]),

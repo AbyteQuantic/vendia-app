@@ -925,6 +925,20 @@ class ApiService {
     }
   }
 
+  /// Spec 077 — marca un mandado como COMPRADO e INGRESA el inventario (sube
+  /// stock + registra compra real + costo). Devuelve cuántos insumos se ingresaron.
+  Future<({int received, int skipped})> receiveErrand(String errandId) async {
+    try {
+      final r = await _dio.post('/api/v1/errands/$errandId/receive');
+      final data = (r.data is Map) ? r.data['data'] : null;
+      final received = (data is Map) ? ((data['received'] as num?)?.toInt() ?? 0) : 0;
+      final skipped = (data is Map) ? ((data['skipped'] as num?)?.toInt() ?? 0) : 0;
+      return (received: received, skipped: skipped);
+    } on DioException catch (e) {
+      throw AppError.fromDioException(e);
+    }
+  }
+
   /// Spec 078 — Centro de Tareas: trae las tareas pendientes agregadas (deriva
   /// de las entidades reales) con sus contadores por urgencia.
   Future<({List<Map<String, dynamic>> tasks, Map<String, dynamic> counts})> fetchTasks({String branchId = ''}) async {
