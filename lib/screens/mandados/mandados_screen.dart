@@ -283,7 +283,12 @@ class _WhatBoughtSheetState extends State<_WhatBoughtSheet> {
   late final List<TextEditingController> _ctrls;
   bool _scanning = false;
 
-  String _fmt(double v) => v == v.roundToDouble() ? v.toInt().toString() : v.toString();
+  String _fmt(double v) {
+    if ((v - v.roundToDouble()).abs() < 0.001) return v.round().toString();
+    // Máx. 2 decimales, sin colas de coma flotante (0.9000000000000004 → 0.9).
+    return v.toStringAsFixed(2).replaceAll(RegExp(r'0+$'), '').replaceAll(RegExp(r'\.$'), '');
+  }
+
   String _norm(String s) => s.toLowerCase().trim();
 
   /// Foto de la factura (propia o la que llegó por WhatsApp): OCR Gemini lee los
@@ -400,12 +405,14 @@ class _WhatBoughtSheetState extends State<_WhatBoughtSheet> {
     Navigator.pop(context, lines);
   }
 
-  /// (label, color) del RESTANTE: no llegó / falta X / completo / sobra X.
-  (String, Color) _statusFor(double needed, double got, String unit) {
-    if (got <= 0) return ('No llegó', AppTheme.error);
-    if (got >= needed) {
+  /// (label, color) del RESTANTE: pendiente / falta X / completo / sobra X.
+  (String, Color) _statusFor(double needed, double got, String unit, bool discrete) {
+    if (got <= 0) return ('Pendiente', AppTheme.warning);
+    if (got >= needed - 0.001) {
       final over = got - needed;
-      if (over > 0.001) return ('Sobra ${_fmt(over)} $unit'.trim(), AppTheme.primary);
+      // Para unidades, "sobra" solo si es ≥1 entero (el redondeo no cuenta como sobra).
+      final meaningful = discrete ? over >= 1 : over > 0.01;
+      if (meaningful) return ('Sobra ${_fmt(over)} $unit'.trim(), AppTheme.primary);
       return ('Completo', AppTheme.success);
     }
     return ('Falta ${_fmt(needed - got)} $unit'.trim(), AppTheme.warning);
@@ -421,7 +428,7 @@ class _WhatBoughtSheetState extends State<_WhatBoughtSheet> {
           const SizedBox(height: AppUI.s16),
           const Text('¿Cuánto compró?', style: AppUI.title),
           const SizedBox(height: 2),
-          const Text('Registre lo que realmente llegó. Calculamos lo que falta o sobra.', style: AppUI.bodySoft),
+          const Text('Registre lo que realmente llegó. Lo que no llegó queda pendiente para volver a pedir (no se pierde).', style: AppUI.bodySoft),
           const SizedBox(height: AppUI.s12),
           Row(children: [
             Expanded(
@@ -481,7 +488,8 @@ class _WhatBoughtSheetState extends State<_WhatBoughtSheet> {
     final needed = (m['qty'] as num?)?.toDouble() ?? 0;
     final got = _curr(i);
     final discrete = _isDiscrete(unit);
-    final (statusLabel, statusColor) = _statusFor(needed, got, unit);
+    final notArrived = got <= 0;
+    final (statusLabel, statusColor) = _statusFor(needed, got, unit, discrete);
     return Container(
       padding: const EdgeInsets.all(AppUI.s12),
       decoration: AppUI.borderedCard(r: 10),
@@ -510,16 +518,23 @@ class _WhatBoughtSheetState extends State<_WhatBoughtSheet> {
           _stepBtn(Icons.add_rounded, () => _setQty(i, got + 1), key: Key('plus_${m['id']}')),
           if (unit.isNotEmpty) ...[const SizedBox(width: 6), Text(unit, style: AppUI.bodySoft)],
           const Spacer(),
-          TextButton(
+          // Botón claro: marca el ítem como NO recibido (cantidad 0). Queda
+          // pendiente; NO invalida la recepción de los demás. Se resalta al activarse.
+          OutlinedButton.icon(
             key: Key('missing_${m['id']}'),
-            onPressed: () => _setQty(i, 0),
-            style: TextButton.styleFrom(
-              padding: const EdgeInsets.symmetric(horizontal: 6),
+            onPressed: () => _setQty(i, notArrived ? _defaultReceived(needed, unit) : 0),
+            icon: Icon(notArrived ? Icons.undo_rounded : Icons.remove_shopping_cart_rounded, size: 15),
+            label: Text(notArrived ? 'Deshacer' : 'No llegó'),
+            style: OutlinedButton.styleFrom(
+              foregroundColor: notArrived ? AppUI.inkSoft : AppTheme.error,
+              backgroundColor: notArrived ? AppUI.pageBg : null,
+              side: BorderSide(color: notArrived ? AppUI.border : AppTheme.error.withValues(alpha: 0.5)),
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
               minimumSize: Size.zero,
               tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-              foregroundColor: AppTheme.error,
+              visualDensity: VisualDensity.compact,
+              textStyle: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
             ),
-            child: const Text('No llegó'),
           ),
         ]),
       ]),
