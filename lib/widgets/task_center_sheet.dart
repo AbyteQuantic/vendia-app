@@ -9,6 +9,7 @@ import '../services/auth_service.dart';
 import '../services/task_center_controller.dart';
 import '../screens/online_orders/online_orders_screen.dart';
 import '../screens/mandados/mandados_screen.dart';
+import '../screens/inventory/product_reorder_screen.dart';
 import '../screens/recipes/recipes_home_screen.dart';
 import '../screens/tables/tables_screen.dart';
 import '../screens/tables/tab_review_screen.dart';
@@ -46,8 +47,11 @@ void navigateToTask(BuildContext context, Task t) {
           : const TablesScreen(); // fallback si la cuenta no tiene token
       break;
     case 'errand':
-    case 'reorder':
       screen = const MandadosScreen();
+      break;
+    case 'reorder':
+      // 🏪 Productos de tienda bajo mínimo → lista para reordenar (crea mandado).
+      screen = const ProductReorderScreen();
       break;
     case 'menu_incomplete':
       screen = const RecipesHomeScreen();

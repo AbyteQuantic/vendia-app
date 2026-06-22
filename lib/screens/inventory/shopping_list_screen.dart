@@ -198,6 +198,14 @@ class _ShoppingListScreenState extends State<ShoppingListScreen> {
       padding: const EdgeInsets.fromLTRB(AppUI.s16, AppUI.s12, AppUI.s16, 150),
       children: [
         if (_todayErrand != null) ...[_repeatCard(_todayErrand!), const SizedBox(height: AppUI.s12)],
+        // Categoría: estos son INSUMOS del menú (no productos de tienda). Spec 078.
+        const Padding(
+          padding: EdgeInsets.only(left: 4, bottom: AppUI.s8),
+          child: Row(children: [
+            Text('📦 ', style: TextStyle(fontSize: 15)),
+            Expanded(child: Text('Insumos para su menú — se compran para cocinar.', style: AppUI.bodySoft)),
+          ]),
+        ),
         Container(
           decoration: AppUI.card(r: 10),
           padding: const EdgeInsets.symmetric(vertical: 4),
