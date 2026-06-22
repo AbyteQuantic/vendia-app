@@ -11,6 +11,7 @@ import '../screens/online_orders/online_orders_screen.dart';
 import '../screens/mandados/mandados_screen.dart';
 import '../screens/recipes/recipes_home_screen.dart';
 import '../screens/tables/tables_screen.dart';
+import '../screens/tables/tab_review_screen.dart';
 import '../screens/promotions/promotions_list_screen.dart';
 import '../theme/app_theme.dart';
 import '../theme/app_ui.dart';
@@ -38,7 +39,11 @@ void navigateToTask(BuildContext context, Task t) {
       screen = const OnlineOrdersScreen();
       break;
     case 'table_account':
-      screen = const TablesScreen(); // mesa por cobrar → pantalla de mesas
+      // Mesa por cobrar → la pantalla que SÍ cobra (TabReviewScreen, closeOrder).
+      // Antes iba a TablesScreen (modelo legacy que no cobra) → no se cobraba.
+      screen = t.sessionToken.isNotEmpty
+          ? TabReviewScreen(sessionToken: t.sessionToken, tableLabel: t.title, orderId: t.sourceId)
+          : const TablesScreen(); // fallback si la cuenta no tiene token
       break;
     case 'errand':
     case 'reorder':

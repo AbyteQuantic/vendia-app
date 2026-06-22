@@ -16,6 +16,7 @@ class Task {
   final String actionLabel;
   final String deepLink;
   final double amount;
+  final String sessionToken; // cuenta de mesa: token para la pantalla de cobro
   final DateTime? createdAt;
 
   const Task({
@@ -29,6 +30,7 @@ class Task {
     required this.deepLink,
     this.count = 0,
     this.amount = 0,
+    this.sessionToken = '',
     this.createdAt,
   });
 
@@ -43,6 +45,7 @@ class Task {
         deepLink: (j['deep_link'] ?? '').toString(),
         count: (j['count'] as num?)?.toInt() ?? 0,
         amount: (j['amount'] as num?)?.toDouble() ?? 0,
+        sessionToken: (j['session_token'] ?? '').toString(),
         createdAt: DateTime.tryParse((j['created_at'] ?? '').toString()),
       );
 
