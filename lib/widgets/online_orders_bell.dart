@@ -2,10 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
-import '../models/task.dart';
 import '../screens/online_orders/online_orders_screen.dart';
-import '../screens/mandados/mandados_screen.dart';
-import '../screens/recipes/recipes_home_screen.dart';
 import '../services/task_center_controller.dart';
 import '../theme/app_theme.dart';
 import 'task_center_sheet.dart';
@@ -49,36 +46,11 @@ class _OnlineOrdersBellState extends State<OnlineOrdersBell> {
 
   void _open() {
     HapticFeedback.lightImpact();
-    final ctrl = _ctrl();
-    if (ctrl == null) {
+    if (_ctrl() == null) {
       Navigator.of(context).push(MaterialPageRoute(builder: (_) => const OnlineOrdersScreen()));
       return;
     }
-    showTaskCenter(context, onOpenTask: _navigateToTask);
-  }
-
-  // Navega a la pantalla dueña de la tarea; al volver, refresca el Centro.
-  void _navigateToTask(Task t) {
-    Widget? screen;
-    switch (t.kind) {
-      case 'online_order':
-      case 'table_account':
-        screen = const OnlineOrdersScreen();
-        break;
-      case 'errand':
-      case 'reorder':
-        screen = const MandadosScreen();
-        break;
-      case 'menu_incomplete':
-        screen = const RecipesHomeScreen();
-        break;
-      default:
-        screen = null; // perishable/otros: refinado luego
-    }
-    if (screen == null) return;
-    Navigator.of(context)
-        .push(MaterialPageRoute(builder: (_) => screen!))
-        .then((_) => _ctrl()?.refresh());
+    openTaskCenter(context); // punto de entrada único (centraliza la navegación)
   }
 
   @override

@@ -7,9 +7,54 @@ import '../models/app_notification.dart';
 import '../services/api_service.dart';
 import '../services/auth_service.dart';
 import '../services/task_center_controller.dart';
+import '../screens/online_orders/online_orders_screen.dart';
+import '../screens/mandados/mandados_screen.dart';
+import '../screens/recipes/recipes_home_screen.dart';
 import '../theme/app_theme.dart';
 import '../theme/app_ui.dart';
 import '../utils/format_cop.dart';
+
+/// openTaskCenter — PUNTO DE ENTRADA ÚNICO al Centro de Tareas (Dashboard y POS).
+/// Arranca el poller, abre el Centro y navega a la pantalla dueña al tocar una
+/// tarea (centraliza la navegación para no duplicarla). Spec 078.
+Future<void> openTaskCenter(BuildContext context) async {
+  try {
+    context.read<TaskCenterController>().start();
+  } catch (_) {}
+  if (!context.mounted) return;
+  // navigateToTask revalida context.mounted antes de navegar.
+  // ignore: use_build_context_synchronously
+  await showTaskCenter(context, onOpenTask: (t) => navigateToTask(context, t));
+}
+
+/// navigateToTask — abre la pantalla dueña de la tarea; al volver, refresca.
+void navigateToTask(BuildContext context, Task t) {
+  if (!context.mounted) return;
+  Widget? screen;
+  switch (t.kind) {
+    case 'online_order':
+    case 'table_account':
+      screen = const OnlineOrdersScreen();
+      break;
+    case 'errand':
+    case 'reorder':
+      screen = const MandadosScreen();
+      break;
+    case 'menu_incomplete':
+      screen = const RecipesHomeScreen();
+      break;
+    default:
+      screen = null; // perishable/otros: refinado luego
+  }
+  if (screen == null) return;
+  final s = screen;
+  Navigator.of(context).push(MaterialPageRoute(builder: (_) => s)).then((_) {
+    if (!context.mounted) return;
+    try {
+      context.read<TaskCenterController>().refresh();
+    } catch (_) {}
+  });
+}
 
 /// showTaskCenter — el ÚNICO Centro de Tareas y Notificaciones. Reemplaza las dos
 /// superficies dispersas (campana del Dashboard + feed del POS). Dos pestañas:

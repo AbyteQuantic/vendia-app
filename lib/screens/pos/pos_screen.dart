@@ -9,7 +9,7 @@ import '../../models/cart_item.dart';
 import '../../models/product.dart';
 import '../../services/notification_toast_controller.dart';
 import '../../theme/app_theme.dart';
-import '../../widgets/notification_center_sheet.dart';
+import '../../widgets/task_center_sheet.dart';
 import '../../widgets/panic_button.dart';
 import '../../widgets/table_qr_sheet.dart';
 import '../../widgets/stock_badge.dart';
@@ -70,7 +70,6 @@ class _PosScreenBodyState extends State<_PosScreenBody> {
   Map<String, double> _openTabTotalsByLabel = const {};
   List<Map<String, dynamic>> _openTabRows = const [];
   int _pendingFiados = 0;
-  List<Map<String, dynamic>> _notifications = [];
   int _unreadNotifications = 0;
   Timer? _notificationsTimer;
   // Cached per-session. The feature flag is resolved once on mount because
@@ -280,10 +279,7 @@ class _PosScreenBodyState extends State<_PosScreenBody> {
       final unread =
           list.where((n) => n['is_read'] != true).length;
       if (mounted) {
-        setState(() {
-          _notifications = list;
-          _unreadNotifications = unread;
-        });
+        setState(() => _unreadNotifications = unread);
         // Alimenta el toast persistente con la última notificación no
         // leída (Spec 056 slice 2). read() — no queremos rebuilds del POS.
         final parsed = list
@@ -296,76 +292,10 @@ class _PosScreenBodyState extends State<_PosScreenBody> {
   }
 
   Future<void> _showNotificationsSheet() async {
-    // Mark everything read as soon as the sheet opens — matches how
-    // e-mail clients clear the badge. Fire-and-forget so the UI
-    // reflects immediately; backend confirms eventually.
-    final hadUnread = _unreadNotifications > 0;
-    if (hadUnread) {
-      setState(() {
-        _unreadNotifications = 0;
-        _notifications = _notifications
-            .map((n) => {...n, 'is_read': true})
-            .toList();
-      });
-      ApiService(AuthService()).markNotificationsRead().catchError((_) {});
-    }
-
-    // Snapshot the list at the moment the sheet opens. We freeze
-    // the unread state BEFORE clearing badges so the dots still
-    // appear inside the sheet on this first render — otherwise the
-    // "mark all as read" above would erase the visual cue the
-    // cashier expects to see on recent items.
-    final snapshot = _notifications
-        .map(AppNotification.fromApi)
-        .whereType<AppNotification>()
-        .toList()
-      ..sort((a, b) {
-        final ad = a.createdAt;
-        final bd = b.createdAt;
-        if (ad == null && bd == null) return 0;
-        if (ad == null) return 1; // nulls at the bottom
-        if (bd == null) return -1;
-        return bd.compareTo(ad); // newest first
-      });
-
-    // If the incoming payload had `is_read: true` for the batch we
-    // just cleared, restore the unread bit locally on the snapshot
-    // so the sheet still communicates "these just arrived".
-    final displayed = hadUnread
-        ? snapshot
-            .map((n) => AppNotification(
-                  id: n.id,
-                  kind: n.kind,
-                  title: n.title,
-                  body: n.body,
-                  // Treat items from the last 24h as "unread" for
-                  // the duration of this sheet so the blue dot is
-                  // preserved after the fire-and-forget mark-read.
-                  isRead: _wasAlreadyReadBefore(n),
-                  createdAt: n.createdAt,
-                  rawType: n.rawType,
-                  orderId: n.orderId,
-                  fiadoId: n.fiadoId,
-                ))
-            .toList()
-        : snapshot;
-
-    if (!mounted) return;
-    await showNotificationCenter(context, items: displayed);
-  }
-
-  /// Best-effort check against the raw payload snapshot taken before
-  /// the optimistic mark-read above. The upstream map is mutated
-  /// via `setState`; we capture a local copy here keyed by id.
-  bool _wasAlreadyReadBefore(AppNotification n) {
-    // After setState above, every entry in _notifications has
-    // is_read=true. That's fine — we only want to know "did the
-    // original batch include this id as already-read?". We don't
-    // persist the pre-clear snapshot to keep the refactor surgical;
-    // default to false so everything rendered during this session
-    // gets the blue-dot affordance at least once. Subsequent opens
-    // (after the next poll cycle) will correctly show no dots.
-    return false;
+    // Unificado (Spec 078): el POS abre el MISMO Centro de Tareas que el
+    // Dashboard (pestañas "Por hacer" + "Novedades"), en vez de su propio sheet.
+    if (mounted) setState(() => _unreadNotifications = 0); // el Centro marca leídas
+    await openTaskCenter(context);
   }
 
   @override
