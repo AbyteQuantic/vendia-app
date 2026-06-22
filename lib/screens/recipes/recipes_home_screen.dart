@@ -104,27 +104,69 @@ class RecipesHomeScreen extends StatelessWidget {
   Future<ImageSource?> _pickSource(BuildContext context) {
     return showModalBottomSheet<ImageSource>(
       context: context,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(16))),
       builder: (ctx) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ListTile(
-              key: const Key('menu_source_camera'),
-              leading: const Icon(Icons.photo_camera_rounded,
-                  color: AppTheme.primary),
-              title: const Text('Tomar foto', style: TextStyle(fontSize: 16)),
-              onTap: () => Navigator.of(ctx).pop(ImageSource.camera),
-            ),
-            ListTile(
-              key: const Key('menu_source_gallery'),
-              leading:
-                  const Icon(Icons.photo_library_rounded, color: AppTheme.primary),
-              title: const Text('Elegir de la galería',
-                  style: TextStyle(fontSize: 16)),
-              onTap: () => Navigator.of(ctx).pop(ImageSource.gallery),
-            ),
-          ],
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(AppUI.s16, AppUI.s8, AppUI.s16, AppUI.s16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Center(
+                child: Container(
+                  width: 40, height: 4,
+                  decoration: BoxDecoration(color: AppUI.border, borderRadius: BorderRadius.circular(2)),
+                ),
+              ),
+              const SizedBox(height: AppUI.s16),
+              const Text('Foto de su carta', style: AppUI.title),
+              const SizedBox(height: 2),
+              const Text('La IA leerá los platos de la foto.', style: AppUI.bodySoft),
+              const SizedBox(height: AppUI.s16),
+              _sourceRow(ctx, const Key('menu_source_camera'), Icons.photo_camera_rounded,
+                  'Tomar foto', 'Use la cámara ahora', ImageSource.camera),
+              const SizedBox(height: AppUI.s8),
+              _sourceRow(ctx, const Key('menu_source_gallery'), Icons.photo_library_rounded,
+                  'Elegir de la galería', 'Una foto que ya tiene', ImageSource.gallery),
+            ],
+          ),
         ),
+      ),
+    );
+  }
+
+  Widget _sourceRow(BuildContext ctx, Key key, IconData icon, String title, String subtitle, ImageSource source) {
+    return InkWell(
+      key: key,
+      onTap: () => Navigator.of(ctx).pop(source),
+      borderRadius: BorderRadius.circular(12),
+      child: Container(
+        padding: const EdgeInsets.all(AppUI.s12),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: AppUI.border),
+        ),
+        child: Row(children: [
+          Container(
+            width: 40, height: 40,
+            decoration: BoxDecoration(
+              color: AppTheme.primary.withValues(alpha: 0.08),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Icon(icon, color: AppTheme.primary, size: 22),
+          ),
+          const SizedBox(width: AppUI.s12),
+          Expanded(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(title, style: AppUI.bodyStrong),
+              Text(subtitle, style: AppUI.bodySoft.copyWith(fontSize: 12)),
+            ]),
+          ),
+          const Icon(Icons.chevron_right_rounded, color: AppUI.inkSoft),
+        ]),
       ),
     );
   }
