@@ -8,10 +8,14 @@ import 'package:vendia_pos/services/app_error.dart';
 import 'package:vendia_pos/services/auth_service.dart';
 
 class _FakeApi extends ApiService {
-  _FakeApi(this._recipes, {this.fail = false, this.incomplete = const []}) : super(AuthService());
+  _FakeApi(this._recipes,
+      {this.fail = false, this.incomplete = const [], this.activeToday = false, this.usageDays = const []})
+      : super(AuthService());
   final List<Map<String, dynamic>> _recipes;
   final bool fail;
   final List<Map<String, dynamic>> incomplete;
+  final bool activeToday;
+  final List<String> usageDays;
   final List<String> deleted = [];
 
   @override
@@ -27,6 +31,15 @@ class _FakeApi extends ApiService {
 
   @override
   Future<void> deleteRecipe(String uuid) async => deleted.add(uuid);
+
+  @override
+  Future<({bool activeToday, bool inMenu, List<String> dayLabels, String summary})>
+      recipeMenuUsage(String uuid) async => (
+            activeToday: activeToday,
+            inMenu: usageDays.isNotEmpty,
+            dayLabels: usageDays,
+            summary: usageDays.join(', '),
+          );
 }
 
 Map<String, dynamic> _recipe(String name, num price, List ingredients) => {
@@ -71,6 +84,41 @@ void main() {
     // costo = 4000, ganancia = 21000, margen = 84% (badge "+$21.000 · 84%")
     expect(find.textContaining('84%'), findsOneWidget);
     expect(find.textContaining('2 insumos'), findsOneWidget);
+  });
+
+  testWidgets('eliminar receta activa en el menú de HOY se bloquea', (tester) async {
+    final api = _FakeApi([
+      _recipe('Sancocho', 20000, [
+        {'ingredient_uuid': 'a1', 'product_name': 'Yuca', 'quantity': 1, 'unit_cost': 2000},
+      ]),
+    ], activeToday: true);
+    await tester.pumpWidget(MaterialApp(home: RecipeListScreen(apiOverride: api)));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byTooltip('Eliminar').first);
+    await tester.pumpAndSettle();
+    expect(find.text('No se puede eliminar ahora'), findsOneWidget);
+    await tester.tap(find.text('Entendido'));
+    await tester.pumpAndSettle();
+    expect(api.deleted, isEmpty); // NO se eliminó
+  });
+
+  testWidgets('eliminar receta en otros días avisa cuáles y elimina al confirmar', (tester) async {
+    final api = _FakeApi([
+      _recipe('Sancocho', 20000, [
+        {'ingredient_uuid': 'a1', 'product_name': 'Yuca', 'quantity': 1, 'unit_cost': 2000},
+      ]),
+    ], usageDays: const ['lunes', 'miércoles']);
+    await tester.pumpWidget(MaterialApp(home: RecipeListScreen(apiOverride: api)));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byTooltip('Eliminar').first);
+    await tester.pumpAndSettle();
+    // Indica en qué días del menú está.
+    expect(find.textContaining('lunes, miércoles'), findsOneWidget);
+    await tester.tap(find.text('Eliminar').last);
+    await tester.pumpAndSettle();
+    expect(api.deleted, isNotEmpty);
   });
 
   testWidgets('estado vacío con CTA cuando no hay recetas', (tester) async {

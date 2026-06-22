@@ -83,16 +83,49 @@ class _RecipeListScreenState extends State<RecipeListScreen> {
   }
 
   Future<void> _confirmDelete(Recipe r) async {
+    // 1) Consultar dónde está activa en los menús (no bloqueante si falla).
+    bool activeToday = false, inMenu = false;
+    String summary = '';
+    try {
+      final u = await _api.recipeMenuUsage(r.uuid);
+      activeToday = u.activeToday;
+      inMenu = u.inMenu;
+      summary = u.summary;
+    } catch (_) {}
+    if (!mounted) return;
+
+    // 2) Si está activa en el menú de HOY: no se elimina; primero quitarla de hoy.
+    if (activeToday) {
+      await showDialog<void>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          title: const Text('No se puede eliminar ahora', style: TextStyle(fontSize: 20)),
+          content: Text(
+            '"${r.productName}" está activa en el menú de HOY. Quítela del menú de hoy y luego elimínela.',
+            style: const TextStyle(fontSize: 16),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(),
+              child: const Text('Entendido', style: TextStyle(fontSize: 16)),
+            ),
+          ],
+        ),
+      );
+      return;
+    }
+
+    // 3) Confirmación. Si está en otros días del menú, avisa cuáles y que se quitará.
+    final body = inMenu && summary.isNotEmpty
+        ? 'Está en el menú de: $summary.\nSe quitará de esos menús y se eliminará. No se puede deshacer.'
+        : 'Se eliminará "${r.productName}". No se puede deshacer.';
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: Text('¿Eliminar "${r.productName}"?',
-            style: const TextStyle(fontSize: 21)),
-        content: const Text(
-          'Se quita del menú. Esta acción no se puede deshacer.',
-          style: TextStyle(fontSize: 16),
-        ),
+        title: Text('¿Eliminar "${r.productName}"?', style: const TextStyle(fontSize: 21)),
+        content: Text(body, style: const TextStyle(fontSize: 16)),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(false),
@@ -100,18 +133,57 @@ class _RecipeListScreenState extends State<RecipeListScreen> {
           ),
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(true),
-            child: const Text('Eliminar',
-                style: TextStyle(fontSize: 16, color: AppTheme.error)),
+            child: const Text('Eliminar', style: TextStyle(fontSize: 16, color: AppTheme.error)),
           ),
         ],
       ),
     );
     if (ok != true) return;
     try {
-      await _api.deleteRecipe(r.uuid);
+      await _api.deleteRecipe(r.uuid); // el backend la quita de todos los menús
       HapticFeedback.mediumImpact();
       if (!mounted) return;
       setState(() => _recipes = _recipes.where((x) => x.uuid != r.uuid).toList());
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(e is AppError ? e.message : 'No se pudo eliminar'),
+        backgroundColor: AppTheme.error,
+      ));
+    }
+  }
+
+  /// Eliminar un plato INCOMPLETO (producto menu-item sin receta completa). No
+  /// tiene receta/costo; confirmación simple. Spec 078.
+  Future<void> _confirmDeleteDish(Map<String, dynamic> dish) async {
+    final id = (dish['id'] ?? '').toString();
+    final name = (dish['name'] ?? 'este plato').toString();
+    if (id.isEmpty) return;
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Text('¿Eliminar "$name"?', style: const TextStyle(fontSize: 21)),
+        content: const Text('Se quita del menú y del catálogo. No se puede deshacer.',
+            style: TextStyle(fontSize: 16)),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('Cancelar', style: TextStyle(fontSize: 16)),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: const Text('Eliminar', style: TextStyle(fontSize: 16, color: AppTheme.error)),
+          ),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    try {
+      await _api.deleteProduct(id);
+      HapticFeedback.mediumImpact();
+      if (!mounted) return;
+      setState(() => _incomplete = _incomplete.where((x) => (x['id'] ?? '').toString() != id).toList());
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
@@ -193,7 +265,7 @@ class _RecipeListScreenState extends State<RecipeListScreen> {
           const SizedBox(height: 12),
           ..._incomplete.map((m) => Padding(
                 padding: const EdgeInsets.only(bottom: 12),
-                child: _IncompleteCard(dish: m, onComplete: () => _completeDish(m)),
+                child: _IncompleteCard(dish: m, onComplete: () => _completeDish(m), onDelete: () => _confirmDeleteDish(m)),
               )),
         ],
         ..._recipes.map((r) => Padding(
@@ -254,9 +326,10 @@ class _IncompleteBanner extends StatelessWidget {
 
 /// Tarjeta de un plato INCOMPLETO (sin receta): nombre + badge + acción completar.
 class _IncompleteCard extends StatelessWidget {
-  const _IncompleteCard({required this.dish, required this.onComplete});
+  const _IncompleteCard({required this.dish, required this.onComplete, required this.onDelete});
   final Map<String, dynamic> dish;
   final VoidCallback onComplete;
+  final VoidCallback onDelete;
   @override
   Widget build(BuildContext context) {
     final name = (dish['name'] ?? 'Plato').toString();
@@ -282,6 +355,12 @@ class _IncompleteCard extends StatelessWidget {
               const SizedBox(height: 2),
               Text('Sin insumos ni costo · toque para completar', style: AppUI.bodySoft.copyWith(fontSize: 12)),
             ]),
+          ),
+          IconButton(
+            key: Key('delete_dish_${dish['id']}'),
+            icon: const Icon(Icons.delete_outline_rounded, color: AppUI.inkSoft, size: 22),
+            tooltip: 'Eliminar',
+            onPressed: onDelete,
           ),
           const Icon(Icons.chevron_right_rounded, color: AppUI.inkSoft),
         ]),

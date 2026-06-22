@@ -2974,6 +2974,25 @@ class ApiService {
     }
   }
 
+  /// Spec 078 — dónde está activa la receta en los menús (días/fechas) y si está
+  /// en el menú de HOY, para decidir si bloquear o confirmar la eliminación.
+  Future<({bool activeToday, bool inMenu, List<String> dayLabels, String summary})>
+      recipeMenuUsage(String uuid) async {
+    try {
+      final r = await _dio.get('/api/v1/recipes/$uuid/menu-usage');
+      final d = (r.data is Map) ? (r.data['data'] as Map?) : null;
+      final labels = (d?['day_labels'] as List?)?.map((e) => e.toString()).toList() ?? <String>[];
+      return (
+        activeToday: d?['active_today'] == true,
+        inMenu: d?['in_menu'] == true,
+        dayLabels: labels,
+        summary: (d?['summary'] ?? '').toString(),
+      );
+    } on DioException catch (e) {
+      throw AppError.fromDioException(e);
+    }
+  }
+
   // ── Insumos (Feature 001) — contrato en plan.md §4 ────────────────────────
 
   /// Lista los insumos del tenant. GET /api/v1/ingredients.
