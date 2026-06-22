@@ -925,6 +925,35 @@ class ApiService {
     }
   }
 
+  /// Spec 078 — Centro de Tareas: trae las tareas pendientes agregadas (deriva
+  /// de las entidades reales) con sus contadores por urgencia.
+  Future<({List<Map<String, dynamic>> tasks, Map<String, dynamic> counts})> fetchTasks({String branchId = ''}) async {
+    try {
+      final r = await _dio.get('/api/v1/tasks',
+          queryParameters: branchId.isEmpty ? null : {'branch_id': branchId});
+      final data = (r.data is Map) ? r.data['data'] : null;
+      final list = (data is Map) ? data['tasks'] : null;
+      final counts = (data is Map && data['counts'] is Map)
+          ? Map<String, dynamic>.from(data['counts'] as Map)
+          : <String, dynamic>{};
+      final tasks = (list is List)
+          ? list.map((e) => Map<String, dynamic>.from(e as Map)).toList()
+          : <Map<String, dynamic>>[];
+      return (tasks: tasks, counts: counts);
+    } on DioException catch (e) {
+      throw AppError.fromDioException(e);
+    }
+  }
+
+  /// Spec 078 — pospone ("snooze") una tarea agregada (reorder/perishable).
+  Future<void> dismissTask(String taskId, {int hours = 24}) async {
+    try {
+      await _dio.post('/api/v1/tasks/dismiss', data: {'task_id': taskId, 'hours': hours});
+    } on DioException catch (e) {
+      throw AppError.fromDioException(e);
+    }
+  }
+
   /// Spec 077 — buscador libre: productos del catálogo scrapeado + compras
   /// previas que matcheen [query], con el costo resuelto contra [shortfall].
   Future<List<Map<String, dynamic>>> fetchSupplySearch({
