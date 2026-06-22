@@ -450,6 +450,8 @@ class _OrderCard extends StatelessWidget {
                       foregroundColor: AppTheme.error,
                       side: BorderSide(
                           color: AppTheme.error.withValues(alpha: 0.5)),
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12)),
                     ),
                   ),
                 ),
@@ -470,6 +472,8 @@ class _OrderCard extends StatelessWidget {
                     style: FilledButton.styleFrom(
                       padding: const EdgeInsets.symmetric(vertical: 14),
                       backgroundColor: AppTheme.success,
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12)),
                     ),
                   ),
                 ),

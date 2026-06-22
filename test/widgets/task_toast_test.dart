@@ -2,6 +2,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:provider/provider.dart';
 import 'package:vendia_pos/services/api_service.dart';
 import 'package:vendia_pos/services/auth_service.dart';
@@ -21,7 +22,7 @@ class _FakeApi extends ApiService {
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
-  setUpAll(() => dotenv.testLoad(fileInput: 'API_BASE_URL=http://localhost:8080'));
+  setUpAll(() { dotenv.testLoad(fileInput: 'API_BASE_URL=http://localhost:8080'); SharedPreferences.setMockInitialValues({}); });
 
   testWidgets('una tarea urgente se muestra como toast con CTA', (tester) async {
     final tc = TaskCenterController(_FakeApi([
@@ -83,6 +84,30 @@ void main() {
 
     // Arrastrar el toast hacia abajo no lo rompe y sigue visible.
     await tester.drag(find.byKey(const Key('task_toast')), const Offset(0, 120));
+    await tester.pump();
+    expect(find.byKey(const Key('task_toast')), findsOneWidget);
+  });
+
+  testWidgets('el toast se auto-colapsa a pastilla y se expande al tocar', (tester) async {
+    final tc = TaskCenterController(_FakeApi([
+      {'id': 'online_order:9', 'kind': 'online_order', 'urgency': 'critical', 'title': 'Pedido', 'action_label': 'Aceptar'},
+    ]));
+    await tc.refresh();
+    await tester.pumpWidget(MultiProvider(
+      providers: [
+        ChangeNotifierProvider.value(value: tc),
+        ChangeNotifierProvider(create: (_) => NotificationToastController()),
+      ],
+      child: const MaterialApp(home: Scaffold(body: Stack(children: [DraggableToastHost()]))),
+    ));
+    await tester.pump();
+    expect(find.byKey(const Key('task_toast')), findsOneWidget);
+    // pasa el tiempo → colapsa a pastilla.
+    await tester.pump(const Duration(seconds: 7));
+    expect(find.byKey(const Key('task_toast')), findsNothing);
+    expect(find.byKey(const Key('toast_pill')), findsOneWidget);
+    // tocar la pastilla → se expande de nuevo.
+    await tester.tap(find.byKey(const Key('toast_pill')));
     await tester.pump();
     expect(find.byKey(const Key('task_toast')), findsOneWidget);
   });
