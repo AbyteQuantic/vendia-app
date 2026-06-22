@@ -20,6 +20,24 @@ import '../pos/cart_controller.dart';
 /// We hit the PUBLIC live-tab endpoint so the cashier and the
 /// customer look at the exact same numbers — divergence between the
 /// POS view and the QR view was a real complaint on 2026-04-24.
+/// Una cuenta está saldada cuando hubo al menos un abono y el saldo bajó a < $1
+/// (umbral anti-centavos). Entonces la acción es "Cerrar cuenta", no más abonos.
+bool isAccountFullyPaid({required double paid, required double remaining}) =>
+    paid > 0 && remaining < 1;
+
+/// Método representativo de los abonos para el Sale de cierre (evita el literal
+/// 'multi' que mentía el libro): todos del mismo método → ese; varios → 'Mixto';
+/// ninguno → 'Efectivo'. Spec 078 council (A5 parcial).
+String dominantAbonoMethod(List<Map<String, dynamic>> abonos) {
+  final methods = abonos
+      .map((a) => ((a['payment_method'] as String?) ?? '').trim())
+      .where((m) => m.isNotEmpty)
+      .toSet();
+  if (methods.isEmpty) return 'Efectivo';
+  if (methods.length == 1) return methods.first;
+  return 'Mixto';
+}
+
 class TabReviewScreen extends StatefulWidget {
   const TabReviewScreen({
     super.key,
@@ -388,7 +406,7 @@ class _TabReviewScreenState extends State<TabReviewScreen> {
               // Best-effort: tell the backend (idempotent server-side).
               if (widget.orderId != null) {
                 _api
-                    .closeOrder(widget.orderId!, 'multi')
+                    .closeOrder(widget.orderId!, _dominantAbonoMethod())
                     .catchError((_) => <String, dynamic>{});
               }
               // Release the mesa bubble in the POS header.
@@ -420,21 +438,87 @@ class _TabReviewScreenState extends State<TabReviewScreen> {
           : SafeArea(
               child: Padding(
                 padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
-                child: FilledButton.icon(
-                  key: const Key('tab_review_manual_abono'),
-                  onPressed: _registerManualAbono,
-                  icon: const Icon(Icons.payments_rounded),
-                  label: const Text('Registrar Abono Manual'),
-                  style: FilledButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(vertical: 16),
-                    backgroundColor: AppTheme.primary,
-                    textStyle: const TextStyle(
-                        fontSize: 16, fontWeight: FontWeight.bold),
-                  ),
-                ),
+                child: _buildPrimaryAction(),
               ),
             ),
     );
+  }
+
+  /// Cuando el saldo llega a $0 (los abonos cubren el total), la acción muta de
+  /// "Registrar Abono Manual" a "Cerrar cuenta": cierra la orden y libera la mesa
+  /// SIN volver a cobrar (la plata ya entró por los abonos). Spec 078 council.
+  Widget _buildPrimaryAction() {
+    final remaining = (_data?['remaining_balance'] as num?)?.toDouble() ?? -1;
+    final paid = (_data?['paid_amount'] as num?)?.toDouble() ?? 0;
+    final fullyPaid = isAccountFullyPaid(paid: paid, remaining: remaining);
+
+    if (fullyPaid) {
+      return FilledButton.icon(
+        key: const Key('tab_review_close_account'),
+        onPressed: _closeAccount,
+        icon: const Icon(Icons.check_circle_rounded),
+        label: const Text('Cerrar cuenta'),
+        style: FilledButton.styleFrom(
+          padding: const EdgeInsets.symmetric(vertical: 16),
+          backgroundColor: AppTheme.success,
+          textStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+        ),
+      );
+    }
+    return FilledButton.icon(
+      key: const Key('tab_review_manual_abono'),
+      onPressed: _registerManualAbono,
+      icon: const Icon(Icons.payments_rounded),
+      label: const Text('Registrar Abono Manual'),
+      style: FilledButton.styleFrom(
+        padding: const EdgeInsets.symmetric(vertical: 16),
+        backgroundColor: AppTheme.primary,
+        textStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+      ),
+    );
+  }
+
+  String _dominantAbonoMethod() => dominantAbonoMethod(
+      (_data?['partial_payments'] as List<dynamic>? ?? []).cast<Map<String, dynamic>>());
+
+  Future<void> _closeAccount() async {
+    if (widget.orderId == null) return;
+    final paid = (_data?['paid_amount'] as num?)?.toDouble() ?? 0;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Cerrar cuenta'),
+        content: Text(
+            'La cuenta de ${widget.tableLabel} ya está pagada (${_fmtCOP(paid)}).\n'
+            '¿Desea cerrarla y liberar la mesa?'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancelar')),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Cerrar cuenta')),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    try {
+      await _api.closeOrder(widget.orderId!, _dominantAbonoMethod());
+      if (!mounted) return;
+      try {
+        context.read<CartController>().clearContextForLabel(widget.tableLabel);
+      } catch (_) {}
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('¡Cuenta cerrada! La mesa quedó libre.'),
+        backgroundColor: AppTheme.success,
+        behavior: SnackBarBehavior.floating,
+      ));
+      Navigator.of(context).maybePop();
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('No se pudo cerrar la cuenta. Intente de nuevo.'),
+          backgroundColor: AppTheme.error,
+          behavior: SnackBarBehavior.floating,
+        ));
+      }
+    }
   }
 
   Widget _buildReactiveContent(LocalTableTab tab) {
