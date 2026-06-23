@@ -10,7 +10,7 @@ import '../services/task_center_controller.dart';
 import '../screens/online_orders/online_orders_screen.dart';
 import '../screens/mandados/mandados_screen.dart';
 import '../screens/inventory/product_reorder_screen.dart';
-import '../screens/recipes/recipes_home_screen.dart';
+import '../screens/recipes/recipe_list_screen.dart';
 import '../screens/tables/tables_screen.dart';
 import '../screens/tables/tab_review_screen.dart';
 import '../screens/promotions/promotions_list_screen.dart';
@@ -54,7 +54,9 @@ void navigateToTask(BuildContext context, Task t) {
       screen = const ProductReorderScreen();
       break;
     case 'menu_incomplete':
-      screen = const RecipesHomeScreen();
+      // "Complete sus recetas" → directo al LISTADO de recetas (donde están los
+      // platos incompletos + el botón Completar), no al hub "Mi menú". Spec 078.
+      screen = const RecipeListScreen();
       break;
     case 'perishable':
       screen = const PromotionsListScreen(); // por vencer → crear promoción
