@@ -29,6 +29,9 @@ class _FakeApi extends ApiService {
   Future<List<Map<String, dynamic>>> fetchRecipes() async => recipes;
 
   @override
+  Future<List<Map<String, dynamic>>> fetchIncompleteMenuItems() async => [];
+
+  @override
   Future<List<Map<String, dynamic>>> fetchBranches() async => [];
 
   @override

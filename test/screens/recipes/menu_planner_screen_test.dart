@@ -14,6 +14,7 @@ class _FakeApi extends ApiService {
     {'id': 'r1', 'product_name': 'Bandeja paisa', 'category': 'Fuertes'},
     {'id': 'r2', 'product_name': 'Sancocho', 'category': 'Fuertes'},
   ];
+  List<Map<String, dynamic>> incomplete = [];
   // Por sede: plan por branchId ('' = comercio).
   Map<String, Map<String, dynamic>> plansByBranch = {'': {'days': {}}};
   List<Map<String, dynamic>> branches = [];
@@ -24,6 +25,9 @@ class _FakeApi extends ApiService {
 
   @override
   Future<List<Map<String, dynamic>>> fetchRecipes() async => recipes;
+
+  @override
+  Future<List<Map<String, dynamic>>> fetchIncompleteMenuItems() async => incomplete;
 
   @override
   Future<List<Map<String, dynamic>>> fetchBranches() async => branches;
@@ -108,6 +112,23 @@ void main() {
     // El viernes muestra el conteo de recetas y la guía de preparación.
     expect(find.textContaining('1 receta'), findsOneWidget);
     expect(find.textContaining('8 por preparar'), findsOneWidget);
+  });
+
+  testWidgets('el picker avisa que los platos sin receta no se pueden agregar', (tester) async {
+    final api = _FakeApi()
+      ..incomplete = [
+        {'id': 'p1', 'name': 'Mute'},
+        {'id': 'p2', 'name': 'Lengua en salsa'},
+      ];
+    await _pump(tester, api);
+
+    await tester.tap(find.byKey(const Key('menu_day_thu')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('menu_day_add_recipe')));
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('2 plato(s) sin receta'), findsOneWidget);
+    expect(find.textContaining('No se pueden agregar'), findsOneWidget);
   });
 
   testWidgets('agregar una receta a un día desde el selector', (tester) async {

@@ -70,6 +70,7 @@ class _MenuPlannerScreenState extends State<MenuPlannerScreen> {
 
   /// Recetas del comercio (para el selector). uuid → nombre/categoría.
   List<Map<String, dynamic>> _recipes = [];
+  int _incompleteCount = 0; // platos sin receta (sin costo) → no plan­eables aún
   final Map<String, _DayPlan> _days = {
     for (final d in _dayOrder) d: _DayPlan(),
   };
@@ -105,10 +106,12 @@ class _MenuPlannerScreenState extends State<MenuPlannerScreen> {
         _api.fetchRecipes(),
         _api.fetchBranches(),
         _api.fetchStoreConfig(),
+        _api.fetchIncompleteMenuItems(),
       ]);
       _recipes = (base[0] as List).cast<Map<String, dynamic>>();
       _branches = (base[1] as List).cast<Map<String, dynamic>>();
       _storeSlug = ((base[2] as Map)['store_slug'] ?? '').toString();
+      _incompleteCount = (base[3] as List).length;
 
       final results = await Future.wait([
         _api.fetchMenuPlan(branchId: _selectedBranchId),
@@ -315,6 +318,7 @@ class _MenuPlannerScreenState extends State<MenuPlannerScreen> {
         dayKey: dayKey,
         plan: _days[dayKey]!,
         recipes: _recipes,
+        incompleteCount: _incompleteCount,
         recipeName: _recipeName,
         nonEmptyDays: nonEmpty,
         onCopyToDays: (items, targetKeys) {
@@ -602,6 +606,7 @@ class _DayEditorSheet extends StatefulWidget {
   final String? dayKey;
   final _DayPlan plan;
   final List<Map<String, dynamic>> recipes;
+  final int incompleteCount;
   final String Function(String) recipeName;
   final Set<String> nonEmptyDays;
   final void Function(List<_PlanItem> items, List<String> targetKeys)?
@@ -612,6 +617,7 @@ class _DayEditorSheet extends StatefulWidget {
     required this.plan,
     required this.recipes,
     required this.recipeName,
+    this.incompleteCount = 0,
     this.dayKey,
     this.nonEmptyDays = const {},
     this.onCopyToDays,
@@ -641,7 +647,10 @@ class _DayEditorSheetState extends State<_DayEditorSheet> {
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
-      builder: (_) => _RecipePickerSheet(recipes: available),
+      builder: (_) => _RecipePickerSheet(
+        recipes: available,
+        incompleteCount: widget.incompleteCount,
+      ),
     );
     if (picked != null) {
       setState(() => _items.add(_PlanItem(picked, 0)));
@@ -879,7 +888,8 @@ class _QtyStepper extends StatelessWidget {
 /// Selector tipo Spotlight de recetas existentes.
 class _RecipePickerSheet extends StatefulWidget {
   final List<Map<String, dynamic>> recipes;
-  const _RecipePickerSheet({required this.recipes});
+  final int incompleteCount;
+  const _RecipePickerSheet({required this.recipes, this.incompleteCount = 0});
 
   @override
   State<_RecipePickerSheet> createState() => _RecipePickerSheetState();
@@ -929,6 +939,30 @@ class _RecipePickerSheetState extends State<_RecipePickerSheet> {
                 ),
               ),
             ),
+            // Informa por qué algunos platos NO aparecen: sin receta = sin costo,
+            // no se pueden agregar al menú hasta completarlos. Spec 078.
+            if (widget.incompleteCount > 0)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(AppUI.s16, 0, AppUI.s16, AppUI.s8),
+                child: Container(
+                  padding: const EdgeInsets.all(AppUI.s12),
+                  decoration: BoxDecoration(
+                    color: AppTheme.warning.withValues(alpha: 0.08),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: AppTheme.warning.withValues(alpha: 0.25)),
+                  ),
+                  child: Row(children: [
+                    const Icon(Icons.info_outline_rounded, size: 18, color: AppTheme.warning),
+                    const SizedBox(width: AppUI.s8),
+                    Expanded(
+                      child: Text(
+                        'Tiene ${widget.incompleteCount} plato(s) sin receta. No se pueden agregar al menú hasta completarlos: necesitan ingredientes para calcular el costo. Complételos en "Ver mis recetas".',
+                        style: AppUI.bodySoft.copyWith(fontSize: 12.5),
+                      ),
+                    ),
+                  ]),
+                ),
+              ),
             Flexible(
               child: filtered.isEmpty
                   ? const Padding(
