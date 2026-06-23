@@ -25,6 +25,8 @@ import '../../models/recipe.dart';
 import '../../services/api_service.dart';
 import '../../services/app_error.dart';
 import '../../services/auth_service.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
 import '../../theme/app_theme.dart';
 import '../../theme/app_ui.dart';
 import '../inventory/ingredients_screen.dart';
@@ -108,6 +110,7 @@ class _RecipeStudioScreenState extends State<RecipeStudioScreen> {
   bool _saving = false;
   bool _aiBusy = false;
   bool _photoBusy = false; // foto del plato generándose/subiéndose
+  bool _generatingDesc = false; // descripción con IA en curso
   String? _error;
 
   bool get _isEdit => widget.editing != null;
@@ -487,6 +490,10 @@ class _RecipeStudioScreenState extends State<RecipeStudioScreen> {
       _snack('Escriba el nombre del plato primero.', color: AppTheme.warning);
       return;
     }
+    // Pregunta presentación (estilo + acompañamientos + cuáles van aparte) para
+    // que la muestra IA salga realista. null = el tendero canceló. Spec 043/065.
+    final presentation = await _askPresentation();
+    if (!mounted || presentation == null) return;
     setState(() {
       _aiBusy = true;
       _photoBusy = true;
@@ -496,7 +503,7 @@ class _RecipeStudioScreenState extends State<RecipeStudioScreen> {
         name: name,
         category: _categoryCtrl.text.trim(),
         description: _descCtrl.text.trim(),
-        presentation: _portionCtrl.text.trim(),
+        presentation: presentation,
       );
       if (!mounted) return;
       if (url.isEmpty) {
@@ -519,6 +526,168 @@ class _RecipeStudioScreenState extends State<RecipeStudioScreen> {
           _photoBusy = false;
         });
       }
+    }
+  }
+
+  /// Hoja de presentación (opcional): estilo + acompañamientos + cuáles van en
+  /// plato APARTE, para que la muestra IA salga realista. Devuelve la presentación
+  /// compuesta, '' si la omite, o null si cancela. Portado del flujo de carta. Spec 043.
+  Future<String?> _askPresentation() async {
+    final detailCtrl = TextEditingController(text: _portionCtrl.text.trim());
+    final customCtrl = TextEditingController();
+    const styles = ['En plato', 'Para llevar', 'En vaso', 'En bandeja'];
+    const defaultSides = [
+      'Sopa', 'Arroz', 'Plátano maduro', 'Papa a la francesa',
+      'Ensalada', 'Aguacate', 'Arepa', 'Frijoles', 'Jugo',
+    ];
+    final prefs = await SharedPreferences.getInstance();
+    final custom = prefs.getStringList('custom_sides') ?? <String>[];
+    final sides = <String>[...defaultSides, ...custom];
+    String style = '';
+    final selectedSides = <String>{};
+    final apartSides = <String>{};
+
+    Future<void> addCustom(StateSetter setSheet) async {
+      final v = customCtrl.text.trim();
+      if (v.isEmpty) return;
+      final exists = sides.any((s) => s.toLowerCase() == v.toLowerCase());
+      setSheet(() {
+        if (!exists) {
+          sides.add(v);
+          custom.add(v);
+          prefs.setStringList('custom_sides', custom);
+        }
+        selectedSides.add(exists ? sides.firstWhere((s) => s.toLowerCase() == v.toLowerCase()) : v);
+        customCtrl.clear();
+      });
+    }
+
+    if (!mounted) return null;
+    final result = await showModalBottomSheet<String>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setSheet) => Padding(
+          padding: EdgeInsets.only(left: 20, right: 20, top: 20, bottom: MediaQuery.of(ctx).viewInsets.bottom + 20),
+          child: SingleChildScrollView(
+            child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+              const Text('¿Cómo se sirve el plato? (opcional)', style: TextStyle(fontSize: 19, fontWeight: FontWeight.bold)),
+              const SizedBox(height: 6),
+              const Text('Entre más detalle, más parecida queda la muestra.', style: TextStyle(fontSize: 14, color: Colors.black54)),
+              const SizedBox(height: 14),
+              Wrap(spacing: 8, runSpacing: 8, children: styles.map((c) => ChoiceChip(
+                label: Text(c, style: const TextStyle(fontSize: 15)),
+                selected: style == c,
+                selectedColor: AppTheme.primary.withValues(alpha: 0.18),
+                onSelected: (_) => setSheet(() => style = style == c ? '' : c),
+              )).toList()),
+              const SizedBox(height: 18),
+              const Text('¿Con qué acompañamientos?', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+              const SizedBox(height: 4),
+              const Text('Escoja los que trae el plato.', style: TextStyle(fontSize: 13, color: Colors.black54)),
+              const SizedBox(height: 10),
+              Wrap(spacing: 8, runSpacing: 8, children: sides.map((c) => FilterChip(
+                label: Text(c, style: const TextStyle(fontSize: 15)),
+                selected: selectedSides.contains(c),
+                selectedColor: AppTheme.primary.withValues(alpha: 0.18),
+                checkmarkColor: AppTheme.primary,
+                onSelected: (sel) => setSheet(() {
+                  if (sel) {
+                    selectedSides.add(c);
+                  } else {
+                    selectedSides.remove(c);
+                    apartSides.remove(c);
+                  }
+                }),
+              )).toList()),
+              const SizedBox(height: 8),
+              Row(children: [
+                Expanded(child: TextField(
+                  key: const Key('custom_side_field'),
+                  controller: customCtrl,
+                  style: const TextStyle(fontSize: 15),
+                  textCapitalization: TextCapitalization.sentences,
+                  decoration: const InputDecoration(isDense: true, hintText: 'Agregar otro (ej: chicharrón)'),
+                  onSubmitted: (_) => addCustom(setSheet),
+                )),
+                const SizedBox(width: 8),
+                TextButton.icon(key: const Key('add_custom_side'), onPressed: () => addCustom(setSheet), icon: const Icon(Icons.add_rounded, size: 18), label: const Text('Agregar')),
+              ]),
+              if (selectedSides.isNotEmpty) ...[
+                const SizedBox(height: 18),
+                const Text('¿Alguno va en plato aparte?', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+                const SizedBox(height: 4),
+                const Text('Toque los que NO van sobre el plato principal (ej: sopa, jugo).', style: TextStyle(fontSize: 13, color: Colors.black54)),
+                const SizedBox(height: 10),
+                Wrap(spacing: 8, runSpacing: 8, children: selectedSides.map((c) => FilterChip(
+                  label: Text(c, style: const TextStyle(fontSize: 15)),
+                  selected: apartSides.contains(c),
+                  avatar: apartSides.contains(c) ? const Icon(Icons.call_split_rounded, size: 16, color: AppTheme.primary) : null,
+                  selectedColor: AppTheme.primary.withValues(alpha: 0.18),
+                  showCheckmark: false,
+                  onSelected: (sel) => setSheet(() => sel ? apartSides.add(c) : apartSides.remove(c)),
+                )).toList()),
+              ],
+              const SizedBox(height: 16),
+              TextField(controller: detailCtrl, style: const TextStyle(fontSize: 16), decoration: const InputDecoration(hintText: 'Otro detalle (ej: en hoja de plátano)')),
+              const SizedBox(height: 16),
+              Row(children: [
+                Expanded(child: TextButton(onPressed: () => Navigator.of(ctx).pop(''), child: const Text('Omitir', style: TextStyle(fontSize: 16)))),
+                const SizedBox(width: 8),
+                Expanded(child: ElevatedButton(
+                  style: ElevatedButton.styleFrom(backgroundColor: AppTheme.primary, foregroundColor: Colors.white),
+                  onPressed: () => Navigator.of(ctx).pop(_composePresentation(style, selectedSides, apartSides, detailCtrl.text.trim())),
+                  child: const Text('Crear foto', style: TextStyle(fontSize: 16)),
+                )),
+              ]),
+            ]),
+          ),
+        ),
+      ),
+    );
+    detailCtrl.dispose();
+    customCtrl.dispose();
+    return result;
+  }
+
+  /// Compone la presentación para el prompt de IA: estilo + acompañamientos
+  /// (en el mismo plato vs aparte) + detalle libre. Spec 043.
+  String _composePresentation(String style, Set<String> sides, Set<String> apart, String extra) {
+    final parts = <String>[];
+    if (style.isNotEmpty) parts.add(style);
+    final enPlato = sides.where((s) => !apart.contains(s)).map((s) => s.toLowerCase()).toList();
+    final aparte = sides.where((s) => apart.contains(s)).map((s) => s.toLowerCase()).toList();
+    if (enPlato.isNotEmpty) parts.add('con ${enPlato.join(', ')} en el mismo plato');
+    if (aparte.isNotEmpty) parts.add('${aparte.join(', ')} en plato aparte');
+    if (extra.isNotEmpty) parts.add(extra);
+    return parts.join(', ');
+  }
+
+  /// Genera la descripción del plato con IA (nombre + categoría) y la precarga en
+  /// el campo para que el tendero la edite. Spec 043.
+  Future<void> _generateDescription() async {
+    final name = _nameCtrl.text.trim();
+    if (name.length < 2) {
+      _snack('Escriba el nombre del plato primero.', color: AppTheme.warning);
+      return;
+    }
+    setState(() => _generatingDesc = true);
+    try {
+      final desc = await _api.generateMenuDescription(name: name, category: _categoryCtrl.text.trim());
+      if (!mounted) return;
+      if (desc.isNotEmpty) {
+        _descCtrl.text = desc;
+      } else {
+        _snack('No pudimos generar la descripción. Intente de nuevo.', color: AppTheme.error);
+      }
+    } on AppError catch (e) {
+      _snack(e.message, color: AppTheme.error);
+    } catch (_) {
+      _snack('No pudimos generar la descripción. Intente de nuevo.', color: AppTheme.error);
+    } finally {
+      if (mounted) setState(() => _generatingDesc = false);
     }
   }
 
@@ -964,7 +1133,18 @@ class _RecipeStudioScreenState extends State<RecipeStudioScreen> {
       const SizedBox(height: AppUI.s16),
       _field(_descCtrl, 'Descripción (opcional)',
           example: 'Una frase apetitosa para el catálogo', maxLines: 2),
-      const SizedBox(height: AppUI.s16),
+      Align(
+        alignment: Alignment.centerLeft,
+        child: TextButton.icon(
+          key: const Key('studio_describe_ai'),
+          onPressed: _generatingDesc ? null : _generateDescription,
+          icon: _generatingDesc
+              ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+              : const Icon(Icons.auto_awesome_rounded, size: 18),
+          label: Text(_generatingDesc ? 'Generando…' : 'Generar descripción con IA'),
+        ),
+      ),
+      const SizedBox(height: AppUI.s8),
       const Text('Foto del plato', style: AppUI.sectionLabel),
       const SizedBox(height: AppUI.s8),
       _photoBox(),

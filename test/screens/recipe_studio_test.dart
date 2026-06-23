@@ -61,6 +61,13 @@ class _FakeApi extends ApiService {
     return {...data, 'id': uuid};
   }
 
+  String? describedName;
+  @override
+  Future<String> generateMenuDescription({required String name, String category = ''}) async {
+    describedName = name;
+    return 'Delicioso $name, recién hecho.';
+  }
+
   @override
   Future<Map<String, dynamic>> fetchRecipeCost(String uuid) async =>
       {'total_cost': 0};
@@ -388,5 +395,25 @@ void main() {
     // Persistió en el insumo y recalculó (3 x 2.000 = 6.000).
     expect(api.updatedIngredients.any((e) => e.key == 'i1' && e.value['unit_cost'] == 2000.0), isTrue);
     expect(find.text('\$6.000'), findsWidgets);
+  });
+
+  testWidgets('Generar descripción con IA precarga el campo', (tester) async {
+    tester.view.physicalSize = const Size(390, 1400);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    final api = _FakeApi()..ingredients = [_ing('i1', 'Arroz', cost: 1000)];
+    await tester.pumpWidget(MaterialApp(home: RecipeStudioScreen(api: api)));
+    await tester.pumpAndSettle();
+
+    await tester.enterText(find.byKey(const Key('studio_name')), 'Sancocho');
+    await tester.ensureVisible(find.byKey(const Key('studio_describe_ai')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('studio_describe_ai')));
+    await tester.pumpAndSettle();
+
+    expect(api.describedName, 'Sancocho');
+    expect(find.text('Delicioso Sancocho, recién hecho.'), findsOneWidget);
   });
 }
