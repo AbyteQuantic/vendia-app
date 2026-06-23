@@ -106,12 +106,17 @@ class _MenuPlannerScreenState extends State<MenuPlannerScreen> {
         _api.fetchRecipes(),
         _api.fetchBranches(),
         _api.fetchStoreConfig(),
-        _api.fetchIncompleteMenuItems(),
       ]);
       _recipes = (base[0] as List).cast<Map<String, dynamic>>();
       _branches = (base[1] as List).cast<Map<String, dynamic>>();
       _storeSlug = ((base[2] as Map)['store_slug'] ?? '').toString();
-      _incompleteCount = (base[3] as List).length;
+
+      // El conteo de platos incompletos es SOLO para el aviso del picker — NO debe
+      // bloquear ni romper la carga de recetas (si falla, el planeador igual sirve).
+      // Best-effort, fuera del camino crítico. Spec 078.
+      _api.fetchIncompleteMenuItems().then((inc) {
+        if (mounted) setState(() => _incompleteCount = inc.length);
+      }).catchError((_) {});
 
       final results = await Future.wait([
         _api.fetchMenuPlan(branchId: _selectedBranchId),
