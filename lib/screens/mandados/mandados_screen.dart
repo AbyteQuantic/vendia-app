@@ -8,6 +8,7 @@ import '../../utils/format_cop.dart';
 import '../../services/api_service.dart';
 import '../../services/auth_service.dart';
 import '../../services/app_error.dart';
+import '../../widgets/branch_selector_drawer.dart';
 
 /// Mandados / Pendientes de compra (Spec 077): las listas de compra que el
 /// tenant asignó (a proveedor/contacto/empleado), con su estado. Permite
@@ -121,6 +122,12 @@ class _MandadosScreenState extends State<MandadosScreen> {
           onPressed: () => Navigator.of(context).pop(),
         ),
         title: const Text('Pendientes de compra', style: AppUI.title),
+        actions: const [
+          Padding(
+            padding: EdgeInsets.only(right: 8),
+            child: Center(child: BranchSelectorChip()),
+          ),
+        ],
       ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())

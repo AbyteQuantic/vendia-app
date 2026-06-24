@@ -2,6 +2,7 @@
 import 'package:flutter/material.dart';
 import '../../theme/app_theme.dart';
 import '../../theme/app_ui.dart';
+import '../../widgets/branch_selector_drawer.dart';
 import 'supplier_inbox_screen.dart';
 import 'harvest_alerts_screen.dart';
 
@@ -24,6 +25,12 @@ class SupplierPanelScreen extends StatelessWidget {
           onPressed: () => Navigator.of(context).pop(),
         ),
         title: const Text('Panel de proveedor', style: AppUI.title),
+        actions: const [
+          Padding(
+            padding: EdgeInsets.only(right: 8),
+            child: Center(child: BranchSelectorChip()),
+          ),
+        ],
       ),
       body: SafeArea(
         child: ListView(

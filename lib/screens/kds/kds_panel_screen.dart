@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../../theme/app_theme.dart';
+import '../../widgets/branch_selector_drawer.dart';
 import '../../models/order_ticket.dart';
 import '../../utils/format_cop.dart';
 
@@ -139,6 +140,12 @@ class _KdsPanelScreenState extends State<KdsPanelScreen> {
               ),
           ],
         ),
+        actions: const [
+          Padding(
+            padding: EdgeInsets.only(right: 8),
+            child: Center(child: BranchSelectorChip()),
+          ),
+        ],
       ),
       body: _orders.isEmpty
           ? const Center(

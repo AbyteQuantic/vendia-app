@@ -11,6 +11,7 @@ import '../../models/event.dart';
 import '../../services/api_service.dart';
 import '../../services/auth_service.dart';
 import '../../utils/event_money.dart';
+import '../../widgets/branch_selector_drawer.dart';
 import 'create_event_screen.dart';
 import 'event_detail_screen.dart';
 import 'event_feedback.dart';
@@ -86,7 +87,15 @@ class _EventsListScreenState extends State<EventsListScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Eventos')),
+      appBar: AppBar(
+        title: const Text('Eventos'),
+        actions: const [
+          Padding(
+            padding: EdgeInsets.only(right: 8),
+            child: Center(child: BranchSelectorChip()),
+          ),
+        ],
+      ),
       floatingActionButton: FloatingActionButton.extended(
         key: const Key('events_create_fab'),
         onPressed: _openCreate,

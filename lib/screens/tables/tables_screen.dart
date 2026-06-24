@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../../theme/app_theme.dart';
+import '../../widgets/branch_selector_drawer.dart';
 import '../../widgets/sync_status_banner.dart';
 import 'tables_controller.dart';
 import 'open_tab_screen.dart';
@@ -66,6 +67,12 @@ class _TablesScreenState extends State<TablesScreen> {
             color: AppTheme.textPrimary,
           ),
         ),
+        actions: const [
+          Padding(
+            padding: EdgeInsets.only(right: 8),
+            child: Center(child: BranchSelectorChip()),
+          ),
+        ],
       ),
       body: Semantics(
         label: 'Pantalla de mesas',

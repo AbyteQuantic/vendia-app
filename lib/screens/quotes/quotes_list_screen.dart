@@ -24,6 +24,7 @@ import '../../services/api_service.dart';
 import '../../services/auth_service.dart';
 import '../../theme/app_theme.dart';
 import '../../utils/format_cop.dart';
+import '../../widgets/branch_selector_drawer.dart';
 import 'quote_detail_screen.dart';
 import 'quote_form_screen.dart';
 
@@ -178,6 +179,12 @@ class _QuotesListScreenState extends State<QuotesListScreen> {
             color: AppTheme.textPrimary,
           ),
         ),
+        actions: const [
+          Padding(
+            padding: EdgeInsets.only(right: 8),
+            child: Center(child: BranchSelectorChip()),
+          ),
+        ],
       ),
       floatingActionButton: FloatingActionButton.extended(
         key: const Key('quotes_new_fab'),

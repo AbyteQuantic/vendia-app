@@ -5,6 +5,7 @@ import '../../theme/app_ui.dart';
 import '../../services/api_service.dart';
 import '../../services/auth_service.dart';
 import '../../services/app_error.dart';
+import '../../widgets/branch_selector_drawer.dart';
 import 'shopping_list_screen.dart';
 
 /// Alistar insumos del día (Spec 076): toma el menú planeado para HOY o MAÑANA,
@@ -106,6 +107,12 @@ class _SuppliesPrepScreenState extends State<SuppliesPrepScreen> {
           onPressed: () => Navigator.of(context).pop(),
         ),
         title: const Text('Alistar del día', style: AppUI.title),
+        actions: const [
+          Padding(
+            padding: EdgeInsets.only(right: 8),
+            child: Center(child: BranchSelectorChip()),
+          ),
+        ],
       ),
       body: SafeArea(
         child: Column(

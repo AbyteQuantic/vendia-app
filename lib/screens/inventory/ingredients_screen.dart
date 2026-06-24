@@ -9,6 +9,7 @@ import '../../services/api_service.dart';
 import '../../services/auth_service.dart';
 import '../../theme/app_theme.dart';
 import '../../theme/app_ui.dart';
+import '../../widgets/branch_selector_drawer.dart';
 import 'ingredient_form_screen.dart';
 import 'supplies_prep_screen.dart';
 
@@ -181,6 +182,10 @@ class _IngredientsScreenState extends State<IngredientsScreen> {
         ),
         title: const Text('Insumos', style: AppUI.title),
         actions: [
+          const Padding(
+            padding: EdgeInsets.only(right: 8),
+            child: Center(child: BranchSelectorChip()),
+          ),
           IconButton(
             key: const Key('btn_add_ingredient'),
             icon: const Icon(Icons.add_rounded, color: AppTheme.primary, size: 28),

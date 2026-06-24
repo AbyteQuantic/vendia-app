@@ -29,6 +29,7 @@ import '../../services/api_service.dart';
 import '../../services/auth_service.dart';
 import '../../services/promotion_scheduler.dart';
 import '../../theme/app_theme.dart';
+import '../../widgets/branch_selector_drawer.dart';
 import '../../widgets/picked_image_preview.dart';
 
 class PromotionFormScreen extends StatefulWidget {
@@ -286,6 +287,12 @@ class _PromotionFormScreenState extends State<PromotionFormScreen> {
             color: AppTheme.textPrimary,
           ),
         ),
+        actions: const [
+          Padding(
+            padding: EdgeInsets.only(right: 8),
+            child: Center(child: BranchSelectorChip()),
+          ),
+        ],
       ),
       body: SafeArea(
         child: Form(

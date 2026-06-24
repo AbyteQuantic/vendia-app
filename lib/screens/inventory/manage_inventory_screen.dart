@@ -10,6 +10,7 @@ import '../../services/auth_service.dart';
 import '../../services/image_normalizer.dart' show ImageNormalizationException;
 import '../../utils/barcode_validator.dart';
 import '../../utils/currency_input.dart';
+import '../../widgets/branch_selector_drawer.dart';
 import '../../widgets/negative_stock_banner.dart';
 import '../../widgets/picked_image_preview.dart';
 import '../../widgets/stock_badge.dart';
@@ -224,6 +225,10 @@ class _ManageInventoryScreenState extends State<ManageInventoryScreen> {
         // T-16 (F027): botón de importación. El AppBar no tenía acciones
         // previas → se agrega directamente (regla UI_RULES.md: máx 2 acciones).
         actions: [
+          const Padding(
+            padding: EdgeInsets.only(right: 8),
+            child: Center(child: BranchSelectorChip()),
+          ),
           IconButton(
             icon: const Icon(Icons.category_rounded,
                 color: AppTheme.textPrimary, size: 24),

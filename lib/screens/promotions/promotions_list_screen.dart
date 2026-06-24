@@ -20,6 +20,7 @@ import '../../models/broadcast_promotion.dart';
 import '../../services/api_service.dart';
 import '../../services/auth_service.dart';
 import '../../theme/app_theme.dart';
+import '../../widgets/branch_selector_drawer.dart';
 import 'promotion_detail_screen.dart';
 import 'promotion_form_screen.dart';
 
@@ -141,6 +142,12 @@ class _PromotionsListScreenState extends State<PromotionsListScreen> {
             color: AppTheme.textPrimary,
           ),
         ),
+        actions: const [
+          Padding(
+            padding: EdgeInsets.only(right: 8),
+            child: Center(child: BranchSelectorChip()),
+          ),
+        ],
       ),
       floatingActionButton: FloatingActionButton.extended(
         key: const Key('promotions_new_fab'),

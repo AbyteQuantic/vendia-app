@@ -2,6 +2,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:share_plus/share_plus.dart';
+import '../../widgets/branch_selector_drawer.dart';
 import '../../widgets/dispatch_sheet.dart';
 import '../../theme/app_theme.dart';
 import '../../theme/app_ui.dart';
@@ -179,6 +180,10 @@ class _ShoppingListScreenState extends State<ShoppingListScreen> {
         ),
         title: const Text('Comprar lo que falta', style: AppUI.title),
         actions: [
+          const Padding(
+            padding: EdgeInsets.only(right: 8),
+            child: Center(child: BranchSelectorChip()),
+          ),
           IconButton(
             key: const Key('btn_open_mandados'),
             tooltip: 'Pendientes de compra',

@@ -8,6 +8,7 @@ import '../../services/api_service.dart';
 import '../../services/auth_service.dart';
 import '../../theme/app_theme.dart';
 import '../../utils/credit_labels.dart';
+import '../../widgets/branch_selector_drawer.dart';
 import '../../widgets/receipt_image_picker.dart';
 
 /// "El Cuaderno" — Real accounts receivable from backend. Zero mocks.
@@ -142,6 +143,12 @@ class _CuadernoFiadosScreenState extends State<CuadernoFiadosScreen> {
         ),
         title: const Text('El Cuaderno',
             style: TextStyle(fontSize: 24, fontWeight: FontWeight.w800, color: AppTheme.textPrimary)),
+        actions: const [
+          Padding(
+            padding: EdgeInsets.only(right: 8),
+            child: Center(child: BranchSelectorChip()),
+          ),
+        ],
       ),
       body: Column(children: [
         // Total header

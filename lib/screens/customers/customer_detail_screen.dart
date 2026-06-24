@@ -18,6 +18,7 @@ import '../../models/customer.dart';
 import '../../services/api_service.dart';
 import '../../services/auth_service.dart';
 import '../../theme/app_theme.dart';
+import '../../widgets/branch_selector_drawer.dart';
 import '../history/receipt_detail_screen.dart';
 import 'customers_list_screen.dart' show formatCop;
 
@@ -122,6 +123,12 @@ class _CustomerDetailScreenState extends State<CustomerDetailScreen> {
               fontWeight: FontWeight.bold,
               color: AppTheme.textPrimary),
         ),
+        actions: const [
+          Padding(
+            padding: EdgeInsets.only(right: 8),
+            child: Center(child: BranchSelectorChip()),
+          ),
+        ],
       ),
       body: SafeArea(child: _buildBody()),
     );

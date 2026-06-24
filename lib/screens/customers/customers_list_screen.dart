@@ -27,6 +27,7 @@ import '../../models/customer.dart';
 import '../../services/api_service.dart';
 import '../../services/auth_service.dart';
 import '../../theme/app_theme.dart';
+import '../../widgets/branch_selector_drawer.dart';
 import '../promotions/broadcast_list_helper_screen.dart';
 import 'customer_detail_screen.dart';
 import 'customer_import_screen.dart';
@@ -215,6 +216,10 @@ class _CustomersListScreenState extends State<CustomersListScreen> {
               color: AppTheme.textPrimary),
         ),
         actions: [
+          const Padding(
+            padding: EdgeInsets.only(right: 8),
+            child: Center(child: BranchSelectorChip()),
+          ),
           IconButton(
             key: const Key('customers_import_button'),
             icon: const Icon(Icons.upload_file_rounded,

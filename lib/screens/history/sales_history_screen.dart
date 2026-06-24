@@ -7,6 +7,7 @@ import '../../services/api_service.dart';
 import '../../services/auth_service.dart';
 import '../../theme/app_theme.dart';
 import '../../utils/credit_labels.dart';
+import '../../widgets/branch_selector_drawer.dart';
 import 'receipt_detail_screen.dart';
 
 class SalesHistoryScreen extends StatefulWidget {
@@ -211,6 +212,12 @@ class _SalesHistoryScreenState extends State<SalesHistoryScreen> {
         title: const Text('Historial de Ventas',
             style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold,
                 color: AppTheme.textPrimary)),
+        actions: const [
+          Padding(
+            padding: EdgeInsets.only(right: 8),
+            child: Center(child: BranchSelectorChip()),
+          ),
+        ],
       ),
       body: Column(
         children: [

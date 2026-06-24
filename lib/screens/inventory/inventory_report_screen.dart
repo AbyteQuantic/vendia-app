@@ -5,6 +5,7 @@ import '../../services/api_service.dart';
 import '../../services/auth_service.dart';
 import '../../theme/app_theme.dart';
 import '../../utils/inventory_pdf.dart';
+import '../../widgets/branch_selector_drawer.dart';
 import 'invoice_history_screen.dart';
 import 'kardex_screen.dart';
 
@@ -138,6 +139,10 @@ class _InventoryReportScreenState extends State<InventoryReportScreen> {
       appBar: AppBar(
         title: const Text('Reporte de Inventario'),
         actions: [
+          const Padding(
+            padding: EdgeInsets.only(right: 8),
+            child: Center(child: BranchSelectorChip()),
+          ),
           IconButton(
             icon: const Icon(Icons.receipt_long_rounded),
             tooltip: 'Historial de facturas',

@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../../database/collections/local_customer.dart';
 import '../../theme/app_theme.dart';
+import '../../widgets/branch_selector_drawer.dart';
 import '../../utils/credit_labels.dart';
 import '../../utils/format_cop.dart';
 import 'fiar_controller.dart';
@@ -90,6 +91,12 @@ class _CreditDetailScreenState extends State<CreditDetailScreen> {
             color: AppTheme.textPrimary,
           ),
         ),
+        actions: const [
+          Padding(
+            padding: EdgeInsets.only(right: 8),
+            child: Center(child: BranchSelectorChip()),
+          ),
+        ],
       ),
       body: Semantics(
         label: 'Detalle de deuda de ${widget.customer.name}',

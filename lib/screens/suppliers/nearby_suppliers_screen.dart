@@ -5,6 +5,7 @@ import '../../theme/app_ui.dart';
 import '../../services/api_service.dart';
 import '../../services/auth_service.dart';
 import '../../services/app_error.dart';
+import '../../widgets/branch_selector_drawer.dart';
 import '../../widgets/use_my_location_button.dart';
 import 'supplier_catalog_screen.dart';
 
@@ -68,6 +69,12 @@ class _NearbySuppliersScreenState extends State<NearbySuppliersScreen> {
           onPressed: () => Navigator.of(context).pop(),
         ),
         title: const Text('Mercado cercano', style: AppUI.title),
+        actions: const [
+          Padding(
+            padding: EdgeInsets.only(right: 8),
+            child: Center(child: BranchSelectorChip()),
+          ),
+        ],
       ),
       body: SafeArea(
         child: Column(

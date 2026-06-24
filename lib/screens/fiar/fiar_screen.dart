@@ -7,6 +7,7 @@ import '../../database/sync/sync_service.dart';
 import '../../services/auth_service.dart';
 import '../../theme/app_theme.dart';
 import '../../utils/format_cop.dart';
+import '../../widgets/branch_selector_drawer.dart';
 import '../../widgets/sync_status_banner.dart';
 import 'fiar_controller.dart';
 import 'widgets/debtor_card.dart';
@@ -81,6 +82,10 @@ class _FiarScreenState extends State<FiarScreen> {
           ),
         ),
         actions: [
+          const Padding(
+            padding: EdgeInsets.only(right: 8),
+            child: Center(child: BranchSelectorChip()),
+          ),
           Semantics(
             button: true,
             label: 'Importar clientes desde Excel o CSV',

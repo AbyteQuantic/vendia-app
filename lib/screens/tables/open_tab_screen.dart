@@ -5,6 +5,7 @@ import '../../database/database_service.dart';
 import '../../models/product.dart';
 import '../../theme/app_theme.dart';
 import '../../utils/format_cop.dart';
+import '../../widgets/branch_selector_drawer.dart';
 import '../pos/checkout_screen.dart';
 import '../pos/sale_success_screen.dart';
 import 'tables_controller.dart';
@@ -154,6 +155,12 @@ class _OpenTabScreenState extends State<OpenTabScreen> {
             color: AppTheme.textPrimary,
           ),
         ),
+        actions: const [
+          Padding(
+            padding: EdgeInsets.only(right: 8),
+            child: Center(child: BranchSelectorChip()),
+          ),
+        ],
       ),
       body: Semantics(
         label: 'Cuenta abierta de mesa ${widget.tableNumber}',

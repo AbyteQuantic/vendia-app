@@ -15,6 +15,7 @@ import '../../services/auth_service.dart';
 import '../../theme/app_theme.dart';
 import '../../theme/app_ui.dart';
 import '../../utils/format_cop.dart';
+import '../../widgets/branch_selector_drawer.dart';
 import 'recipe_studio_screen.dart';
 
 class RecipeListScreen extends StatefulWidget {
@@ -220,6 +221,10 @@ class _RecipeListScreenState extends State<RecipeListScreen> {
         elevation: 0,
         title: const Text('Mis recetas', style: AppUI.title),
         actions: [
+          const Padding(
+            padding: EdgeInsets.only(right: 8),
+            child: Center(child: BranchSelectorChip()),
+          ),
           Padding(
             padding: const EdgeInsets.only(right: AppUI.s8),
             child: GhostButton(

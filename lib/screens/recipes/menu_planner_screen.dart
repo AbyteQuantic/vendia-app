@@ -20,6 +20,7 @@ import '../../services/app_error.dart';
 import '../../services/auth_service.dart';
 import '../../theme/app_theme.dart';
 import '../../theme/app_ui.dart';
+import '../../widgets/branch_selector_drawer.dart';
 
 /// Claves de día en el orden de presentación (lunes primero) y su etiqueta.
 const _dayOrder = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'];
@@ -354,6 +355,10 @@ class _MenuPlannerScreenState extends State<MenuPlannerScreen> {
         elevation: 0,
         title: const Text('Planear menú', style: AppUI.title),
         actions: [
+          const Padding(
+            padding: EdgeInsets.only(right: 8),
+            child: Center(child: BranchSelectorChip()),
+          ),
           if (!_loading)
             Padding(
               padding: const EdgeInsets.only(right: AppUI.s8),

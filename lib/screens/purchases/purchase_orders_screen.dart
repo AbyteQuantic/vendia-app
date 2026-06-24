@@ -9,6 +9,7 @@ import '../../models/purchase_order.dart';
 import '../../services/api_service.dart';
 import '../../services/auth_service.dart';
 import '../../theme/app_theme.dart';
+import '../../widgets/branch_selector_drawer.dart';
 import 'purchase_order_form_screen.dart';
 
 /// Pantalla de gestión de órdenes de compra — Feature 002.
@@ -234,6 +235,10 @@ class _PurchaseOrdersScreenState extends State<PurchaseOrdersScreen> {
           ),
         ),
         actions: [
+          const Padding(
+            padding: EdgeInsets.only(right: 8),
+            child: Center(child: BranchSelectorChip()),
+          ),
           IconButton(
             key: const Key('btn_add_purchase_order'),
             icon: const Icon(Icons.add_rounded,

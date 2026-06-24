@@ -4,6 +4,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../services/api_service.dart';
 import '../../services/auth_service.dart';
 import '../../theme/app_theme.dart';
+import '../../widgets/branch_selector_drawer.dart';
 
 /// Smart reorder screen: groups low-stock products by supplier so the
 /// tendero can place one order per supplier via WhatsApp, call, or SMS.
@@ -190,6 +191,12 @@ class _ReorderScreenState extends State<ReorderScreen> {
         elevation: 0,
         title: const Text('Pedidos sugeridos',
             style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: AppTheme.textPrimary)),
+        actions: const [
+          Padding(
+            padding: EdgeInsets.only(right: 8),
+            child: Center(child: BranchSelectorChip()),
+          ),
+        ],
       ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())

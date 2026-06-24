@@ -29,6 +29,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../theme/app_theme.dart';
 import '../../theme/app_ui.dart';
+import '../../widgets/branch_selector_drawer.dart';
 import '../inventory/ingredients_screen.dart';
 import 'recipe_list_screen.dart';
 
@@ -1015,6 +1016,12 @@ class _RecipeStudioScreenState extends State<RecipeStudioScreen> {
         surfaceTintColor: Colors.transparent,
         elevation: 0,
         title: Text(_isEdit ? 'Editar plato' : 'Nuevo plato', style: AppUI.title),
+        actions: const [
+          Padding(
+            padding: EdgeInsets.only(right: 8),
+            child: Center(child: BranchSelectorChip()),
+          ),
+        ],
       ),
       body: SafeArea(child: _body()),
     );
