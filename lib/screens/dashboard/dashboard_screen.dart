@@ -125,9 +125,18 @@ class _DashboardScreenState extends State<DashboardScreen> {
   Catalog? _catalog;
   final _catalogService = CatalogService();
 
+  // Perfil del TENANT (nombre del dueño + negocio). NO cambian con la sede. Si el
+  // constructor los recibe vacíos (re-login / select-workspace de otra sede), se
+  // rescatan del storage para que el header NUNCA quede en blanco. Spec 078 council.
+  String _effectiveOwnerName = '';
+  String _effectiveBusinessName = '';
+
   @override
   void initState() {
     super.initState();
+    _effectiveOwnerName = widget.ownerName;
+    _effectiveBusinessName = widget.businessName;
+    _loadProfileFallback();
     _loadData();
     _syncFromServer();
     _loadLowStockCount();
@@ -146,6 +155,20 @@ class _DashboardScreenState extends State<DashboardScreen> {
       final bp = context.read<BranchProvider>();
       _prevBranchId = bp.currentBranchId;
       bp.addListener(_onBranchChanged);
+    });
+  }
+
+  /// Rescata el nombre del dueño/negocio del storage cuando el constructor los
+  /// recibió vacíos. El perfil es del tenant; la fuente persistida ya está poblada
+  /// por la sesión (igual que el splash). Spec 078 council.
+  Future<void> _loadProfileFallback() async {
+    if (widget.ownerName.isNotEmpty && widget.businessName.isNotEmpty) return;
+    final o = await AuthService().getOwnerName();
+    final b = await AuthService().getBusinessName();
+    if (!mounted) return;
+    setState(() {
+      if (_effectiveOwnerName.isEmpty) _effectiveOwnerName = o ?? '';
+      if (_effectiveBusinessName.isEmpty) _effectiveBusinessName = b ?? '';
     });
   }
 
@@ -775,8 +798,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 pinned: true,
                 delegate: _HeroHeaderDelegate(
                   topPadding: topPad,
-                  ownerName: widget.ownerName,
-                  businessName: widget.businessName,
+                  ownerName: _effectiveOwnerName,
+                  businessName: _effectiveBusinessName,
                   businessTypes: _businessTypes,
                   branchName: context.watch<BranchProvider>().currentBranch?.name,
                   isStoreOpen: _isStoreOpen,
