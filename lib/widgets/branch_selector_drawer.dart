@@ -16,7 +16,14 @@ class BranchSelectorChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final provider = context.watch<BranchProvider>();
+    // Guard: el chip puede montarse en árboles sin BranchProvider (tests, o
+    // pantallas fuera del MultiProvider raíz). En ese caso no renderiza nada.
+    BranchProvider provider;
+    try {
+      provider = context.watch<BranchProvider>();
+    } catch (_) {
+      return const SizedBox.shrink();
+    }
     if (!provider.isMultiBranch) return const SizedBox.shrink();
 
     final branch = provider.currentBranch;

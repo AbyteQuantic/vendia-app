@@ -22,6 +22,7 @@ import 'menu_import_screen.dart';
 import 'menu_planner_screen.dart';
 import 'recipe_list_screen.dart';
 import 'recipe_voice_screen.dart';
+import '../../widgets/branch_selector_drawer.dart';
 
 class RecipesHomeScreen extends StatelessWidget {
   /// Inyectable para test (el preview usa este API). En producción se crea uno.
@@ -189,6 +190,14 @@ class RecipesHomeScreen extends StatelessWidget {
         surfaceTintColor: Colors.transparent,
         elevation: 0,
         title: const Text('Mi menú', style: AppUI.title),
+        // Selector de sede (solo si hay >1): saber/cambiar en qué sede planea el
+        // menú. El link público del día es por sede. Spec 078.
+        actions: const [
+          Padding(
+            padding: EdgeInsets.only(right: AppUI.s12),
+            child: Center(child: BranchSelectorChip()),
+          ),
+        ],
       ),
       body: ListView(
         padding: const EdgeInsets.fromLTRB(AppUI.s16, AppUI.s12, AppUI.s16, AppUI.s24),
