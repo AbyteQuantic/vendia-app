@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 import '../../theme/app_theme.dart';
 import '../../theme/app_ui.dart';
+import '../../widgets/branch_selector_drawer.dart';
 import '../../services/api_service.dart';
 import '../../services/auth_service.dart';
 import '../../widgets/catalog_link_card.dart';
@@ -179,6 +180,12 @@ class AddMerchandiseScreen extends StatelessWidget {
           ),
         ),
         title: const Text('Agregar mercancía', style: AppUI.title),
+        actions: const [
+          Padding(
+            padding: EdgeInsets.only(right: 8),
+            child: Center(child: BranchSelectorChip()),
+          ),
+        ],
       ),
       body: SafeArea(
         child: SingleChildScrollView(
