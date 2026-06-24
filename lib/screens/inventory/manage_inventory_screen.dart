@@ -498,6 +498,7 @@ class _ProductTile extends StatelessWidget {
     final name = product['name'] as String? ?? 'Sin nombre';
     final price = (product['price'] as num?)?.toDouble() ?? 0;
     final stock = product['stock'] as int? ?? 0;
+    final isMenuItem = product['is_menu_item'] == true;
     final photoUrl = product['photo_url'] as String?;
     final imageUrl = product['image_url'] as String?;
     final imgSrc = (photoUrl != null && photoUrl.isNotEmpty)
@@ -590,7 +591,7 @@ class _ProductTile extends StatelessWidget {
                           ),
                         ),
                         const SizedBox(width: 12),
-                        StockBadge(stock: stock, size: StockBadgeSize.medium),
+                        StockBadge(stock: stock, size: StockBadgeSize.medium, isMenuItem: isMenuItem),
                       ],
                     ),
                   ],

@@ -24,12 +24,17 @@ class StockBadge extends StatelessWidget {
   /// product-manager-approved value of 10.
   final int lowThreshold;
 
+  /// Un plato de menú (receta) NO tiene stock: se hace por receta. Mostrar
+  /// "AGOTADO" sería engañoso, así que se etiqueta como "Plato de menú". Spec 078.
+  final bool isMenuItem;
+
   const StockBadge({
     super.key,
     required this.stock,
     this.unit,
     this.size = StockBadgeSize.small,
     this.lowThreshold = 10,
+    this.isMenuItem = false,
   });
 
   @override
@@ -38,6 +43,12 @@ class StockBadge extends StatelessWidget {
     final isLow = !isSoldOut && stock <= lowThreshold;
 
     final (Color fg, Color bg, String text, FontWeight weight) = switch (true) {
+      _ when isMenuItem => (
+          AppTheme.primary,
+          AppTheme.primary.withValues(alpha: 0.10),
+          'Plato de menú',
+          FontWeight.w600,
+        ),
       _ when isSoldOut => (
           AppTheme.error,
           AppTheme.error.withValues(alpha: 0.12),

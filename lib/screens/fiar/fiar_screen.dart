@@ -8,6 +8,7 @@ import '../../services/auth_service.dart';
 import '../../theme/app_theme.dart';
 import '../../utils/format_cop.dart';
 import '../../widgets/branch_selector_drawer.dart';
+import '../../widgets/branch_aware_reload.dart';
 import '../../widgets/sync_status_banner.dart';
 import 'fiar_controller.dart';
 import 'widgets/debtor_card.dart';
@@ -22,7 +23,10 @@ class FiarScreen extends StatefulWidget {
   State<FiarScreen> createState() => _FiarScreenState();
 }
 
-class _FiarScreenState extends State<FiarScreen> {
+class _FiarScreenState extends State<FiarScreen> with BranchAwareReload<FiarScreen> {
+  @override
+  void onBranchChanged() => _ctrl.loadCustomers(); // recarga el fiado de la sede
+
   late final FiarController _ctrl;
 
   @override
