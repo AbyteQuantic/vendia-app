@@ -201,6 +201,15 @@ class AuthService {
   Future<String?> getRefreshToken() => _storage.read(key: _keyRefreshToken);
   Future<String?> getOwnerName() => _storage.read(key: _keyOwnerName);
   Future<String?> getBusinessName() => _storage.read(key: _keyBusinessName);
+
+  /// Re-cachea solo el nombre del dueño/negocio (cuando se rescatan del backend
+  /// porque el login/select-workspace los dejó vacíos). Spec 078 council.
+  Future<void> cacheProfileNames(String owner, String business) async {
+    if (owner.isNotEmpty) await _storage.write(key: _keyOwnerName, value: owner);
+    if (business.isNotEmpty) {
+      await _storage.write(key: _keyBusinessName, value: business);
+    }
+  }
   Future<String?> getBusinessType() => _storage.read(key: _keyBusinessType);
   Future<String?> getChargeMode() => _storage.read(key: _keyChargeMode);
   Future<String?> getStoreSlug() => _storage.read(key: _keyStoreSlug);

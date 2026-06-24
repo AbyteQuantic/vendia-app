@@ -163,12 +163,28 @@ class _DashboardScreenState extends State<DashboardScreen> {
   /// por la sesión (igual que el splash). Spec 078 council.
   Future<void> _loadProfileFallback() async {
     if (widget.ownerName.isNotEmpty && widget.businessName.isNotEmpty) return;
-    final o = await AuthService().getOwnerName();
-    final b = await AuthService().getBusinessName();
+    final auth = AuthService();
+    var o = (await auth.getOwnerName()) ?? '';
+    var b = (await auth.getBusinessName()) ?? '';
+    // Si el storage también vino vacío (re-login / select-workspace de otra sede
+    // sin perfil en el payload), traer del backend, que SIEMPRE tiene el perfil del
+    // tenant (GET /store/profile → owner_name + business_name). Spec 078 council.
+    if (o.isEmpty || b.isEmpty) {
+      try {
+        final p = await ApiService(auth).fetchBusinessProfile();
+        final bo = (p['owner_name'] ?? '').toString();
+        final bb = (p['business_name'] ?? '').toString();
+        if (o.isEmpty && bo.isNotEmpty) o = bo;
+        if (b.isEmpty && bb.isNotEmpty) b = bb;
+        if (bo.isNotEmpty || bb.isNotEmpty) {
+          await auth.cacheProfileNames(o, b); // re-poblar storage para la próxima
+        }
+      } catch (_) {/* sin red: queda lo del storage */}
+    }
     if (!mounted) return;
     setState(() {
-      if (_effectiveOwnerName.isEmpty) _effectiveOwnerName = o ?? '';
-      if (_effectiveBusinessName.isEmpty) _effectiveBusinessName = b ?? '';
+      if (_effectiveOwnerName.isEmpty) _effectiveOwnerName = o;
+      if (_effectiveBusinessName.isEmpty) _effectiveBusinessName = b;
     });
   }
 
