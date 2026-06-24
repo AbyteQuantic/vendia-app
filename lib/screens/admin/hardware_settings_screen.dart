@@ -10,6 +10,7 @@ import 'package:permission_handler/permission_handler.dart';
 import '../../services/hardware_service.dart';
 import '../../services/receipt_builder.dart';
 import '../../theme/app_theme.dart';
+import '../../widgets/branch_selector_drawer.dart';
 
 /// Hardware y Facturación — Owner-facing screen to:
 ///   1. flip the master switch for receipt printing + cash drawer
@@ -355,6 +356,12 @@ class _HardwareSettingsScreenState extends State<HardwareSettingsScreen> {
                 fontSize: 22,
                 fontWeight: FontWeight.w800,
                 color: AppTheme.textPrimary)),
+        actions: const [
+          Padding(
+            padding: EdgeInsets.only(right: 8),
+            child: Center(child: BranchSelectorChip()),
+          )
+        ],
       ),
       body: SafeArea(
         child: ListenableBuilder(

@@ -17,6 +17,7 @@ import '../../services/app_error.dart';
 import '../../services/auth_service.dart';
 import '../../utils/currency_input.dart';
 import '../../utils/event_money.dart';
+import '../../widgets/branch_selector_drawer.dart';
 import 'event_feedback.dart';
 
 class CreateEventScreen extends StatefulWidget {
@@ -670,7 +671,15 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: Text(_isEdit ? 'Editar evento' : 'Crear evento')),
+      appBar: AppBar(
+        title: Text(_isEdit ? 'Editar evento' : 'Crear evento'),
+        actions: const [
+          Padding(
+            padding: EdgeInsets.only(right: 8),
+            child: Center(child: BranchSelectorChip()),
+          )
+        ],
+      ),
       body: Form(
         key: _formKey,
         child: ListView(

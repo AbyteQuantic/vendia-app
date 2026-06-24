@@ -30,6 +30,7 @@ import '../../services/auth_service.dart';
 import '../../services/tax_settings_service.dart';
 import '../../theme/app_theme.dart';
 import '../../utils/format_cop.dart';
+import '../../widgets/branch_selector_drawer.dart';
 import '../customers/customer_selector_sheet.dart';
 import 'quote_capability_screen.dart'
     show kQuoteDefaultValidityDaysKey, kQuoteDefaultValidityDaysFallback;
@@ -316,6 +317,12 @@ class _QuoteFormScreenState extends State<QuoteFormScreen> {
             color: AppTheme.textPrimary,
           ),
         ),
+        actions: const [
+          Padding(
+            padding: EdgeInsets.only(right: 8),
+            child: Center(child: BranchSelectorChip()),
+          ),
+        ],
       ),
       body: SafeArea(
         child: ListView(

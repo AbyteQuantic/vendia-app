@@ -17,6 +17,7 @@ import '../../services/app_error.dart';
 import '../../services/auth_service.dart';
 import '../../theme/app_theme.dart';
 import '../../utils/currency_input.dart';
+import '../../widgets/branch_selector_drawer.dart';
 
 /// Categorías sugeridas por la IA (spec §6, decisión 5). Texto libre permitido
 /// pero el selector ofrece estas para no obligar a teclear.
@@ -247,6 +248,12 @@ class _MenuImportScreenState extends State<MenuImportScreen> {
         title: const Text('Revisa tu menú'),
         backgroundColor: AppTheme.background,
         elevation: 0,
+        actions: const [
+          Padding(
+            padding: EdgeInsets.only(right: 8),
+            child: Center(child: BranchSelectorChip()),
+          )
+        ],
       ),
       body: Column(
         children: [

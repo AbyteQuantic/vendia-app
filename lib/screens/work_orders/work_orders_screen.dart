@@ -8,6 +8,7 @@ import '../../models/work_order.dart';
 import '../../services/api_service.dart';
 import '../../services/auth_service.dart';
 import '../../theme/app_theme.dart';
+import '../../widgets/branch_selector_drawer.dart';
 import 'work_order_form_screen.dart';
 import 'work_order_widgets.dart';
 
@@ -131,6 +132,10 @@ class _WorkOrdersScreenState extends State<WorkOrdersScreen> {
           ),
         ),
         actions: [
+          const Padding(
+            padding: EdgeInsets.only(right: 8),
+            child: Center(child: BranchSelectorChip()),
+          ),
           IconButton(
             key: const Key('btn_add_work_order'),
             icon: const Icon(Icons.add_rounded,

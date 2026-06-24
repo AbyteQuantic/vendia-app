@@ -12,6 +12,7 @@ import 'package:image_picker/image_picker.dart';
 
 import '../../services/api_service.dart';
 import '../../services/auth_service.dart';
+import '../../widgets/branch_selector_drawer.dart';
 
 /// Qué se está diseñando.
 enum EventDesignKind { poster, badge, certificate }
@@ -187,7 +188,15 @@ class _EventDesignScreenState extends State<EventDesignScreen> {
     };
     final hasImage = _imageUrl != null && _imageUrl!.isNotEmpty;
     return Scaffold(
-      appBar: AppBar(title: Text(title)),
+      appBar: AppBar(
+        title: Text(title),
+        actions: const [
+          Padding(
+            padding: EdgeInsets.only(right: 8),
+            child: Center(child: BranchSelectorChip()),
+          )
+        ],
+      ),
       body: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(

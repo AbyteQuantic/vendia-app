@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../../theme/app_theme.dart';
 import '../../utils/email_launcher.dart';
+import '../../widgets/branch_selector_drawer.dart';
 import 'fiar_controller.dart';
 
 class CustomerFormScreen extends StatefulWidget {
@@ -89,6 +90,11 @@ class _CustomerFormScreenState extends State<CustomerFormScreen> {
             color: AppTheme.textPrimary,
           ),
         ),
+        actions: const [
+          Padding(
+              padding: EdgeInsets.only(right: 8),
+              child: Center(child: BranchSelectorChip()))
+        ],
       ),
       body: Semantics(
         label: 'Formulario de nuevo cliente',

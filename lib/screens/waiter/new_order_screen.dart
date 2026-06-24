@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../../theme/app_theme.dart';
+import '../../widgets/branch_selector_drawer.dart';
 
 /// NewOrderScreen — Mesero selecciona mesa o turno antes de tomar el pedido.
 /// Amber color scheme (#F59E0B -> #D97706) distinguishes waiter flow from POS.
@@ -401,7 +402,15 @@ class _PlaceholderWaiterPOS extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Pedido')),
+      appBar: AppBar(
+        title: const Text('Pedido'),
+        actions: const [
+          Padding(
+            padding: EdgeInsets.only(right: 8),
+            child: Center(child: BranchSelectorChip()),
+          )
+        ],
+      ),
       body: const Center(child: Text('WaiterPosScreen placeholder')),
     );
   }

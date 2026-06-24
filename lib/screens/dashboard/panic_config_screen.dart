@@ -5,6 +5,7 @@ import '../../models/panic_alert.dart';
 import '../../services/api_service.dart';
 import '../../services/auth_service.dart';
 import '../../theme/app_theme.dart';
+import '../../widgets/branch_selector_drawer.dart';
 import '../../widgets/panic_history.dart';
 
 class PanicConfigScreen extends StatefulWidget {
@@ -307,6 +308,12 @@ class _PanicConfigScreenState extends State<PanicConfigScreen> {
                   fontWeight: FontWeight.w800,
                   color: AppTheme.textPrimary)),
         ]),
+        actions: const [
+          Padding(
+            padding: EdgeInsets.only(right: 8),
+            child: Center(child: BranchSelectorChip()),
+          ),
+        ],
       ),
       body: _loading
           ? const Center(

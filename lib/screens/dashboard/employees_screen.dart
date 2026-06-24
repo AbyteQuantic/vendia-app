@@ -7,6 +7,7 @@ import '../../services/api_service.dart';
 import '../../services/auth_service.dart';
 import '../../services/branch_provider.dart';
 import '../../theme/app_theme.dart';
+import '../../widgets/branch_selector_drawer.dart';
 import '../../widgets/profile_photo_avatar.dart';
 import '../../widgets/profile_photo_picker.dart';
 
@@ -339,6 +340,12 @@ class _EmployeesScreenState extends State<EmployeesScreen> {
               fontWeight: FontWeight.w800,
               color: AppTheme.textPrimary),
         ),
+        actions: const [
+          Padding(
+            padding: EdgeInsets.only(right: 8),
+            child: Center(child: BranchSelectorChip()),
+          ),
+        ],
       ),
       body: _loading
           ? const Center(

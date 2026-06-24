@@ -4,6 +4,7 @@ import '../../database/database_service.dart';
 import '../../services/auth_service.dart';
 import '../../theme/app_theme.dart';
 import '../../utils/credit_labels.dart';
+import '../../widgets/branch_selector_drawer.dart';
 
 /// AI-powered sales improvement suggestions — Gerontodiseño.
 class SalesIdeasScreen extends StatefulWidget {
@@ -131,6 +132,11 @@ class _SalesIdeasScreenState extends State<SalesIdeasScreen> {
                     color: AppTheme.textPrimary)),
           ],
         ),
+        actions: const [
+          Padding(
+              padding: EdgeInsets.only(right: 8),
+              child: Center(child: BranchSelectorChip()))
+        ],
       ),
       body: _loading
           ? const Center(child: CircularProgressIndicator(color: Color(0xFF7C3AED)))

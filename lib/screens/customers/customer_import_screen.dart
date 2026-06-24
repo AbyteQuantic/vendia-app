@@ -19,6 +19,7 @@ import '../../services/api_service.dart';
 import '../../services/auth_service.dart';
 import '../../services/customer_import_mapper.dart';
 import '../../theme/app_theme.dart';
+import '../../widgets/branch_selector_drawer.dart';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -354,6 +355,12 @@ class _CustomerImportScreenState extends State<CustomerImportScreen> {
             color: AppTheme.textPrimary,
           ),
         ),
+        actions: const [
+          Padding(
+            padding: EdgeInsets.only(right: 8),
+            child: Center(child: BranchSelectorChip()),
+          )
+        ],
       ),
       body: SafeArea(
         child: Column(

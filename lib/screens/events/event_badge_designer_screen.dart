@@ -17,6 +17,7 @@ import 'package:image_picker/image_picker.dart';
 import '../../models/event.dart';
 import '../../services/api_service.dart';
 import '../../services/auth_service.dart';
+import '../../widgets/branch_selector_drawer.dart';
 import 'event_feedback.dart';
 
 const _accent = Color(0xFF0EA5E9);
@@ -400,6 +401,10 @@ class _EventBadgeDesignerScreenState extends State<EventBadgeDesignerScreen> {
       appBar: AppBar(
         title: const Text('Diseñar carné'),
         actions: [
+          const Padding(
+            padding: EdgeInsets.only(right: 8),
+            child: Center(child: BranchSelectorChip()),
+          ),
           TextButton(
             onPressed: _saving ? null : _save,
             child: Text(_saving ? 'Guardando…' : 'Guardar',

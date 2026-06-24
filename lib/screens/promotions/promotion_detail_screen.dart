@@ -27,6 +27,7 @@ import '../../services/api_service.dart';
 import '../../services/auth_service.dart';
 import '../../theme/app_theme.dart';
 import '../../utils/promotion_message_template.dart';
+import '../../widgets/branch_selector_drawer.dart';
 import '../../widgets/send_promotion_sheet.dart';
 import 'audience_selector_screen.dart';
 import 'broadcast_list_helper_screen.dart';
@@ -268,6 +269,10 @@ class _PromotionDetailScreenState extends State<PromotionDetailScreen> {
           ),
         ),
         actions: [
+          const Padding(
+            padding: EdgeInsets.only(right: 8),
+            child: Center(child: BranchSelectorChip()),
+          ),
           if (_promotion != null)
             IconButton(
               key: const Key('promo_detail_edit'),

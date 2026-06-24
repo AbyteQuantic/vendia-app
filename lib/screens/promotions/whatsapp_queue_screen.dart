@@ -34,6 +34,7 @@ import '../../services/api_service.dart';
 import '../../services/auth_service.dart';
 import '../../theme/app_theme.dart';
 import '../../utils/promotion_message_template.dart';
+import '../../widgets/branch_selector_drawer.dart';
 
 /// Segundos del countdown entre envíos (spec §4.5: 3s).
 const int kQueueCountdownSeconds = 3;
@@ -335,6 +336,12 @@ class _WhatsappQueueScreenState extends State<WhatsappQueueScreen>
             color: AppTheme.textPrimary,
           ),
         ),
+        actions: const [
+          Padding(
+            padding: EdgeInsets.only(right: 8),
+            child: Center(child: BranchSelectorChip()),
+          ),
+        ],
       ),
       body: SafeArea(
         child: Padding(

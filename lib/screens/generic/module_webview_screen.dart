@@ -9,6 +9,7 @@ import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../theme/app_theme.dart';
+import '../../widgets/branch_selector_drawer.dart';
 
 class ModuleWebviewScreen extends StatelessWidget {
   final String title;
@@ -37,7 +38,15 @@ class ModuleWebviewScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final hasUrl = (url?.trim().isNotEmpty ?? false);
     return Scaffold(
-      appBar: AppBar(title: Text(title)),
+      appBar: AppBar(
+        title: Text(title),
+        actions: const [
+          Padding(
+            padding: EdgeInsets.only(right: 8),
+            child: Center(child: BranchSelectorChip()),
+          )
+        ],
+      ),
       body: Center(
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 32),

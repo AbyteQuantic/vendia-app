@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../theme/app_theme.dart';
+import '../../widgets/branch_selector_drawer.dart';
 import '../../widgets/sync_status_banner.dart';
 
 class AdminScreen extends StatefulWidget {
@@ -85,6 +86,12 @@ class _AdminScreenState extends State<AdminScreen> {
             color: AppTheme.textPrimary,
           ),
         ),
+        actions: const [
+          Padding(
+            padding: EdgeInsets.only(right: 8),
+            child: Center(child: BranchSelectorChip()),
+          )
+        ],
       ),
       body: Semantics(
         label: 'Pantalla de administración',

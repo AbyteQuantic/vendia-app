@@ -6,6 +6,7 @@ import '../../config/api_config.dart';
 import '../../services/api_service.dart';
 import '../../services/auth_service.dart';
 import '../../theme/app_theme.dart';
+import '../../widgets/branch_selector_drawer.dart';
 
 class SupportScreen extends StatefulWidget {
   const SupportScreen({super.key});
@@ -62,6 +63,12 @@ class _SupportScreenState extends State<SupportScreen> {
           'Ayuda y Soporte',
           style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: AppTheme.textPrimary),
         ),
+        actions: const [
+          Padding(
+            padding: EdgeInsets.only(right: 8),
+            child: Center(child: BranchSelectorChip()),
+          )
+        ],
       ),
       body: _loading 
         ? const Center(child: CircularProgressIndicator())
@@ -243,7 +250,15 @@ class _CreateTicketScreenState extends State<CreateTicketScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppTheme.background,
-      appBar: AppBar(title: const Text('Nuevo Ticket')),
+      appBar: AppBar(
+        title: const Text('Nuevo Ticket'),
+        actions: const [
+          Padding(
+            padding: EdgeInsets.only(right: 8),
+            child: Center(child: BranchSelectorChip()),
+          )
+        ],
+      ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(24),
         child: Form(
@@ -364,6 +379,12 @@ class _TicketDetailScreenState extends State<TicketDetailScreen> {
             Text(_ticket!['status'], style: const TextStyle(fontSize: 10, color: AppTheme.textSecondary)),
           ],
         ),
+        actions: const [
+          Padding(
+            padding: EdgeInsets.only(right: 8),
+            child: Center(child: BranchSelectorChip()),
+          )
+        ],
       ),
       body: Column(
         children: [

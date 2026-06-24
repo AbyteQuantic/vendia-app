@@ -4,6 +4,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../../database/database_service.dart';
 import '../../services/tax_settings_service.dart';
 import '../../theme/app_theme.dart';
+import '../../widgets/branch_selector_drawer.dart';
 import '../../widgets/growth_radar_card.dart';
 import 'analytics_screen.dart';
 import 'suppliers_screen.dart';
@@ -51,6 +52,12 @@ class AdminHubScreen extends StatelessWidget {
             color: AppTheme.textPrimary,
           ),
         ),
+        actions: const [
+          Padding(
+            padding: EdgeInsets.only(right: 8),
+            child: Center(child: BranchSelectorChip()),
+          )
+        ],
       ),
       body: SingleChildScrollView(
         physics: const BouncingScrollPhysics(),

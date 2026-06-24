@@ -12,6 +12,7 @@ import '../../services/role_manager.dart';
 import '../../services/tax_settings_service.dart';
 import '../../theme/app_theme.dart';
 import '../../utils/credit_labels.dart';
+import '../../widgets/branch_selector_drawer.dart';
 import '../../widgets/growth_radar_card.dart';
 import '../admin/tax_activation_wizard.dart';
 import '../history/receipt_detail_screen.dart';
@@ -145,6 +146,10 @@ class _FinancialDashboardScreenState extends State<FinancialDashboardScreen> {
         title: const Text('Finanzas',
             style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
         actions: [
+          const Padding(
+            padding: EdgeInsets.only(right: 8),
+            child: Center(child: BranchSelectorChip()),
+          ),
           IconButton(
             tooltip: 'Filtros',
             icon: Stack(

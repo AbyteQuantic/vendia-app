@@ -16,6 +16,7 @@ import '../../services/app_error.dart';
 import '../../services/auth_service.dart';
 import '../../services/voice_recorder.dart';
 import '../../theme/app_theme.dart';
+import '../../widgets/branch_selector_drawer.dart';
 import '../../widgets/premium_upsell_sheet.dart';
 import 'ia_result_screen.dart';
 
@@ -418,6 +419,12 @@ class _VoiceInventoryScreenState extends State<VoiceInventoryScreen>
               fontWeight: FontWeight.bold,
               color: AppTheme.textPrimary),
         ),
+        actions: const [
+          Padding(
+            padding: EdgeInsets.only(right: 8),
+            child: Center(child: BranchSelectorChip()),
+          ),
+        ],
       ),
       body: SafeArea(
         child: Padding(

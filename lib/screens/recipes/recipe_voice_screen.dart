@@ -17,6 +17,7 @@ import '../../services/auth_service.dart';
 import '../../services/voice_recorder.dart';
 import '../../theme/app_theme.dart';
 import '../../theme/app_ui.dart';
+import '../../widgets/branch_selector_drawer.dart';
 import 'recipe_studio_screen.dart';
 
 enum _VoiceState { idle, recording, processing, error }
@@ -141,6 +142,12 @@ class _RecipeVoiceScreenState extends State<RecipeVoiceScreen> {
         surfaceTintColor: Colors.transparent,
         elevation: 0,
         title: const Text('Dictar receta', style: AppUI.title),
+        actions: const [
+          Padding(
+            padding: EdgeInsets.only(right: 8),
+            child: Center(child: BranchSelectorChip()),
+          )
+        ],
       ),
       body: SafeArea(
         child: Center(

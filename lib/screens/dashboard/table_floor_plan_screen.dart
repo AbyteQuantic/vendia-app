@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import '../../services/api_service.dart';
 import '../../services/auth_service.dart';
 import '../../theme/app_theme.dart';
+import '../../widgets/branch_selector_drawer.dart';
 
 /// Floor Plan Editor — Gerontodiseño: grid interactivo para gestionar mesas.
 /// Todas las operaciones ocurren en memoria hasta presionar "Guardar".
@@ -313,6 +314,9 @@ class _TableFloorPlanScreenState extends State<TableFloorPlanScreen> {
           ),
         ),
         actions: [
+          const Padding(
+              padding: EdgeInsets.only(right: 8),
+              child: Center(child: BranchSelectorChip())),
           if (_dirty)
             Padding(
               padding: const EdgeInsets.only(right: 12),

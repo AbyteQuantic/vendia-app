@@ -20,6 +20,7 @@ import '../../services/api_service.dart';
 import '../../services/auth_service.dart';
 import '../../utils/event_money.dart';
 import '../../utils/markdown_plain.dart';
+import '../../widgets/branch_selector_drawer.dart';
 import 'event_feedback.dart';
 
 const _eventAccent = Color(0xFF0EA5E9);
@@ -179,7 +180,15 @@ class _EventBroadcastScreenState extends State<EventBroadcastScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Difundir evento')),
+      appBar: AppBar(
+        title: const Text('Difundir evento'),
+        actions: const [
+          Padding(
+            padding: EdgeInsets.only(right: 8),
+            child: Center(child: BranchSelectorChip()),
+          )
+        ],
+      ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : ListView(

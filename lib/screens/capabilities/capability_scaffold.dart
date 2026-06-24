@@ -26,6 +26,7 @@ import 'package:flutter/services.dart';
 import '../../services/api_service.dart';
 import '../../services/auth_service.dart';
 import '../../theme/app_theme.dart';
+import '../../widgets/branch_selector_drawer.dart';
 
 /// Acción opcional secundaria en estado activado (p. ej. "Nueva
 /// cotización" en Cotizaciones, "Agregar mesa" en Mesas).
@@ -238,6 +239,12 @@ class _CapabilityScaffoldState extends State<CapabilityScaffold> {
                 fontSize: 22,
                 fontWeight: FontWeight.w800,
                 color: AppTheme.textPrimary)),
+        actions: const [
+          Padding(
+            padding: EdgeInsets.only(right: 8),
+            child: Center(child: BranchSelectorChip()),
+          )
+        ],
       ),
       body: _loading
           ? const Center(

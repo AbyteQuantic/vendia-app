@@ -7,6 +7,7 @@ import '../../services/app_error.dart';
 import '../../services/auth_service.dart';
 import '../../theme/app_theme.dart';
 import '../../utils/credit_labels.dart';
+import '../../widgets/branch_selector_drawer.dart';
 
 /// Express payment-config for the tendero — the single-method path that
 /// the public fiado portal reads. Replaces the multi-row CRUD for the
@@ -175,6 +176,11 @@ class _PaymentQuickSetupScreenState extends State<PaymentQuickSetupScreen> {
                 fontSize: 22,
                 fontWeight: FontWeight.w800,
                 color: AppTheme.textPrimary)),
+        actions: const [
+          Padding(
+              padding: EdgeInsets.only(right: 8),
+              child: Center(child: BranchSelectorChip()))
+        ],
       ),
       body: SafeArea(
         child: Form(

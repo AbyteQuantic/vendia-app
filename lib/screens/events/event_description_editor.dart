@@ -8,6 +8,8 @@
 
 import 'package:flutter/material.dart';
 
+import '../../widgets/branch_selector_drawer.dart';
+
 const _eventAccent = Color(0xFF0EA5E9);
 
 class EventDescriptionEditorScreen extends StatefulWidget {
@@ -95,6 +97,10 @@ class _EventDescriptionEditorScreenState
         ),
         title: const Text('Descripción del evento'),
         actions: [
+          const Padding(
+            padding: EdgeInsets.only(right: 8),
+            child: Center(child: BranchSelectorChip()),
+          ),
           Padding(
             padding: const EdgeInsets.only(right: 8),
             child: FilledButton(

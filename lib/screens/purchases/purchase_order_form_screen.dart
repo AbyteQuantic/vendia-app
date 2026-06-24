@@ -9,6 +9,7 @@ import '../../models/purchase_order.dart';
 import '../../services/api_service.dart';
 import '../../services/auth_service.dart';
 import '../../theme/app_theme.dart';
+import '../../widgets/branch_selector_drawer.dart';
 import 'purchase_order_form_widgets.dart';
 
 /// Formulario de alta/edición de una orden de compra (Feature 002).
@@ -371,6 +372,12 @@ class _PurchaseOrderFormScreenState extends State<PurchaseOrderFormScreen> {
             color: AppTheme.textPrimary,
           ),
         ),
+        actions: const [
+          Padding(
+            padding: EdgeInsets.only(right: 8),
+            child: Center(child: BranchSelectorChip()),
+          ),
+        ],
       ),
       body: SafeArea(child: _buildBody()),
     );

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../../theme/app_theme.dart';
+import '../../widgets/branch_selector_drawer.dart';
 
 /// AI-powered promotion suggestions based on inventory and sales data.
 class PromoIaScreen extends StatefulWidget {
@@ -122,6 +123,12 @@ class _PromoIaScreenState extends State<PromoIaScreen> {
             color: AppTheme.textPrimary,
           ),
         ),
+        actions: const [
+          Padding(
+            padding: EdgeInsets.only(right: 8),
+            child: Center(child: BranchSelectorChip()),
+          ),
+        ],
       ),
       body: SafeArea(
         child: SingleChildScrollView(

@@ -6,6 +6,7 @@ import '../../database/database_service.dart';
 import '../../services/api_service.dart';
 import '../../services/auth_service.dart';
 import '../../theme/app_theme.dart';
+import '../../widgets/branch_selector_drawer.dart';
 
 /// Screen that lists every product whose reserved stock exceeds physical
 /// stock, ordered from most-negative to least-negative.
@@ -181,6 +182,12 @@ class _NegativeStockScreenState extends State<NegativeStockScreen> {
           'Regularizar stock negativo',
           style: TextStyle(fontWeight: FontWeight.bold),
         ),
+        actions: const [
+          Padding(
+            padding: EdgeInsets.only(right: 8),
+            child: Center(child: BranchSelectorChip()),
+          ),
+        ],
       ),
       body: StreamBuilder<List<LocalProduct>>(
         stream: _stream,

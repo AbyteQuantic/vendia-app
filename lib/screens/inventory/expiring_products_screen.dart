@@ -5,6 +5,7 @@ import '../../database/collections/local_product.dart';
 import '../../services/api_service.dart';
 import '../../services/auth_service.dart';
 import '../../theme/app_theme.dart';
+import '../../widgets/branch_selector_drawer.dart';
 import '../promotions/promo_builder_screen.dart';
 
 /// Detailed list of products whose expiration date falls within the
@@ -92,6 +93,12 @@ class _ExpiringProductsScreenState extends State<ExpiringProductsScreen> {
             color: AppTheme.textPrimary,
           ),
         ),
+        actions: const [
+          Padding(
+            padding: EdgeInsets.only(right: 8),
+            child: Center(child: BranchSelectorChip()),
+          ),
+        ],
       ),
       body: RefreshIndicator(
         onRefresh: _load,

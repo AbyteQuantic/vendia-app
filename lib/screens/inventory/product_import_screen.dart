@@ -20,6 +20,7 @@ import '../../services/api_service.dart';
 import '../../services/auth_service.dart';
 import '../../services/product_import_mapper.dart';
 import '../../theme/app_theme.dart';
+import '../../widgets/branch_selector_drawer.dart';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -413,6 +414,12 @@ class _ProductImportScreenState extends State<ProductImportScreen> {
             color: AppTheme.textPrimary,
           ),
         ),
+        actions: const [
+          Padding(
+            padding: EdgeInsets.only(right: 8),
+            child: Center(child: BranchSelectorChip()),
+          ),
+        ],
       ),
       body: SafeArea(
         child: Column(

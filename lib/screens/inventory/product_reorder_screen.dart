@@ -6,6 +6,7 @@ import '../../services/auth_service.dart';
 import '../../theme/app_theme.dart';
 import '../../theme/app_ui.dart';
 import '../../utils/format_cop.dart';
+import '../../widgets/branch_selector_drawer.dart';
 import '../mandados/mandados_screen.dart';
 
 /// 🏪 Productos de tienda por reordenar (en/bajo su mínimo). Distinto de los
@@ -108,6 +109,12 @@ class _ProductReorderScreenState extends State<ProductReorderScreen> {
           onPressed: () => Navigator.of(context).pop(),
         ),
         title: const Text('Productos por reordenar', style: AppUI.title),
+        actions: const [
+          Padding(
+            padding: EdgeInsets.only(right: 8),
+            child: Center(child: BranchSelectorChip()),
+          ),
+        ],
       ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())

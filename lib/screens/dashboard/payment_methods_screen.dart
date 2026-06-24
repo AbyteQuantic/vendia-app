@@ -10,6 +10,7 @@ import '../../services/app_error.dart';
 import '../../services/auth_service.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/bank_auto_detect_tile.dart';
+import '../../widgets/branch_selector_drawer.dart';
 
 /// Pure decision: given the outcome of the picker and the cropper,
 /// what should _uploadQR do next? Tested in isolation so a future
@@ -583,6 +584,11 @@ class _PaymentMethodsScreenState extends State<PaymentMethodsScreen> {
                 fontSize: 24,
                 fontWeight: FontWeight.w800,
                 color: AppTheme.textPrimary)),
+        actions: const [
+          Padding(
+              padding: EdgeInsets.only(right: 8),
+              child: Center(child: BranchSelectorChip()))
+        ],
       ),
       body: _buildBody(),
       bottomNavigationBar: Container(

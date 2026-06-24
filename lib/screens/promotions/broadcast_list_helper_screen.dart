@@ -31,6 +31,7 @@ import 'package:share_plus/share_plus.dart';
 
 import '../../models/customer.dart';
 import '../../theme/app_theme.dart';
+import '../../widgets/branch_selector_drawer.dart';
 
 /// Construye el contenido de un archivo vCard 3.0 con los [customers].
 ///
@@ -134,6 +135,12 @@ class BroadcastListHelperScreen extends StatelessWidget {
             color: AppTheme.textPrimary,
           ),
         ),
+        actions: const [
+          Padding(
+            padding: EdgeInsets.only(right: 8),
+            child: Center(child: BranchSelectorChip()),
+          ),
+        ],
       ),
       body: SafeArea(
         child: ListView(

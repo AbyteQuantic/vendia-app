@@ -15,6 +15,7 @@ import '../../services/app_error.dart';
 import '../../services/auth_service.dart';
 import '../../theme/app_theme.dart';
 import '../../utils/currency_input.dart';
+import '../../widgets/branch_selector_drawer.dart';
 
 /// Categorías sugeridas para servicios (texto libre permitido). El catálogo
 /// público agrupa por esta categoría.
@@ -152,6 +153,12 @@ class _CreateServiceScreenState extends State<CreateServiceScreen> {
         title: const Text('Crear servicio'),
         backgroundColor: AppTheme.background,
         elevation: 0,
+        actions: const [
+          Padding(
+            padding: EdgeInsets.only(right: 8),
+            child: Center(child: BranchSelectorChip()),
+          ),
+        ],
       ),
       body: ListView(
         padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),

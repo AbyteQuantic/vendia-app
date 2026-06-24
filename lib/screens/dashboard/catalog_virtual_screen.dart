@@ -4,6 +4,7 @@ import '../../config/api_config.dart';
 import '../../services/api_service.dart';
 import '../../services/auth_service.dart';
 import '../../theme/app_theme.dart';
+import '../../widgets/branch_selector_drawer.dart';
 
 class CatalogVirtualScreen extends StatefulWidget {
   const CatalogVirtualScreen({super.key});
@@ -97,6 +98,12 @@ class _CatalogVirtualScreenState extends State<CatalogVirtualScreen>
         title: const Text('Catalogo Virtual',
             style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800,
                 color: AppTheme.textPrimary)),
+        actions: const [
+          Padding(
+            padding: EdgeInsets.only(right: 8),
+            child: Center(child: BranchSelectorChip()),
+          ),
+        ],
         bottom: TabBar(
           controller: _tabCtrl,
           labelColor: AppTheme.primary,

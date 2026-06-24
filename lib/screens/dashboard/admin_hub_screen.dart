@@ -21,6 +21,7 @@ import 'credit_settings_screen.dart';
 import 'panic_config_screen.dart';
 import 'owner_pin_setup_screen.dart';
 import '../admin/hardware_settings_screen.dart';
+import '../../widgets/branch_selector_drawer.dart';
 
 /// Admin Hub — Business configuration screen with Gerontodiseño.
 class AdminHubScreen extends StatefulWidget {
@@ -203,6 +204,12 @@ class _AdminHubScreenState extends State<AdminHubScreen> {
         title: const Text('Mi Negocio',
             style: TextStyle(fontSize: 24, fontWeight: FontWeight.w800,
                 color: AppTheme.textPrimary)),
+        actions: const [
+          Padding(
+            padding: EdgeInsets.only(right: 8),
+            child: Center(child: BranchSelectorChip()),
+          ),
+        ],
       ),
       body: SafeArea(
         child: ListView(

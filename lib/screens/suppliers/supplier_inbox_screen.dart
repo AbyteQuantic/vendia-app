@@ -6,6 +6,7 @@ import '../../theme/app_ui.dart';
 import '../../services/api_service.dart';
 import '../../services/auth_service.dart';
 import '../../services/app_error.dart';
+import '../../widgets/branch_selector_drawer.dart';
 
 /// Buzón del proveedor (Spec 075 F3): pedidos entrantes de las tiendas, con
 /// acciones de estado. VendIA solo conecta; el cierre real va por WhatsApp.
@@ -72,6 +73,12 @@ class _SupplierInboxScreenState extends State<SupplierInboxScreen> {
           onPressed: () => Navigator.of(context).pop(),
         ),
         title: const Text('Pedidos entrantes', style: AppUI.title),
+        actions: const [
+          Padding(
+            padding: EdgeInsets.only(right: 8),
+            child: Center(child: BranchSelectorChip()),
+          )
+        ],
       ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())

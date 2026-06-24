@@ -7,6 +7,7 @@ import 'package:flutter/services.dart';
 import '../../services/api_service.dart';
 import '../../services/auth_service.dart';
 import '../../theme/app_theme.dart';
+import '../../widgets/branch_selector_drawer.dart';
 
 /// KDS (Kitchen Display System) — Phase 1.
 ///
@@ -197,6 +198,10 @@ class _OnlineOrdersScreenState extends State<OnlineOrdersScreen> {
           ),
         ),
         actions: [
+          const Padding(
+            padding: EdgeInsets.only(right: 8),
+            child: Center(child: BranchSelectorChip()),
+          ),
           IconButton(
             tooltip: 'Actualizar',
             icon: const Icon(Icons.refresh_rounded,

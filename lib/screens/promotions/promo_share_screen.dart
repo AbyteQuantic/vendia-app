@@ -9,6 +9,7 @@ import '../../config/api_config.dart';
 import '../../services/api_service.dart';
 import '../../services/auth_service.dart';
 import '../../theme/app_theme.dart';
+import '../../widgets/branch_selector_drawer.dart';
 
 /// Post-save "megáfono" view — shows the banner in large format and
 /// gives the shopkeeper two distribution paths: a WhatsApp broadcast
@@ -161,6 +162,12 @@ class _PromoShareScreenState extends State<PromoShareScreen> {
               fontWeight: FontWeight.bold,
               color: AppTheme.textPrimary),
         ),
+        actions: const [
+          Padding(
+            padding: EdgeInsets.only(right: 8),
+            child: Center(child: BranchSelectorChip()),
+          ),
+        ],
       ),
       body: SafeArea(
         child: ListView(

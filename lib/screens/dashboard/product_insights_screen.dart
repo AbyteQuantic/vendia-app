@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import '../../services/api_service.dart';
 import '../../services/auth_service.dart';
 import '../../theme/app_theme.dart';
+import '../../widgets/branch_selector_drawer.dart';
 import '../../widgets/dashboard_ui_kit.dart';
 import '../online_store/promo_management_screen.dart';
 
@@ -95,6 +96,11 @@ class _ProductInsightsScreenState extends State<ProductInsightsScreen> {
                   fontSize: 20,
                   fontWeight: FontWeight.w700,
                   color: DashUI.ink)),
+          actions: const [
+            Padding(
+                padding: EdgeInsets.only(right: 8),
+                child: Center(child: BranchSelectorChip()))
+          ],
           bottom: const TabBar(
             isScrollable: true,
             labelColor: AppTheme.primary,

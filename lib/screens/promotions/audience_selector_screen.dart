@@ -25,6 +25,7 @@ import '../../services/api_service.dart';
 import '../../services/auth_service.dart';
 import '../../theme/app_theme.dart';
 import '../../utils/promotion_audience_filter.dart';
+import '../../widgets/branch_selector_drawer.dart';
 import 'audience_size_advisor.dart';
 
 class AudienceSelectorScreen extends StatefulWidget {
@@ -171,6 +172,12 @@ class _AudienceSelectorScreenState extends State<AudienceSelectorScreen> {
             color: AppTheme.textPrimary,
           ),
         ),
+        actions: const [
+          Padding(
+            padding: EdgeInsets.only(right: 8),
+            child: Center(child: BranchSelectorChip()),
+          ),
+        ],
       ),
       body: SafeArea(
         child: Column(

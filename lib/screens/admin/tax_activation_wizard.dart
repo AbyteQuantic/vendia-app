@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 
 import '../../services/tax_settings_service.dart';
 import '../../theme/app_theme.dart';
+import '../../widgets/branch_selector_drawer.dart';
 
 /// Three-step Stepper wizard the owner walks through the FIRST time
 /// VAT (IVA) is enabled. Three reasons for the wizard rather than a
@@ -97,6 +98,12 @@ class _TaxActivationWizardState extends State<TaxActivationWizard> {
           tooltip: 'Cerrar',
           onPressed: () => Navigator.of(context).pop(),
         ),
+        actions: const [
+          Padding(
+            padding: EdgeInsets.only(right: 8),
+            child: Center(child: BranchSelectorChip()),
+          )
+        ],
       ),
       body: Stepper(
         type: StepperType.vertical,

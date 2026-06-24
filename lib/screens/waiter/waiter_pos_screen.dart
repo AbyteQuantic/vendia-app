@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../../theme/app_theme.dart';
 import '../../utils/format_cop.dart';
+import '../../widgets/branch_selector_drawer.dart';
 
 /// WaiterPosScreen — Mesero agrega productos al pedido de una mesa.
 /// Amber color scheme, sends order to cashier via "Enviar a Caja".
@@ -144,6 +145,12 @@ class _WaiterPosScreenState extends State<WaiterPosScreen> {
             ),
           ],
         ),
+        actions: const [
+          Padding(
+            padding: EdgeInsets.only(right: 8),
+            child: Center(child: BranchSelectorChip()),
+          )
+        ],
       ),
       body: Column(
         children: [

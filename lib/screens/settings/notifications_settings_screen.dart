@@ -15,6 +15,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../services/push_service.dart';
+import '../../widgets/branch_selector_drawer.dart';
 
 class NotificationsSettingsScreen extends StatefulWidget {
   const NotificationsSettingsScreen({super.key});
@@ -152,6 +153,12 @@ class _NotificationsSettingsScreenState
       appBar: AppBar(
         title: const Text('Notificaciones',
             style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
+        actions: const [
+          Padding(
+            padding: EdgeInsets.only(right: 8),
+            child: Center(child: BranchSelectorChip()),
+          )
+        ],
       ),
       body: RefreshIndicator(
         onRefresh: _reload,

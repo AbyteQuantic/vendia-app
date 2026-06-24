@@ -26,6 +26,7 @@ import '../../services/app_error.dart';
 import '../../services/auth_service.dart';
 import '../../theme/app_theme.dart';
 import '../../utils/format_cop.dart';
+import '../../widgets/branch_selector_drawer.dart';
 import '../../widgets/send_quote_sheet.dart';
 import 'quote_form_screen.dart';
 import 'quotes_list_screen.dart' show quoteStatusColor;
@@ -376,6 +377,10 @@ class _QuoteDetailScreenState extends State<QuoteDetailScreen> {
           ),
         ),
         actions: [
+          const Padding(
+            padding: EdgeInsets.only(right: 8),
+            child: Center(child: BranchSelectorChip()),
+          ),
           if (quote != null && quote.status.canEdit)
             IconButton(
               key: const Key('quote_detail_edit'),

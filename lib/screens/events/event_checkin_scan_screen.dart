@@ -10,6 +10,7 @@ import 'package:mobile_scanner/mobile_scanner.dart';
 
 import '../../services/api_service.dart';
 import '../../services/auth_service.dart';
+import '../../widgets/branch_selector_drawer.dart';
 import 'event_feedback.dart';
 
 class EventCheckinScanScreen extends StatefulWidget {
@@ -89,7 +90,15 @@ class _EventCheckinScanScreenState extends State<EventCheckinScanScreen> {
         ? 'Salida (check-out)'
         : 'Entrada (check-in)';
     return Scaffold(
-      appBar: AppBar(title: Text(title)),
+      appBar: AppBar(
+        title: Text(title),
+        actions: const [
+          Padding(
+            padding: EdgeInsets.only(right: 8),
+            child: Center(child: BranchSelectorChip()),
+          )
+        ],
+      ),
       body: Stack(
         children: [
           MobileScanner(controller: _controller, onDetect: _onDetect),

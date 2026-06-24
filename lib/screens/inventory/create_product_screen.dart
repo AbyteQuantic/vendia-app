@@ -24,6 +24,7 @@ import '../../utils/currency_input.dart';
 import '../../widgets/dashboard_ui_kit.dart';
 import '../../theme/app_ui.dart';
 import '../../widgets/advanced_product_options.dart';
+import '../../widgets/branch_selector_drawer.dart';
 import '../../widgets/picked_image_preview.dart';
 import '../pos/scan_screen.dart';
 
@@ -1369,6 +1370,12 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
               color: DashUI.ink,
             ),
           ),
+          actions: const [
+            Padding(
+              padding: EdgeInsets.only(right: 8),
+              child: Center(child: BranchSelectorChip()),
+            ),
+          ],
         ),
         // Fixed Cancel + Save buttons at the bottom
         bottomNavigationBar: SafeArea(

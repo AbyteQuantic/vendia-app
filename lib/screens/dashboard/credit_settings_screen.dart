@@ -17,6 +17,7 @@ import '../../services/api_service.dart';
 import '../../services/auth_service.dart';
 import '../../theme/app_theme.dart';
 import '../../utils/credit_labels.dart';
+import '../../widgets/branch_selector_drawer.dart';
 
 class CreditSettingsScreen extends StatefulWidget {
   const CreditSettingsScreen({super.key});
@@ -119,6 +120,12 @@ class _CreditSettingsScreenState extends State<CreditSettingsScreen> {
         backgroundColor: AppTheme.background,
         elevation: 0,
         foregroundColor: AppTheme.textPrimary,
+        actions: const [
+          Padding(
+            padding: EdgeInsets.only(right: 8),
+            child: Center(child: BranchSelectorChip()),
+          ),
+        ],
       ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())

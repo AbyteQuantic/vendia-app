@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import '../../database/database_service.dart';
 import '../../database/sync/sync_service.dart';
 import '../../theme/app_theme.dart';
+import '../../widgets/branch_selector_drawer.dart';
 
 /// Sync & Connection diagnostic screen — Gerontodiseño.
 class SyncScreen extends StatefulWidget {
@@ -52,6 +53,11 @@ class _SyncScreenState extends State<SyncScreen> {
         title: const Text('Conexión y Sincronización',
             style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800,
                 color: AppTheme.textPrimary)),
+        actions: const [
+          Padding(
+              padding: EdgeInsets.only(right: 8),
+              child: Center(child: BranchSelectorChip()))
+        ],
       ),
       body: Consumer<SyncService>(
         builder: (context, sync, _) {

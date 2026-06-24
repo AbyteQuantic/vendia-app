@@ -6,6 +6,7 @@ import '../../theme/app_ui.dart';
 import '../../services/api_service.dart';
 import '../../services/auth_service.dart';
 import '../../services/app_error.dart';
+import '../../widgets/branch_selector_drawer.dart';
 
 /// Catálogo de un proveedor + armar pedido (Spec 075 F3). La tienda escoge
 /// cantidades, la entrega, y cierra por WhatsApp. VendIA solo conecta.
@@ -125,6 +126,12 @@ class _SupplierCatalogScreenState extends State<SupplierCatalogScreen> {
         ),
         title: Text(widget.supplierName.replaceFirst('[SEED] ', ''),
             style: AppUI.title),
+        actions: const [
+          Padding(
+            padding: EdgeInsets.only(right: 8),
+            child: Center(child: BranchSelectorChip()),
+          )
+        ],
       ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())

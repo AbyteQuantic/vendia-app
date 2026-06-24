@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../../theme/app_theme.dart';
 import '../../utils/format_cop.dart';
+import '../../widgets/branch_selector_drawer.dart';
 
 /// Calculadora de Ganancia — sets a sale price with custom numpad
 /// and dynamic profit indicator.
@@ -103,6 +104,12 @@ class _PriceCalculatorScreenState extends State<PriceCalculatorScreen> {
             color: AppTheme.textPrimary,
           ),
         ),
+        actions: const [
+          Padding(
+            padding: EdgeInsets.only(right: 8),
+            child: Center(child: BranchSelectorChip()),
+          ),
+        ],
       ),
       body: Semantics(
         label: 'Calculadora de precio de venta',

@@ -7,6 +7,7 @@ import '../../services/app_error.dart';
 import '../../services/auth_service.dart';
 import '../../theme/app_theme.dart';
 import '../../utils/credit_labels.dart';
+import '../../widgets/branch_selector_drawer.dart';
 
 /// Owner-only screen to set (or replace) the 4-digit PIN that cashiers will
 /// enter to unlock restricted actions like creating a new fiado for an
@@ -80,6 +81,12 @@ class _OwnerPinSetupScreenState extends State<OwnerPinSetupScreen> {
             style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700)),
         backgroundColor: Colors.white,
         elevation: 0,
+        actions: const [
+          Padding(
+            padding: EdgeInsets.only(right: 8),
+            child: Center(child: BranchSelectorChip()),
+          ),
+        ],
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(20),

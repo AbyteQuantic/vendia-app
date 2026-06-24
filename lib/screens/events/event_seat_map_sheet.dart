@@ -17,6 +17,7 @@ import '../../services/api_service.dart';
 import '../../services/app_error.dart';
 import '../../services/auth_service.dart';
 import '../../theme/app_theme.dart';
+import '../../widgets/branch_selector_drawer.dart';
 
 const Color _seatAccent = Color(0xFF1A2FA0);
 
@@ -338,6 +339,12 @@ class _EventSeatMapSheetState extends State<EventSeatMapSheet> {
                   fontSize: 22,
                   fontWeight: FontWeight.bold,
                   color: AppTheme.textPrimary)),
+          actions: const [
+            Padding(
+              padding: EdgeInsets.only(right: 8),
+              child: Center(child: BranchSelectorChip()),
+            )
+          ],
         ),
         body: SafeArea(
           child: Column(

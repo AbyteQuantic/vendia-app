@@ -10,6 +10,7 @@ import '../../database/collections/local_product.dart';
 import '../../services/api_service.dart';
 import '../../services/auth_service.dart';
 import '../../theme/app_theme.dart';
+import '../../widgets/branch_selector_drawer.dart';
 import 'promo_share_screen.dart';
 
 /// 4-step wizard for building a combo promotion. Designed for the
@@ -688,6 +689,12 @@ class _PromoBuilderScreenState extends State<PromoBuilderScreen> {
             color: AppTheme.textPrimary,
           ),
         ),
+        actions: const [
+          Padding(
+            padding: EdgeInsets.only(right: 8),
+            child: Center(child: BranchSelectorChip()),
+          ),
+        ],
       ),
       body: SafeArea(
         child: Column(

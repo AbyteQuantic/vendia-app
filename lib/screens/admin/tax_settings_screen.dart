@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 
 import '../../services/tax_settings_service.dart';
 import '../../theme/app_theme.dart';
+import '../../widgets/branch_selector_drawer.dart';
 import 'tax_activation_wizard.dart';
 
 /// Owner-facing screen that exposes the VAT (IVA) configuration:
@@ -43,6 +44,12 @@ class TaxSettingsScreen extends StatelessWidget {
             Navigator.of(context).pop();
           },
         ),
+        actions: const [
+          Padding(
+            padding: EdgeInsets.only(right: 8),
+            child: Center(child: BranchSelectorChip()),
+          )
+        ],
       ),
       body: ListenableBuilder(
         listenable: _service,

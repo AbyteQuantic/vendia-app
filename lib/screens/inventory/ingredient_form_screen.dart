@@ -9,6 +9,7 @@ import '../../models/ingredient.dart';
 import '../../services/api_service.dart';
 import '../../services/auth_service.dart';
 import '../../theme/app_theme.dart';
+import '../../widgets/branch_selector_drawer.dart';
 
 /// Formulario de alta/edición de un insumo (Feature 001).
 ///
@@ -150,6 +151,12 @@ class _IngredientFormScreenState extends State<IngredientFormScreen> {
             color: AppTheme.textPrimary,
           ),
         ),
+        actions: const [
+          Padding(
+            padding: EdgeInsets.only(right: 8),
+            child: Center(child: BranchSelectorChip()),
+          ),
+        ],
       ),
       body: SafeArea(
         child: Column(

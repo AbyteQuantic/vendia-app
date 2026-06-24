@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import '../../services/api_service.dart';
 import '../../services/auth_service.dart';
 import '../../theme/app_theme.dart';
+import '../../widgets/branch_selector_drawer.dart';
 
 /// Printer & Receipts configuration — Gerontodiseño.
 /// Manages receipt header/footer text and printer MAC address.
@@ -95,6 +96,11 @@ class _PrinterConfigScreenState extends State<PrinterConfigScreen> {
         title: const Text('Impresora y Recibos',
             style: TextStyle(fontSize: 24, fontWeight: FontWeight.w800,
                 color: AppTheme.textPrimary)),
+        actions: const [
+          Padding(
+              padding: EdgeInsets.only(right: 8),
+              child: Center(child: BranchSelectorChip()))
+        ],
       ),
       body: _loading
           ? const Center(child: CircularProgressIndicator(color: AppTheme.primary))

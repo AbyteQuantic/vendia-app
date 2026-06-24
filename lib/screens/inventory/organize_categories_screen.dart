@@ -6,6 +6,7 @@ import '../../services/app_error.dart';
 import '../../services/auth_service.dart';
 import '../../theme/app_theme.dart';
 import '../../theme/app_ui.dart';
+import '../../widgets/branch_selector_drawer.dart';
 
 /// Organizar categorías con IA: para los productos SIN categoría, la IA sugiere
 /// una (desde el nombre); el tenant la revisa, EDITA y guarda. No aplica nada sin
@@ -108,6 +109,12 @@ class _OrganizeCategoriesScreenState extends State<OrganizeCategoriesScreen> {
           onPressed: () => Navigator.of(context).pop(),
         ),
         title: const Text('Organizar categorías', style: AppUI.title),
+        actions: const [
+          Padding(
+            padding: EdgeInsets.only(right: 8),
+            child: Center(child: BranchSelectorChip()),
+          ),
+        ],
       ),
       body: _body(),
       bottomNavigationBar: (_items.isEmpty || _loading)

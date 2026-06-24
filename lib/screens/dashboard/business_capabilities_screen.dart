@@ -29,6 +29,7 @@ import '../../services/api_service.dart';
 import '../../services/auth_service.dart';
 import '../../theme/app_theme.dart';
 import '../../utils/business_capability_map.dart';
+import '../../widgets/branch_selector_drawer.dart';
 import 'credit_settings_screen.dart';
 
 /// Metadata visual de cada capacidad opcional.
@@ -371,6 +372,12 @@ class _BusinessCapabilitiesScreenState
                 fontSize: 22,
                 fontWeight: FontWeight.w800,
                 color: AppTheme.textPrimary)),
+        actions: const [
+          Padding(
+            padding: EdgeInsets.only(right: 8),
+            child: Center(child: BranchSelectorChip()),
+          ),
+        ],
       ),
       body: _loading
           ? const Center(

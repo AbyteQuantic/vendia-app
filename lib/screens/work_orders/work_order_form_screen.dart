@@ -10,6 +10,7 @@ import '../../models/work_order.dart';
 import '../../services/api_service.dart';
 import '../../services/auth_service.dart';
 import '../../theme/app_theme.dart';
+import '../../widgets/branch_selector_drawer.dart';
 import 'work_order_dialogs.dart';
 import 'work_order_footer.dart';
 import 'work_order_widgets.dart';
@@ -424,6 +425,10 @@ class _WorkOrderFormScreenState extends State<WorkOrderFormScreen> {
             ),
           ),
           actions: [
+            const Padding(
+              padding: EdgeInsets.only(right: 8),
+              child: Center(child: BranchSelectorChip()),
+            ),
             if (_order != null && _order!.canShare)
               IconButton(
                 key: const Key('btn_share_work_order'),

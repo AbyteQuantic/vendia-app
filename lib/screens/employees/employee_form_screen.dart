@@ -6,6 +6,7 @@ import 'package:uuid/uuid.dart';
 import '../../models/branch.dart';
 import '../../models/employee.dart';
 import '../../utils/credit_labels.dart';
+import '../../widgets/branch_selector_drawer.dart';
 
 class EmployeeFormScreen extends StatefulWidget {
   /// Pass an existing employee to edit; leave null for creation.
@@ -137,6 +138,11 @@ class _EmployeeFormScreenState extends State<EmployeeFormScreen> {
             Navigator.of(context).pop();
           },
         ),
+        actions: const [
+          Padding(
+              padding: EdgeInsets.only(right: 8),
+              child: Center(child: BranchSelectorChip()))
+        ],
       ),
       body: SafeArea(
         child: SingleChildScrollView(

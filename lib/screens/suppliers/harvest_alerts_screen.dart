@@ -6,6 +6,7 @@ import '../../theme/app_ui.dart';
 import '../../services/api_service.dart';
 import '../../services/auth_service.dart';
 import '../../services/app_error.dart';
+import '../../widgets/branch_selector_drawer.dart';
 
 /// Anti-merma (Spec 075 F4): el proveedor ve sus perecederos por vencer +
 /// cuántas tiendas hay cerca + un mensaje listo para difundir y liquidar.
@@ -61,6 +62,12 @@ class _HarvestAlertsScreenState extends State<HarvestAlertsScreen> {
           onPressed: () => Navigator.of(context).pop(),
         ),
         title: const Text('Anti-merma', style: AppUI.title),
+        actions: const [
+          Padding(
+            padding: EdgeInsets.only(right: 8),
+            child: Center(child: BranchSelectorChip()),
+          )
+        ],
       ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
