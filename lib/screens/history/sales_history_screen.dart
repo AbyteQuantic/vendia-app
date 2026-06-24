@@ -1,5 +1,6 @@
 // Spec: specs/028-copy-fiar-credito-configurable/spec.md
 import 'package:flutter/material.dart';
+import '../../widgets/branch_aware_reload.dart';
 import 'package:flutter/services.dart';
 
 import '../../database/sync/sales_sync.dart';
@@ -19,7 +20,10 @@ class SalesHistoryScreen extends StatefulWidget {
 
 enum _Range { today, yesterday, week, month, custom }
 
-class _SalesHistoryScreenState extends State<SalesHistoryScreen> {
+class _SalesHistoryScreenState extends State<SalesHistoryScreen> with BranchAwareReload<SalesHistoryScreen> {
+  @override
+  void onBranchChanged() => _load();
+
   _Range _selected = _Range.today;
   DateTimeRange? _customRange;
   final _searchCtrl = TextEditingController();

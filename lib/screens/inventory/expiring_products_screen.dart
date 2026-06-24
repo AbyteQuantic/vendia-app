@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../widgets/branch_aware_reload.dart';
 import 'package:flutter/services.dart';
 import '../../database/database_service.dart';
 import '../../database/collections/local_product.dart';
@@ -20,7 +21,10 @@ class ExpiringProductsScreen extends StatefulWidget {
       _ExpiringProductsScreenState();
 }
 
-class _ExpiringProductsScreenState extends State<ExpiringProductsScreen> {
+class _ExpiringProductsScreenState extends State<ExpiringProductsScreen> with BranchAwareReload<ExpiringProductsScreen> {
+  @override
+  void onBranchChanged() => _load();
+
   List<Map<String, dynamic>> _items = [];
   bool _loading = true;
   String? _error;

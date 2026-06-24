@@ -1,5 +1,6 @@
 // Spec: specs/028-copy-fiar-credito-configurable/spec.md
 import 'package:flutter/material.dart';
+import '../../widgets/branch_aware_reload.dart';
 import 'package:flutter/services.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -40,7 +41,10 @@ class CuadernoFiadosScreen extends StatefulWidget {
   State<CuadernoFiadosScreen> createState() => _CuadernoFiadosScreenState();
 }
 
-class _CuadernoFiadosScreenState extends State<CuadernoFiadosScreen> {
+class _CuadernoFiadosScreenState extends State<CuadernoFiadosScreen> with BranchAwareReload<CuadernoFiadosScreen> {
+  @override
+  void onBranchChanged() => _load();
+
   late final ApiService _api;
 
   // One bucket per tab — populated independently from three GETs in

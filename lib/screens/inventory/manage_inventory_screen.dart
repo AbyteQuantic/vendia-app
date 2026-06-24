@@ -11,6 +11,7 @@ import '../../services/image_normalizer.dart' show ImageNormalizationException;
 import '../../utils/barcode_validator.dart';
 import '../../utils/currency_input.dart';
 import '../../widgets/branch_selector_drawer.dart';
+import '../../widgets/branch_aware_reload.dart';
 import '../../widgets/negative_stock_banner.dart';
 import '../../widgets/picked_image_preview.dart';
 import '../../widgets/stock_badge.dart';
@@ -34,7 +35,11 @@ class ManageInventoryScreen extends StatefulWidget {
   State<ManageInventoryScreen> createState() => _ManageInventoryScreenState();
 }
 
-class _ManageInventoryScreenState extends State<ManageInventoryScreen> {
+class _ManageInventoryScreenState extends State<ManageInventoryScreen>
+    with BranchAwareReload<ManageInventoryScreen> {
+  @override
+  void onBranchChanged() => _loadProducts(); // recarga al cambiar de sede
+
   final _searchCtrl = TextEditingController();
   final _api = ApiService(AuthService());
   final _scrollCtrl = ScrollController();

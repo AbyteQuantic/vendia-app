@@ -1,5 +1,6 @@
 // Spec: specs/078-centro-tareas-unificado/spec.md
 import 'package:flutter/material.dart';
+import '../../widgets/branch_aware_reload.dart';
 
 import '../../services/api_service.dart';
 import '../../services/auth_service.dart';
@@ -21,7 +22,10 @@ class ProductReorderScreen extends StatefulWidget {
   State<ProductReorderScreen> createState() => _ProductReorderScreenState();
 }
 
-class _ProductReorderScreenState extends State<ProductReorderScreen> {
+class _ProductReorderScreenState extends State<ProductReorderScreen> with BranchAwareReload<ProductReorderScreen> {
+  @override
+  void onBranchChanged() => _load();
+
   late final ApiService _api = widget.api ?? ApiService(AuthService());
   List<Map<String, dynamic>> _items = [];
   double _total = 0;
