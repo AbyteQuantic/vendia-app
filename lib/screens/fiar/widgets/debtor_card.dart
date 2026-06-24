@@ -1,11 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import '../../../database/collections/local_customer.dart';
 import '../../../theme/app_theme.dart';
 import '../../../utils/format_cop.dart';
+import '../fiar_controller.dart' show CustomerWithBranchBalance;
 
 class DebtorCard extends StatelessWidget {
-  final LocalCustomer customer;
+  /// Saldo POR SEDE (view-model), no el LocalCustomer tenant-wide. Spec fiado-sede.
+  final CustomerWithBranchBalance customer;
   final VoidCallback onTap;
   final VoidCallback onWhatsApp;
 

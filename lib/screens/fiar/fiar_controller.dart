@@ -6,7 +6,26 @@ import '../../database/collections/local_credit.dart';
 import '../../database/collections/pending_operation.dart';
 import '../../database/sync/sync_service.dart';
 import '../../database/sync/sync_payloads.dart';
+import '../../services/api_service.dart';
 import '../../utils/generate_id.dart';
+
+/// Proyección de presentación: un cliente con su saldo POR SEDE, recomputado
+/// desde LocalCredit (NO del denormalizado LocalCustomer.totalCredit, que es
+/// tenant-wide). Inmutable — no muta LocalCustomer, así promo/eventos lo siguen
+/// leyendo intacto. Spec fiado-sede (council 2026-06-24).
+class CustomerWithBranchBalance {
+  final LocalCustomer customer;
+  final double branchCredit;
+  final double branchPaid;
+  const CustomerWithBranchBalance(
+      this.customer, this.branchCredit, this.branchPaid);
+
+  double get balance => branchCredit - branchPaid;
+  double get totalPaid => branchPaid;
+  String get name => customer.name;
+  String get phone => customer.phone;
+  String get uuid => customer.uuid;
+}
 
 class FiarController extends ChangeNotifier {
   final DatabaseService _db;
@@ -14,8 +33,8 @@ class FiarController extends ChangeNotifier {
 
   FiarController(this._db, this._sync);
 
-  List<LocalCustomer> _customers = [];
-  List<LocalCustomer> get customers => _filteredCustomers;
+  List<CustomerWithBranchBalance> _customers = [];
+  List<CustomerWithBranchBalance> get customers => _filteredCustomers;
 
   List<LocalCredit> _credits = [];
   List<LocalCredit> get credits => _credits;
@@ -28,7 +47,7 @@ class FiarController extends ChangeNotifier {
 
   double get totalPending => _customers.fold(0.0, (sum, c) => sum + c.balance);
 
-  List<LocalCustomer> get _filteredCustomers {
+  List<CustomerWithBranchBalance> get _filteredCustomers {
     switch (_filter) {
       case 'pending':
         return _customers
@@ -54,13 +73,32 @@ class FiarController extends ChangeNotifier {
     _loading = true;
     notifyListeners();
 
-    _customers = await _db.getAllCustomers();
+    // Saldo POR SEDE: agregamos desde LocalCredit filtrado por la sede activa
+    // (incluye legacy branch NULL), NO desde LocalCustomer.totalCredit (que es
+    // tenant-wide). getAllCustomers SIGUE devolviendo TODOS (no se filtra ahí —
+    // promo/eventos lo necesitan completo). Spec fiado-sede.
+    final bid = ApiService.currentBranchId;
+    final custs = await _db.getAllCustomers();
+    final credits = await _db.getCreditsForBranch(bid);
+    final creditBy = <String, double>{};
+    final paidBy = <String, double>{};
+    for (final cr in credits) {
+      creditBy[cr.customerUuid] = (creditBy[cr.customerUuid] ?? 0) + cr.totalAmount;
+      paidBy[cr.customerUuid] = (paidBy[cr.customerUuid] ?? 0) + cr.paidAmount;
+    }
+    _customers = custs
+        .map((c) => CustomerWithBranchBalance(
+            c, creditBy[c.uuid] ?? 0, paidBy[c.uuid] ?? 0))
+        .toList();
     _loading = false;
     notifyListeners();
   }
 
   Future<void> loadCreditsForCustomer(String customerUuid) async {
-    _credits = await _db.getCreditsForCustomer(customerUuid);
+    // Filtrar por la sede activa (incluye legacy NULL) — el detalle debe cuadrar
+    // con el saldo por-sede de la lista, no mostrar todos los créditos. Spec fiado-sede.
+    _credits =
+        await _db.getCreditsForCustomer(customerUuid, ApiService.currentBranchId);
     notifyListeners();
   }
 
@@ -108,6 +146,9 @@ class FiarController extends ChangeNotifier {
       ..totalAmount = amount
       ..paidAmount = 0
       ..status = 'pending'
+      // Captura la sede EN EL MOMENTO de la venta. NULL si single-sede → toda
+      // sede (semántica legacy). Spec fiado-sede (council 2026-06-24).
+      ..branchId = ApiService.currentBranchId
       ..payments = []
       ..createdAt = DateTime.now()
       ..clientUpdatedAt = DateTime.now();

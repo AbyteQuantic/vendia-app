@@ -36,6 +36,12 @@ Map<String, dynamic> creditAccountSyncPayload(LocalCredit c) {
   if (c.saleUuid.isNotEmpty) {
     map['sale_id'] = c.saleUuid;
   }
+  // branch_id es *string nullable (CreditAccount.BranchID): emitir SOLO si hay
+  // sede; NUNCA "" (rompe el insert Postgres y la semántica legacy IS NULL).
+  final bid = c.branchId;
+  if (bid != null && bid.isNotEmpty) {
+    map['branch_id'] = bid;
+  }
   return map;
 }
 

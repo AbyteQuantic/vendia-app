@@ -20,6 +20,12 @@ class LocalCredit {
   late DateTime createdAt;
   late DateTime clientUpdatedAt;
 
+  /// Sede donde nació el fiado (espejo de CreditAccount.BranchID). NULL = legacy
+  /// o single-sede → visible en TODAS las sedes (semántica OR branch IS NULL).
+  /// SIN `late` (late+nullable es ilegal) y sin inicializador (default null). Spec fiado-sede.
+  @Index()
+  String? branchId;
+
   double get balance => totalAmount - paidAmount;
 
   Map<String, dynamic> toJson() => {
@@ -29,6 +35,7 @@ class LocalCredit {
         'total_amount': totalAmount,
         'paid_amount': paidAmount,
         'status': status,
+        'branch_id': branchId,
         'payments': payments.map((p) => p.toJson()).toList(),
         'created_at': createdAt.toIso8601String(),
         'client_updated_at': clientUpdatedAt.toIso8601String(),
@@ -43,6 +50,9 @@ class LocalCredit {
       ..totalAmount = (json['total_amount'] as num? ?? 0).toDouble()
       ..paidAmount = (json['paid_amount'] as num? ?? 0).toDouble()
       ..status = json['status'] as String? ?? 'pending'
+      // CRÍTICO: `as String?` puro, SIN `?? ''` — un "" no matchea IS NULL y
+      // rompería la semántica legacy (el fiado viejo debe verse en toda sede).
+      ..branchId = json['branch_id'] as String?
       ..payments = rawPayments
           .map((e) => CreditPaymentEmbed.fromJson(e as Map<String, dynamic>))
           .toList()

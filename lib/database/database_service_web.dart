@@ -251,8 +251,24 @@ class DatabaseService {
 
   // ── Credits ──────────────────────────────────────────────────────────────
 
-  Future<List<LocalCredit>> getCreditsForCustomer(String customerUuid) async {
-    return _credits.where((c) => c.customerUuid == customerUuid).toList();
+  Future<List<LocalCredit>> getCreditsForCustomer(String customerUuid,
+      [String? branchId]) async {
+    final list =
+        _credits.where((c) => c.customerUuid == customerUuid).toList();
+    return _scopeCreditsToBranch(list, branchId);
+  }
+
+  /// Espejo de io: créditos de la sede + legacy (branchId NULL). Spec fiado-sede.
+  Future<List<LocalCredit>> getCreditsForBranch(String? branchId) async {
+    return _scopeCreditsToBranch(List<LocalCredit>.from(_credits), branchId);
+  }
+
+  List<LocalCredit> _scopeCreditsToBranch(
+      List<LocalCredit> credits, String? branchId) {
+    if (branchId == null || branchId.isEmpty) return credits;
+    return credits
+        .where((c) => c.branchId == null || c.branchId == branchId)
+        .toList();
   }
 
   Future<LocalCredit?> getCreditByUuid(String uuid) async {

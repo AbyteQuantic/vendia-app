@@ -28,13 +28,14 @@ void main() {
   });
 
   group('creditAccountSyncPayload (AC-03)', () {
-    LocalCredit credit({String sale = ''}) => LocalCredit()
+    LocalCredit credit({String sale = '', String? branch}) => LocalCredit()
       ..uuid = 'cr-1'
       ..customerUuid = 'c-1'
       ..saleUuid = sale
       ..totalAmount = 45100.0
       ..paidAmount = 100.0
       ..status = 'pending'
+      ..branchId = branch
       ..payments = []
       ..createdAt = DateTime(2026)
       ..clientUpdatedAt = DateTime(2026);
@@ -65,6 +66,31 @@ void main() {
       expect(p.containsKey('uuid'), isFalse);
       expect(p.containsKey('payments'), isFalse);
       expect(p.containsKey('customer_uuid'), isFalse);
+    });
+
+    // Fiado por-sede (council 2026-06-24): el payload lleva la sede al backend.
+    test('incluye branch_id cuando el fiado nació en una sede', () {
+      final p = creditAccountSyncPayload(credit(branch: 'b-A'));
+      expect(p['branch_id'], 'b-A');
+    });
+
+    test('OMITE branch_id si es null (single-sede/legacy → backend deja NULL)',
+        () {
+      final p = creditAccountSyncPayload(credit(branch: null));
+      expect(p.containsKey('branch_id'), isFalse);
+    });
+
+    test('NUNCA envía branch_id="" (rompería el insert *string nullable)', () {
+      final p = creditAccountSyncPayload(credit(branch: ''));
+      expect(p.containsKey('branch_id'), isFalse);
+    });
+
+    // Roundtrip: toJson/fromJson preserva branchId; ausencia → null (legacy).
+    test('LocalCredit roundtrip preserva branchId y ausencia → null', () {
+      final withBranch = LocalCredit.fromJson(credit(branch: 'b-A').toJson());
+      expect(withBranch.branchId, 'b-A');
+      final legacy = LocalCredit.fromJson({'uuid': 'x', 'customer_uuid': 'c'});
+      expect(legacy.branchId, isNull);
     });
   });
 

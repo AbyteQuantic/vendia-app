@@ -372,11 +372,29 @@ class DatabaseService {
 
   // ── Credits ─────────────────────────────────────────────────────────────────
 
-  Future<List<LocalCredit>> getCreditsForCustomer(String customerUuid) async {
-    return isar.localCredits
+  Future<List<LocalCredit>> getCreditsForCustomer(String customerUuid,
+      [String? branchId]) async {
+    final list = await isar.localCredits
         .filter()
         .customerUuidEqualTo(customerUuid)
         .findAll();
+    return _scopeCreditsToBranch(list, branchId);
+  }
+
+  /// Créditos visibles en la sede activa: los de esa sede MÁS los legacy
+  /// (branchId NULL). Espejo del backend `branch_id = ? OR branch_id IS NULL`.
+  /// branchId null/vacío (single-sede) → TODOS. Spec fiado-sede.
+  Future<List<LocalCredit>> getCreditsForBranch(String? branchId) async {
+    final all = await isar.localCredits.where().findAll();
+    return _scopeCreditsToBranch(all, branchId);
+  }
+
+  List<LocalCredit> _scopeCreditsToBranch(
+      List<LocalCredit> credits, String? branchId) {
+    if (branchId == null || branchId.isEmpty) return credits;
+    return credits
+        .where((c) => c.branchId == null || c.branchId == branchId)
+        .toList();
   }
 
   Future<LocalCredit?> getCreditByUuid(String uuid) async {

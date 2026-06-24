@@ -104,6 +104,13 @@ class _CreditDetailScreenState extends State<CreditDetailScreen> {
           listenable: widget.ctrl,
           builder: (context, _) {
             final credits = widget.ctrl.credits;
+            // Header sumado desde los créditos YA filtrados por sede (no del
+            // LocalCustomer tenant-wide), para que header y lista cuadren. Spec fiado-sede.
+            final headerCredit =
+                credits.fold<double>(0, (s, c) => s + c.totalAmount);
+            final headerPaid =
+                credits.fold<double>(0, (s, c) => s + c.paidAmount);
+            final headerBalance = headerCredit - headerPaid;
 
             return ListView(
               padding: const EdgeInsets.all(24),
@@ -124,7 +131,7 @@ class _CreditDetailScreenState extends State<CreditDetailScreen> {
                               fontSize: 18, color: AppTheme.textSecondary)),
                       const SizedBox(height: 4),
                       Text(
-                        formatCOP(widget.customer.balance),
+                        formatCOP(headerBalance),
                         style: const TextStyle(
                           fontSize: 36,
                           fontWeight: FontWeight.bold,
@@ -133,8 +140,8 @@ class _CreditDetailScreenState extends State<CreditDetailScreen> {
                       ),
                       const SizedBox(height: 8),
                       Text(
-                        '${CreditLabels.of(context).totalCreditLabel}: ${formatCOP(widget.customer.totalCredit)} · '
-                        'Pagado: ${formatCOP(widget.customer.totalPaid)}',
+                        '${CreditLabels.of(context).totalCreditLabel}: ${formatCOP(headerCredit)} · '
+                        'Pagado: ${formatCOP(headerPaid)}',
                         style: const TextStyle(
                             fontSize: 18, color: AppTheme.textSecondary),
                       ),

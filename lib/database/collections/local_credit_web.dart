@@ -13,12 +13,16 @@ class LocalCredit {
   late DateTime createdAt;
   late DateTime clientUpdatedAt;
 
+  /// Sede del fiado (espejo de io). NULL = legacy/single-sede → toda sede.
+  String? branchId;
+
   double get balance => totalAmount - paidAmount;
 
   Map<String, dynamic> toJson() => {
         'uuid': uuid,
         'customer_uuid': customerUuid,
         'sale_uuid': saleUuid,
+        'branch_id': branchId,
         'total_amount': totalAmount,
         'paid_amount': paidAmount,
         'status': status,
@@ -36,6 +40,7 @@ class LocalCredit {
       ..totalAmount = (json['total_amount'] as num? ?? 0).toDouble()
       ..paidAmount = (json['paid_amount'] as num? ?? 0).toDouble()
       ..status = json['status'] as String? ?? 'pending'
+      ..branchId = json['branch_id'] as String? // sin ?? '' (semántica legacy)
       ..payments = rawPayments
           .map((e) => CreditPaymentEmbed.fromJson(e as Map<String, dynamic>))
           .toList()

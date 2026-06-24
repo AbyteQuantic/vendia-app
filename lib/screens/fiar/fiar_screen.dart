@@ -230,7 +230,7 @@ class _FiarScreenState extends State<FiarScreen> with BranchAwareReload<FiarScre
                                             MaterialPageRoute(
                                               builder: (_) =>
                                                   CreditDetailScreen(
-                                                customer: customer,
+                                                customer: customer.customer,
                                                 ctrl: _ctrl,
                                               ),
                                             ),
