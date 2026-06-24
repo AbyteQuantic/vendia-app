@@ -956,6 +956,35 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 // Proveedores, Insumos, Recetas, Órdenes, Trabajos).
                 // Las 4 categorías se construyen filtrando el registro
                 // `dashboardModules` por el tipo de negocio + flags.
+                // Subtítulo: deja claro EN QUÉ SEDE está operando el tendero al
+                // mirar los módulos (la deuda de "no sé en qué sede estoy"). Spec 078.
+                SliverToBoxAdapter(
+                  child: Builder(builder: (context) {
+                    final sede = context.watch<BranchProvider>().currentBranch?.name;
+                    if (sede == null || sede.trim().isEmpty) {
+                      return const SizedBox.shrink();
+                    }
+                    return Padding(
+                      padding: const EdgeInsets.fromLTRB(24, 28, 24, 0),
+                      child: Row(children: [
+                        const Icon(Icons.place_rounded,
+                            size: 16, color: AppTheme.primary),
+                        const SizedBox(width: 6),
+                        Expanded(
+                          child: Text(
+                            'Módulos de la sede $sede',
+                            style: const TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w600,
+                                color: AppTheme.textSecondary),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ]),
+                    );
+                  }),
+                ),
                 SliverToBoxAdapter(
                   child: Builder(builder: (context) {
                     // Excluir capacidades activas (van en el carrusel) para
