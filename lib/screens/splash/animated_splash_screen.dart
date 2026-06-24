@@ -1,4 +1,5 @@
 import 'dart:math' as math;
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:rive/rive.dart' hide LinearGradient;
@@ -25,7 +26,11 @@ class AnimatedSplashScreen extends StatefulWidget {
 class _AnimatedSplashScreenState extends State<AnimatedSplashScreen>
     with TickerProviderStateMixin {
   static const _riveAssetPath = 'assets/rive/vendia_splash.riv';
-  static const _minSplashDuration = Duration(milliseconds: 3000);
+  // En web el arranque ya se siente lento (descarga del bundle); el piso del
+  // splash se baja a 1500ms (sigue cubriendo la animación de entrada de 1400ms).
+  // En móvil se mantiene 3000ms para que la animación Rive se aprecie. Audit 2026-06-24.
+  static const _minSplashDuration =
+      Duration(milliseconds: kIsWeb ? 1500 : 3000);
 
   bool _riveAvailable = false;
 

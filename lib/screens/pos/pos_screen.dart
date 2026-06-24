@@ -2687,6 +2687,9 @@ class _ProductCard extends StatelessWidget {
         height: h,
         width: double.infinity,
         fit: BoxFit.contain,
+        // Decodifica al tamaño de la tile (×3 cubre el DPR del móvil) en vez de a
+        // la resolución nativa de la foto — menos CPU/memoria en el grid. Audit 2026-06-24.
+        cacheHeight: (h * 3).round(),
         errorBuilder: (_, __, ___) => _placeholder(h),
         loadingBuilder: (_, child, p) => p == null ? child : _placeholder(h),
       );

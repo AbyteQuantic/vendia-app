@@ -450,6 +450,7 @@ class _RecipeCard extends StatelessWidget {
         height: 56,
         child: hasPhoto
             ? Image.network(recipe.photoUrl!, fit: BoxFit.cover,
+                cacheWidth: 168, cacheHeight: 168, // thumb 56dp ×3 DPR — audit 2026-06-24
                 errorBuilder: (_, __, ___) => _emojiBox())
             : _emojiBox(),
       ),

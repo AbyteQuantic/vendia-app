@@ -467,6 +467,7 @@ class _CapabilityHero extends StatelessWidget {
           Image.network(
             photoUrl,
             fit: BoxFit.cover,
+            cacheHeight: 600, // banner 200dp ×3 DPR — audit 2026-06-24
             errorBuilder: (_, __, ___) => _placeholder(tint),
             loadingBuilder: (_, child, progress) {
               if (progress == null) return child;

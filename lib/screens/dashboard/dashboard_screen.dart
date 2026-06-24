@@ -136,22 +136,29 @@ class _DashboardScreenState extends State<DashboardScreen> {
     super.initState();
     _effectiveOwnerName = widget.ownerName;
     _effectiveBusinessName = widget.businessName;
-    _loadProfileFallback();
+
+    // Primer frame: SOLO lo visible — KPIs (_loadData) + módulos del dashboard
+    // (_loadCapabilityFlags, paint offline-first incondicional). El resto se
+    // difiere para no competir con el render inicial. Audit 2026-06-24.
     _loadData();
-    _syncFromServer();
-    _loadLowStockCount();
-    _loadStoreStatus();
     _loadCapabilityFlags();
-    _syncBusinessTypesFromServer();
-    _loadSubscriptionStatus();
-    _loadCatalog();
 
     _salesSub = _db.watchSalesLazy().listen((_) => _debouncedLoad());
-
     _productsSub = _db.watchProductsLazy().listen((_) => _debouncedLoad());
 
-    // Reload all dashboard data when the branch changes
+    // Diferido tras el primer frame (NADA se elimina, solo se escalona): perfil,
+    // sync de ventas/productos, alertas de stock, estado de tienda, tipos de
+    // negocio (Spec 051), suscripción, catálogo, y el listener de cambio de sede.
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _loadProfileFallback();
+      _syncFromServer();
+      _loadLowStockCount();
+      _loadStoreStatus();
+      _syncBusinessTypesFromServer();
+      _loadSubscriptionStatus();
+      _loadCatalog();
+
       final bp = context.read<BranchProvider>();
       _prevBranchId = bp.currentBranchId;
       bp.addListener(_onBranchChanged);
@@ -195,14 +202,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
     final newId = context.read<BranchProvider>().currentBranchId;
     if (newId != _prevBranchId) {
       _prevBranchId = newId;
-      // Small delay to let ApiService.currentBranchId sync
-      Future.delayed(const Duration(milliseconds: 100), () {
-        if (!mounted) return;
-        _loadData();
-        _syncFromServer();
-        _loadLowStockCount();
-        _loadStoreStatus();
-      });
+      // Sin delay: selectBranch ya hace ApiService.currentBranchId = id de forma
+      // SÍNCRONA antes de notifyListeners, así que el mirror está listo. Audit 2026-06-24.
+      _loadData();
+      _syncFromServer();
+      _loadLowStockCount();
+      _loadStoreStatus();
     }
   }
 
@@ -561,7 +566,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
             ? '${_data.txCount} venta${_data.txCount > 1 ? "s" : ""}'
             : 'primer día',
         photoUrl:
-            'https://images.pexels.com/photos/3943723/pexels-photo-3943723.jpeg?auto=compress&cs=tinysrgb&w=900&h=700&fit=crop',
+            'https://images.pexels.com/photos/3943723/pexels-photo-3943723.jpeg?auto=compress&cs=tinysrgb&w=480&h=360&fit=crop',
         fallbackIcon: Icons.trending_up_rounded,
         accentColor: const Color(0xFF3B82F6),
         onTap: () => Navigator.of(context).push(MaterialPageRoute(
@@ -574,7 +579,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       title: 'Más vendido',
       value: _data.topProduct,
       photoUrl:
-          'https://images.pexels.com/photos/4393668/pexels-photo-4393668.jpeg?auto=compress&cs=tinysrgb&w=900&h=700&fit=crop',
+          'https://images.pexels.com/photos/4393668/pexels-photo-4393668.jpeg?auto=compress&cs=tinysrgb&w=480&h=360&fit=crop',
       fallbackIcon: Icons.star_rounded,
       accentColor: const Color(0xFFF59E0B),
       onTap: () => Navigator.of(context).push(MaterialPageRoute(
@@ -586,7 +591,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       title: 'Inventario',
       value: _data.prodCount == 0 ? 'Vacío' : '${_data.prodCount} ref.',
       photoUrl:
-          'https://images.pexels.com/photos/4483610/pexels-photo-4483610.jpeg?auto=compress&cs=tinysrgb&w=900&h=700&fit=crop',
+          'https://images.pexels.com/photos/4483610/pexels-photo-4483610.jpeg?auto=compress&cs=tinysrgb&w=480&h=360&fit=crop',
       fallbackIcon: Icons.inventory_2_rounded,
       accentColor: const Color(0xFF6366F1),
       onTap: () => Navigator.of(context).push(MaterialPageRoute(
