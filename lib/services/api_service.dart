@@ -2757,6 +2757,20 @@ class ApiService {
     }
   }
 
+  /// Lista TODAS las mesas abiertas del tenant (GET /api/v1/tables/open,
+  /// Spec 053). Lado PULL del sync offline de mesas: un dispositivo que
+  /// no conoce los labels las "trae" del servidor para reconstruirlas en
+  /// Isar. Cada elemento trae order_id/session_token/label/status/items/
+  /// updated_at. La fusiona DatabaseService.applyServerOpenTabs (LWW).
+  Future<List<Map<String, dynamic>>> listOpenTabs() async {
+    try {
+      final response = await _dio.get('/api/v1/tables/open');
+      return _extractList(response);
+    } on DioException catch (e) {
+      throw AppError.fromDioException(e);
+    }
+  }
+
   /// Removes a single item from an open table tab. Restores stock.
   Future<Map<String, dynamic>> removeItemFromTab(
       String orderUuid, String itemId) async {

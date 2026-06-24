@@ -26,6 +26,7 @@ import 'collections/local_table_tab.dart';
 import 'collections/pending_operation.dart';
 import 'sync/product_merge.dart';
 import 'sync/pending_product_push.dart';
+import '../utils/open_tabs_merge.dart';
 import '../utils/digital_payment_method.dart';
 import '../utils/generate_id.dart';
 import '../services/tax_settings_service.dart';
@@ -510,6 +511,41 @@ class DatabaseService {
     final notYetClosed = tab.status != 'completed' && tab.status != 'paid';
     if (notYetClosed && (paidByMath || paidByStatus)) {
       _closeTab(tab);
+    }
+    _emitTabs();
+  }
+
+  /// PULL del sync de mesas (Spec 053) — variante web (en memoria). Misma
+  /// decisión pura `planOpenTabsMerge` que el path Isar; aquí el almacén es
+  /// la lista `_tabs`. En web la persistencia es efímera (se pierde al
+  /// refrescar), pero mantener el comportamiento simétrico evita divergencias.
+  Future<void> applyServerOpenTabs(List<Map<String, dynamic>> serverTabs) async {
+    if (serverTabs.isEmpty) return;
+    final serverMeta = <OpenTabServerMeta>[];
+    final byLabel = <String, Map<String, dynamic>>{};
+    for (final raw in serverTabs) {
+      final label = (raw['label'] as String?)?.trim();
+      if (label == null || label.isEmpty) continue;
+      serverMeta.add(OpenTabServerMeta(
+        label: label,
+        updatedAt: parseServerTimestamp(raw['updated_at']) ??
+            DateTime.fromMillisecondsSinceEpoch(0),
+      ));
+      byLabel[label] = raw;
+    }
+    if (serverMeta.isEmpty) return;
+
+    final localByLabel = <String, OpenTabLocalMeta>{
+      for (final t in _tabs)
+        t.label: OpenTabLocalMeta(updatedAt: t.updatedAt, synced: t.synced),
+    };
+    final plan =
+        planOpenTabsMerge(server: serverMeta, localByLabel: localByLabel);
+    for (final s in serverMeta) {
+      final action = plan[s.label];
+      if (action == null || action == OpenTabMergeAction.skip) continue;
+      _tabs.removeWhere((t) => t.label == s.label); // replace: quita el viejo
+      _tabs.add(localTableTabFromServerJson(byLabel[s.label]!));
     }
     _emitTabs();
   }

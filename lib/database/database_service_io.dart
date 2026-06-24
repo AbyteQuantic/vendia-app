@@ -19,6 +19,7 @@ import 'collections/local_table_tab_io.dart';
 import 'collections/pending_operation_io.dart';
 import 'sync/product_merge.dart';
 import 'sync/pending_product_push.dart';
+import '../utils/open_tabs_merge.dart';
 import '../utils/digital_payment_method.dart';
 import '../utils/generate_id.dart';
 import '../services/tax_settings_service.dart';
@@ -675,6 +676,47 @@ class DatabaseService {
         return; // _closeTabInTxn already put() the tab
       }
       await isar.localTableTabs.put(tab);
+    });
+  }
+
+  /// PULL del sync de mesas (Spec 053): aplica la lista de mesas abiertas que
+  /// el servidor reporta (GET /tables/open) sobre Isar, con LWW por mesa.
+  /// La DECISIÓN (create/replace/skip) la toma `planOpenTabsMerge` (lógica
+  /// pura, unit-testeada); aquí solo se hace el I/O. Nunca pisa una mesa local
+  /// con cambios sin sincronizar (synced=false). NO borra mesas locales que el
+  /// servidor ya no reporta — eso lo maneja el cierre por su propio camino.
+  Future<void> applyServerOpenTabs(List<Map<String, dynamic>> serverTabs) async {
+    if (serverTabs.isEmpty) return;
+    final serverMeta = <OpenTabServerMeta>[];
+    final byLabel = <String, Map<String, dynamic>>{};
+    for (final raw in serverTabs) {
+      final label = (raw['label'] as String?)?.trim();
+      if (label == null || label.isEmpty) continue;
+      serverMeta.add(OpenTabServerMeta(
+        label: label,
+        // epoch si no parsea → en LWW NO pisa lo local (seguro).
+        updatedAt: parseServerTimestamp(raw['updated_at']) ??
+            DateTime.fromMillisecondsSinceEpoch(0),
+      ));
+      byLabel[label] = raw;
+    }
+    if (serverMeta.isEmpty) return;
+
+    await isar.writeTxn(() async {
+      final existing = await isar.localTableTabs.where().findAll();
+      final localByLabel = <String, OpenTabLocalMeta>{
+        for (final t in existing)
+          t.label: OpenTabLocalMeta(updatedAt: t.updatedAt, synced: t.synced),
+      };
+      final plan =
+          planOpenTabsMerge(server: serverMeta, localByLabel: localByLabel);
+      for (final s in serverMeta) {
+        final action = plan[s.label];
+        if (action == null || action == OpenTabMergeAction.skip) continue;
+        // El índice único `label` con replace:true hace que put() reemplace
+        // la mesa existente del mismo label (no duplica) en el caso replace.
+        await isar.localTableTabs.put(localTableTabFromServerJson(byLabel[s.label]!));
+      }
     });
   }
 

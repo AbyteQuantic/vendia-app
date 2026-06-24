@@ -212,6 +212,26 @@ class SyncService extends ChangeNotifier {
     } catch (_) {
       // Silent: leave the previous cache in place
     }
+
+    // Spec 053 — PULL de mesas abiertas: un dispositivo nuevo / reconectado
+    // no conoce los labels, así que GET /tables/open las "trae" y se fusionan
+    // en Isar con LWW por mesa (planOpenTabsMerge). El push de mesas ya ocurre
+    // inline en commitOrderToTab→upsertTableTab; esto cierra el lado de lectura
+    // para que las cuentas abiertas sean visibles en cualquier equipo.
+    try {
+      final token = await _auth.getToken();
+      if (token == null) return;
+      final tabsResp = await _dio.get(
+        '/api/v1/tables/open',
+        options: Options(headers: {'Authorization': 'Bearer $token'}),
+      );
+      final tabsList = ((tabsResp.data['data'] as List?) ?? const [])
+          .whereType<Map<String, dynamic>>()
+          .toList();
+      await _db.applyServerOpenTabs(tabsList);
+    } catch (_) {
+      // Silent: las mesas locales siguen funcionando sin el pull.
+    }
   }
 
   Future<void> _applyServerChanges(List<dynamic> changes) async {
