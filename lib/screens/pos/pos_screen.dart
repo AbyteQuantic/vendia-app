@@ -2548,6 +2548,12 @@ class _ProductCard extends StatelessWidget {
                                         product.stock;
                                     return StockBadge(
                                       stock: (base - quantity).clamp(0, 999999),
+                                      // Spec 080: plato a demanda → "Plato de
+                                      // menú" (no AGOTADO por stock 0); por
+                                      // porciones → conteo real.
+                                      isMenuItem: product.isMenuItem,
+                                      byPortions: product.availabilityMode ==
+                                          'por_porciones',
                                     );
                                   },
                                 ),

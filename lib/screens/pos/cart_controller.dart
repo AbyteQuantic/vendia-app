@@ -374,6 +374,10 @@ class CartController extends ChangeNotifier {
         barcode: lp.barcode,
         presentation: lp.presentation,
         content: lp.content,
+        // Spec 080: el POS necesita esto para el badge — un plato a_demanda no
+        // dice "AGOTADO" por stock 0; uno por_porciones usa el conteo.
+        isMenuItem: lp.isMenuItem,
+        availabilityMode: lp.availabilityMode,
       );
 
   // ── Context Getters ────────────────────────────────────────────────────────

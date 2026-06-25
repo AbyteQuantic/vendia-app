@@ -24,9 +24,14 @@ class StockBadge extends StatelessWidget {
   /// product-manager-approved value of 10.
   final int lowThreshold;
 
-  /// Un plato de menú (receta) NO tiene stock: se hace por receta. Mostrar
+  /// Un plato de menú "a demanda" NO tiene stock: se hace por receta. Mostrar
   /// "AGOTADO" sería engañoso, así que se etiqueta como "Plato de menú". Spec 078.
   final bool isMenuItem;
+
+  /// Spec 080 — el plato se vende POR PORCIONES (lote pre-hecho del día). En ese
+  /// caso SÍ tiene conteo real: se muestra "Stock: N" y "AGOTADO" a 0 (no el
+  /// rótulo "Plato de menú"). Tiene prioridad sobre [isMenuItem].
+  final bool byPortions;
 
   const StockBadge({
     super.key,
@@ -35,6 +40,7 @@ class StockBadge extends StatelessWidget {
     this.size = StockBadgeSize.small,
     this.lowThreshold = 10,
     this.isMenuItem = false,
+    this.byPortions = false,
   });
 
   @override
@@ -43,7 +49,9 @@ class StockBadge extends StatelessWidget {
     final isLow = !isSoldOut && stock <= lowThreshold;
 
     final (Color fg, Color bg, String text, FontWeight weight) = switch (true) {
-      _ when isMenuItem => (
+      // Plato a demanda: disponible siempre (no "AGOTADO" por stock 0). Un plato
+      // por porciones (byPortions) NO entra aquí → usa el conteo real abajo.
+      _ when isMenuItem && !byPortions => (
           AppTheme.primary,
           AppTheme.primary.withValues(alpha: 0.10),
           'Plato de menú',

@@ -31,6 +31,13 @@ class LocalProduct {
   String? category;
   String? characteristics;
 
+  /// Spec 043/080 — el POS necesita saber si es PLATO de menú y cómo se vende
+  /// para pintar el badge: un plato 'a_demanda' está disponible siempre (no
+  /// "AGOTADO" por stock 0); uno 'por_porciones' usa el conteo (stock). Aditivos
+  /// + defaults seguros → productos viejos quedan como producto normal.
+  bool isMenuItem = false;
+  String availabilityMode = 'a_demanda';
+
   /// Expiration date (YYYY-MM-DD resolution). Nullable because non-perishable
   /// SKUs (cleaning supplies, stationery, liquor) never carry an expiration.
   @Index()
@@ -55,6 +62,8 @@ class LocalProduct {
         'content': content,
         'category': category,
         'characteristics': characteristics,
+        'is_menu_item': isMenuItem,
+        'availability_mode': availabilityMode,
         // ISO-8601 date (YYYY-MM-DD). Backend column is DATE, so we strip
         // the time component to avoid day-boundary surprises near midnight.
         'expiry_date': expiryDate == null
@@ -97,6 +106,9 @@ class LocalProduct {
       ..content = json['content'] as String?
       ..category = json['category'] as String?
       ..characteristics = json['characteristics'] as String?
+      ..isMenuItem = json['is_menu_item'] as bool? ?? false
+      ..availabilityMode =
+          (json['availability_mode'] as String?) ?? 'a_demanda'
       ..expiryDate = parsedExpiry
       // tryParse (no parse): una fecha malformada no debe abortar el sync.
       ..clientUpdatedAt =

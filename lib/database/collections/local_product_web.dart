@@ -24,6 +24,9 @@ class LocalProduct {
   // Spec 068 — espejo del io: categoría + características (aditivos, nullable).
   String? category;
   String? characteristics;
+  // Espejo del io (Spec 043/080): plato de menú + modo de venta para el badge.
+  bool isMenuItem = false;
+  String availabilityMode = 'a_demanda';
   DateTime? expiryDate;
   late DateTime clientUpdatedAt;
   int? serverId;
@@ -44,6 +47,8 @@ class LocalProduct {
         'content': content,
         'category': category,
         'characteristics': characteristics,
+        'is_menu_item': isMenuItem,
+        'availability_mode': availabilityMode,
         'expiry_date': expiryDate == null
             ? null
             : '${expiryDate!.year.toString().padLeft(4, '0')}-'
@@ -83,6 +88,8 @@ class LocalProduct {
       ..content = json['content'] as String?
       ..category = json['category'] as String?
       ..characteristics = json['characteristics'] as String?
+      ..isMenuItem = json['is_menu_item'] as bool? ?? false
+      ..availabilityMode = (json['availability_mode'] as String?) ?? 'a_demanda'
       ..expiryDate = parsedExpiry
       ..clientUpdatedAt =
           DateTime.tryParse(json['client_updated_at'] as String? ?? '') ??

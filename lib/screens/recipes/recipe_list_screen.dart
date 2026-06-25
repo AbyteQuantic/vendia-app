@@ -211,8 +211,34 @@ class _RecipeListScreenState extends State<RecipeListScreen> {
           Navigator.of(sheetCtx).pop();
           _prepareBatch(r);
         },
+        onRevertToDemand: () {
+          Navigator.of(sheetCtx).pop();
+          _revertToDemand(r);
+        },
       ),
     );
+  }
+
+  /// Spec 080 #1 — vuelve el plato a venderse "a demanda" (deja de contar
+  /// porciones; el lote del día se limpia en el backend).
+  Future<void> _revertToDemand(Recipe r) async {
+    final pid = r.productId;
+    if (pid == null || pid.isEmpty || !mounted) return;
+    try {
+      await _api.updateProduct(pid, {'availability_mode': 'a_demanda'});
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text('${r.productName} se vende a demanda otra vez.'),
+        backgroundColor: AppTheme.success,
+      ));
+      _load();
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text('No se pudo cambiar: $e'),
+        backgroundColor: AppTheme.error,
+      ));
+    }
   }
 
   /// Spec 080 — cocinar un lote: pregunta cuántas porciones se hicieron hoy y
@@ -536,8 +562,12 @@ class _RecipeDetailSheet extends StatelessWidget {
   final Recipe recipe;
   final VoidCallback onEdit;
   final VoidCallback onPrepareBatch;
+  final VoidCallback onRevertToDemand;
   const _RecipeDetailSheet(
-      {required this.recipe, required this.onEdit, required this.onPrepareBatch});
+      {required this.recipe,
+      required this.onEdit,
+      required this.onPrepareBatch,
+      required this.onRevertToDemand});
 
   @override
   Widget build(BuildContext context) {
@@ -586,6 +616,18 @@ class _RecipeDetailSheet extends StatelessWidget {
                   minimumSize: const Size.fromHeight(48),
                   foregroundColor: AppTheme.primary,
                 ),
+              ),
+            ),
+            // Volver al modo a demanda (deja de contar porciones). Spec 080 #1.
+            Align(
+              alignment: Alignment.centerLeft,
+              child: TextButton.icon(
+                key: const Key('revert_demand_btn'),
+                onPressed: onRevertToDemand,
+                icon: const Icon(Icons.restaurant_menu_rounded, size: 18),
+                label: const Text('Vender a demanda (no contar porciones)',
+                    style: TextStyle(fontSize: 14)),
+                style: TextButton.styleFrom(foregroundColor: AppTheme.textSecondary),
               ),
             ),
             if (recipe.category.isNotEmpty)
