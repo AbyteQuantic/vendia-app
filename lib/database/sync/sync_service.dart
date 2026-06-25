@@ -170,7 +170,12 @@ class SyncService extends ChangeNotifier {
       // ApiService.fetchProducts. This pull must use the SAME sede
       // scope so all three screens see one consistent set — otherwise
       // the POS shows products the other screens never load.
-      final params = <String, dynamic>{};
+      final params = <String, dynamic>{
+        // Caché Isar = fuente del POS: NO guardar platos de menú incompletos
+        // (sin receta con ingredientes). Así no aparecen en ventas y, al leer
+        // de Isar, el filtro se mantiene aun offline. Spec 078.
+        'sellable_only': 'true',
+      };
       final branchId = ApiService.currentBranchId;
       if (branchId != null && branchId.isNotEmpty) {
         params['branch_id'] = branchId;

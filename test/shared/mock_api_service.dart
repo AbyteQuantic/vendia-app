@@ -363,6 +363,7 @@ class MockApiService extends ApiService {
     int page = 1,
     int perPage = 20,
     String? branchId,
+    bool sellableOnly = false,
   }) async {
     _log('fetchProducts');
     return _handle('fetchProducts', {

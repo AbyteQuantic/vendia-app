@@ -333,7 +333,11 @@ class CartController extends ChangeNotifier {
       // Then pull from server and replace local
       try {
         final api = ApiService(AuthService());
-        final res = await api.fetchProducts(page: 1, perPage: 100);
+        // sellableOnly: el POS no vende platos de menú incompletos (sin receta
+        // con ingredientes). Mantiene la caché Isar limpia para que tampoco
+        // aparezcan offline. Spec 078.
+        final res =
+            await api.fetchProducts(page: 1, perPage: 100, sellableOnly: true);
         final data = res['data'] as List? ?? [];
         final serverProducts = data
             .map((e) => LocalProduct.fromJson(e as Map<String, dynamic>))

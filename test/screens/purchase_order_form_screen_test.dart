@@ -50,6 +50,7 @@ class _FakeApi extends ApiService {
     int page = 1,
     int perPage = 20,
     String? branchId,
+    bool sellableOnly = false,
   }) async {
     if (throwOnLoad) {
       throw const AppError(

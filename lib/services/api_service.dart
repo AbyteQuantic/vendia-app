@@ -477,11 +477,16 @@ class ApiService {
     int page = 1,
     int perPage = 20,
     String? branchId,
+    // sellableOnly: oculta los platos de menú INCOMPLETOS (sin receta con
+    // ingredientes, no costeables). Lo usa SOLO el POS / la caché Isar; el
+    // inventario lo deja en false para poder verlos y completarlos. Spec 078.
+    bool sellableOnly = false,
   }) async {
     try {
       final params = <String, dynamic>{'page': page, 'per_page': perPage};
       final bid = branchId ?? currentBranchId;
       if (bid != null && bid.isNotEmpty) params['branch_id'] = bid;
+      if (sellableOnly) params['sellable_only'] = 'true';
       final response =
           await _dio.get('/api/v1/products', queryParameters: params);
       return response.data as Map<String, dynamic>;

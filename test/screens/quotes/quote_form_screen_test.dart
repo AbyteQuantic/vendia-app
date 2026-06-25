@@ -44,6 +44,7 @@ class _FakeQuotesApi extends ApiService {
     int page = 1,
     int perPage = 20,
     String? branchId,
+    bool sellableOnly = false,
   }) async {
     return {
       'data': [
