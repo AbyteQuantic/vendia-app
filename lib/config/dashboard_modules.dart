@@ -160,8 +160,8 @@ const List<DashboardModule> dashboardModules = [
   // línea (vista previa, compartir/copiar link, campañas masivas, banner).
   DashboardModule(
     id: 'catalogo_online',
-    title: 'Mi Catálogo Online',
-    subtitle: 'Comparta, promocione y edite su tienda en línea',
+    title: 'Catálogo Online',
+    subtitle: 'Active, personalice y comparta su tienda en línea',
     icon: Icons.storefront_rounded,
     color: AppTheme.success,
     category: ModuleCategory.vender,

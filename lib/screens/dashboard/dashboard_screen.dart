@@ -1005,6 +1005,16 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     final gridModules = source
                         .where((m) => !activeIds.contains(m.id))
                         .toList();
+                    // Spec 061+ — el Catálogo Online es la opción PRINCIPAL:
+                    // siempre de PRIMERA en el carrusel (decisión fundador
+                    // 2026-06-25). Cubre tanto el catálogo backend como el
+                    // fallback compilado, sin importar dónde venga ordenado.
+                    final coIdx =
+                        gridModules.indexWhere((m) => m.id == 'catalogo_online');
+                    if (coIdx > 0) {
+                      final co = gridModules.removeAt(coIdx);
+                      gridModules.insert(0, co);
+                    }
                     return DashboardModuleGrid(
                       businessType: _businessType,
                       flags: _featureFlags,
