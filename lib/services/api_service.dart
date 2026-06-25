@@ -2762,6 +2762,23 @@ class ApiService {
     }
   }
 
+  /// Cocina un LOTE de un plato "por porciones" (Spec 080): descuenta los
+  /// insumos de [portions] porciones UNA vez y deja esas porciones disponibles
+  /// hoy. El plato pasa a venderse por conteo (cada venta resta; 0 = agotado),
+  /// sin re-descontar insumos. POST /products/:id/prepare-batch.
+  Future<Map<String, dynamic>> prepareDishBatch(
+      String productId, int portions) async {
+    try {
+      final response = await _dio.post(
+        '/api/v1/products/${Uri.encodeComponent(productId)}/prepare-batch',
+        data: {'portions': portions},
+      );
+      return _extractData(response);
+    } on DioException catch (e) {
+      throw AppError.fromDioException(e);
+    }
+  }
+
   /// Lista TODAS las mesas abiertas del tenant (GET /api/v1/tables/open,
   /// Spec 053). Lado PULL del sync offline de mesas: un dispositivo que
   /// no conoce los labels las "trae" del servidor para reconstruirlas en

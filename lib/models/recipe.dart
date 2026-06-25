@@ -21,6 +21,10 @@ class Recipe {
   final DateTime createdAt;
   final int? serverId;
 
+  /// UUID del Product vendible vinculado (plato). Necesario para acciones que
+  /// operan sobre el producto, p. ej. cocinar un lote por porciones (Spec 080).
+  final String? productId;
+
   Recipe({
     required this.uuid,
     required this.productName,
@@ -34,6 +38,7 @@ class Recipe {
     this.prepSteps = const [],
     DateTime? createdAt,
     this.serverId,
+    this.productId,
   }) : createdAt = createdAt ?? DateTime.now();
 
   /// Decodifica prep_steps que puede venir como String JSON, List ya parseada,
@@ -107,6 +112,7 @@ class Recipe {
       createdAt: json['created_at'] != null
           ? DateTime.parse(json['created_at'] as String)
           : DateTime.now(),
+      productId: json['product_id'] as String?,
     );
   }
 

@@ -207,8 +207,76 @@ class _RecipeListScreenState extends State<RecipeListScreen> {
           Navigator.of(sheetCtx).pop();
           _edit(r);
         },
+        onPrepareBatch: () {
+          Navigator.of(sheetCtx).pop();
+          _prepareBatch(r);
+        },
       ),
     );
+  }
+
+  /// Spec 080 — cocinar un lote: pregunta cuántas porciones se hicieron hoy y
+  /// llama a prepare-batch (descuenta insumos del lote una vez y deja las
+  /// porciones disponibles; cada venta resta, 0 = agotado).
+  Future<void> _prepareBatch(Recipe r) async {
+    final pid = r.productId;
+    if (pid == null || pid.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('Este plato aún no está listo para vender por porciones.'),
+        backgroundColor: AppTheme.warning,
+      ));
+      return;
+    }
+    final ctrl = TextEditingController();
+    final portions = await showDialog<int>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        scrollable: true,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Text('¿Cuántas porciones de ${r.productName} hizo hoy?',
+            style: const TextStyle(fontSize: 19)),
+        content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+          const Text(
+              'Se descuentan los insumos de esas porciones una sola vez. Cada '
+              'venta resta una; al llegar a 0 queda agotado hasta que vuelva a cocinar.',
+              style: AppUI.bodySoft),
+          const SizedBox(height: 12),
+          TextField(
+            controller: ctrl,
+            autofocus: true,
+            keyboardType: const TextInputType.numberWithOptions(decimal: false),
+            decoration: const InputDecoration(
+                prefixText: '# ', hintText: 'Ej: 20', border: OutlineInputBorder()),
+          ),
+        ]),
+        actions: [
+          TextButton(onPressed: () => Navigator.of(ctx).pop(), child: const Text('Cancelar')),
+          ElevatedButton(
+            onPressed: () {
+              final n = int.tryParse(ctrl.text.replaceAll(RegExp(r'[^0-9]'), ''));
+              Navigator.of(ctx).pop((n != null && n > 0) ? n : null);
+            },
+            child: const Text('Guardar'),
+          ),
+        ],
+      ),
+    );
+    if (portions == null || !mounted) return;
+    try {
+      await _api.prepareDishBatch(pid, portions);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text('✓ $portions porciones de ${r.productName} listas para hoy'),
+        backgroundColor: AppTheme.success,
+      ));
+      _load();
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text('No se pudo registrar el lote: $e'),
+        backgroundColor: AppTheme.error,
+      ));
+    }
   }
 
   @override
@@ -467,7 +535,9 @@ class _RecipeCard extends StatelessWidget {
 class _RecipeDetailSheet extends StatelessWidget {
   final Recipe recipe;
   final VoidCallback onEdit;
-  const _RecipeDetailSheet({required this.recipe, required this.onEdit});
+  final VoidCallback onPrepareBatch;
+  const _RecipeDetailSheet(
+      {required this.recipe, required this.onEdit, required this.onPrepareBatch});
 
   @override
   Widget build(BuildContext context) {
@@ -501,6 +571,22 @@ class _RecipeDetailSheet extends StatelessWidget {
                   label: const Text('Editar', style: TextStyle(fontSize: 15)),
                 ),
               ],
+            ),
+            const SizedBox(height: 12),
+            // Spec 080 — vender por porciones (pre-hecho del día).
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                key: const Key('prepare_batch_btn'),
+                onPressed: onPrepareBatch,
+                icon: const Icon(Icons.outdoor_grill_rounded, size: 20),
+                label: const Text('Preparé un lote para hoy',
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+                style: OutlinedButton.styleFrom(
+                  minimumSize: const Size.fromHeight(48),
+                  foregroundColor: AppTheme.primary,
+                ),
+              ),
             ),
             if (recipe.category.isNotEmpty)
               Padding(
