@@ -261,8 +261,16 @@ class _MarketMapScreenState extends State<MarketMapScreen> {
                   height: 40,
                   child: GestureDetector(
                     onTap: () => setState(() => _selected = m),
-                    child: Icon(Icons.storefront_rounded,
-                        color: _selected == m ? AppTheme.success : AppTheme.error,
+                    child: Icon(
+                        // Mis proveedores propios = otro ícono (no cadena).
+                        m['source'] == 'proveedor'
+                            ? Icons.handshake_rounded
+                            : Icons.storefront_rounded,
+                        color: _selected == m
+                            ? AppTheme.success
+                            : (m['source'] == 'proveedor'
+                                ? AppTheme.primary
+                                : AppTheme.error),
                         size: 32),
                   ),
                 ),

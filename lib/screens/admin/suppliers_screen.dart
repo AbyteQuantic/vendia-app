@@ -1,10 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:latlong2/latlong.dart';
 import '../../services/api_service.dart';
 import '../../services/auth_service.dart';
 import '../../theme/app_theme.dart';
+import '../../theme/app_ui.dart';
 import '../../widgets/branch_selector_drawer.dart';
+import '../../widgets/location_picker_screen.dart';
 
 class SuppliersScreen extends StatefulWidget {
   /// When coming from an IA invoice scan, pass the provider name so
@@ -441,6 +444,10 @@ class _SupplierFormScreenState extends State<_SupplierFormScreen> {
   bool _saving = false;
   bool get _isEdit => widget.existing != null;
 
+  // Spec 081 — ubicación opcional del proveedor (para el mapa "Mercado cercano").
+  double? _lat;
+  double? _lng;
+
   @override
   void initState() {
     super.initState();
@@ -451,6 +458,29 @@ class _SupplierFormScreenState extends State<_SupplierFormScreen> {
         TextEditingController(text: e?['contact_name'] as String? ?? '');
     _phoneCtrl = TextEditingController(text: e?['phone'] as String? ?? '');
     _emojiCtrl = TextEditingController(text: e?['emoji'] as String? ?? '');
+    final la = (e?['latitude'] as num?)?.toDouble();
+    final lo = (e?['longitude'] as num?)?.toDouble();
+    if (la != null && lo != null && (la != 0 || lo != 0)) {
+      _lat = la;
+      _lng = lo;
+    }
+  }
+
+  Future<void> _pickLocation() async {
+    final picked = await Navigator.of(context).push<LatLng>(
+      MaterialPageRoute(
+        builder: (_) => LocationPickerScreen(
+          title: 'Ubicación del proveedor',
+          initial: (_lat != null && _lng != null) ? LatLng(_lat!, _lng!) : null,
+        ),
+      ),
+    );
+    if (picked != null && mounted) {
+      setState(() {
+        _lat = picked.latitude;
+        _lng = picked.longitude;
+      });
+    }
   }
 
   @override
@@ -468,12 +498,17 @@ class _SupplierFormScreenState extends State<_SupplierFormScreen> {
     HapticFeedback.mediumImpact();
 
     try {
-      final data = {
+      final data = <String, dynamic>{
         'company_name': _nameCtrl.text.trim(),
         'contact_name': _contactCtrl.text.trim(),
         'phone': _phoneCtrl.text.trim(),
         'emoji': _emojiCtrl.text.trim(),
       };
+      // Spec 081 — si fijó ubicación, la mandamos para que salga en el mapa.
+      if (_lat != null && _lng != null) {
+        data['latitude'] = _lat;
+        data['longitude'] = _lng;
+      }
 
       if (_isEdit) {
         await _api.updateSupplier(widget.existing!['id'] as String, data);
@@ -553,6 +588,32 @@ class _SupplierFormScreenState extends State<_SupplierFormScreen> {
                 icon: Icons.emoji_emotions_rounded,
                 hint: 'Ej: 🍺 🥤 🍞',
               ),
+              const SizedBox(height: 16),
+              // Spec 081 — ubicación opcional: aparece en "Mercado cercano".
+              OutlinedButton.icon(
+                key: const Key('supplier_pick_location'),
+                onPressed: _pickLocation,
+                icon: Icon(
+                    _lat != null ? Icons.check_circle_rounded : Icons.add_location_alt_rounded,
+                    color: _lat != null ? AppTheme.success : AppTheme.primary),
+                label: Text(
+                    _lat != null
+                        ? 'Ubicación fijada · toque para cambiar'
+                        : 'Fijar ubicación en el mapa (opcional)',
+                    style: const TextStyle(fontSize: 15)),
+                style: OutlinedButton.styleFrom(
+                  minimumSize: const Size.fromHeight(52),
+                  foregroundColor: AppTheme.textPrimary,
+                  side: const BorderSide(color: AppUI.border),
+                ),
+              ),
+              if (_lat != null)
+                Padding(
+                  padding: const EdgeInsets.only(top: 6),
+                  child: Text(
+                      'Aparecerá en "Mercado cercano" como su proveedor.',
+                      style: AppUI.bodySoft.copyWith(fontSize: 12)),
+                ),
               const SizedBox(height: 32),
               SizedBox(
                 height: 56,
