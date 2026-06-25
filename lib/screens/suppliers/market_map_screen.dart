@@ -6,6 +6,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
+import 'package:geolocator/geolocator.dart';
+import 'package:geocoding/geocoding.dart';
 
 import '../../theme/app_theme.dart';
 import '../../theme/app_ui.dart';
@@ -78,6 +80,53 @@ class _MarketMapScreenState extends State<MarketMapScreen> {
 
   double _zoomForRadius(double km) => km <= 1 ? 15 : (km <= 5 ? 13.5 : 12.5);
 
+  bool _capturing = false;
+
+  /// Captura el GPS real y lo guarda como ubicación del negocio, luego recarga.
+  /// Para cuando el pin está en el lugar equivocado (geo mal capturada). Spec 072.
+  Future<void> _recaptureLocation() async {
+    if (_capturing) return;
+    setState(() => _capturing = true);
+    try {
+      var perm = await Geolocator.checkPermission();
+      if (perm == LocationPermission.denied) {
+        perm = await Geolocator.requestPermission();
+      }
+      if (perm == LocationPermission.denied ||
+          perm == LocationPermission.deniedForever) {
+        _snack('Permiso de ubicación denegado. Actívelo para corregir su ubicación.');
+        return;
+      }
+      final pos = await Geolocator.getCurrentPosition(
+          locationSettings:
+              const LocationSettings(accuracy: LocationAccuracy.high));
+      String city = '';
+      try {
+        final places = await placemarkFromCoordinates(pos.latitude, pos.longitude);
+        if (places.isNotEmpty) city = places.first.locality ?? '';
+      } catch (_) {}
+      await _api.updateStoreLocation(
+          latitude: pos.latitude,
+          longitude: pos.longitude,
+          accuracy: pos.accuracy,
+          city: city);
+      if (!mounted) return;
+      _snack(city.isNotEmpty ? 'Ubicación actualizada · $city' : 'Ubicación actualizada',
+          ok: true);
+      await _load();
+    } catch (_) {
+      _snack('No pudimos obtener su ubicación. Intente de nuevo.');
+    } finally {
+      if (mounted) setState(() => _capturing = false);
+    }
+  }
+
+  void _snack(String m, {bool ok = false}) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(m), backgroundColor: ok ? AppTheme.success : AppTheme.error));
+  }
+
   bool get _needsLocation =>
       _error != null &&
       (_error!.toLowerCase().contains('ubicación') ||
@@ -103,6 +152,17 @@ class _MarketMapScreenState extends State<MarketMapScreen> {
             child: Center(child: BranchSelectorChip()),
           ),
         ],
+      ),
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: _capturing ? null : _recaptureLocation,
+        backgroundColor: AppTheme.primary,
+        foregroundColor: Colors.white,
+        icon: _capturing
+            ? const SizedBox(
+                width: 18, height: 18,
+                child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+            : const Icon(Icons.my_location_rounded),
+        label: const Text('Mi ubicación'),
       ),
       body: SafeArea(
         child: Column(
@@ -218,18 +278,28 @@ class _MarketMapScreenState extends State<MarketMapScreen> {
             child: Container(
               padding: const EdgeInsets.all(AppUI.s12),
               decoration: AppUI.card(r: 10),
-              child: Text(
-                  _error ??
-                      'No encontramos tiendas en este radio. Pruebe ampliar a 10 km.',
-                  style: AppUI.bodySoft),
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text(
+                    _error ??
+                        'No encontramos tiendas en este radio. Pruebe ampliar a 10 km. '
+                            'Si el punto azul no es su negocio, toque "Mi ubicación".',
+                    style: AppUI.bodySoft),
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: TextButton(
+                    onPressed: _load,
+                    child: const Text('Reintentar'),
+                  ),
+                ),
+              ]),
             ),
           ),
-        // Tarjeta del punto seleccionado.
+        // Tarjeta del punto seleccionado (sobre el FAB).
         if (_selected != null)
           Positioned(
             left: AppUI.s16,
             right: AppUI.s16,
-            bottom: AppUI.s16,
+            bottom: 84,
             child: _MarketCard(data: _selected!),
           ),
       ],
