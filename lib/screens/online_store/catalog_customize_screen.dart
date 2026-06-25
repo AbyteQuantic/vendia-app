@@ -24,7 +24,10 @@ class _CatalogCustomizeScreenState extends State<CatalogCustomizeScreen> {
   late final ApiService _api = widget.api ?? ApiService(AuthService());
   final _nameCtrl = TextEditingController();
   final _taglineCtrl = TextEditingController();
+  final _hoursCtrl = TextEditingController();
+  final _slugCtrl = TextEditingController();
   String _brandColor = '';
+  String _initialSlug = '';
   bool _loading = true;
   bool _saving = false;
   String? _error;
@@ -45,6 +48,8 @@ class _CatalogCustomizeScreenState extends State<CatalogCustomizeScreen> {
   void dispose() {
     _nameCtrl.dispose();
     _taglineCtrl.dispose();
+    _hoursCtrl.dispose();
+    _slugCtrl.dispose();
     super.dispose();
   }
 
@@ -56,6 +61,9 @@ class _CatalogCustomizeScreenState extends State<CatalogCustomizeScreen> {
       setState(() {
         _nameCtrl.text = (d['business_name'] as String?) ?? '';
         _taglineCtrl.text = (d['store_tagline'] as String?) ?? '';
+        _hoursCtrl.text = (d['store_hours'] as String?) ?? '';
+        _initialSlug = (d['store_slug'] as String?) ?? '';
+        _slugCtrl.text = _initialSlug;
         _brandColor = (d['brand_color'] as String?) ?? '';
         _loading = false;
       });
@@ -79,8 +87,27 @@ class _CatalogCustomizeScreenState extends State<CatalogCustomizeScreen> {
       await _api.updateBusinessProfile({
         'business_name': _nameCtrl.text.trim(),
         'store_tagline': _taglineCtrl.text.trim(),
+        'store_hours': _hoursCtrl.text.trim(),
         'brand_color': _brandColor,
       });
+
+      // El enlace (slug) tiene su propio endpoint con validación de unicidad.
+      // Solo lo mandamos si cambió. Si está tomado, avisamos pero el resto
+      // (nombre/eslogan/horario/color) ya quedó guardado.
+      final newSlug = _normalizeSlug(_slugCtrl.text);
+      if (newSlug.isNotEmpty && newSlug != _initialSlug) {
+        try {
+          await _api.updateStoreSlug(newSlug);
+          _initialSlug = newSlug;
+        } catch (e) {
+          if (!mounted) return;
+          setState(() => _saving = false);
+          _snack('Se guardó todo, pero el enlace "$newSlug" no está disponible. '
+              'Pruebe otro.');
+          return;
+        }
+      }
+
       if (!mounted) return;
       _snack('Catálogo personalizado ✓', ok: true);
       Navigator.of(context).pop(true);
@@ -90,6 +117,13 @@ class _CatalogCustomizeScreenState extends State<CatalogCustomizeScreen> {
       _snack('No se pudo guardar: $e');
     }
   }
+
+  // Enlace amigable: minúsculas, sin espacios ni acentos raros.
+  String _normalizeSlug(String s) => s
+      .trim()
+      .toLowerCase()
+      .replaceAll(RegExp(r'\s+'), '-')
+      .replaceAll(RegExp(r'[^a-z0-9-]'), '');
 
   void _snack(String m, {bool ok = false}) {
     if (!mounted) return;
@@ -164,6 +198,32 @@ class _CatalogCustomizeScreenState extends State<CatalogCustomizeScreen> {
                         for (final hex in _swatches) _swatch(hex),
                       ],
                     ),
+                    const SizedBox(height: AppUI.s16),
+                    const Text('Horario de atención', style: AppUI.sectionLabel),
+                    const SizedBox(height: 6),
+                    TextField(
+                      controller: _hoursCtrl,
+                      maxLength: 160,
+                      style: const TextStyle(fontSize: 16),
+                      decoration: const InputDecoration(
+                          hintText: 'Ej: Lun a Sáb 8am–8pm · Dom 9am–2pm',
+                          border: OutlineInputBorder()),
+                    ),
+                    const SizedBox(height: AppUI.s8),
+                    const Text('Enlace de su tienda (URL)', style: AppUI.sectionLabel),
+                    const SizedBox(height: 6),
+                    TextField(
+                      controller: _slugCtrl,
+                      style: const TextStyle(fontSize: 16),
+                      decoration: const InputDecoration(
+                          prefixText: 'tienda.vendia.store/',
+                          hintText: 'mi-tienda',
+                          border: OutlineInputBorder()),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                        'Solo minúsculas, números y guiones. Debe estar disponible.',
+                        style: AppUI.bodySoft.copyWith(fontSize: 12)),
                     const SizedBox(height: AppUI.s24),
                     SizedBox(
                       height: 52,
