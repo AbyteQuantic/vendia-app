@@ -226,7 +226,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
   Future<void> _syncProducts() async {
     try {
       final api = ApiService(AuthService());
-      final res = await api.fetchProducts(perPage: 500);
+      // sellableOnly: esta caché Isar es la FUENTE del POS. Sin el flag, el
+      // dashboard (que corre al abrir la app) repoblaba Isar con TODOS los
+      // productos y volvía a meter los platos de menú incompletos → reaparecían
+      // en Vender pese al filtro del POS. Todos los escritores de esta caché
+      // deben excluirlos. Spec 078.
+      final res = await api.fetchProducts(perPage: 500, sellableOnly: true);
       final items = ((res['data'] as List?) ?? [])
           .cast<Map<String, dynamic>>()
           .map((e) => LocalProduct.fromJson(e))

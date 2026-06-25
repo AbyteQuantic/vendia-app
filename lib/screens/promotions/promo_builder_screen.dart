@@ -263,7 +263,10 @@ class _PromoBuilderScreenState extends State<PromoBuilderScreen> {
     if (all.isEmpty) {
       try {
         final api = ApiService(AuthService());
-        final resp = await api.fetchProducts(page: 1, perPage: 200);
+        // sellableOnly: hidrata la MISMA caché Isar que lee el POS, así que no
+        // debe meter platos de menú incompletos (no vendibles). Spec 078.
+        final resp =
+            await api.fetchProducts(page: 1, perPage: 200, sellableOnly: true);
         final list = (resp['data'] as List?) ?? const [];
         final fromApi = list
             .whereType<Map<String, dynamic>>()
