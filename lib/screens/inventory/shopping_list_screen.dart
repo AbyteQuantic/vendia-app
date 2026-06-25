@@ -10,7 +10,7 @@ import '../../services/api_service.dart';
 import '../../services/auth_service.dart';
 import '../../services/app_error.dart';
 import '../../utils/format_cop.dart';
-import '../suppliers/nearby_suppliers_screen.dart';
+import '../suppliers/market_map_screen.dart';
 import '../mandados/mandados_screen.dart';
 import '../../widgets/supplier_price_editor.dart';
 
@@ -614,7 +614,7 @@ class _ShoppingListScreenState extends State<ShoppingListScreen> {
             child: TextButton.icon(
               key: const Key('btn_nearby_from_shopping'),
               onPressed: () => Navigator.of(context).push(MaterialPageRoute(
-                  builder: (_) => const NearbySuppliersScreen())),
+                  builder: (_) => const MarketMapScreen())),
               icon: const Icon(Icons.storefront_rounded, size: 18, color: AppTheme.primary),
               label: const Text('Ver proveedores cerca', style: TextStyle(color: AppTheme.primary)),
             ),

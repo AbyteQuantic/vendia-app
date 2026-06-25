@@ -1191,6 +1191,20 @@ class ApiService {
     }
   }
 
+  /// Spec 081 — mercado cercano: tiendas/mercados reales (OSM) para el MAPA.
+  /// Devuelve {origin:{lat,lng}, data:[{name,brand,address,lat,lng,distance_km}],
+  /// source_error?}. El origin es la ubicación del negocio.
+  Future<Map<String, dynamic>> fetchNearbyMarkets({double radiusKm = 5}) async {
+    try {
+      final response = await _dio.get('/api/v1/market/nearby',
+          queryParameters: {'radius_km': radiusKm});
+      final body = response.data;
+      return body is Map ? Map<String, dynamic>.from(body) : <String, dynamic>{};
+    } on DioException catch (e) {
+      throw AppError.fromDioException(e);
+    }
+  }
+
   /// Marca (o desmarca) un elemento como el PRINCIPAL del carrusel (Spec 070).
   /// Con primary=false vuelve al default (la foto principal va primero).
   Future<void> setProductMediaPrimary(

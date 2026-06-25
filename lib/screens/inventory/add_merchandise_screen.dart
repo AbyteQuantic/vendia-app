@@ -14,7 +14,7 @@ import 'manage_inventory_screen.dart';
 import 'product_import_screen.dart';
 import 'voice_inventory_screen.dart';
 import '../pos/scan_screen.dart';
-import '../suppliers/nearby_suppliers_screen.dart';
+import '../suppliers/market_map_screen.dart';
 import '../suppliers/supplier_panel_screen.dart';
 
 /// Agregar Mercancia — entry point for the inventory IA module.
@@ -279,7 +279,7 @@ class AddMerchandiseScreen extends StatelessWidget {
                     onTap: () {
                       HapticFeedback.lightImpact();
                       Navigator.of(context).push(MaterialPageRoute(
-                          builder: (_) => const NearbySuppliersScreen()));
+                          builder: (_) => const MarketMapScreen()));
                     },
                   ),
                   _HubActionRow(
