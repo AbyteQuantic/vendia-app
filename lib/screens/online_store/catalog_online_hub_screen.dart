@@ -17,6 +17,7 @@ import '../../theme/app_theme.dart';
 import '../../theme/app_ui.dart';
 import '../promotions/promo_builder_screen.dart';
 import '../promotions/promotions_list_screen.dart';
+import 'catalog_customize_screen.dart';
 
 class CatalogOnlineHubScreen extends StatefulWidget {
   const CatalogOnlineHubScreen({super.key, ApiService? apiOverride})
@@ -112,6 +113,20 @@ class _CatalogOnlineHubScreenState extends State<CatalogOnlineHubScreen> {
             onPreview: _preview,
             onShare: _share,
             onCopy: _copy,
+          ),
+          const SizedBox(height: AppUI.s24),
+          const Padding(
+            padding: EdgeInsets.only(left: AppUI.s4, bottom: AppUI.s12),
+            child: Text('Personaliza tu tienda', style: AppUI.sectionLabel),
+          ),
+          InsetGroupedList(
+            children: [
+              _ActionRow(
+                icon: Icons.palette_outlined,
+                title: 'Nombre, eslogan y color de marca',
+                onTap: () => _go(const CatalogCustomizeScreen()),
+              ),
+            ],
           ),
           const SizedBox(height: AppUI.s24),
           const Padding(
