@@ -27,6 +27,26 @@ class _MandadosScreenState extends State<MandadosScreen> {
   String? _error;
   List<Map<String, dynamic>> _errands = [];
 
+  /// Mandados cerrados (comprado/cancelado) que el usuario expandió a mano para
+  /// ver su detalle. Por defecto los cerrados se muestran COLAPSADOS (resumen)
+  /// para que el histórico no haga ruido sobre los pendientes. Spec 077/078.
+  final Set<String> _expanded = {};
+
+  static bool _isClosed(String status) =>
+      status == 'comprado' || status == 'cancelado';
+
+  /// Pendientes arriba, cerrados (histórico) abajo. Orden estable dentro de
+  /// cada grupo (conserva el orden del backend).
+  List<Map<String, dynamic>> get _sortedErrands {
+    final pending = <Map<String, dynamic>>[];
+    final closed = <Map<String, dynamic>>[];
+    for (final e in _errands) {
+      (_isClosed((e['status'] ?? 'pendiente').toString()) ? closed : pending)
+          .add(e);
+    }
+    return [...pending, ...closed];
+  }
+
   @override
   void initState() {
     super.initState();
@@ -148,9 +168,9 @@ class _MandadosScreenState extends State<MandadosScreen> {
                           child: ListView.separated(
                             key: const Key('mandados_list'),
                             padding: const EdgeInsets.all(AppUI.s16),
-                            itemCount: _errands.length,
+                            itemCount: _sortedErrands.length,
                             separatorBuilder: (_, __) => const SizedBox(height: AppUI.s8),
-                            itemBuilder: (_, i) => _card(_errands[i]),
+                            itemBuilder: (_, i) => _card(_sortedErrands[i]),
                           ),
                         ),
                       ),
@@ -164,18 +184,43 @@ class _MandadosScreenState extends State<MandadosScreen> {
     final who = (e['assignee_name'] ?? '').toString();
     final total = (e['total_estimated'] as num?)?.toDouble() ?? 0;
     final lines = (e['lines'] as List?) ?? [];
+
+    // Un mandado cerrado (comprado/cancelado) pasa a HISTÓRICO: se muestra
+    // colapsado (solo resumen) para no hacer ruido sobre los pendientes. Se
+    // expande tocándolo. Los pendientes van siempre completos. Spec 077/078.
+    final closed = _isClosed(status);
+    final showDetail = !closed || _expanded.contains(id);
     return Container(
       padding: const EdgeInsets.all(AppUI.s12),
       decoration: AppUI.card(r: 10),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Row(children: [
-          Expanded(child: Text(who.isNotEmpty ? who : 'Compra de insumos', style: AppUI.bodyStrong)),
-          _statusBadge(status),
-        ]),
-        const SizedBox(height: 4),
-        Text('${lines.length} producto(s) · ${formatCOP(total)}', style: AppUI.bodySoft),
-        // Detalle: QUÉ comprar (nombre · cantidad unidad). Antes solo el resumen.
-        if (lines.isNotEmpty) ...[
+        InkWell(
+          key: closed ? Key('toggle_$id') : null,
+          onTap: closed
+              ? () => setState(() => _expanded.contains(id)
+                  ? _expanded.remove(id)
+                  : _expanded.add(id))
+              : null,
+          borderRadius: BorderRadius.circular(8),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Row(children: [
+              Expanded(child: Text(who.isNotEmpty ? who : 'Compra de insumos', style: AppUI.bodyStrong)),
+              _statusBadge(status),
+              if (closed)
+                Padding(
+                  padding: const EdgeInsets.only(left: 4),
+                  child: Icon(
+                      showDetail ? Icons.expand_less_rounded : Icons.expand_more_rounded,
+                      size: 20, color: AppUI.inkSoft),
+                ),
+            ]),
+            const SizedBox(height: 4),
+            Text('${lines.length} producto(s) · ${formatCOP(total)}', style: AppUI.bodySoft),
+          ]),
+        ),
+        // Detalle: QUÉ comprar (nombre · cantidad unidad). Oculto en histórico
+        // colapsado.
+        if (showDetail && lines.isNotEmpty) ...[
           const SizedBox(height: AppUI.s8),
           ...lines.take(12).map((l) {
             final m = (l as Map).cast<String, dynamic>();
@@ -195,10 +240,13 @@ class _MandadosScreenState extends State<MandadosScreen> {
           if (lines.length > 12)
             Padding(padding: const EdgeInsets.only(top: 2), child: Text('y ${lines.length - 12} más…', style: AppUI.bodySoft.copyWith(fontSize: 12))),
         ],
-        const SizedBox(height: AppUI.s8),
-        // Acción PRINCIPAL de ancho completo (antes se recortaba al meterla en un
-        // Row junto a Reenviar+Cancelar en 360dp → desaparecía). Spec 078.
-        if (status != 'comprado' && status != 'cancelado') ...[
+        // Acciones (registrar/reenviar/cancelar) solo en el detalle. Un
+        // histórico colapsado queda como un renglón limpio. Spec 077/078.
+        if (showDetail) ...[
+          const SizedBox(height: AppUI.s8),
+          // Acción PRINCIPAL de ancho completo (antes se recortaba al meterla en
+          // un Row junto a Reenviar+Cancelar en 360dp → desaparecía). Spec 078.
+          if (status != 'comprado' && status != 'cancelado') ...[
           SizedBox(
             width: double.infinity,
             child: ElevatedButton.icon(
@@ -231,6 +279,7 @@ class _MandadosScreenState extends State<MandadosScreen> {
               child: const Text('Cancelar'),
             ),
         ]),
+        ],
       ]),
     );
   }
