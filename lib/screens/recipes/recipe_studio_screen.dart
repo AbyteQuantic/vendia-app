@@ -29,6 +29,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../theme/app_theme.dart';
 import '../../theme/app_ui.dart';
+import '../../utils/quantity_presets.dart';
 import '../../widgets/branch_selector_drawer.dart';
 import '../inventory/ingredients_screen.dart';
 import 'recipe_list_screen.dart';
@@ -814,6 +815,68 @@ class _RecipeStudioScreenState extends State<RecipeStudioScreen> {
     });
   }
 
+  // Unidad corta para la fila (unidad→'u'; el resto tal cual: g, kg, ml, l).
+  String _unitShort(String unit) => unit == 'unidad' ? 'u' : unit;
+
+  /// Atajos de medida caseros (½ libra, 1 taza, 3 dientes…) que convierten a la
+  /// unidad base del insumo y SUMAN a la cantidad. Resuelve "no sé cómo registrar
+  /// media libra o 3 dientes" sin que el tendero calcule. Spec 078 #4.
+  void _showQtyPresets(_RecipeLine line) {
+    final presets = quantityPresetsForUnit(line.ingredient.unit);
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setSheet) => Padding(
+          padding: EdgeInsets.only(
+              left: 20,
+              right: 20,
+              top: 20,
+              bottom: MediaQuery.of(ctx).viewInsets.bottom + 24),
+          child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text('¿Cuánto de ${line.ingredient.name}?',
+                style: const TextStyle(fontSize: 19, fontWeight: FontWeight.bold)),
+            const SizedBox(height: 6),
+            Text(
+                'Toque una medida y se suma. Se costea en ${line.ingredient.unitLabel.toLowerCase()}.',
+                style: AppUI.bodySoft),
+            const SizedBox(height: 14),
+            if (presets.isEmpty)
+              Text('Escriba la cantidad directamente en ${line.ingredient.unitLabel.toLowerCase()}.',
+                  style: AppUI.bodySoft)
+            else
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: presets
+                    .map((p) => ActionChip(
+                          label: Text(p.label, style: const TextStyle(fontSize: 16)),
+                          onPressed: () {
+                            HapticFeedback.lightImpact();
+                            _bumpQty(line, p.amount);
+                            setSheet(() {});
+                          },
+                        ))
+                    .toList(),
+              ),
+            const SizedBox(height: 16),
+            Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+              Text('Cantidad: ${_fmtQty(line.quantity)} ${_unitShort(line.ingredient.unit)}',
+                  style: AppUI.bodyStrong),
+              FilledButton(
+                onPressed: () => Navigator.of(ctx).pop(),
+                child: const Text('Listo', style: TextStyle(fontSize: 16)),
+              ),
+            ]),
+          ]),
+        ),
+      ),
+    );
+  }
+
   /// Corrige el COSTO UNITARIO del insumo (ej. Agua quedó en $6 por error). Lo
   /// persiste en el inventario (PATCH /ingredients) y recalcula el costo del
   /// plato. No toca la fórmula de costeo (Σ insumo·cantidad). Spec 078.
@@ -829,6 +892,10 @@ class _RecipeStudioScreenState extends State<RecipeStudioScreen> {
     final result = await showDialog<double>(
       context: context,
       builder: (ctx) => AlertDialog(
+        // scrollable: con el teclado abierto el diálogo (título + ayuda + campo
+        // + acciones) se desbordaba hacia arriba y se cortaba. scrollable hace
+        // que el contenido se desplace dentro del diálogo en vez de cortarse.
+        scrollable: true,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         title: Text('Costo de ${line.ingredient.name}', style: const TextStyle(fontSize: 19)),
         content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -1379,31 +1446,56 @@ class _RecipeStudioScreenState extends State<RecipeStudioScreen> {
               overflow: TextOverflow.ellipsis,
               style: AppUI.bodyStrong),
         ),
-        // Cantidad editable (decimales) con +/- de apoyo + la unidad real.
+        // Cantidad editable (decimales). El +/- usa un paso sensato según la
+        // unidad (±50 g, ±0.25 kg…, no ±1 que para gramos no sirve) y debajo
+        // muestra la unidad + "medidas" para convertir medidas caseras
+        // (½ libra, 1 taza, 3 dientes…) sin que el tendero calcule. Spec 078 #4.
         SizedBox(
-          width: 116,
-          child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-            _miniBtn(Icons.remove_rounded, () => _bumpQty(line, -1)),
-            SizedBox(
-              width: 40,
-              child: TextField(
-                controller: line.qtyCtrl,
-                textAlign: TextAlign.center,
-                keyboardType:
-                    const TextInputType.numberWithOptions(decimal: true),
-                style: AppUI.tabularStrong,
-                decoration: const InputDecoration(
-                  isDense: true,
-                  contentPadding: EdgeInsets.symmetric(vertical: 6),
-                  border: InputBorder.none,
+          width: 124,
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+              _miniBtn(Icons.remove_rounded,
+                  () => _bumpQty(line, -quantityStepForUnit(line.ingredient.unit))),
+              SizedBox(
+                width: 36,
+                child: TextField(
+                  controller: line.qtyCtrl,
+                  textAlign: TextAlign.center,
+                  keyboardType:
+                      const TextInputType.numberWithOptions(decimal: true),
+                  style: AppUI.tabularStrong,
+                  decoration: const InputDecoration(
+                    isDense: true,
+                    contentPadding: EdgeInsets.symmetric(vertical: 6),
+                    border: InputBorder.none,
+                  ),
+                  onChanged: (v) {
+                    final q = double.tryParse(v.replaceAll(',', '.'));
+                    if (q != null && q >= 0) setState(() => line.quantity = q);
+                  },
                 ),
-                onChanged: (v) {
-                  final q = double.tryParse(v.replaceAll(',', '.'));
-                  if (q != null && q >= 0) setState(() => line.quantity = q);
-                },
+              ),
+              _miniBtn(Icons.add_rounded,
+                  () => _bumpQty(line, quantityStepForUnit(line.ingredient.unit))),
+            ]),
+            InkWell(
+              key: Key('qty_presets_${line.ingredient.uuid}'),
+              onTap: () => _showQtyPresets(line),
+              borderRadius: BorderRadius.circular(6),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                child: Row(mainAxisSize: MainAxisSize.min, children: [
+                  Text(_unitShort(line.ingredient.unit),
+                      style: AppUI.bodySoft.copyWith(fontSize: 12)),
+                  const SizedBox(width: 4),
+                  Text('medidas',
+                      style: AppUI.bodySoft.copyWith(
+                          fontSize: 12,
+                          color: AppTheme.primary,
+                          fontWeight: FontWeight.w600)),
+                ]),
               ),
             ),
-            _miniBtn(Icons.add_rounded, () => _bumpQty(line, 1)),
           ]),
         ),
         // Costo TOCABLE: corrige el costo unitario del insumo (ej. Agua quedó en $6).
