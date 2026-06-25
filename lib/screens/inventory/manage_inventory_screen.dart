@@ -71,7 +71,11 @@ class _ManageInventoryScreenState extends State<ManageInventoryScreen>
       _error = null;
     });
     try {
-      final res = await _api.fetchProducts(page: 1, perPage: 100);
+      // sellableOnly: el inventario muestra productos reales + platos COMPLETOS
+      // (con receta y foto). Los platos incompletos (sin receta) no son productos
+      // listos → se gestionan/completan en "Mis recetas" (badge Incompleto), no
+      // aquí. Antes salían como "Plato de menú" sin foto y confundían. Spec 078.
+      final res = await _api.fetchProducts(page: 1, perPage: 100, sellableOnly: true);
       final data = res['data'] as List? ?? [];
       final products = data.cast<Map<String, dynamic>>();
       if (!mounted) return;
