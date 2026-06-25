@@ -246,8 +246,13 @@ class AppTheme {
         behavior: SnackBarBehavior.floating,
         shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(16)),
-        contentTextStyle:
-            const TextStyle(fontSize: 20, fontWeight: FontWeight.w500),
+        // Fondo oscuro + texto BLANCO explícitos: antes el contentTextStyle no
+        // fijaba color y sin backgroundColor el texto salía oscuro sobre fondo
+        // oscuro (no se leía — reporte fundador 2026-06-25). La acción ya era
+        // blanca; ahora el cuerpo también contrasta.
+        backgroundColor: const Color(0xFF1F2937),
+        contentTextStyle: const TextStyle(
+            fontSize: 20, fontWeight: FontWeight.w500, color: Colors.white),
         actionTextColor: Colors.white,
         insetPadding:
             const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
