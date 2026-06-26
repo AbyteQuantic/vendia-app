@@ -425,119 +425,135 @@ class _CatalogCustomizeScreenState extends State<CatalogCustomizeScreen> {
     );
   }
 
-  Widget _coverPicker() {
-    if (_coverBusy) {
-      return Container(
-        height: 120,
-        alignment: Alignment.center,
-        decoration: AppUI.card(),
+  // Tile de acción compacto y consistente (ícono sobre texto). 3 caben en fila
+  // a 360dp. Se usa igual para logo y portada (UI normalizada).
+  Widget _aiTile(Key key, IconData icon, String label, VoidCallback? onTap) {
+    return Expanded(
+      child: OutlinedButton(
+        key: key,
+        onPressed: onTap,
+        style: OutlinedButton.styleFrom(
+          padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 2),
+          foregroundColor: AppTheme.primary,
+          side: const BorderSide(color: AppUI.border),
+          shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(AppUI.radiusSm)),
+        ),
         child: Column(mainAxisSize: MainAxisSize.min, children: [
-          const SizedBox(
-              width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2)),
-          const SizedBox(height: AppUI.s8),
-          Text(_coverBusyMsg, style: AppUI.bodySoft),
+          Icon(icon, size: 18),
+          const SizedBox(height: 4),
+          Text(label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
         ]),
-      );
-    }
+      ),
+    );
+  }
+
+  Widget _coverPicker() {
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      // PREVIEW grande de la portada: la propia o un placeholder de marca.
+      // Vista previa 16:9: la portada propia, el placeholder de marca, o el
+      // estado de carga (overlay).
       AspectRatio(
         aspectRatio: 16 / 9,
         child: ClipRRect(
           borderRadius: BorderRadius.circular(AppUI.radiusSm),
-          child: _hasCover
-              ? Image.network(_coverUrl, fit: BoxFit.cover,
-                  errorBuilder: (_, __, ___) => _coverPlaceholder())
-              : _coverPlaceholder(),
+          child: _coverBusy
+              ? _busyBox(_coverBusyMsg)
+              : (_hasCover
+                  ? Image.network(_coverUrl, fit: BoxFit.cover,
+                      errorBuilder: (_, __, ___) => _coverPlaceholder())
+                  : _coverPlaceholder()),
         ),
       ),
-      const SizedBox(height: 4),
+      const SizedBox(height: 6),
       Text(
           _hasCover
               ? 'Portada propia activa.'
-              : 'Aún no tiene portada propia: el catálogo usa este fondo de color. '
-                  'Suba o genere una cuando quiera.',
+              : 'Aún no tiene portada propia: el catálogo usa este fondo de color.',
           style: AppUI.bodySoft.copyWith(fontSize: 12)),
       const SizedBox(height: AppUI.s8),
-      // Acciones: subir / generar IA / mejorar IA.
-      Wrap(spacing: 8, runSpacing: 8, children: [
-        OutlinedButton.icon(
-          key: const Key('cover_upload'),
-          onPressed: _uploadCover,
-          icon: const Icon(Icons.add_photo_alternate_rounded, size: 18),
-          label: const Text('Subir foto'),
-        ),
-        OutlinedButton.icon(
-          key: const Key('cover_generate'),
-          onPressed: _generateCover,
-          icon: const Icon(Icons.auto_awesome_rounded, size: 18),
-          label: const Text('Generar con IA'),
-        ),
-        OutlinedButton.icon(
-          key: const Key('cover_enhance'),
-          onPressed: _enhanceCover,
-          icon: const Icon(Icons.auto_fix_high_rounded, size: 18),
-          label: const Text('Mejorar foto con IA'),
-        ),
-        if (_coverUrl.isNotEmpty)
-          TextButton(
+      Row(children: [
+        _aiTile(const Key('cover_upload'), Icons.add_photo_alternate_rounded,
+            'Subir', _coverBusy ? null : _uploadCover),
+        const SizedBox(width: 8),
+        _aiTile(const Key('cover_generate'), Icons.auto_awesome_rounded,
+            'Crear IA', _coverBusy ? null : _generateCover),
+        const SizedBox(width: 8),
+        _aiTile(const Key('cover_enhance'), Icons.auto_fix_high_rounded,
+            'Mejorar', _coverBusy ? null : _enhanceCover),
+      ]),
+      if (_hasCover && !_coverBusy)
+        Align(
+          alignment: Alignment.centerRight,
+          child: TextButton(
             onPressed: () => setState(() => _coverUrl = ''),
             style: TextButton.styleFrom(foregroundColor: AppTheme.error),
-            child: const Text('Quitar'),
+            child: const Text('Quitar portada'),
           ),
-      ]),
+        ),
     ]);
   }
 
   Widget _logoEditor() {
-    return Row(children: [
-      // Vista previa circular del logo.
-      Container(
-        width: 64,
-        height: 64,
-        decoration: BoxDecoration(
-          shape: BoxShape.circle,
-          color: AppUI.pageBg,
-          border: Border.all(color: AppUI.border),
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      Row(children: [
+        Container(
+          width: 56,
+          height: 56,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            color: AppUI.pageBg,
+            border: Border.all(color: AppUI.border),
+          ),
+          clipBehavior: Clip.antiAlias,
+          child: _logoBusy
+              ? const Center(
+                  child: SizedBox(
+                      width: 20, height: 20,
+                      child: CircularProgressIndicator(strokeWidth: 2)))
+              : (_logoUrl.isNotEmpty
+                  ? Image.network(_logoUrl, fit: BoxFit.cover,
+                      errorBuilder: (_, __, ___) =>
+                          const Icon(Icons.storefront_rounded, color: AppUI.inkSoft))
+                  : const Icon(Icons.storefront_rounded, color: AppUI.inkSoft, size: 26)),
         ),
-        clipBehavior: Clip.antiAlias,
-        child: _logoBusy
-            ? const Center(
-                child: SizedBox(
-                    width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)))
-            : (_logoUrl.isNotEmpty
-                ? Image.network(_logoUrl, fit: BoxFit.cover,
-                    errorBuilder: (_, __, ___) =>
-                        const Icon(Icons.storefront_rounded, color: AppUI.inkSoft))
-                : const Icon(Icons.storefront_rounded, color: AppUI.inkSoft, size: 28)),
-      ),
-      const SizedBox(width: AppUI.s12),
-      Expanded(
-        child: _logoBusy
-            ? Text(_logoBusyMsg, style: AppUI.bodySoft)
-            : Wrap(spacing: 6, runSpacing: 6, children: [
-                OutlinedButton.icon(
-                  key: const Key('logo_upload'),
-                  onPressed: _uploadLogo,
-                  icon: const Icon(Icons.upload_rounded, size: 16),
-                  label: const Text('Cargar'),
-                ),
-                OutlinedButton.icon(
-                  key: const Key('logo_generate'),
-                  onPressed: _generateLogo,
-                  icon: const Icon(Icons.auto_awesome_rounded, size: 16),
-                  label: const Text('Crear con IA'),
-                ),
-                OutlinedButton.icon(
-                  key: const Key('logo_enhance'),
-                  onPressed: _enhanceLogo,
-                  icon: const Icon(Icons.auto_fix_high_rounded, size: 16),
-                  label: const Text('Mejorar'),
-                ),
-              ]),
-      ),
+        const SizedBox(width: AppUI.s12),
+        Expanded(
+          child: Text(
+              _logoBusy
+                  ? _logoBusyMsg
+                  : (_logoUrl.isNotEmpty ? 'Logo actual de la tienda.' : 'Aún no tiene logo.'),
+              style: AppUI.bodySoft),
+        ),
+      ]),
+      const SizedBox(height: AppUI.s8),
+      Row(children: [
+        _aiTile(const Key('logo_upload'), Icons.upload_rounded, 'Cargar',
+            _logoBusy ? null : _uploadLogo),
+        const SizedBox(width: 8),
+        _aiTile(const Key('logo_generate'), Icons.auto_awesome_rounded, 'Crear IA',
+            _logoBusy ? null : _generateLogo),
+        const SizedBox(width: 8),
+        _aiTile(const Key('logo_enhance'), Icons.auto_fix_high_rounded, 'Mejorar',
+            _logoBusy ? null : _enhanceLogo),
+      ]),
     ]);
   }
+
+  // Caja de carga (overlay) para el preview 16:9 de la portada.
+  Widget _busyBox(String msg) => Container(
+        alignment: Alignment.center,
+        decoration: BoxDecoration(gradient: _brandGradient),
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          const SizedBox(
+              width: 24, height: 24,
+              child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)),
+          const SizedBox(height: AppUI.s8),
+          Text(msg, style: const TextStyle(color: Colors.white, fontSize: 12)),
+        ]),
+      );
 
   Widget _coverPlaceholder() => Container(
         alignment: Alignment.center,
