@@ -12,6 +12,7 @@ import '../../theme/app_ui.dart';
 import '../../services/api_service.dart';
 import '../../services/auth_service.dart';
 import '../../services/app_error.dart';
+import '../../widgets/logo_ai_editor_sheet.dart';
 
 class CatalogCustomizeScreen extends StatefulWidget {
   final ApiService? api;
@@ -148,15 +149,25 @@ class _CatalogCustomizeScreenState extends State<CatalogCustomizeScreen> {
     });
   }
 
+  // Reusa el editor de logo con IA (Spec 060): describir → generar → iterar.
+  // Mismo componente que el Perfil de negocio (sin duplicar UI).
   Future<void> _generateLogo() async {
-    await _runLogo('Creando logo con IA…', () async {
-      final res = await _api.generateLogoAI(
-        businessName: _nameCtrl.text.trim().isEmpty ? 'Mi tienda' : _nameCtrl.text.trim(),
-        businessType: _businessType,
-        details: _logoDetails(),
-      );
-      return (res['logo_url'] as String?) ?? '';
-    });
+    await showLogoAiEditor(
+      context,
+      currentLogoUrl: _logoUrl.isEmpty ? null : _logoUrl,
+      initialSpecs: _logoDetails(),
+      onGenerate: (specs) async {
+        final res = await _api.generateLogoAI(
+          businessName: _nameCtrl.text.trim().isEmpty ? 'Mi tienda' : _nameCtrl.text.trim(),
+          businessType: _businessType,
+          details: specs,
+        );
+        return res['logo_url'] as String?;
+      },
+      onSaved: (url) {
+        if (mounted) setState(() => _logoUrl = url);
+      },
+    );
   }
 
   Future<void> _enhanceLogo() async {
