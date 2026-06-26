@@ -32,6 +32,7 @@ class _ProductPickerSheetState extends State<ProductPickerSheet> {
   late final ApiService _api = widget.api ?? ApiService(AuthService());
   final _searchCtrl = TextEditingController();
   List<Product> _products = [];
+  List<Product> _results = const []; // PERF: filtrado cacheado (no por build)
   bool _loading = true;
   String _query = '';
   String? _error;
@@ -63,6 +64,7 @@ class _ProductPickerSheetState extends State<ProductPickerSheet> {
       if (!mounted) return;
       setState(() {
         _products = list;
+        _results = _filter();
         _loading = false;
       });
     } catch (e) {
@@ -74,7 +76,7 @@ class _ProductPickerSheetState extends State<ProductPickerSheet> {
     }
   }
 
-  List<Product> get _filtered {
+  List<Product> _filter() {
     final q = _query.trim().toLowerCase();
     if (q.isEmpty) return _products;
     return _products.where((p) => p.name.toLowerCase().contains(q)).toList();
@@ -82,13 +84,13 @@ class _ProductPickerSheetState extends State<ProductPickerSheet> {
 
   @override
   Widget build(BuildContext context) {
-    final results = _filtered;
+    final results = _results;
     return SafeArea(
       child: Padding(
-        padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
+        padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(context).bottom),
         child: Container(
           constraints: BoxConstraints(
-            maxHeight: MediaQuery.of(context).size.height * 0.85,
+            maxHeight: MediaQuery.sizeOf(context).height * 0.85,
           ),
           decoration: const BoxDecoration(
             color: Colors.white,
@@ -122,7 +124,10 @@ class _ProductPickerSheetState extends State<ProductPickerSheet> {
                 child: TextField(
                   key: const Key('product_picker_search'),
                   controller: _searchCtrl,
-                  onChanged: (v) => setState(() => _query = v),
+                  onChanged: (v) => setState(() {
+                    _query = v;
+                    _results = _filter();
+                  }),
                   style: const TextStyle(fontSize: 18),
                   decoration: InputDecoration(
                     hintText: 'Buscar producto',

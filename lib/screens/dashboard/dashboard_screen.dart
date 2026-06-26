@@ -812,7 +812,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final topPad = MediaQuery.of(context).padding.top;
+    final topPad = MediaQuery.paddingOf(context).top;
+    // PERF: resolver el catálogo dinámico UNA vez por build (antes se llamaba
+    // 2× — reel + grid — recalculando filtros/orden cada vez).
+    final catalogDashboard = _catalogDashboard;
     return Scaffold(
       // Página BLANCA (estilo GitHub): los grupos gris claro (#F8F9FA)
       // se leen nítidos contra ella — antes ambos eran casi el mismo gris.
@@ -969,7 +972,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 SliverToBoxAdapter(
                   child: CapabilitiesReel(
                     key: const Key('dashboard_capabilities_reel'),
-                    modules: _catalogDashboard?.reel ??
+                    modules: catalogDashboard?.reel ??
                         unactivatedOptionalModules(_featureFlags),
                     onReturned: _loadCapabilityFlags,
                   ),
@@ -1019,7 +1022,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     // Excluir capacidades activas (van en el carrusel) para
                     // que no aparezcan duplicadas en la grilla.
                     final activeIds = _activeOptionalIds();
-                    final source = _catalogDashboard?.grid ??
+                    final source = catalogDashboard?.grid ??
                         visibleModulesFor(_businessType, _featureFlags);
                     final gridModules = source
                         .where((m) => !activeIds.contains(m.id))
@@ -1105,21 +1108,16 @@ class _DashboardScreenState extends State<DashboardScreen> {
         )),
         ],
       ),
-      // ── Barra inferior glass (Glassmorphism funcional) ──────────────
-      // Vidrio translúcido con blur: el contenido que queda detrás al
-      // hacer scroll se difumina elegantemente en vez de cortarse contra
-      // un fondo sólido. El botón es azul sólido de alto contraste, sin
-      // bordes, esquinas 14.
+      // ── Barra inferior ──────────────────────────────────────────────
+      // PERF: sin BackdropFilter (forzaba un saveLayer + composición GPU en
+      // CADA frame, jank en gama baja — Art. I). Fondo casi opaco: el efecto
+      // visual a barra estática es imperceptible y desaparece el jank.
       bottomNavigationBar: ClipRect(
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
-          child: Container(
+        child: Container(
             padding: EdgeInsets.fromLTRB(
-                16, 12, 16, MediaQuery.of(context).padding.bottom + 12),
+                16, 12, 16, MediaQuery.paddingOf(context).bottom + 12),
             decoration: BoxDecoration(
-              // Vidrio de verdad: 0.62 de blanco — las "Últimas ventas"
-              // se entrevén difuminadas (visibles pero ilegibles) detrás.
-              color: Colors.white.withValues(alpha: 0.62),
+              color: Colors.white.withValues(alpha: 0.96),
               border: const Border(
                 top: BorderSide(color: Color(0x0D000000), width: 1),
               ),
@@ -1148,7 +1146,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
             ),
           ),
         ),
-      ),
     );
   }
 

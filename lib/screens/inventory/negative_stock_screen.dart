@@ -368,6 +368,7 @@ class _NegativeStockTile extends StatelessWidget {
                 color: Colors.white,
                 child: img != null && img.isNotEmpty
                     ? Image.network(img, fit: BoxFit.contain,
+                        cacheWidth: 144, cacheHeight: 144, // PERF: decode a tamaño
                         errorBuilder: (_, __, ___) =>
                             const Icon(Icons.inventory_2_outlined, color: AppUI.inkSoft))
                     : const Icon(Icons.inventory_2_outlined, color: AppUI.inkSoft),

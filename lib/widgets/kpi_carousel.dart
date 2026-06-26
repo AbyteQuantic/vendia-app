@@ -87,7 +87,6 @@ class _KpiCarouselState extends State<KpiCarousel> {
     _pageCtrl = PageController(viewportFraction: _viewportFraction);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
-      _pageCtrl.addListener(_onPageScroll);
       _startAutoplay();
     });
   }
@@ -106,13 +105,8 @@ class _KpiCarouselState extends State<KpiCarousel> {
   void dispose() {
     _autoplayTimer?.cancel();
     _resumeTimer?.cancel();
-    _pageCtrl.removeListener(_onPageScroll);
     _pageCtrl.dispose();
     super.dispose();
-  }
-
-  void _onPageScroll() {
-    if (mounted) setState(() {});
   }
 
   void _startAutoplay() {
@@ -279,32 +273,31 @@ class _KpiCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final accent = data.accentColor;
-    final signed = _signedDistance();
-    final d = signed.abs();
-    // 1.0 (centro) → 0.90 (lateral). Menos encogido que antes (0.82)
-    // para que las cards vecinas se vean cercanas y claras, no lejanas.
-    final scale = 1.0 - (d * 0.10);
-    // 1.0 (centro) → 0.65 (lateral). Antes 0.45 — subo la opacidad para
-    // que el vecino se identifique a simple vista.
-    final opacity = 1.0 - (d * 0.35);
-    // Rotación Y más suave (~24°) — el coverflow se mantiene pero sin
-    // alejar tanto las cards laterales.
-    final rotationY = -signed * 0.42; // radianes (~24°)
-
-    // Matrix4 con perspectiva — `setEntry(3, 2, 0.0014)` es el valor
-    // típico para perspectiva agradable en flutter; sin este entry la
-    // rotateY se ve plana (escalado afín, no 3D).
-    final transform = Matrix4.identity()
-      ..setEntry(3, 2, 0.0014)
-      ..scaleByDouble(scale, scale, 1.0, 1.0)
-      ..rotateY(rotationY);
-
-    return Opacity(
-      opacity: opacity,
-      child: Transform(
-        alignment: Alignment.center,
-        transform: transform,
-        child: Padding(
+    // PERF: en vez de setState por frame del carrusel entero, cada card visible
+    // se redibuja sola escuchando el PageController. El contenido (child) se
+    // construye UNA vez; el builder solo recalcula escala/opacidad/rotación.
+    return AnimatedBuilder(
+      animation: pageCtrl,
+      builder: (context, child) {
+        final signed = _signedDistance();
+        final d = signed.abs();
+        final scale = 1.0 - (d * 0.10);
+        final opacity = 1.0 - (d * 0.35);
+        final rotationY = -signed * 0.42; // radianes (~24°)
+        final transform = Matrix4.identity()
+          ..setEntry(3, 2, 0.0014)
+          ..scaleByDouble(scale, scale, 1.0, 1.0)
+          ..rotateY(rotationY);
+        return Opacity(
+          opacity: opacity,
+          child: Transform(
+            alignment: Alignment.center,
+            transform: transform,
+            child: child,
+          ),
+        );
+      },
+      child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
           child: Material(
             elevation: 0,
@@ -331,11 +324,11 @@ class _KpiCard extends StatelessWidget {
                   // 0.05 explícito (ronda 1): sobre página blanca el token
                   // compartido (0.02) dejaría la card sin contorno visible.
                   border: Border.all(color: const Color(0x0D000000), width: 1),
-                  boxShadow: [
+                  boxShadow: const [
                     BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.03 * opacity),
+                      color: Color(0x08000000),
                       blurRadius: 20,
-                      offset: const Offset(0, 8),
+                      offset: Offset(0, 8),
                     ),
                   ],
                 ),
@@ -505,8 +498,7 @@ class _KpiCard extends StatelessWidget {
             ),
           ),
         ),
-      ),
-    );
+      );
   }
 
   Widget _placeholder(Color accent, IconData icon) {

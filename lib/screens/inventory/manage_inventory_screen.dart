@@ -81,6 +81,13 @@ class _ManageInventoryScreenState extends State<ManageInventoryScreen>
       if (!mounted) return;
       setState(() {
         _products = products;
+        // PERF: contar SKU/precio faltantes una vez al cargar (no por build).
+        _noSkuCount = _products
+            .where((p) => (p['barcode'] as String? ?? '').trim().isEmpty)
+            .length;
+        _noPriceCount = _products
+            .where((p) => ((p['price'] as num?)?.toDouble() ?? 0) <= 0)
+            .length;
         _loading = false;
       });
       _applyFilter();
@@ -128,15 +135,8 @@ class _ManageInventoryScreenState extends State<ManageInventoryScreen>
     });
   }
 
-  int get _noSkuCount => _products.where((p) {
-        final b = (p['barcode'] as String? ?? '').trim();
-        return b.isEmpty;
-      }).length;
-
-  int get _noPriceCount => _products.where((p) {
-        final price = (p['price'] as num?)?.toDouble() ?? 0;
-        return price <= 0;
-      }).length;
+  int _noSkuCount = 0;
+  int _noPriceCount = 0;
 
   Future<void> _deleteProduct(Map<String, dynamic> product) async {
     final name = product['name'] as String? ?? 'Producto';
@@ -558,6 +558,7 @@ class _ProductTile extends StatelessWidget {
                   child: imgSrc != null && imgSrc.isNotEmpty
                       ? Image.network(imgSrc,
                           fit: BoxFit.contain,
+                          cacheWidth: 180, cacheHeight: 180, // PERF: decode a tamaño
                           errorBuilder: (_, __, ___) => const Icon(
                               Icons.image_not_supported_rounded,
                               size: 28,

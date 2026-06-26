@@ -186,21 +186,21 @@ class _SupplierCard extends StatelessWidget {
 
     return InkWell(
       onTap: onTap,
-      borderRadius: BorderRadius.circular(10),
+      borderRadius: BorderRadius.circular(18),
       child: Container(
         padding: const EdgeInsets.all(AppUI.s12),
-        decoration: AppUI.card(r: 10),
+        decoration: AppUI.card(r: 18),
         child: Row(
         children: [
           Container(
-            width: 44,
-            height: 44,
+            width: 48,
+            height: 48,
             decoration: BoxDecoration(
               color: AppTheme.primary.withValues(alpha: 0.10),
-              borderRadius: BorderRadius.circular(AppUI.radiusSm),
+              borderRadius: BorderRadius.circular(14),
             ),
             child: Icon(isAgro ? Icons.grass_rounded : Icons.warehouse_rounded,
-                color: AppTheme.primary, size: 22),
+                color: AppTheme.primary, size: 24),
           ),
           const SizedBox(width: AppUI.s12),
           Expanded(

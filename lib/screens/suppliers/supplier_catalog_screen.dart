@@ -67,16 +67,24 @@ class _SupplierCatalogScreenState extends State<SupplierCatalogScreen> {
     }
   }
 
-  double get _total {
+  // PERF: total/conteo cacheados (antes recorrían todo el catálogo en cada
+  // build/tap). Se recalculan solo al tocar un stepper.
+  double _total = 0;
+  int _itemCount = 0;
+
+  void _recalcCart() {
     double t = 0;
+    int n = 0;
     for (final p in _products) {
       final q = _cart[p['id']] ?? 0;
-      t += q * ((p['price'] as num?)?.toDouble() ?? 0);
+      if (q > 0) {
+        n++;
+        t += q * ((p['price'] as num?)?.toDouble() ?? 0);
+      }
     }
-    return t;
+    _total = t;
+    _itemCount = n;
   }
-
-  int get _itemCount => _cart.values.where((q) => q > 0).length;
 
   Future<void> _order() async {
     final items = _products
@@ -188,6 +196,9 @@ class _SupplierCatalogScreenState extends State<SupplierCatalogScreen> {
               color: AppUI.pageBg,
               child: photo.isNotEmpty
                   ? Image.network(photo, fit: BoxFit.cover,
+                      // PERF: decodifica a ~3× el tamaño mostrado (60dp), no a
+                      // resolución completa → menos memoria/jank en la lista.
+                      cacheWidth: 180, cacheHeight: 180,
                       errorBuilder: (_, __, ___) => const Icon(
                           Icons.inventory_2_outlined, color: AppUI.inkSoft))
                   : const Icon(Icons.inventory_2_outlined, color: AppUI.inkSoft),
@@ -255,6 +266,7 @@ class _SupplierCatalogScreenState extends State<SupplierCatalogScreen> {
                     } else {
                       _cart[id] = n;
                     }
+                    _recalcCart();
                   }),
         ),
         SizedBox(
@@ -270,7 +282,10 @@ class _SupplierCatalogScreenState extends State<SupplierCatalogScreen> {
           key: Key('plus_$id'),
           icon: Icons.add_rounded,
           color: AppTheme.primary,
-          onTap: () => setState(() => _cart[id] = qty + 1),
+          onTap: () => setState(() {
+            _cart[id] = qty + 1;
+            _recalcCart();
+          }),
         ),
       ]),
     );
