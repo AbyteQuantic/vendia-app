@@ -1,10 +1,11 @@
 // Spec: specs/082-catalogo-online-personalizacion/spec.md
 //
-// Personalizar mi catálogo (Fase 1): nombre, eslogan y color de marca. Se ven
-// en la tienda en línea pública. El logo/portada y el orden de productos llegan
-// en fases siguientes.
+// Personalizar mi catálogo: identidad (nombre, eslogan, portada), apariencia
+// (color de marca), contacto y horario, y el enlace (URL). UI normalizada al
+// kit AppUI (SoftCard + sectionLabel). Se ve en la tienda en línea pública.
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:image_picker/image_picker.dart';
 
 import '../../theme/app_theme.dart';
 import '../../theme/app_ui.dart';
@@ -27,12 +28,13 @@ class _CatalogCustomizeScreenState extends State<CatalogCustomizeScreen> {
   final _hoursCtrl = TextEditingController();
   final _slugCtrl = TextEditingController();
   String _brandColor = '';
+  String _coverUrl = '';
   String _initialSlug = '';
   bool _loading = true;
   bool _saving = false;
+  bool _coverBusy = false;
   String? _error;
 
-  // Paleta de marca: colores legibles como fondo de cabecera (texto blanco).
   static const _swatches = <String>[
     '#1A2FA0', '#0D9668', '#D97706', '#DC2626',
     '#7C3AED', '#0EA5E9', '#DB2777', '#111827',
@@ -65,6 +67,7 @@ class _CatalogCustomizeScreenState extends State<CatalogCustomizeScreen> {
         _initialSlug = (d['store_slug'] as String?) ?? '';
         _slugCtrl.text = _initialSlug;
         _brandColor = (d['brand_color'] as String?) ?? '';
+        _coverUrl = (d['store_cover_url'] as String?) ?? '';
         _loading = false;
       });
     } catch (e) {
@@ -73,6 +76,24 @@ class _CatalogCustomizeScreenState extends State<CatalogCustomizeScreen> {
         _error = e is AppError ? e.message : 'No pudimos cargar la personalización.';
         _loading = false;
       });
+    }
+  }
+
+  Future<void> _pickCover() async {
+    final XFile? img = await ImagePicker().pickImage(
+        source: ImageSource.gallery, maxWidth: 1600, imageQuality: 85);
+    if (img == null || !mounted) return;
+    setState(() => _coverBusy = true);
+    try {
+      final res = await _api.previewLogoUpload(img); // sube a R2 → URL
+      final url = (res['logo_url'] as String?) ?? (res['url'] as String?) ?? '';
+      if (url.isEmpty) throw 'sin url';
+      if (!mounted) return;
+      setState(() => _coverUrl = url);
+    } catch (_) {
+      _snack('No se pudo subir la portada (máx 2MB). Intente otra imagen.');
+    } finally {
+      if (mounted) setState(() => _coverBusy = false);
     }
   }
 
@@ -89,11 +110,9 @@ class _CatalogCustomizeScreenState extends State<CatalogCustomizeScreen> {
         'store_tagline': _taglineCtrl.text.trim(),
         'store_hours': _hoursCtrl.text.trim(),
         'brand_color': _brandColor,
+        'store_cover_url': _coverUrl,
       });
 
-      // El enlace (slug) tiene su propio endpoint con validación de unicidad.
-      // Solo lo mandamos si cambió. Si está tomado, avisamos pero el resto
-      // (nombre/eslogan/horario/color) ya quedó guardado.
       final newSlug = _normalizeSlug(_slugCtrl.text);
       if (newSlug.isNotEmpty && newSlug != _initialSlug) {
         try {
@@ -118,7 +137,6 @@ class _CatalogCustomizeScreenState extends State<CatalogCustomizeScreen> {
     }
   }
 
-  // Enlace amigable: minúsculas, sin espacios ni acentos raros.
   String _normalizeSlug(String s) => s
       .trim()
       .toLowerCase()
@@ -167,64 +185,45 @@ class _CatalogCustomizeScreenState extends State<CatalogCustomizeScreen> {
                   children: [
                     _previewCard(),
                     const SizedBox(height: AppUI.s16),
-                    const Text('Nombre de la tienda', style: AppUI.sectionLabel),
-                    const SizedBox(height: 6),
-                    TextField(
-                      controller: _nameCtrl,
-                      style: const TextStyle(fontSize: 18),
-                      decoration: const InputDecoration(
-                          hintText: 'Ej: Don Brayan', border: OutlineInputBorder()),
-                    ),
+
+                    _section('Identidad', [
+                      _label('Nombre de la tienda'),
+                      _input(_nameCtrl, 'Ej: Don Brayan'),
+                      const SizedBox(height: AppUI.s12),
+                      _label('Eslogan / descripción corta'),
+                      _input(_taglineCtrl, 'Ej: Frutas y verduras frescas a domicilio',
+                          maxLines: 2, maxLength: 140, onChanged: (_) => setState(() {})),
+                      const SizedBox(height: AppUI.s12),
+                      _label('Portada (imagen de cabecera)'),
+                      const SizedBox(height: 6),
+                      _coverPicker(),
+                    ]),
                     const SizedBox(height: AppUI.s16),
-                    const Text('Eslogan / descripción corta', style: AppUI.sectionLabel),
-                    const SizedBox(height: 6),
-                    TextField(
-                      controller: _taglineCtrl,
-                      maxLength: 140,
-                      maxLines: 2,
-                      onChanged: (_) => setState(() {}),
-                      style: const TextStyle(fontSize: 16),
-                      decoration: const InputDecoration(
-                          hintText: 'Ej: Frutas y verduras frescas a domicilio',
-                          border: OutlineInputBorder()),
-                    ),
-                    const SizedBox(height: AppUI.s8),
-                    const Text('Color de marca', style: AppUI.sectionLabel),
-                    const SizedBox(height: 8),
-                    Wrap(
-                      spacing: 12,
-                      runSpacing: 12,
-                      children: [
-                        for (final hex in _swatches) _swatch(hex),
-                      ],
-                    ),
+
+                    _section('Apariencia', [
+                      _label('Color de marca'),
+                      const SizedBox(height: 8),
+                      Wrap(
+                        spacing: 12,
+                        runSpacing: 12,
+                        children: [for (final hex in _swatches) _swatch(hex)],
+                      ),
+                    ]),
                     const SizedBox(height: AppUI.s16),
-                    const Text('Horario de atención', style: AppUI.sectionLabel),
-                    const SizedBox(height: 6),
-                    TextField(
-                      controller: _hoursCtrl,
-                      maxLength: 160,
-                      style: const TextStyle(fontSize: 16),
-                      decoration: const InputDecoration(
-                          hintText: 'Ej: Lun a Sáb 8am–8pm · Dom 9am–2pm',
-                          border: OutlineInputBorder()),
-                    ),
-                    const SizedBox(height: AppUI.s8),
-                    const Text('Enlace de su tienda (URL)', style: AppUI.sectionLabel),
-                    const SizedBox(height: 6),
-                    TextField(
-                      controller: _slugCtrl,
-                      style: const TextStyle(fontSize: 16),
-                      decoration: const InputDecoration(
-                          prefixText: 'tienda.vendia.store/',
-                          hintText: 'mi-tienda',
-                          border: OutlineInputBorder()),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                        'Solo minúsculas, números y guiones. Debe estar disponible.',
-                        style: AppUI.bodySoft.copyWith(fontSize: 12)),
+
+                    _section('Contacto y enlace', [
+                      _label('Horario de atención'),
+                      _input(_hoursCtrl, 'Ej: Lun a Sáb 8am–8pm · Dom 9am–2pm',
+                          maxLength: 160),
+                      const SizedBox(height: AppUI.s12),
+                      _label('Enlace de su tienda (URL)'),
+                      _input(_slugCtrl, 'mi-tienda', prefixText: 'tienda.vendia.store/'),
+                      const SizedBox(height: 4),
+                      Text('Solo minúsculas, números y guiones. Debe estar disponible.',
+                          style: AppUI.bodySoft.copyWith(fontSize: 12)),
+                    ]),
                     const SizedBox(height: AppUI.s24),
+
                     SizedBox(
                       height: 52,
                       child: ElevatedButton(
@@ -249,27 +248,116 @@ class _CatalogCustomizeScreenState extends State<CatalogCustomizeScreen> {
     );
   }
 
-  // Vista previa de la cabecera del catálogo con el color/nombre/eslogan.
+  // ── Helpers de UI (AppUI) ──────────────────────────────────────────────
+
+  Widget _section(String title, List<Widget> children) {
+    return SoftCard(
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text(title.toUpperCase(), style: AppUI.sectionLabel),
+        const SizedBox(height: AppUI.s12),
+        ...children,
+      ]),
+    );
+  }
+
+  Widget _label(String t) => Text(t, style: AppUI.bodyStrong.copyWith(fontSize: 14));
+
+  Widget _input(TextEditingController c, String hint,
+      {int maxLines = 1, int? maxLength, String? prefixText, ValueChanged<String>? onChanged}) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 6),
+      child: TextField(
+        controller: c,
+        maxLines: maxLines,
+        maxLength: maxLength,
+        onChanged: onChanged,
+        style: const TextStyle(fontSize: 16),
+        decoration: InputDecoration(
+          hintText: hint,
+          prefixText: prefixText,
+          border: const OutlineInputBorder(),
+          isDense: true,
+          contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+        ),
+      ),
+    );
+  }
+
   Widget _previewCard() {
     return Container(
-      padding: const EdgeInsets.all(AppUI.s16),
+      clipBehavior: Clip.antiAlias,
       decoration: BoxDecoration(
         color: _previewColor,
         borderRadius: BorderRadius.circular(16),
       ),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        const Text('Así se ve su tienda en línea',
-            style: TextStyle(color: Colors.white70, fontSize: 12)),
-        const SizedBox(height: 8),
-        Text(_nameCtrl.text.trim().isEmpty ? 'Su tienda' : _nameCtrl.text.trim(),
-            style: const TextStyle(
-                color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold)),
-        if (_taglineCtrl.text.trim().isNotEmpty) ...[
-          const SizedBox(height: 4),
-          Text(_taglineCtrl.text.trim(),
-              style: const TextStyle(color: Colors.white, fontSize: 14)),
-        ],
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        if (_coverUrl.isNotEmpty)
+          SizedBox(
+            height: 90,
+            width: double.infinity,
+            child: Image.network(_coverUrl, fit: BoxFit.cover,
+                errorBuilder: (_, __, ___) => const SizedBox()),
+          ),
+        Padding(
+          padding: const EdgeInsets.all(AppUI.s16),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            const Text('Así se ve su tienda en línea',
+                style: TextStyle(color: Colors.white70, fontSize: 12)),
+            const SizedBox(height: 8),
+            Text(_nameCtrl.text.trim().isEmpty ? 'Su tienda' : _nameCtrl.text.trim(),
+                style: const TextStyle(
+                    color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold)),
+            if (_taglineCtrl.text.trim().isNotEmpty) ...[
+              const SizedBox(height: 4),
+              Text(_taglineCtrl.text.trim(),
+                  style: const TextStyle(color: Colors.white, fontSize: 14)),
+            ],
+          ]),
+        ),
       ]),
+    );
+  }
+
+  Widget _coverPicker() {
+    if (_coverBusy) {
+      return Container(
+        height: 56,
+        alignment: Alignment.center,
+        decoration: AppUI.card(),
+        child: const SizedBox(
+            width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 2)),
+      );
+    }
+    if (_coverUrl.isNotEmpty) {
+      return Row(children: [
+        ClipRRect(
+          borderRadius: BorderRadius.circular(AppUI.radiusSm),
+          child: Image.network(_coverUrl, width: 64, height: 48, fit: BoxFit.cover,
+              errorBuilder: (_, __, ___) =>
+                  const Icon(Icons.broken_image_rounded, color: AppUI.inkSoft)),
+        ),
+        const SizedBox(width: AppUI.s12),
+        TextButton.icon(
+          onPressed: _pickCover,
+          icon: const Icon(Icons.swap_horiz_rounded, size: 18),
+          label: const Text('Cambiar'),
+        ),
+        TextButton(
+          onPressed: () => setState(() => _coverUrl = ''),
+          style: TextButton.styleFrom(foregroundColor: AppTheme.error),
+          child: const Text('Quitar'),
+        ),
+      ]);
+    }
+    return OutlinedButton.icon(
+      key: const Key('pick_cover'),
+      onPressed: _pickCover,
+      icon: const Icon(Icons.add_photo_alternate_rounded, size: 20),
+      label: const Text('Subir portada'),
+      style: OutlinedButton.styleFrom(
+        minimumSize: const Size.fromHeight(48),
+        foregroundColor: AppTheme.primary,
+      ),
     );
   }
 

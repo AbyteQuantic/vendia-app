@@ -141,8 +141,8 @@ class _CatalogOnlineHubScreenState extends State<CatalogOnlineHubScreen> {
                 onTap: () => _go(const PromotionsListScreen()),
               ),
               _ActionRow(
-                icon: Icons.image_outlined,
-                title: 'Editar banner y promociones',
+                icon: Icons.local_offer_outlined,
+                title: 'Promociones y combos',
                 onTap: () => _go(const PromoBuilderScreen()),
               ),
             ],

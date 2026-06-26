@@ -43,11 +43,12 @@ void main() {
     expect(find.byKey(const Key('catalog_hub_copy')), findsOneWidget);
   });
 
-  testWidgets('reúne acciones: campañas masivas y editar banner',
+  testWidgets('reúne acciones: personalizar, campañas y promociones',
       (tester) async {
     await _pump(tester, 'https://tienda.vendia.store/mi-tienda');
+    expect(find.text('Nombre, eslogan y color de marca'), findsOneWidget);
     expect(find.text('Envío masivo por campañas'), findsOneWidget);
-    expect(find.text('Editar banner y promociones'), findsOneWidget);
+    expect(find.text('Promociones y combos'), findsOneWidget);
   });
 
   testWidgets('sin link configurado → muestra guía, no botones de link',
