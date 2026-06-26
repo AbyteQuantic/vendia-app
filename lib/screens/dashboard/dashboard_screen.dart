@@ -1184,53 +1184,18 @@ class _DashboardScreenState extends State<DashboardScreen> {
       return const SizedBox.shrink();
     }
 
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-      child: Row(
-        children: [
-          Container(
-            width: 48,
-            height: 48,
-            decoration: BoxDecoration(
-              color: AppTheme.primary.withValues(alpha: 0.1),
-              borderRadius: BorderRadius.circular(20),
-            ),
-            child: Icon(_payIcon(method), color: AppTheme.primary, size: 24),
-          ),
-          const SizedBox(width: 14),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(label,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.w600,
-                        color: AppTheme.textPrimary)),
-                const SizedBox(height: 2),
-                Text(
-                  [
-                    _payLabel(method, context),
-                    if (employeeName.isNotEmpty) employeeName,
-                    _timeAgo(createdAt),
-                  ].join(' · '),
-                  style: const TextStyle(
-                      fontSize: 15, color: AppTheme.textSecondary),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ],
-            ),
-          ),
-          Text(_formatCOP(total.round()),
-              style: const TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                  color: AppTheme.success)),
-        ],
-      ),
+    // PERF/orden: presentación pura en _SaleTile (StatelessWidget). El parseo y
+    // los helpers (con context) se resuelven aquí; el tile solo renderiza.
+    final subtitle = [
+      _payLabel(method, context),
+      if (employeeName.isNotEmpty) employeeName,
+      _timeAgo(createdAt),
+    ].join(' · ');
+    return _SaleTile(
+      label: label,
+      subtitle: subtitle,
+      icon: _payIcon(method),
+      totalText: _formatCOP(total.round()),
     );
   }
 
@@ -2106,6 +2071,69 @@ class _StoreStatusPill extends StatelessWidget {
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// Fila de "Última venta" — presentación pura (sin lógica ni context). El
+/// parseo y los helpers se resuelven en el builder; esto solo renderiza, así el
+/// framework puede reutilizar/aislar el widget. (Audit perf, Spec 082.)
+class _SaleTile extends StatelessWidget {
+  final String label;
+  final String subtitle;
+  final IconData icon;
+  final String totalText;
+
+  const _SaleTile({
+    required this.label,
+    required this.subtitle,
+    required this.icon,
+    required this.totalText,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      child: Row(
+        children: [
+          Container(
+            width: 48,
+            height: 48,
+            decoration: BoxDecoration(
+              color: AppTheme.primary.withValues(alpha: 0.1),
+              borderRadius: BorderRadius.circular(20),
+            ),
+            child: Icon(icon, color: AppTheme.primary, size: 24),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w600,
+                        color: AppTheme.textPrimary)),
+                const SizedBox(height: 2),
+                Text(subtitle,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                        fontSize: 15, color: AppTheme.textSecondary)),
+              ],
+            ),
+          ),
+          Text(totalText,
+              style: const TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  color: AppTheme.success)),
+        ],
       ),
     );
   }
