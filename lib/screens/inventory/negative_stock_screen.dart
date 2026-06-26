@@ -10,8 +10,7 @@ import '../../services/auth_service.dart';
 import '../../theme/app_theme.dart';
 import '../../theme/app_ui.dart';
 import '../../widgets/branch_selector_drawer.dart';
-import '../../widgets/dispatch_sheet.dart';
-import '../../widgets/product_picker_sheet.dart';
+import '../purchases/supplier_order_cart_screen.dart';
 
 /// Lista los productos cuyo stock disponible quedó negativo (se vendieron sin
 /// existencias registradas) y deja corregirlos indicando la cantidad REAL que
@@ -230,35 +229,24 @@ class _NegativeStockScreenState extends State<NegativeStockScreen> {
     });
   }
 
-  // Agrega un producto que NO está en la lista de negativos (buscador). Reusa
-  // el selector compartido showProductPicker.
-  Future<void> _addOther() async {
-    final prod = await showProductPicker(context, api: _api);
-    if (prod == null || !mounted) return;
-    if (_cart.any((l) => l['uuid'] == prod.uuid)) {
-      _snack('${prod.name} ya está en el pedido.', ok: true);
-      return;
+  // Abre el CARRITO interno del pedido (ver detalle, ajustar cantidades, agregar
+  // otros productos y enviar). Al volver, sincroniza el pedido con lo que quedó.
+  Future<void> _openCart() async {
+    final result = await Navigator.of(context).push<List<Map<String, dynamic>>>(
+      MaterialPageRoute(
+        builder: (_) => SupplierOrderCartScreen(
+          initialLines: _cart.map((e) => Map<String, dynamic>.from(e)).toList(),
+          api: _api,
+        ),
+      ),
+    );
+    if (result != null && mounted) {
+      setState(() {
+        _cart
+          ..clear()
+          ..addAll(result);
+      });
     }
-    setState(() => _cart.add({'uuid': prod.uuid, 'name': prod.name, 'qty': 1}));
-  }
-
-  // Envía el pedido armado por el flujo proveedor/empleado/WhatsApp.
-  Future<void> _sendCart() async {
-    if (_cart.isEmpty) return;
-    final lines = _cart
-        .map((l) => <String, dynamic>{
-              'name': l['name'],
-              'unit': 'und',
-              'shortfall': l['qty'],
-              'price_per_unit': 0,
-              'estimated_cost': 0,
-              'ingredient_id': null,
-              'price_source': 'manual',
-              'is_estimate': true,
-            })
-        .toList();
-    final sent = await showDispatchSheet(context, lines, 0, api: _api);
-    if (sent == true && mounted) setState(() => _cart.clear());
   }
 
   // Barra inferior: arma el pedido (agregar otros) y lo envía cuando hay líneas.
@@ -272,52 +260,41 @@ class _NegativeStockScreenState extends State<NegativeStockScreen> {
           child: Padding(
             padding: const EdgeInsets.fromLTRB(AppUI.s16, AppUI.s8, AppUI.s16, AppUI.s12),
             child: Column(mainAxisSize: MainAxisSize.min, children: [
-            if (_cart.isNotEmpty) ...[
+            SizedBox(
+              width: double.infinity,
+              height: 50,
+              child: ElevatedButton.icon(
+                onPressed: _openCart,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: _cart.isEmpty ? AppUI.border : AppTheme.primary,
+                  foregroundColor: _cart.isEmpty ? AppTheme.textSecondary : Colors.white,
+                  elevation: 0,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppUI.radiusSm)),
+                ),
+                icon: const Icon(Icons.shopping_cart_rounded, size: 20),
+                label: Text(
+                    _cart.isEmpty
+                        ? 'Ver pedido al proveedor'
+                        : 'Ver pedido al proveedor (${_cart.length})',
+                    style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15)),
+              ),
+            ),
+            if (_cart.length < items.length) ...[
+              const SizedBox(height: AppUI.s8),
               SizedBox(
                 width: double.infinity,
-                height: 50,
-                child: ElevatedButton.icon(
-                  onPressed: _sendCart,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: AppTheme.primary,
-                    foregroundColor: Colors.white,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppUI.radiusSm)),
-                  ),
-                  icon: const Icon(Icons.local_shipping_rounded, size: 20),
-                  label: Text('Enviar pedido al proveedor (${_cart.length})',
-                      style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15)),
-                ),
-              ),
-              const SizedBox(height: AppUI.s8),
-            ],
-            Row(children: [
-              Expanded(
-                child: OutlinedButton.icon(
-                  onPressed: _addOther,
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: AppTheme.primary,
-                    side: const BorderSide(color: AppUI.border),
-                    minimumSize: const Size.fromHeight(46),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppUI.radiusSm)),
-                  ),
-                  icon: const Icon(Icons.add_rounded, size: 18),
-                  label: const Text('Agregar otro producto'),
-                ),
-              ),
-              if (_cart.length < items.length) ...[
-                const SizedBox(width: AppUI.s8),
-                OutlinedButton(
+                child: OutlinedButton(
                   onPressed: () => _addAll(items),
                   style: OutlinedButton.styleFrom(
                     foregroundColor: AppTheme.primary,
                     side: const BorderSide(color: AppUI.border),
-                    minimumSize: const Size.fromHeight(46),
+                    minimumSize: const Size.fromHeight(44),
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppUI.radiusSm)),
                   ),
-                  child: const Text('Agregar todos'),
+                  child: const Text('Agregar todos al pedido'),
                 ),
-              ],
-            ]),
+              ),
+            ],
           ]),
           ),
         ),
