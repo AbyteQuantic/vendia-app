@@ -16,6 +16,7 @@ import '../../theme/app_ui.dart';
 import '../../widgets/product_picker_sheet.dart';
 import '../../widgets/supplier_picker_sheet.dart';
 import '../suppliers/supplier_catalog_screen.dart';
+import '../suppliers/nearby_suppliers_screen.dart';
 
 class SupplierOrderCartScreen extends StatefulWidget {
   /// Líneas iniciales: mapas {uuid?, name, qty}.
@@ -80,6 +81,13 @@ class _SupplierOrderCartScreenState extends State<SupplierOrderCartScreen> {
         l['supplierPhone'] = s['phone'] ?? '';
       }
     });
+  }
+
+  // Directorio de proveedores suscritos a VendIA (cercanos) + sus catálogos.
+  Future<void> _openVendiaSuppliers() async {
+    await Navigator.of(context).push(MaterialPageRoute(
+      builder: (_) => const NearbySuppliersScreen(),
+    ));
   }
 
   Future<void> _openCatalog(String supplierId, String supplierName) async {
@@ -192,6 +200,20 @@ class _SupplierOrderCartScreenState extends State<SupplierOrderCartScreen> {
                     ),
                     icon: const Icon(Icons.add_rounded, size: 18),
                     label: const Text('Agregar producto'),
+                  ),
+                  const SizedBox(height: AppUI.s8),
+                  // Acceso al directorio B2B: proveedores suscritos a VendIA
+                  // (cercanos) con su catálogo para pedir directo.
+                  OutlinedButton.icon(
+                    onPressed: _openVendiaSuppliers,
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: AppTheme.primary,
+                      side: const BorderSide(color: AppUI.border),
+                      minimumSize: const Size.fromHeight(48),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppUI.radiusSm)),
+                    ),
+                    icon: const Icon(Icons.storefront_rounded, size: 18),
+                    label: const Text('Buscar proveedores en VendIA'),
                   ),
                 ],
               ),
@@ -326,6 +348,12 @@ class _SupplierOrderCartScreenState extends State<SupplierOrderCartScreen> {
               onPressed: _addProduct,
               icon: const Icon(Icons.add_rounded, size: 18),
               label: const Text('Agregar producto'),
+            ),
+            const SizedBox(height: AppUI.s8),
+            TextButton.icon(
+              onPressed: _openVendiaSuppliers,
+              icon: const Icon(Icons.storefront_rounded, size: 18),
+              label: const Text('Buscar proveedores en VendIA'),
             ),
           ]),
         ),
