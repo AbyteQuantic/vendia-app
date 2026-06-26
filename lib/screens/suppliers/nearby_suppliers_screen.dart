@@ -1,5 +1,7 @@
 // Spec: specs/075-proveedores-b2b/spec.md
 import 'package:flutter/material.dart';
+import 'package:flutter_map/flutter_map.dart';
+import 'package:latlong2/latlong.dart';
 import '../../theme/app_theme.dart';
 import '../../theme/app_ui.dart';
 import '../../services/api_service.dart';
@@ -36,6 +38,9 @@ class _NearbySuppliersScreenState extends State<NearbySuppliersScreen> {
   bool _loading = true;
   String? _error;
   List<Map<String, dynamic>> _suppliers = [];
+  LatLng? _origin;
+  bool _mapView = false; // false = lista, true = mapa
+  final MapController _mapCtrl = MapController();
 
   @override
   void initState() {
@@ -49,10 +54,15 @@ class _NearbySuppliersScreenState extends State<NearbySuppliersScreen> {
       _error = null;
     });
     try {
-      final list = await _api.fetchNearbySuppliers(radiusKm: _radius);
+      final res = await _api.fetchNearbySuppliersFull(radiusKm: _radius);
+      final list = (res['data'] as List).cast<Map<String, dynamic>>();
+      final o = res['origin'] as Map<String, dynamic>?;
       if (!mounted) return;
       setState(() {
         _suppliers = list;
+        _origin = (o != null && o['lat'] != null && o['lng'] != null)
+            ? LatLng((o['lat'] as num).toDouble(), (o['lng'] as num).toDouble())
+            : null;
         _loading = false;
       });
     } catch (e) {
@@ -124,6 +134,18 @@ class _NearbySuppliersScreenState extends State<NearbySuppliersScreen> {
               ),
             ),
             const SizedBox(height: AppUI.s8),
+            // Toggle Lista / Mapa.
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: AppUI.s16),
+              child: Row(children: [
+                _viewChip('Lista', Icons.view_list_rounded, !_mapView,
+                    () => setState(() => _mapView = false)),
+                const SizedBox(width: 6),
+                _viewChip('Mapa', Icons.map_rounded, _mapView,
+                    () => setState(() => _mapView = true)),
+              ]),
+            ),
+            const SizedBox(height: AppUI.s8),
             Expanded(child: _body()),
           ],
         ),
@@ -146,6 +168,7 @@ class _NearbySuppliersScreenState extends State<NearbySuppliersScreen> {
             : TextButton(onPressed: _load, child: const Text('Reintentar')),
       );
     }
+    if (_mapView) return _mapBody();
     if (_suppliers.isEmpty) {
       return const _Centered(
         icon: Icons.storefront_rounded,
@@ -159,14 +182,103 @@ class _NearbySuppliersScreenState extends State<NearbySuppliersScreen> {
       separatorBuilder: (_, __) => const SizedBox(height: AppUI.s8),
       itemBuilder: (_, i) => _SupplierCard(
         data: _suppliers[i],
-        onTap: () => Navigator.of(context).push(MaterialPageRoute(
-          builder: (_) => SupplierCatalogScreen(
-            supplierId: _suppliers[i]['id'].toString(),
-            supplierName: (_suppliers[i]['business_name'] ?? '').toString(),
-          ),
-        )),
+        onTap: () => _openCatalog(_suppliers[i]),
       ),
     );
+  }
+
+  void _openCatalog(Map<String, dynamic> s) {
+    Navigator.of(context).push(MaterialPageRoute(
+      builder: (_) => SupplierCatalogScreen(
+        supplierId: s['id'].toString(),
+        supplierName: (s['business_name'] ?? '').toString(),
+      ),
+    ));
+  }
+
+  Widget _viewChip(String label, IconData icon, bool selected, VoidCallback onTap) {
+    return ChoiceChip(
+      label: Row(mainAxisSize: MainAxisSize.min, children: [
+        Icon(icon, size: 16, color: selected ? AppTheme.primary : AppUI.inkSoft),
+        const SizedBox(width: 4),
+        Text(label, style: const TextStyle(fontSize: 13)),
+      ]),
+      selected: selected,
+      onSelected: (_) => onTap(),
+      selectedColor: AppTheme.primary.withValues(alpha: 0.15),
+      showCheckmark: false,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(AppUI.radiusSm),
+        side: BorderSide(color: selected ? AppTheme.primary : AppUI.border),
+      ),
+    );
+  }
+
+  // Vista de MAPA: origen (mi negocio) + un pin por proveedor (toca → catálogo).
+  Widget _mapBody() {
+    final origin = _origin;
+    if (origin == null) {
+      return const _Centered(
+        icon: Icons.location_off_rounded,
+        title: 'Fije la ubicación de su negocio para ver el mapa.',
+      );
+    }
+    return Stack(children: [
+      FlutterMap(
+        mapController: _mapCtrl,
+        options: MapOptions(
+          initialCenter: origin,
+          initialZoom: _radius <= 1 ? 15 : (_radius <= 5 ? 13.5 : 12.5),
+        ),
+        children: [
+          TileLayer(
+            urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+            userAgentPackageName: 'store.vendia.app',
+          ),
+          MarkerLayer(markers: [
+            Marker(
+              point: origin,
+              width: 44,
+              height: 44,
+              child: const Icon(Icons.my_location_rounded,
+                  color: AppTheme.primary, size: 30),
+            ),
+            for (final s in _suppliers)
+              if (s['lat'] != null && s['lng'] != null)
+                Marker(
+                  point: LatLng((s['lat'] as num).toDouble(),
+                      (s['lng'] as num).toDouble()),
+                  width: 40,
+                  height: 40,
+                  child: GestureDetector(
+                    onTap: () => _openCatalog(s),
+                    child: Icon(
+                        (s['business_types'] as List?)
+                                    ?.any((t) => t.toString().contains('agricola')) ==
+                                true
+                            ? Icons.grass_rounded
+                            : Icons.warehouse_rounded,
+                        color: AppTheme.error,
+                        size: 32),
+                  ),
+                ),
+          ]),
+        ],
+      ),
+      if (_suppliers.isEmpty)
+        Positioned(
+          left: AppUI.s16,
+          right: AppUI.s16,
+          top: AppUI.s8,
+          child: Container(
+            padding: const EdgeInsets.all(AppUI.s12),
+            decoration: AppUI.card(r: 10),
+            child: const Text(
+                'No hay proveedores en este radio. Pruebe ampliar la distancia.',
+                style: AppUI.bodySoft),
+          ),
+        ),
+    ]);
   }
 }
 

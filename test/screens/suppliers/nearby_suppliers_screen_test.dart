@@ -8,19 +8,25 @@ import 'package:vendia_pos/screens/suppliers/nearby_suppliers_screen.dart';
 
 class _FakeApi extends ApiService {
   _FakeApi() : super(AuthService());
+
+  static final _list = [
+    {
+      'id': 's1', 'business_name': '[SEED] El Tomate',
+      'business_types': ['proveedor_agricola'],
+      'distance_km': 0.71, 'product_count': 3, 'expiring_soon_count': 2,
+      'lat': 4.345, 'lng': -74.365,
+    },
+    {
+      'id': 's2', 'business_name': 'El Granero',
+      'business_types': ['proveedor_mayorista'],
+      'distance_km': 1.14, 'product_count': 3, 'expiring_soon_count': 0,
+      'lat': 4.350, 'lng': -74.355,
+    },
+  ];
+
   @override
-  Future<List<Map<String, dynamic>>> fetchNearbySuppliers({double radiusKm = 5}) async => [
-        {
-          'id': 's1', 'business_name': '[SEED] El Tomate',
-          'business_types': ['proveedor_agricola'],
-          'distance_km': 0.71, 'product_count': 3, 'expiring_soon_count': 2
-        },
-        {
-          'id': 's2', 'business_name': 'El Granero',
-          'business_types': ['proveedor_mayorista'],
-          'distance_km': 1.14, 'product_count': 3, 'expiring_soon_count': 0
-        },
-      ];
+  Future<Map<String, dynamic>> fetchNearbySuppliersFull({double radiusKm = 5}) async =>
+      {'data': _list, 'origin': {'lat': 4.341, 'lng': -74.360}};
 }
 
 void main() {

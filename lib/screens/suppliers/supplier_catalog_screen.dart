@@ -170,7 +170,7 @@ class _SupplierCatalogScreenState extends State<SupplierCatalogScreen> {
     final id = p['id'].toString();
     final qty = _cart[id] ?? 0;
     final selected = qty > 0;
-    final expiry = (p['expiry_date'] ?? '').toString();
+    final expiry = _fmtDate((p['expiry_date'] ?? '').toString());
     final photo = (p['photo_url'] ?? '').toString();
     final category = (p['category'] ?? '').toString();
     final price = (p['price'] as num?)?.toDouble() ?? 0;
@@ -308,6 +308,19 @@ class _SupplierCatalogScreenState extends State<SupplierCatalogScreen> {
     );
   }
 
+  // ISO ("2026-07-10T00:00:00Z") → "10/07/2026". Si no parsea, toma la fecha
+  // (parte antes de la T); vacío si no hay.
+  String _fmtDate(String raw) {
+    if (raw.trim().isEmpty) return '';
+    final d = DateTime.tryParse(raw);
+    if (d != null) {
+      final dd = d.day.toString().padLeft(2, '0');
+      final mm = d.month.toString().padLeft(2, '0');
+      return '$dd/$mm/${d.year}';
+    }
+    return raw.split('T').first;
+  }
+
   Widget _bottomBar() {
     return Container(
       decoration: const BoxDecoration(
@@ -345,35 +358,34 @@ class _SupplierCatalogScreenState extends State<SupplierCatalogScreen> {
               ],
             ),
             const SizedBox(height: AppUI.s8),
-            Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    _itemCount == 0
-                        ? 'Agregue productos'
-                        : '$_itemCount ítem(s) · \$${_total.toStringAsFixed(0)}',
-                    style: AppUI.bodyStrong,
-                  ),
+            // Resumen arriba + botón de ancho completo abajo: evita que el botón
+            // largo ahogue el texto (antes el Expanded quedaba sin ancho y el
+            // texto se partía letra por letra).
+            Text(
+              _itemCount == 0
+                  ? 'Agregue productos para pedir'
+                  : '$_itemCount ítem(s) · \$${_total.toStringAsFixed(0)}',
+              style: AppUI.bodyStrong,
+            ),
+            const SizedBox(height: AppUI.s8),
+            SizedBox(
+              width: double.infinity,
+              height: 50,
+              child: ElevatedButton.icon(
+                key: const Key('btn_order_whatsapp'),
+                onPressed: _itemCount == 0 || _sending ? null : _order,
+                icon: _sending
+                    ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                    : const Icon(Icons.chat_rounded, size: 18),
+                label: const Text('Pedir por WhatsApp'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF25D366),
+                  foregroundColor: Colors.white,
+                  elevation: 0,
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(AppUI.radiusSm)),
                 ),
-                SizedBox(
-                  height: 48,
-                  child: ElevatedButton.icon(
-                    key: const Key('btn_order_whatsapp'),
-                    onPressed: _itemCount == 0 || _sending ? null : _order,
-                    icon: _sending
-                        ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                        : const Icon(Icons.chat_rounded, size: 18),
-                    label: const Text('Pedir por WhatsApp'),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF25D366),
-                      foregroundColor: Colors.white,
-                      elevation: 0,
-                      shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(AppUI.radiusSm)),
-                    ),
-                  ),
-                ),
-              ],
+              ),
             ),
           ],
         ),

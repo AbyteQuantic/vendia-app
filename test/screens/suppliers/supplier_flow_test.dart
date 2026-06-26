@@ -39,7 +39,7 @@ void main() {
         home: SupplierCatalogScreen(supplierId: 's1', supplierName: '[SEED] El Tomate', api: _FakeApi())));
     await tester.pumpAndSettle();
     expect(find.text('Tomate'), findsOneWidget);
-    expect(find.text('Agregue productos'), findsOneWidget);
+    expect(find.text('Agregue productos para pedir'), findsOneWidget);
     await tester.tap(find.byKey(const Key('plus_p1')));
     await tester.pump();
     expect(find.textContaining('45000'), findsWidgets); // total refleja el precio
