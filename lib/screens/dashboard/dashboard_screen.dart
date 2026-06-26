@@ -25,6 +25,7 @@ import '../settings/notifications_settings_screen.dart';
 import '../../widgets/trial_bar.dart';
 import '../auth/login_screen.dart';
 import '../inventory/add_merchandise_screen.dart';
+import '../online_store/catalog_online_hub_screen.dart';
 import '../inventory/reorder_screen.dart';
 import '../pos/pos_screen.dart';
 import '../../database/sync/sales_sync.dart';
@@ -603,6 +604,24 @@ class _DashboardScreenState extends State<DashboardScreen> {
         builder: (_) => const AddMerchandiseScreen(),
       )),
     ));
+
+    // Spec 082 — Catálogo Online: la opción PRINCIPAL → primera card del
+    // carrusel (decisión fundador). insert(0) la deja antes de los KPIs.
+    cards.insert(
+      0,
+      KpiCardData(
+        title: 'Catálogo Online',
+        value: 'Tu tienda en línea',
+        subtitle: 'Personalice y comparta',
+        photoUrl:
+            'https://images.pexels.com/photos/4198015/pexels-photo-4198015.jpeg?auto=compress&cs=tinysrgb&w=480&h=360&fit=crop',
+        fallbackIcon: Icons.storefront_rounded,
+        accentColor: AppTheme.success,
+        onTap: () => Navigator.of(context).push(MaterialPageRoute(
+          builder: (_) => const CatalogOnlineHubScreen(),
+        )),
+      ),
+    );
 
     return cards;
   }
