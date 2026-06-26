@@ -8,6 +8,7 @@ import '../../services/auth_service.dart';
 import '../../theme/app_theme.dart';
 import '../../theme/app_ui.dart';
 import '../../widgets/branch_selector_drawer.dart';
+import '../../widgets/dispatch_sheet.dart';
 
 /// Lista los productos cuyo stock disponible quedó negativo (se vendieron sin
 /// existencias registradas) y deja corregirlos indicando la cantidad REAL que
@@ -160,23 +161,73 @@ class _NegativeStockScreenState extends State<NegativeStockScreen> {
           }
           final items = snap.data!;
           if (items.isEmpty) return _emptyState();
-          return ListView.builder(
-            padding: const EdgeInsets.fromLTRB(AppUI.s16, AppUI.s12, AppUI.s16, AppUI.s24),
-            itemCount: items.length + 1,
-            itemBuilder: (_, i) {
-              if (i == 0) return _intro(items.length);
-              final p = items[i - 1];
-              return _NegativeStockTile(
-                product: p,
-                busy: _adjusting.contains(p.uuid),
-                onQuickAdjust: (d) => _applyDelta(p, d),
-                onCorrect: () => _openCorrectDialog(p),
-              );
-            },
-          );
+          return Column(children: [
+            Expanded(
+              child: ListView.builder(
+                padding: const EdgeInsets.fromLTRB(AppUI.s16, AppUI.s12, AppUI.s16, AppUI.s16),
+                itemCount: items.length + 1,
+                itemBuilder: (_, i) {
+                  if (i == 0) return _intro(items.length);
+                  final p = items[i - 1];
+                  return _NegativeStockTile(
+                    product: p,
+                    busy: _adjusting.contains(p.uuid),
+                    onQuickAdjust: (d) => _applyDelta(p, d),
+                    onCorrect: () => _openCorrectDialog(p),
+                    onOrder: () => _orderOne(p),
+                  );
+                },
+              ),
+            ),
+            _orderBar(items),
+          ]);
         },
       ),
     );
+  }
+
+  // Barra inferior: pedir TODOS los productos en negativo al proveedor.
+  Widget _orderBar(List<LocalProduct> items) => SafeArea(
+        top: false,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(AppUI.s16, AppUI.s8, AppUI.s16, AppUI.s12),
+          child: SizedBox(
+            height: 50,
+            child: OutlinedButton.icon(
+              onPressed: () => _order(items),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: AppTheme.primary,
+                side: const BorderSide(color: AppTheme.primary),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppUI.radiusSm)),
+              ),
+              icon: const Icon(Icons.local_shipping_rounded, size: 20),
+              label: Text('Pedir al proveedor (${items.length})',
+                  style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15)),
+            ),
+          ),
+        ),
+      );
+
+  void _orderOne(LocalProduct p) => _order([p]);
+
+  // Abre el flujo de pedido (proveedor / empleado / WhatsApp) con los productos
+  // a reponer. Reusa showDispatchSheet (mismo flujo que "Comprar insumos").
+  Future<void> _order(List<LocalProduct> products) async {
+    final lines = products.map((p) {
+      final available = p.stock - p.reservedStock;
+      final qty = available < 0 ? -available : 1; // sugerido: cubrir el faltante
+      return <String, dynamic>{
+        'name': p.name,
+        'unit': 'und',
+        'shortfall': qty,
+        'price_per_unit': 0,
+        'estimated_cost': 0,
+        'ingredient_id': null,
+        'price_source': 'manual',
+        'is_estimate': true,
+      };
+    }).toList();
+    await showDispatchSheet(context, lines, 0, api: _api);
   }
 
   Widget _intro(int count) => Padding(
@@ -218,12 +269,14 @@ class _NegativeStockTile extends StatelessWidget {
   final bool busy;
   final ValueChanged<int> onQuickAdjust;
   final VoidCallback onCorrect;
+  final VoidCallback onOrder;
 
   const _NegativeStockTile({
     required this.product,
     required this.busy,
     required this.onQuickAdjust,
     required this.onCorrect,
+    required this.onOrder,
   });
 
   @override
@@ -300,15 +353,25 @@ class _NegativeStockTile extends StatelessWidget {
             ),
           ),
           const SizedBox(height: AppUI.s8),
-          // Atajos para sumar rápido.
+          // Atajos para sumar rápido + pedido al proveedor de este producto.
           Row(children: [
-            Text('Sumar rápido:', style: AppUI.bodySoft.copyWith(fontSize: 12)),
-            const SizedBox(width: 8),
             _QuickChip(label: '+1', busy: busy, onTap: () => onQuickAdjust(1)),
             const SizedBox(width: 6),
             _QuickChip(label: '+5', busy: busy, onTap: () => onQuickAdjust(5)),
             const SizedBox(width: 6),
             _QuickChip(label: '+10', busy: busy, onTap: () => onQuickAdjust(10)),
+            const Spacer(),
+            TextButton.icon(
+              onPressed: busy ? null : onOrder,
+              style: TextButton.styleFrom(
+                foregroundColor: AppTheme.primary,
+                padding: const EdgeInsets.symmetric(horizontal: 8),
+                minimumSize: Size.zero,
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              ),
+              icon: const Icon(Icons.local_shipping_outlined, size: 17),
+              label: const Text('Pedir', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
+            ),
           ]),
         ]),
       ),

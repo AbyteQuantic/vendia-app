@@ -60,7 +60,11 @@ class _DispatchSheetState extends State<_DispatchSheet> {
       final q = qty == qty.roundToDouble() ? qty.toStringAsFixed(0) : qty.toStringAsFixed(2);
       b.writeln('• ${it['name']} — $q ${it['unit']}');
     }
-    b.writeln('\nTotal aprox: ${formatCOP(widget.total)}');
+    // Solo mostramos el total cuando hay un costo estimado (>0). En pedidos de
+    // reposición sin precio de compra conocido, omitirlo evita un "$0" feo.
+    if (widget.total > 0) {
+      b.writeln('\nTotal aprox: ${formatCOP(widget.total)}');
+    }
     return b.toString();
   }
 
