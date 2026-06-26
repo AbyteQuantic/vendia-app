@@ -137,8 +137,11 @@ class CarouselDots extends StatelessWidget {
     final inactive = inactiveColor ?? AppTheme.borderColor;
 
     return Row(
+      // max + center → los dots quedan centrados en todo el ancho disponible
+      // (con min, mainAxisAlignment.center no centra y quedaban a la izquierda).
+      // Ambos usos (KpiCarousel, capabilities_reel) viven en Columns acotados.
       mainAxisAlignment: MainAxisAlignment.center,
-      mainAxisSize: MainAxisSize.min,
+      mainAxisSize: MainAxisSize.max,
       children: List.generate(count, (i) {
         final isActive = i == current;
         final dot = AnimatedContainer(
