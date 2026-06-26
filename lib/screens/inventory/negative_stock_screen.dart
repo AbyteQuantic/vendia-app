@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -37,6 +39,12 @@ class _NegativeStockScreenState extends State<NegativeStockScreen> {
   late final ApiService _api;
   final Set<String> _adjusting = <String>{};
 
+  // Escuchamos el stream en estado para que la barra de pedido (bottom bar) y el
+  // cuerpo compartan los mismos items sin layouts ambiguos (Column/Expanded).
+  StreamSubscription<List<LocalProduct>>? _sub;
+  List<LocalProduct> _items = [];
+  bool _loaded = false;
+
   // Pedido al proveedor que el tendero va ARMANDO: líneas {uuid, name, qty}.
   // No se envía hasta tocar "Enviar pedido" → así nunca manda un solo producto.
   final List<Map<String, dynamic>> _cart = [];
@@ -47,6 +55,19 @@ class _NegativeStockScreenState extends State<NegativeStockScreen> {
     _stream = widget.productsStream ??
         DatabaseService.instance.watchNegativeStockProducts();
     _api = widget.apiService ?? ApiService(AuthService());
+    _sub = _stream.listen((data) {
+      if (!mounted) return;
+      setState(() {
+        _items = data;
+        _loaded = true;
+      });
+    });
+  }
+
+  @override
+  void dispose() {
+    _sub?.cancel();
+    super.dispose();
   }
 
   Future<void> _applyDelta(LocalProduct product, int delta) async {
@@ -158,37 +179,28 @@ class _NegativeStockScreenState extends State<NegativeStockScreen> {
           ),
         ],
       ),
-      body: StreamBuilder<List<LocalProduct>>(
-        stream: _stream,
-        builder: (ctx, snap) {
-          if (!snap.hasData) {
-            return const Center(child: CircularProgressIndicator());
-          }
-          final items = snap.data!;
-          if (items.isEmpty) return _emptyState();
-          return Column(children: [
-            Expanded(
-              child: ListView.builder(
-                padding: const EdgeInsets.fromLTRB(AppUI.s16, AppUI.s12, AppUI.s16, AppUI.s16),
-                itemCount: items.length + 1,
-                itemBuilder: (_, i) {
-                  if (i == 0) return _intro(items.length);
-                  final p = items[i - 1];
-                  return _NegativeStockTile(
-                    product: p,
-                    busy: _adjusting.contains(p.uuid),
-                    inCart: _inCart(p.uuid),
-                    onQuickAdjust: (d) => _applyDelta(p, d),
-                    onCorrect: () => _openCorrectDialog(p),
-                    onToggleCart: () => _toggleCart(p),
-                  );
-                },
-              ),
-            ),
-            _orderBar(items),
-          ]);
-        },
-      ),
+      body: !_loaded
+          ? const Center(child: CircularProgressIndicator())
+          : _items.isEmpty
+              ? _emptyState()
+              : ListView.builder(
+                  padding: const EdgeInsets.fromLTRB(AppUI.s16, AppUI.s12, AppUI.s16, AppUI.s24),
+                  itemCount: _items.length + 1,
+                  itemBuilder: (_, i) {
+                    if (i == 0) return _intro(_items.length);
+                    final p = _items[i - 1];
+                    return _NegativeStockTile(
+                      product: p,
+                      busy: _adjusting.contains(p.uuid),
+                      inCart: _inCart(p.uuid),
+                      onQuickAdjust: (d) => _applyDelta(p, d),
+                      onCorrect: () => _openCorrectDialog(p),
+                      onToggleCart: () => _toggleCart(p),
+                    );
+                  },
+                ),
+      bottomNavigationBar:
+          (_loaded && _items.isNotEmpty) ? _orderBar(_items) : null,
     );
   }
 
@@ -250,11 +262,16 @@ class _NegativeStockScreenState extends State<NegativeStockScreen> {
   }
 
   // Barra inferior: arma el pedido (agregar otros) y lo envía cuando hay líneas.
-  Widget _orderBar(List<LocalProduct> items) => SafeArea(
-        top: false,
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(AppUI.s16, AppUI.s8, AppUI.s16, AppUI.s12),
-          child: Column(mainAxisSize: MainAxisSize.min, children: [
+  Widget _orderBar(List<LocalProduct> items) => Container(
+        decoration: const BoxDecoration(
+          color: AppUI.pageBg,
+          border: Border(top: BorderSide(color: AppUI.border)),
+        ),
+        child: SafeArea(
+          top: false,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(AppUI.s16, AppUI.s8, AppUI.s16, AppUI.s12),
+            child: Column(mainAxisSize: MainAxisSize.min, children: [
             if (_cart.isNotEmpty) ...[
               SizedBox(
                 width: double.infinity,
@@ -302,6 +319,7 @@ class _NegativeStockScreenState extends State<NegativeStockScreen> {
               ],
             ]),
           ]),
+          ),
         ),
       );
 
