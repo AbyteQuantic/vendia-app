@@ -124,8 +124,16 @@ class _SupplierCatalogScreenState extends State<SupplierCatalogScreen> {
           icon: const Icon(Icons.arrow_back_rounded, color: AppUI.ink, size: 26),
           onPressed: () => Navigator.of(context).pop(),
         ),
-        title: Text(widget.supplierName.replaceFirst('[SEED] ', ''),
-            style: AppUI.title),
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(widget.supplierName.replaceFirst('[SEED] ', ''),
+                style: AppUI.title, maxLines: 1, overflow: TextOverflow.ellipsis),
+            const Text('Catálogo · proveedor en VendIA',
+                style: TextStyle(fontSize: 12, color: AppUI.inkSoft)),
+          ],
+        ),
         actions: const [
           Padding(
             padding: EdgeInsets.only(right: 8),
@@ -148,83 +156,155 @@ class _SupplierCatalogScreenState extends State<SupplierCatalogScreen> {
     );
   }
 
+  // Tarjeta de producto estilo Soft-UI / Bento (skill ui-ux-pro-max):
+  // thumbnail, esquinas suaves (18), sombra sutil, realce al seleccionar.
   Widget _productRow(Map<String, dynamic> p) {
     final id = p['id'].toString();
     final qty = _cart[id] ?? 0;
+    final selected = qty > 0;
     final expiry = (p['expiry_date'] ?? '').toString();
-    return Container(
-      padding: const EdgeInsets.all(AppUI.s12),
-      decoration: AppUI.card(r: 10),
+    final photo = (p['photo_url'] ?? '').toString();
+    final category = (p['category'] ?? '').toString();
+    final price = (p['price'] as num?)?.toDouble() ?? 0;
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 150),
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        boxShadow: AppUI.shadow,
+        border: selected
+            ? Border.all(color: AppTheme.primary, width: 1.5)
+            : Border.all(color: Colors.transparent, width: 1.5),
+      ),
       child: Row(
         children: [
+          // Thumbnail (o ícono de respaldo).
+          ClipRRect(
+            borderRadius: BorderRadius.circular(14),
+            child: Container(
+              width: 60,
+              height: 60,
+              color: AppUI.pageBg,
+              child: photo.isNotEmpty
+                  ? Image.network(photo, fit: BoxFit.cover,
+                      errorBuilder: (_, __, ___) => const Icon(
+                          Icons.inventory_2_outlined, color: AppUI.inkSoft))
+                  : const Icon(Icons.inventory_2_outlined, color: AppUI.inkSoft),
+            ),
+          ),
+          const SizedBox(width: AppUI.s12),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(p['name'].toString(), style: AppUI.bodyStrong),
-                const SizedBox(height: 2),
+                Text(p['name'].toString(),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: AppUI.bodyStrong.copyWith(fontSize: 15)),
+                const SizedBox(height: 4),
                 Row(children: [
-                  Text('\$${((p['price'] as num?)?.toDouble() ?? 0).toStringAsFixed(0)}',
+                  Text('\$${price.toStringAsFixed(0)}',
                       style: const TextStyle(
-                          fontSize: 14, fontWeight: FontWeight.w700,
+                          fontSize: 15,
+                          fontWeight: FontWeight.w800,
                           color: AppTheme.primary,
                           fontFeatures: [FontFeature.tabularFigures()])),
-                  if (expiry.isNotEmpty) ...[
+                  if (category.isNotEmpty) ...[
                     const SizedBox(width: AppUI.s8),
-                    MinimalBadge(label: 'vence $expiry', color: AppTheme.warning),
+                    Flexible(
+                      child: Text(category,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: AppUI.bodySoft.copyWith(fontSize: 12)),
+                    ),
                   ],
                 ]),
+                if (expiry.isNotEmpty) ...[
+                  const SizedBox(height: 4),
+                  MinimalBadge(label: 'vence $expiry', color: AppTheme.warning),
+                ],
               ],
             ),
           ),
+          const SizedBox(width: AppUI.s8),
           _stepper(id, qty),
         ],
       ),
     );
   }
 
+  // Stepper en "pill" suave (− qty +). Más moderno que IconButtons sueltos.
   Widget _stepper(String id, double qty) {
-    return Row(
-      children: [
-        IconButton(
+    return Container(
+      decoration: BoxDecoration(
+        color: AppTheme.primary.withValues(alpha: 0.06),
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Row(mainAxisSize: MainAxisSize.min, children: [
+        _qtyBtn(
           key: Key('minus_$id'),
-          iconSize: 22,
-          icon: const Icon(Icons.remove_circle_outline_rounded, color: AppUI.inkSoft),
-          onPressed: qty <= 0 ? null : () => setState(() {
-            final n = qty - 1;
-            if (n <= 0) {
-              _cart.remove(id);
-            } else {
-              _cart[id] = n;
-            }
-          }),
+          icon: Icons.remove_rounded,
+          color: qty <= 0 ? AppUI.inkSoft : AppTheme.primary,
+          onTap: qty <= 0
+              ? null
+              : () => setState(() {
+                    final n = qty - 1;
+                    if (n <= 0) {
+                      _cart.remove(id);
+                    } else {
+                      _cart[id] = n;
+                    }
+                  }),
         ),
         SizedBox(
-          width: 24,
+          width: 26,
           child: Text('${qty.toInt()}',
               textAlign: TextAlign.center,
               style: const TextStyle(
-                  fontWeight: FontWeight.w700,
+                  fontWeight: FontWeight.w800,
+                  fontSize: 15,
                   fontFeatures: [FontFeature.tabularFigures()])),
         ),
-        IconButton(
+        _qtyBtn(
           key: Key('plus_$id'),
-          iconSize: 22,
-          icon: const Icon(Icons.add_circle_rounded, color: AppTheme.primary),
-          onPressed: () => setState(() => _cart[id] = qty + 1),
+          icon: Icons.add_rounded,
+          color: AppTheme.primary,
+          onTap: () => setState(() => _cart[id] = qty + 1),
         ),
-      ],
+      ]),
+    );
+  }
+
+  Widget _qtyBtn({
+    required Key key,
+    required IconData icon,
+    required Color color,
+    required VoidCallback? onTap,
+  }) {
+    return InkResponse(
+      key: key,
+      onTap: onTap,
+      radius: 22,
+      child: Padding(
+        padding: const EdgeInsets.all(8),
+        child: Icon(icon, size: 20, color: color),
+      ),
     );
   }
 
   Widget _bottomBar() {
-    return SafeArea(
-      child: Container(
+    return Container(
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
+        boxShadow: [
+          BoxShadow(color: Color(0x14000000), blurRadius: 20, offset: Offset(0, -4)),
+        ],
+      ),
+      child: SafeArea(
+        child: Padding(
         padding: const EdgeInsets.fromLTRB(AppUI.s16, AppUI.s12, AppUI.s16, AppUI.s12),
-        decoration: const BoxDecoration(
-          color: Colors.white,
-          border: Border(top: BorderSide(color: AppUI.border)),
-        ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -281,6 +361,7 @@ class _SupplierCatalogScreenState extends State<SupplierCatalogScreen> {
               ],
             ),
           ],
+        ),
         ),
       ),
     );

@@ -230,15 +230,30 @@ class _SupplierOrderCartScreenState extends State<SupplierOrderCartScreen> {
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           // Cabecera del sub-carrito.
           Row(children: [
-            Icon(assigned ? Icons.local_shipping_rounded : Icons.help_outline_rounded,
-                size: 20, color: assigned ? AppTheme.primary : AppTheme.warning),
-            const SizedBox(width: 8),
+            Container(
+              width: 36,
+              height: 36,
+              decoration: BoxDecoration(
+                color: (assigned ? AppTheme.primary : AppTheme.warning)
+                    .withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Icon(
+                  assigned ? Icons.local_shipping_rounded : Icons.help_outline_rounded,
+                  size: 20,
+                  color: assigned ? AppTheme.primary : AppTheme.warning),
+            ),
+            const SizedBox(width: AppUI.s12),
             Expanded(
-              child: Text(assigned ? name : 'Sin proveedor asignado',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: AppUI.bodyStrong.copyWith(
-                      color: assigned ? AppTheme.textPrimary : AppTheme.warning)),
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text(assigned ? name : 'Sin proveedor asignado',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: AppUI.bodyStrong.copyWith(
+                        color: assigned ? AppTheme.textPrimary : AppTheme.warning)),
+                Text('${lines.length} producto${lines.length == 1 ? "" : "s"}',
+                    style: AppUI.bodySoft.copyWith(fontSize: 12)),
+              ]),
             ),
             if (assigned)
               TextButton(
@@ -318,12 +333,23 @@ class _SupplierOrderCartScreenState extends State<SupplierOrderCartScreen> {
           ]),
         ),
         const SizedBox(width: AppUI.s8),
-        _StepperButton(icon: Icons.remove_rounded, onTap: () => _setQty(l, q - 1)),
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 10),
-          child: Text('$q', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
+        // Stepper en pill suave (consistente con el catálogo).
+        Container(
+          decoration: BoxDecoration(
+            color: AppTheme.primary.withValues(alpha: 0.06),
+            borderRadius: BorderRadius.circular(14),
+          ),
+          child: Row(mainAxisSize: MainAxisSize.min, children: [
+            _StepperButton(icon: Icons.remove_rounded, onTap: () => _setQty(l, q - 1)),
+            SizedBox(
+              width: 26,
+              child: Text('$q',
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
+            ),
+            _StepperButton(icon: Icons.add_rounded, onTap: () => _setQty(l, q + 1)),
+          ]),
         ),
-        _StepperButton(icon: Icons.add_rounded, onTap: () => _setQty(l, q + 1)),
         IconButton(
           tooltip: 'Quitar',
           onPressed: () => _remove(l),
@@ -369,15 +395,10 @@ class _StepperButton extends StatelessWidget {
   Widget build(BuildContext context) {
     return InkResponse(
       onTap: onTap,
-      radius: 24,
-      child: Container(
-        width: 32,
-        height: 32,
-        decoration: BoxDecoration(
-          color: AppTheme.primary.withValues(alpha: 0.10),
-          borderRadius: BorderRadius.circular(AppUI.radiusSm),
-        ),
-        child: Icon(icon, size: 18, color: AppTheme.primary),
+      radius: 22,
+      child: Padding(
+        padding: const EdgeInsets.all(8),
+        child: Icon(icon, size: 20, color: AppTheme.primary),
       ),
     );
   }
