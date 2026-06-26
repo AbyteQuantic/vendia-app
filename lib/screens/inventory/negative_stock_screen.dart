@@ -6,27 +6,18 @@ import '../../database/database_service.dart';
 import '../../services/api_service.dart';
 import '../../services/auth_service.dart';
 import '../../theme/app_theme.dart';
+import '../../theme/app_ui.dart';
 import '../../widgets/branch_selector_drawer.dart';
 
-/// Screen that lists every product whose reserved stock exceeds physical
-/// stock, ordered from most-negative to least-negative.
-///
-/// The owner can regularize each product with one-tap +1/+5/+10 buttons or
-/// open a dialog to enter a custom positive delta. Each adjustment:
-///   1. Increments the local Isar stock via [DatabaseService.adjustStock]
-///      so the badge and POS see the new number immediately.
-///   2. PATCHes the product on the backend with the new absolute stock
-///      value, which causes the Go handler to register a `manual_adjust`
-///      kardex movement (see backend/internal/handlers/products.go).
-///
-/// As soon as a product's available stock returns to >= 0 the underlying
-/// stream removes it from the list automatically.
+/// Lista los productos cuyo stock disponible quedó negativo (se vendieron sin
+/// existencias registradas) y deja corregirlos indicando la cantidad REAL que
+/// hay hoy, o sumando rápido. Cada ajuste:
+///   1. Sube el stock local (Isar) → la UI y el POS lo ven al instante.
+///   2. PATCH al backend con el stock absoluto → registra un `manual_adjust`
+///      en el kardex.
+/// Cuando el disponible vuelve a >= 0 el producto sale solo de la lista.
 class NegativeStockScreen extends StatefulWidget {
-  /// Optional override for the products stream — set in widget tests.
   final Stream<List<LocalProduct>>? productsStream;
-
-  /// Optional injected API service for tests that want to assert PATCH
-  /// payloads without touching the network.
   final ApiService? apiService;
 
   const NegativeStockScreen({
@@ -52,136 +43,108 @@ class _NegativeStockScreenState extends State<NegativeStockScreen> {
     _api = widget.apiService ?? ApiService(AuthService());
   }
 
-  Future<void> _applyAdjustment(LocalProduct product, int delta) async {
+  Future<void> _applyDelta(LocalProduct product, int delta) async {
     if (delta <= 0) return;
     final uuid = product.uuid;
     if (_adjusting.contains(uuid)) return;
     setState(() => _adjusting.add(uuid));
     HapticFeedback.lightImpact();
     try {
-      // 1. Local stock first → reactive UI updates immediately.
       final newStock = await DatabaseService.instance.adjustStock(uuid, delta);
       if (newStock == null) {
-        if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Producto no encontrado en local'),
-            backgroundColor: AppTheme.error,
-            behavior: SnackBarBehavior.floating,
-          ),
-        );
+        _snack('Producto no encontrado en local', ok: false);
         return;
       }
-
-      // 2. Server PATCH so backend kardex logs `manual_adjust`.
       try {
         await _api.updateProduct(uuid, {'stock': newStock});
       } catch (_) {
-        // We don't undo the local bump — sync layer will retry the
-        // server-side PATCH when connectivity returns. Surface a
-        // gentle warning so the owner knows the kardex log is pending.
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text(
-                'Stock local actualizado. Se sincronizará cuando vuelva la conexión.',
-                style: TextStyle(fontSize: 14),
-              ),
-              backgroundColor: AppTheme.warning,
-              behavior: SnackBarBehavior.floating,
-            ),
-          );
-        }
+        _snack('Stock local actualizado. Se sincronizará cuando vuelva la conexión.',
+            ok: false);
       }
-
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          key: const Key('negative_stock_adjust_snackbar'),
-          content: Text(
-            'Stock ajustado: +$delta unidades a ${product.name}',
-            style: const TextStyle(fontSize: 15),
-          ),
-          backgroundColor: AppTheme.success,
-          behavior: SnackBarBehavior.floating,
-          duration: const Duration(seconds: 2),
-        ),
-      );
+      _snack('Stock de ${product.name} corregido a $newStock', ok: true,
+          key: const Key('negative_stock_adjust_snackbar'));
     } finally {
       if (mounted) setState(() => _adjusting.remove(uuid));
     }
   }
 
-  Future<void> _openManualAdjustDialog(LocalProduct product) async {
+  /// Corrige a una cantidad ABSOLUTA (la que el tendero dice tener hoy).
+  Future<void> _correctTo(LocalProduct product, int target) async {
+    final delta = target - product.stock;
+    if (delta <= 0) {
+      _snack('Ingrese una cantidad mayor al stock físico actual (${product.stock}).',
+          ok: false);
+      return;
+    }
+    await _applyDelta(product, delta);
+  }
+
+  void _snack(String m, {required bool ok, Key? key}) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      key: key,
+      content: Text(m, style: const TextStyle(fontSize: 15)),
+      backgroundColor: ok ? AppTheme.success : AppTheme.warning,
+      behavior: SnackBarBehavior.floating,
+    ));
+  }
+
+  Future<void> _openCorrectDialog(LocalProduct product) async {
     final controller = TextEditingController();
-    final value = await showDialog<int>(
+    final target = await showDialog<int>(
       context: context,
-      builder: (ctx) {
-        return AlertDialog(
-          backgroundColor: AppTheme.background,
-          shape:
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-          title: Text('Ajustar ${product.name}',
-              style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w700)),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'Stock actual: ${product.stock}  ·  Reservado: ${product.reservedStock}',
-                style: const TextStyle(fontSize: 14, color: AppTheme.textSecondary),
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppTheme.background,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Text('Corregir ${product.name}',
+            style: const TextStyle(fontSize: 19, fontWeight: FontWeight.w700)),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Stock físico actual: ${product.stock}',
+                style: AppUI.bodySoft),
+            const SizedBox(height: AppUI.s12),
+            TextField(
+              controller: controller,
+              keyboardType: TextInputType.number,
+              autofocus: true,
+              decoration: const InputDecoration(
+                labelText: '¿Cuántas unidades tiene hoy?',
+                hintText: 'Ej: 8',
+                border: OutlineInputBorder(),
               ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: controller,
-                keyboardType: TextInputType.number,
-                autofocus: true,
-                decoration: const InputDecoration(
-                  labelText: 'Cuántas unidades agregar',
-                  hintText: 'Ej: 8',
-                  border: OutlineInputBorder(),
-                ),
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(ctx).pop(null),
-              child: const Text('Cancelar'),
-            ),
-            TextButton(
-              onPressed: () {
-                final raw = controller.text.trim();
-                final parsed = int.tryParse(raw);
-                if (parsed == null || parsed <= 0) {
-                  Navigator.of(ctx).pop(null);
-                  return;
-                }
-                Navigator.of(ctx).pop(parsed);
-              },
-              child: const Text('Aplicar',
-                  style: TextStyle(fontWeight: FontWeight.bold)),
             ),
           ],
-        );
-      },
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(null),
+            child: const Text('Cancelar'),
+          ),
+          TextButton(
+            onPressed: () {
+              final parsed = int.tryParse(controller.text.trim());
+              Navigator.of(ctx).pop((parsed != null && parsed >= 0) ? parsed : null);
+            },
+            child: const Text('Corregir', style: TextStyle(fontWeight: FontWeight.bold)),
+          ),
+        ],
+      ),
     );
     controller.dispose();
-    if (value != null && value > 0) {
-      await _applyAdjustment(product, value);
-    }
+    if (target != null) await _correctTo(product, target);
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppTheme.background,
+      backgroundColor: AppUI.pageBg,
       appBar: AppBar(
-        backgroundColor: AppTheme.background,
-        title: const Text(
-          'Regularizar stock negativo',
-          style: TextStyle(fontWeight: FontWeight.bold),
-        ),
+        backgroundColor: AppUI.pageBg,
+        surfaceTintColor: Colors.transparent,
+        elevation: 0,
+        title: const Text('Regularizar stock', style: AppUI.title),
         actions: const [
           Padding(
             padding: EdgeInsets.only(right: 8),
@@ -196,204 +159,183 @@ class _NegativeStockScreenState extends State<NegativeStockScreen> {
             return const Center(child: CircularProgressIndicator());
           }
           final items = snap.data!;
-          if (items.isEmpty) {
-            return const Center(
-              child: Padding(
-                padding: EdgeInsets.all(24),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(Icons.check_circle_rounded,
-                        color: AppTheme.success, size: 64),
-                    SizedBox(height: 12),
-                    Text(
-                      'Todo en orden',
-                      style: TextStyle(
-                        fontSize: 22,
-                        fontWeight: FontWeight.bold,
-                        color: AppTheme.textPrimary,
-                      ),
-                    ),
-                    SizedBox(height: 6),
-                    Text(
-                      'No hay productos con stock negativo.',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        fontSize: 15,
-                        color: AppTheme.textSecondary,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            );
-          }
+          if (items.isEmpty) return _emptyState();
           return ListView.builder(
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
-            itemCount: items.length,
-            itemBuilder: (_, i) => _NegativeStockTile(
-              product: items[i],
-              busy: _adjusting.contains(items[i].uuid),
-              onQuickAdjust: (delta) => _applyAdjustment(items[i], delta),
-              onManualAdjust: () => _openManualAdjustDialog(items[i]),
-            ),
+            padding: const EdgeInsets.fromLTRB(AppUI.s16, AppUI.s12, AppUI.s16, AppUI.s24),
+            itemCount: items.length + 1,
+            itemBuilder: (_, i) {
+              if (i == 0) return _intro(items.length);
+              final p = items[i - 1];
+              return _NegativeStockTile(
+                product: p,
+                busy: _adjusting.contains(p.uuid),
+                onQuickAdjust: (d) => _applyDelta(p, d),
+                onCorrect: () => _openCorrectDialog(p),
+              );
+            },
           );
         },
       ),
     );
   }
+
+  Widget _intro(int count) => Padding(
+        padding: const EdgeInsets.only(bottom: AppUI.s12),
+        child: SoftCard(
+          child: Row(children: [
+            const Icon(Icons.info_outline_rounded, color: AppTheme.primary),
+            const SizedBox(width: AppUI.s12),
+            Expanded(
+              child: Text(
+                '$count producto${count == 1 ? "" : "s"} se vendió sin stock '
+                'registrado y quedó en negativo. Indique cuántas unidades tiene '
+                'hoy de cada uno para corregirlo.',
+                style: AppUI.bodySoft,
+              ),
+            ),
+          ]),
+        ),
+      );
+
+  Widget _emptyState() => const Center(
+        child: Padding(
+          padding: EdgeInsets.all(AppUI.s24),
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            Icon(Icons.check_circle_rounded, color: AppTheme.success, size: 56),
+            SizedBox(height: AppUI.s12),
+            Text('Todo en orden',
+                style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: AppUI.ink)),
+            SizedBox(height: 6),
+            Text('No hay productos con stock negativo.',
+                textAlign: TextAlign.center, style: AppUI.bodySoft),
+          ]),
+        ),
+      );
 }
 
 class _NegativeStockTile extends StatelessWidget {
   final LocalProduct product;
   final bool busy;
   final ValueChanged<int> onQuickAdjust;
-  final VoidCallback onManualAdjust;
+  final VoidCallback onCorrect;
 
   const _NegativeStockTile({
     required this.product,
     required this.busy,
     required this.onQuickAdjust,
-    required this.onManualAdjust,
+    required this.onCorrect,
   });
 
   @override
   Widget build(BuildContext context) {
     final available = product.stock - product.reservedStock;
-    final imgSrc = product.imageUrl;
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: AppTheme.surfaceGrey,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppTheme.error.withValues(alpha: 0.35)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              ClipRRect(
-                borderRadius: BorderRadius.circular(10),
-                child: Container(
-                  width: 56,
-                  height: 56,
-                  color: Colors.white,
-                  child: imgSrc != null && imgSrc.isNotEmpty
-                      ? Image.network(
-                          imgSrc,
-                          fit: BoxFit.contain,
-                          errorBuilder: (_, __, ___) => const Icon(
-                            Icons.inventory_2_outlined,
-                            color: AppTheme.textSecondary,
-                          ),
-                        )
-                      : const Icon(
-                          Icons.inventory_2_outlined,
-                          color: AppTheme.textSecondary,
-                        ),
-                ),
+    final img = product.imageUrl;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: AppUI.s12),
+      child: SoftCard(
+        child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Row(children: [
+            ClipRRect(
+              borderRadius: BorderRadius.circular(AppUI.radiusSm),
+              child: Container(
+                width: 48,
+                height: 48,
+                color: Colors.white,
+                child: img != null && img.isNotEmpty
+                    ? Image.network(img, fit: BoxFit.contain,
+                        errorBuilder: (_, __, ___) =>
+                            const Icon(Icons.inventory_2_outlined, color: AppUI.inkSoft))
+                    : const Icon(Icons.inventory_2_outlined, color: AppUI.inkSoft),
               ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      product.name,
-                      style: const TextStyle(
-                        fontSize: 17,
-                        fontWeight: FontWeight.w700,
-                        color: AppTheme.textPrimary,
-                      ),
+            ),
+            const SizedBox(width: AppUI.s12),
+            Expanded(
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text(product.name,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: AppUI.bodyStrong.copyWith(fontSize: 15)),
+                const SizedBox(height: 4),
+                Row(children: [
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: AppTheme.error.withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.circular(7),
                     ),
-                    const SizedBox(height: 4),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 8, vertical: 3),
-                      decoration: BoxDecoration(
-                        color: AppTheme.error.withValues(alpha: 0.15),
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: Text(
-                        'Stock: $available',
+                    child: Text('Disponible: $available',
                         style: const TextStyle(
-                          fontWeight: FontWeight.w700,
-                          color: AppTheme.error,
-                          fontSize: 14,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      'Físico ${product.stock} · Reservado ${product.reservedStock}',
-                      style: const TextStyle(
-                        fontSize: 12,
-                        color: AppTheme.textSecondary,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          Row(
-            children: [
-              _QuickButton(label: '+1', busy: busy, onTap: () => onQuickAdjust(1)),
-              const SizedBox(width: 8),
-              _QuickButton(label: '+5', busy: busy, onTap: () => onQuickAdjust(5)),
-              const SizedBox(width: 8),
-              _QuickButton(
-                  label: '+10', busy: busy, onTap: () => onQuickAdjust(10)),
-              const SizedBox(width: 8),
-              Expanded(
-                child: OutlinedButton.icon(
-                  onPressed: busy ? null : onManualAdjust,
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: AppTheme.primary,
-                    side: const BorderSide(color: AppTheme.primary),
-                    padding: const EdgeInsets.symmetric(vertical: 10),
+                            color: AppTheme.error, fontWeight: FontWeight.w700, fontSize: 13)),
                   ),
-                  icon: const Icon(Icons.edit_rounded, size: 18),
-                  label: const Text('Ajuste manual'),
-                ),
+                  const SizedBox(width: 8),
+                  Flexible(
+                    child: Text('Físico ${product.stock} · Reservado ${product.reservedStock}',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: AppUI.bodySoft.copyWith(fontSize: 12)),
+                  ),
+                ]),
+              ]),
+            ),
+          ]),
+          const SizedBox(height: AppUI.s12),
+          // Acción principal: indicar la cantidad real.
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton.icon(
+              onPressed: busy ? null : onCorrect,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppTheme.primary,
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(vertical: 11),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppUI.radiusSm)),
               ),
-            ],
+              icon: busy
+                  ? const SizedBox(
+                      width: 16, height: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                  : const Icon(Icons.edit_rounded, size: 18),
+              label: const Text('Indicar cantidad real',
+                  style: TextStyle(fontWeight: FontWeight.w700, fontSize: 15)),
+            ),
           ),
-        ],
+          const SizedBox(height: AppUI.s8),
+          // Atajos para sumar rápido.
+          Row(children: [
+            Text('Sumar rápido:', style: AppUI.bodySoft.copyWith(fontSize: 12)),
+            const SizedBox(width: 8),
+            _QuickChip(label: '+1', busy: busy, onTap: () => onQuickAdjust(1)),
+            const SizedBox(width: 6),
+            _QuickChip(label: '+5', busy: busy, onTap: () => onQuickAdjust(5)),
+            const SizedBox(width: 6),
+            _QuickChip(label: '+10', busy: busy, onTap: () => onQuickAdjust(10)),
+          ]),
+        ]),
       ),
     );
   }
 }
 
-class _QuickButton extends StatelessWidget {
+class _QuickChip extends StatelessWidget {
   final String label;
   final bool busy;
   final VoidCallback onTap;
 
-  const _QuickButton({
-    required this.label,
-    required this.busy,
-    required this.onTap,
-  });
+  const _QuickChip({required this.label, required this.busy, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
-    return ElevatedButton(
+    return OutlinedButton(
       onPressed: busy ? null : onTap,
-      style: ElevatedButton.styleFrom(
-        backgroundColor: AppTheme.success,
-        foregroundColor: Colors.white,
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+      style: OutlinedButton.styleFrom(
+        foregroundColor: AppTheme.primary,
+        side: const BorderSide(color: AppUI.border),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        minimumSize: Size.zero,
+        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppUI.radiusSm)),
       ),
-      child: Text(
-        label,
-        style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15),
-      ),
+      child: Text(label, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
     );
   }
 }
