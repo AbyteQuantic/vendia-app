@@ -3904,6 +3904,23 @@ class ApiService {
     }
   }
 
+  /// Spec 082 F2b — portada del catálogo con IA. Sin [image] genera una desde
+  /// cero; con [image] mejora la que el tendero subió. Devuelve la URL.
+  Future<String> generateStoreCover({XFile? image}) async {
+    try {
+      final response = image == null
+          ? await _dio.post('/api/v1/store/cover-ai')
+          : await _dio.post(
+              '/api/v1/store/cover-ai',
+              data: FormData.fromMap({'image': await logoMultipart(image)}),
+            );
+      final data = _extractData(response);
+      return (data['cover_url'] as String?)?.trim() ?? '';
+    } on DioException catch (e) {
+      throw AppError.fromDioException(e);
+    }
+  }
+
   Future<Map<String, dynamic>> generateLogoAI({
     required String businessName,
     required String businessType,
