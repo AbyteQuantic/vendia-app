@@ -14,7 +14,16 @@ import 'supplier_catalog_screen.dart';
 /// cierra por WhatsApp (F3). Solo lectura cross-tenant.
 class NearbySuppliersScreen extends StatefulWidget {
   final ApiService? api;
-  const NearbySuppliersScreen({super.key, this.api});
+
+  /// Título del header. Por defecto "Proveedores en VendIA" (directorio B2B);
+  /// otros llamadores pueden personalizarlo.
+  final String title;
+
+  const NearbySuppliersScreen({
+    super.key,
+    this.api,
+    this.title = 'Proveedores en VendIA',
+  });
 
   @override
   State<NearbySuppliersScreen> createState() => _NearbySuppliersScreenState();
@@ -68,7 +77,7 @@ class _NearbySuppliersScreenState extends State<NearbySuppliersScreen> {
           icon: const Icon(Icons.arrow_back_rounded, color: AppUI.ink, size: 26),
           onPressed: () => Navigator.of(context).pop(),
         ),
-        title: const Text('Mercado cercano', style: AppUI.title),
+        title: Text(widget.title, style: AppUI.title),
         actions: const [
           Padding(
             padding: EdgeInsets.only(right: 8),
