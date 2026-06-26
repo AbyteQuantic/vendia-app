@@ -9,6 +9,7 @@ import '../../theme/app_theme.dart';
 import '../../theme/app_ui.dart';
 import '../../widgets/branch_selector_drawer.dart';
 import '../../widgets/dispatch_sheet.dart';
+import '../../widgets/product_picker_sheet.dart';
 
 /// Lista los productos cuyo stock disponible quedó negativo (se vendieron sin
 /// existencias registradas) y deja corregirlos indicando la cantidad REAL que
@@ -35,6 +36,10 @@ class _NegativeStockScreenState extends State<NegativeStockScreen> {
   late final Stream<List<LocalProduct>> _stream;
   late final ApiService _api;
   final Set<String> _adjusting = <String>{};
+
+  // Pedido al proveedor que el tendero va ARMANDO: líneas {uuid, name, qty}.
+  // No se envía hasta tocar "Enviar pedido" → así nunca manda un solo producto.
+  final List<Map<String, dynamic>> _cart = [];
 
   @override
   void initState() {
@@ -172,9 +177,10 @@ class _NegativeStockScreenState extends State<NegativeStockScreen> {
                   return _NegativeStockTile(
                     product: p,
                     busy: _adjusting.contains(p.uuid),
+                    inCart: _inCart(p.uuid),
                     onQuickAdjust: (d) => _applyDelta(p, d),
                     onCorrect: () => _openCorrectDialog(p),
-                    onOrder: () => _orderOne(p),
+                    onToggleCart: () => _toggleCart(p),
                   );
                 },
               ),
@@ -186,49 +192,118 @@ class _NegativeStockScreenState extends State<NegativeStockScreen> {
     );
   }
 
-  // Barra inferior: pedir TODOS los productos en negativo al proveedor.
+  // ── Carrito de pedido al proveedor ──────────────────────────────────────
+  bool _inCart(String uuid) => _cart.any((l) => l['uuid'] == uuid);
+
+  void _toggleCart(LocalProduct p) {
+    setState(() {
+      final i = _cart.indexWhere((l) => l['uuid'] == p.uuid);
+      if (i >= 0) {
+        _cart.removeAt(i);
+      } else {
+        final available = p.stock - p.reservedStock;
+        _cart.add({'uuid': p.uuid, 'name': p.name, 'qty': available < 0 ? -available : 1});
+      }
+    });
+  }
+
+  void _addAll(List<LocalProduct> items) {
+    setState(() {
+      for (final p in items) {
+        if (!_inCart(p.uuid)) {
+          final available = p.stock - p.reservedStock;
+          _cart.add({'uuid': p.uuid, 'name': p.name, 'qty': available < 0 ? -available : 1});
+        }
+      }
+    });
+  }
+
+  // Agrega un producto que NO está en la lista de negativos (buscador). Reusa
+  // el selector compartido showProductPicker.
+  Future<void> _addOther() async {
+    final prod = await showProductPicker(context, api: _api);
+    if (prod == null || !mounted) return;
+    if (_cart.any((l) => l['uuid'] == prod.uuid)) {
+      _snack('${prod.name} ya está en el pedido.', ok: true);
+      return;
+    }
+    setState(() => _cart.add({'uuid': prod.uuid, 'name': prod.name, 'qty': 1}));
+  }
+
+  // Envía el pedido armado por el flujo proveedor/empleado/WhatsApp.
+  Future<void> _sendCart() async {
+    if (_cart.isEmpty) return;
+    final lines = _cart
+        .map((l) => <String, dynamic>{
+              'name': l['name'],
+              'unit': 'und',
+              'shortfall': l['qty'],
+              'price_per_unit': 0,
+              'estimated_cost': 0,
+              'ingredient_id': null,
+              'price_source': 'manual',
+              'is_estimate': true,
+            })
+        .toList();
+    final sent = await showDispatchSheet(context, lines, 0, api: _api);
+    if (sent == true && mounted) setState(() => _cart.clear());
+  }
+
+  // Barra inferior: arma el pedido (agregar otros) y lo envía cuando hay líneas.
   Widget _orderBar(List<LocalProduct> items) => SafeArea(
         top: false,
         child: Padding(
           padding: const EdgeInsets.fromLTRB(AppUI.s16, AppUI.s8, AppUI.s16, AppUI.s12),
-          child: SizedBox(
-            height: 50,
-            child: OutlinedButton.icon(
-              onPressed: () => _order(items),
-              style: OutlinedButton.styleFrom(
-                foregroundColor: AppTheme.primary,
-                side: const BorderSide(color: AppTheme.primary),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppUI.radiusSm)),
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            if (_cart.isNotEmpty) ...[
+              SizedBox(
+                width: double.infinity,
+                height: 50,
+                child: ElevatedButton.icon(
+                  onPressed: _sendCart,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppTheme.primary,
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppUI.radiusSm)),
+                  ),
+                  icon: const Icon(Icons.local_shipping_rounded, size: 20),
+                  label: Text('Enviar pedido al proveedor (${_cart.length})',
+                      style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15)),
+                ),
               ),
-              icon: const Icon(Icons.local_shipping_rounded, size: 20),
-              label: Text('Pedir al proveedor (${items.length})',
-                  style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15)),
-            ),
-          ),
+              const SizedBox(height: AppUI.s8),
+            ],
+            Row(children: [
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: _addOther,
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: AppTheme.primary,
+                    side: const BorderSide(color: AppUI.border),
+                    minimumSize: const Size.fromHeight(46),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppUI.radiusSm)),
+                  ),
+                  icon: const Icon(Icons.add_rounded, size: 18),
+                  label: const Text('Agregar otro producto'),
+                ),
+              ),
+              if (_cart.length < items.length) ...[
+                const SizedBox(width: AppUI.s8),
+                OutlinedButton(
+                  onPressed: () => _addAll(items),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: AppTheme.primary,
+                    side: const BorderSide(color: AppUI.border),
+                    minimumSize: const Size.fromHeight(46),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppUI.radiusSm)),
+                  ),
+                  child: const Text('Agregar todos'),
+                ),
+              ],
+            ]),
+          ]),
         ),
       );
-
-  void _orderOne(LocalProduct p) => _order([p]);
-
-  // Abre el flujo de pedido (proveedor / empleado / WhatsApp) con los productos
-  // a reponer. Reusa showDispatchSheet (mismo flujo que "Comprar insumos").
-  Future<void> _order(List<LocalProduct> products) async {
-    final lines = products.map((p) {
-      final available = p.stock - p.reservedStock;
-      final qty = available < 0 ? -available : 1; // sugerido: cubrir el faltante
-      return <String, dynamic>{
-        'name': p.name,
-        'unit': 'und',
-        'shortfall': qty,
-        'price_per_unit': 0,
-        'estimated_cost': 0,
-        'ingredient_id': null,
-        'price_source': 'manual',
-        'is_estimate': true,
-      };
-    }).toList();
-    await showDispatchSheet(context, lines, 0, api: _api);
-  }
 
   Widget _intro(int count) => Padding(
         padding: const EdgeInsets.only(bottom: AppUI.s12),
@@ -269,14 +344,16 @@ class _NegativeStockTile extends StatelessWidget {
   final bool busy;
   final ValueChanged<int> onQuickAdjust;
   final VoidCallback onCorrect;
-  final VoidCallback onOrder;
+  final VoidCallback onToggleCart;
+  final bool inCart;
 
   const _NegativeStockTile({
     required this.product,
     required this.busy,
     required this.onQuickAdjust,
     required this.onCorrect,
-    required this.onOrder,
+    required this.onToggleCart,
+    required this.inCart,
   });
 
   @override
@@ -362,15 +439,17 @@ class _NegativeStockTile extends StatelessWidget {
             _QuickChip(label: '+10', busy: busy, onTap: () => onQuickAdjust(10)),
             const Spacer(),
             TextButton.icon(
-              onPressed: busy ? null : onOrder,
+              onPressed: onToggleCart,
               style: TextButton.styleFrom(
-                foregroundColor: AppTheme.primary,
+                foregroundColor: inCart ? AppTheme.success : AppTheme.primary,
                 padding: const EdgeInsets.symmetric(horizontal: 8),
                 minimumSize: Size.zero,
                 tapTargetSize: MaterialTapTargetSize.shrinkWrap,
               ),
-              icon: const Icon(Icons.local_shipping_outlined, size: 17),
-              label: const Text('Pedir', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
+              icon: Icon(inCart ? Icons.check_circle_rounded : Icons.add_shopping_cart_rounded,
+                  size: 17),
+              label: Text(inCart ? 'En el pedido' : 'Agregar',
+                  style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
             ),
           ]),
         ]),
