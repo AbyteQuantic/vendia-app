@@ -18,6 +18,7 @@ import '../../theme/app_ui.dart';
 import '../promotions/promo_builder_screen.dart';
 import '../promotions/promotions_list_screen.dart';
 import 'catalog_customize_screen.dart';
+import 'catalog_organize_screen.dart';
 
 class CatalogOnlineHubScreen extends StatefulWidget {
   const CatalogOnlineHubScreen({super.key, ApiService? apiOverride})
@@ -125,6 +126,11 @@ class _CatalogOnlineHubScreenState extends State<CatalogOnlineHubScreen> {
                 icon: Icons.palette_outlined,
                 title: 'Nombre, eslogan y color de marca',
                 onTap: () => _go(const CatalogCustomizeScreen()),
+              ),
+              _ActionRow(
+                icon: Icons.reorder_rounded,
+                title: 'Organizar productos (orden, ocultar, destacar)',
+                onTap: () => _go(const CatalogOrganizeScreen()),
               ),
             ],
           ),

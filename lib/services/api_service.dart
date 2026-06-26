@@ -3904,6 +3904,24 @@ class ApiService {
     }
   }
 
+  /// Spec 082 F3 — organiza el catálogo: orden de categorías + ocultos +
+  /// destacados (cada lista reemplaza el estado anterior).
+  Future<void> updateCatalogOrganization({
+    List<String>? categoryOrder,
+    List<String>? hiddenIds,
+    List<String>? featuredIds,
+  }) async {
+    try {
+      await _dio.patch('/api/v1/store/catalog-organization', data: {
+        if (categoryOrder != null) 'category_order': categoryOrder,
+        if (hiddenIds != null) 'hidden_ids': hiddenIds,
+        if (featuredIds != null) 'featured_ids': featuredIds,
+      });
+    } on DioException catch (e) {
+      throw AppError.fromDioException(e);
+    }
+  }
+
   /// Spec 082 F2b — portada del catálogo con IA. Sin [image] genera una desde
   /// cero; con [image] mejora la que el tendero subió. Devuelve la URL.
   Future<String> generateStoreCover({XFile? image}) async {
