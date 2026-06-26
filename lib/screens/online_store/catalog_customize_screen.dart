@@ -29,11 +29,15 @@ class _CatalogCustomizeScreenState extends State<CatalogCustomizeScreen> {
   final _slugCtrl = TextEditingController();
   String _brandColor = '';
   String _coverUrl = '';
+  String _logoUrl = '';
+  String _businessType = '';
   String _initialSlug = '';
   bool _loading = true;
   bool _saving = false;
   bool _coverBusy = false;
   String _coverBusyMsg = '';
+  bool _logoBusy = false;
+  String _logoBusyMsg = '';
   String? _error;
 
   // Horario estructurado: días (1=Lun..7=Dom) + apertura/cierre.
@@ -75,6 +79,9 @@ class _CatalogCustomizeScreenState extends State<CatalogCustomizeScreen> {
         _slugCtrl.text = _initialSlug;
         _brandColor = (d['brand_color'] as String?) ?? '';
         _coverUrl = (d['store_cover_url'] as String?) ?? '';
+        _logoUrl = (d['logo_url'] as String?) ?? '';
+        final types = (d['business_types'] as List?)?.map((e) => e.toString()).toList();
+        _businessType = (types != null && types.isNotEmpty) ? types.first : '';
         _loading = false;
       });
     } catch (e) {
@@ -126,6 +133,60 @@ class _CatalogCustomizeScreenState extends State<CatalogCustomizeScreen> {
       _snack('No se pudo procesar la portada. Intente con otra imagen (máx 5MB).');
     } finally {
       if (mounted) setState(() => _coverBusy = false);
+    }
+  }
+
+  // ── Logo (cargar / generar IA / mejorar IA). Los endpoints persisten el
+  // logo_url de inmediato, así que no depende del botón "Guardar". ───────────
+  Future<void> _uploadLogo() async {
+    final XFile? img = await ImagePicker().pickImage(
+        source: ImageSource.gallery, maxWidth: 1024, imageQuality: 90);
+    if (img == null || !mounted) return;
+    await _runLogo('Subiendo logo…', () async {
+      final res = await _api.uploadLogo(img);
+      return (res['logo_url'] as String?) ?? '';
+    });
+  }
+
+  Future<void> _generateLogo() async {
+    await _runLogo('Creando logo con IA…', () async {
+      final res = await _api.generateLogoAI(
+        businessName: _nameCtrl.text.trim().isEmpty ? 'Mi tienda' : _nameCtrl.text.trim(),
+        businessType: _businessType,
+        details: _logoDetails(),
+      );
+      return (res['logo_url'] as String?) ?? '';
+    });
+  }
+
+  Future<void> _enhanceLogo() async {
+    final XFile? img = await ImagePicker().pickImage(
+        source: ImageSource.gallery, maxWidth: 1024, imageQuality: 90);
+    if (img == null || !mounted) return;
+    await _runLogo('Mejorando su logo con IA…', () => _api.enhanceLogo(img));
+  }
+
+  // Brief para la IA de logo (el backend exige una descripción mínima).
+  String _logoDetails() {
+    final tag = _taglineCtrl.text.trim();
+    final name = _nameCtrl.text.trim().isEmpty ? 'la tienda' : _nameCtrl.text.trim();
+    return tag.isNotEmpty ? 'Logo para $name. $tag' : 'Logo moderno y limpio para $name';
+  }
+
+  Future<void> _runLogo(String msg, Future<String> Function() action) async {
+    setState(() {
+      _logoBusy = true;
+      _logoBusyMsg = msg;
+    });
+    try {
+      final url = await action();
+      if (url.isEmpty) throw 'sin url';
+      if (!mounted) return;
+      setState(() => _logoUrl = url);
+    } catch (_) {
+      _snack('No se pudo procesar el logo. Intente con otra imagen (máx 5MB).');
+    } finally {
+      if (mounted) setState(() => _logoBusy = false);
     }
   }
 
@@ -231,6 +292,10 @@ class _CatalogCustomizeScreenState extends State<CatalogCustomizeScreen> {
                     _section('Identidad', [
                       _label('Nombre de la tienda'),
                       _input(_nameCtrl, 'Ej: Don Brayan'),
+                      const SizedBox(height: AppUI.s12),
+                      _label('Logo'),
+                      const SizedBox(height: 6),
+                      _logoEditor(),
                       const SizedBox(height: AppUI.s12),
                       _label('Eslogan / descripción corta'),
                       _input(_taglineCtrl, 'Ej: Frutas y verduras frescas a domicilio',
@@ -421,6 +486,56 @@ class _CatalogCustomizeScreenState extends State<CatalogCustomizeScreen> {
             child: const Text('Quitar'),
           ),
       ]),
+    ]);
+  }
+
+  Widget _logoEditor() {
+    return Row(children: [
+      // Vista previa circular del logo.
+      Container(
+        width: 64,
+        height: 64,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          color: AppUI.pageBg,
+          border: Border.all(color: AppUI.border),
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: _logoBusy
+            ? const Center(
+                child: SizedBox(
+                    width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)))
+            : (_logoUrl.isNotEmpty
+                ? Image.network(_logoUrl, fit: BoxFit.cover,
+                    errorBuilder: (_, __, ___) =>
+                        const Icon(Icons.storefront_rounded, color: AppUI.inkSoft))
+                : const Icon(Icons.storefront_rounded, color: AppUI.inkSoft, size: 28)),
+      ),
+      const SizedBox(width: AppUI.s12),
+      Expanded(
+        child: _logoBusy
+            ? Text(_logoBusyMsg, style: AppUI.bodySoft)
+            : Wrap(spacing: 6, runSpacing: 6, children: [
+                OutlinedButton.icon(
+                  key: const Key('logo_upload'),
+                  onPressed: _uploadLogo,
+                  icon: const Icon(Icons.upload_rounded, size: 16),
+                  label: const Text('Cargar'),
+                ),
+                OutlinedButton.icon(
+                  key: const Key('logo_generate'),
+                  onPressed: _generateLogo,
+                  icon: const Icon(Icons.auto_awesome_rounded, size: 16),
+                  label: const Text('Crear con IA'),
+                ),
+                OutlinedButton.icon(
+                  key: const Key('logo_enhance'),
+                  onPressed: _enhanceLogo,
+                  icon: const Icon(Icons.auto_fix_high_rounded, size: 16),
+                  label: const Text('Mejorar'),
+                ),
+              ]),
+      ),
     ]);
   }
 

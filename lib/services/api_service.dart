@@ -3973,6 +3973,20 @@ class ApiService {
     }
   }
 
+  /// Spec 082 — mejora el logo actual con IA (sube su logo → URL nueva,
+  /// ya persistida en el tenant). Devuelve la nueva logo_url.
+  Future<String> enhanceLogo(XFile logo) async {
+    try {
+      final formData = FormData.fromMap({'logo': await logoMultipart(logo)});
+      final response =
+          await _dio.post('/api/v1/tenant/enhance-logo', data: formData);
+      final data = _extractData(response);
+      return (data['logo_url'] as String?)?.trim() ?? '';
+    } on DioException catch (e) {
+      throw AppError.fromDioException(e);
+    }
+  }
+
   /// Builds a Dio [MultipartFile] for a picked logo [XFile].
   ///
   /// Spec 010 §9 / D1: the image is first normalized to a downsized **PNG**
