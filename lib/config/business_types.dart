@@ -40,6 +40,11 @@ const List<BusinessTypeMeta> kBusinessTypes = [
   // F042 — academias/institutos: su tipo activa el módulo de Eventos.
   BusinessTypeMeta('academias_instituciones', Icons.school_rounded,
       'Academias e Instituciones'),
+  // Spec 075 — proveedores B2B: derivan EnableSupplierMode y los descubren las
+  // tiendas cercanas en "Proveedores en VendIA".
+  BusinessTypeMeta(
+      'proveedor_mayorista', Icons.warehouse_rounded, 'Proveedor Mayorista'),
+  BusinessTypeMeta('proveedor_agricola', Icons.grass_rounded, 'Proveedor Agrícola'),
 ];
 
 /// Alias legacy → value vigente (mismo mapeo que el header del Dashboard).

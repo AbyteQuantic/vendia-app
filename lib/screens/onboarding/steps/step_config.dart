@@ -84,6 +84,23 @@ class StepConfig extends StatelessWidget {
       icon: Icons.rocket_launch_rounded,
       description: 'Servicios varios,\npapelería y más',
     ),
+    // Spec 075 — proveedores B2B. Al elegirse, el backend deriva
+    // EnableSupplierMode y el negocio aparece en "Proveedores en VendIA"
+    // para las tiendas cercanas.
+    _BusinessTypeOption(
+      key: Key('btype_proveedor_mayorista'),
+      value: 'proveedor_mayorista',
+      label: 'Proveedor\nMayorista',
+      icon: Icons.warehouse_rounded,
+      description: 'Le vendo a tiendas\ny negocios (B2B)',
+    ),
+    _BusinessTypeOption(
+      key: Key('btype_proveedor_agricola'),
+      value: 'proveedor_agricola',
+      label: 'Proveedor\nAgrícola',
+      icon: Icons.grass_rounded,
+      description: 'Cosecha y víveres\nal por mayor',
+    ),
   ];
 
   @override
