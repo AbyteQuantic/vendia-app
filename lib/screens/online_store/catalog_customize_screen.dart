@@ -12,6 +12,7 @@ import '../../theme/app_ui.dart';
 import '../../services/api_service.dart';
 import '../../services/auth_service.dart';
 import '../../services/app_error.dart';
+import '../../utils/catalog_default_banners.dart';
 
 class CatalogCustomizeScreen extends StatefulWidget {
   final ApiService? api;
@@ -29,6 +30,7 @@ class _CatalogCustomizeScreenState extends State<CatalogCustomizeScreen> {
   final _slugCtrl = TextEditingController();
   String _brandColor = '';
   String _coverUrl = '';
+  String _businessType = '';
   String _initialSlug = '';
   bool _loading = true;
   bool _saving = false;
@@ -75,6 +77,8 @@ class _CatalogCustomizeScreenState extends State<CatalogCustomizeScreen> {
         _slugCtrl.text = _initialSlug;
         _brandColor = (d['brand_color'] as String?) ?? '';
         _coverUrl = (d['store_cover_url'] as String?) ?? '';
+        final types = (d['business_types'] as List?)?.map((e) => e.toString()).toList();
+        _businessType = (types != null && types.isNotEmpty) ? types.first : '';
         _loading = false;
       });
     } catch (e) {
@@ -180,6 +184,12 @@ class _CatalogCustomizeScreenState extends State<CatalogCustomizeScreen> {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
         content: Text(m), backgroundColor: ok ? AppTheme.success : AppTheme.error));
   }
+
+  // La portada que el catálogo MUESTRA hoy: la propia si la hay, si no la
+  // imagen por defecto de su tipo de negocio (igual que la tienda en línea).
+  String get _effectiveCover =>
+      _coverUrl.isNotEmpty ? _coverUrl : catalogDefaultBanner(_businessType);
+  bool get _coverIsDefault => _coverUrl.isEmpty;
 
   Color get _previewColor {
     final hex = _brandColor.replaceFirst('#', '');
@@ -323,13 +333,12 @@ class _CatalogCustomizeScreenState extends State<CatalogCustomizeScreen> {
         borderRadius: BorderRadius.circular(16),
       ),
       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        if (_coverUrl.isNotEmpty)
-          SizedBox(
-            height: 90,
-            width: double.infinity,
-            child: Image.network(_coverUrl, fit: BoxFit.cover,
-                errorBuilder: (_, __, ___) => const SizedBox()),
-          ),
+        SizedBox(
+          height: 90,
+          width: double.infinity,
+          child: Image.network(_effectiveCover, fit: BoxFit.cover,
+              errorBuilder: (_, __, ___) => const SizedBox()),
+        ),
         Padding(
           padding: const EdgeInsets.all(AppUI.s16),
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -365,17 +374,37 @@ class _CatalogCustomizeScreenState extends State<CatalogCustomizeScreen> {
       );
     }
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      // PREVIEW grande de la portada (o placeholder si no hay).
+      // PREVIEW grande de la portada (propia o la imagen por defecto actual).
       AspectRatio(
         aspectRatio: 16 / 9,
         child: ClipRRect(
           borderRadius: BorderRadius.circular(AppUI.radiusSm),
-          child: _coverUrl.isNotEmpty
-              ? Image.network(_coverUrl, fit: BoxFit.cover,
-                  errorBuilder: (_, __, ___) => _coverPlaceholder())
-              : _coverPlaceholder(),
+          child: Stack(fit: StackFit.expand, children: [
+            Image.network(_effectiveCover, fit: BoxFit.cover,
+                errorBuilder: (_, __, ___) => _coverPlaceholder()),
+            if (_coverIsDefault)
+              Positioned(
+                left: 8,
+                top: 8,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  decoration: BoxDecoration(
+                    color: Colors.black.withValues(alpha: 0.55),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: const Text('Imagen por defecto',
+                      style: TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w600)),
+                ),
+              ),
+          ]),
         ),
       ),
+      const SizedBox(height: 4),
+      Text(
+          _coverIsDefault
+              ? 'Su catálogo usa esta imagen por defecto. Suba o genere una para personalizarla.'
+              : 'Portada propia activa.',
+          style: AppUI.bodySoft.copyWith(fontSize: 12)),
       const SizedBox(height: AppUI.s8),
       // Acciones: subir / generar IA / mejorar IA.
       Wrap(spacing: 8, runSpacing: 8, children: [
