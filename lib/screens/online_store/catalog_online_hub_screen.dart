@@ -37,6 +37,7 @@ class _CatalogOnlineHubScreenState extends State<CatalogOnlineHubScreen> {
 
   String? _publicUrl;
   bool _loading = true;
+  bool _staffMode = false; // Spec 084 — muestra el link de reservas de turnos
 
   @override
   void initState() {
@@ -45,6 +46,13 @@ class _CatalogOnlineHubScreenState extends State<CatalogOnlineHubScreen> {
   }
 
   Future<void> _loadLink() async {
+    // Flag de comisiones aislado: si falla, no rompe la carga del link.
+    try {
+      final flags = await AuthService().getFeatureFlags();
+      if (mounted && flags.enableStaffCommissions) {
+        setState(() => _staffMode = true);
+      }
+    } catch (_) {/* fail-closed: sin sección de reservas */}
     try {
       final data = await _api.fetchStoreSlug();
       if (mounted) {
@@ -83,6 +91,18 @@ class _CatalogOnlineHubScreenState extends State<CatalogOnlineHubScreen> {
     Clipboard.setData(ClipboardData(text: url));
     HapticFeedback.lightImpact();
     _snack('Link copiado');
+  }
+
+  // Spec 084 — compartir el link de RESERVAS de turnos (peluquería/barbería).
+  Future<void> _shareBooking() async {
+    final url = _publicUrl;
+    if (url == null || url.isEmpty) return;
+    HapticFeedback.lightImpact();
+    final booking = '${url.replaceAll(RegExp(r'/+$'), '')}/turnos';
+    await Share.share(
+      '💈 Reserve su turno en línea: $booking',
+      subject: 'Reserve su turno',
+    );
   }
 
   void _snack(String msg) {
@@ -141,6 +161,23 @@ class _CatalogOnlineHubScreenState extends State<CatalogOnlineHubScreen> {
               ),
             ],
           ),
+          // Spec 084 — peluquería/barbería: link público de reserva de turnos.
+          if (_staffMode) ...[
+            const SizedBox(height: AppUI.s24),
+            const Padding(
+              padding: EdgeInsets.only(left: AppUI.s4, bottom: AppUI.s12),
+              child: Text('Reservas de turnos', style: AppUI.sectionLabel),
+            ),
+            InsetGroupedList(
+              children: [
+                _ActionRow(
+                  icon: Icons.event_available_rounded,
+                  title: 'Compartir link de reservas (turnos)',
+                  onTap: _shareBooking,
+                ),
+              ],
+            ),
+          ],
           const SizedBox(height: AppUI.s24),
           const Padding(
             padding: EdgeInsets.only(left: AppUI.s4, bottom: AppUI.s12),

@@ -6,6 +6,7 @@
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../services/api_service.dart';
 import '../../services/auth_service.dart';
@@ -72,6 +73,69 @@ class _AgendaScreenState extends State<AgendaScreen> {
     }
   }
 
+  // Mejora #1 — cobrar la cita (convertir en venta) eligiendo el medio de pago.
+  Future<void> _convert(Map<String, dynamic> a) async {
+    final method = await showModalBottomSheet<String>(
+      context: context,
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Padding(
+              padding: EdgeInsets.all(AppUI.s16),
+              child: Text('¿Cómo pagó el cliente?', style: AppUI.bodyStrong),
+            ),
+            for (final m in const [
+              ['cash', 'Efectivo'],
+              ['transfer', 'Transferencia'],
+              ['card', 'Tarjeta'],
+            ])
+              ListTile(
+                title: Text(m[1]),
+                onTap: () => Navigator.of(ctx).pop(m[0]),
+              ),
+          ],
+        ),
+      ),
+    );
+    if (method == null) return;
+    try {
+      await _api.convertAppointment(a['id'] as String, paymentMethod: method);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+            content: Text('Cobrado. La comisión quedó en Liquidaciones.')));
+      }
+      await _load();
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('No se pudo cobrar la cita.')));
+      }
+    }
+  }
+
+  // Mejora #3 — recordatorio por WhatsApp (deep link wa.me, sin API oficial).
+  Future<void> _remind(Map<String, dynamic> a) async {
+    HapticFeedback.lightImpact();
+    final phoneRaw = (a['customer_phone'] as String?)?.replaceAll(RegExp(r'\D'), '');
+    if (phoneRaw == null || phoneRaw.isEmpty) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Esta cita no tiene celular.')));
+      }
+      return;
+    }
+    final phone = phoneRaw.length == 10 ? '57$phoneRaw' : phoneRaw;
+    final dt = DateTime.tryParse(a['starts_at'] as String? ?? '')?.toLocal();
+    final when = dt == null ? '' : ' el ${dt.day}/${dt.month} a las ${dt.toString().substring(11, 16)}';
+    final svc = (a['service_name'] as String?) ?? 'su servicio';
+    final msg = Uri.encodeComponent(
+        'Hola ${(a['customer_name'] as String?) ?? ''}, le recordamos su turno '
+        'para $svc$when. ¡Le esperamos!');
+    final uri = Uri.parse('https://wa.me/$phone?text=$msg');
+    await launchUrl(uri, mode: LaunchMode.externalApplication);
+  }
+
   /// Agrupa por día (yyyy-mm-dd) preservando el orden ascendente.
   Map<String, List<Map<String, dynamic>>> _byDay() {
     final map = <String, List<Map<String, dynamic>>>{};
@@ -126,7 +190,13 @@ class _AgendaScreenState extends State<AgendaScreen> {
                 ),
                 ...byDay[day]!.map((a) => Padding(
                       padding: const EdgeInsets.only(bottom: AppUI.s12),
-                      child: _ApptCard(a: a, onStatus: (s) => _setStatus(a, s)),
+                      child: _ApptCard(
+                        a: a,
+                        onConfirm: () => _setStatus(a, 'confirmada'),
+                        onConvert: () => _convert(a),
+                        onRemind: () => _remind(a),
+                        onCancel: () => _setStatus(a, 'cancelada'),
+                      ),
                     )),
               ],
           ],
@@ -178,9 +248,18 @@ Color agendaStatusColor(String? s) {
 }
 
 class _ApptCard extends StatelessWidget {
-  const _ApptCard({required this.a, required this.onStatus});
+  const _ApptCard({
+    required this.a,
+    required this.onConfirm,
+    required this.onConvert,
+    required this.onRemind,
+    required this.onCancel,
+  });
   final Map<String, dynamic> a;
-  final void Function(String status) onStatus;
+  final VoidCallback onConfirm;
+  final VoidCallback onConvert;
+  final VoidCallback onRemind;
+  final VoidCallback onCancel;
 
   String _time() {
     final dt = DateTime.tryParse(a['starts_at'] as String? ?? '')?.toLocal();
@@ -235,24 +314,32 @@ class _ApptCard extends StatelessWidget {
           ),
           if (active) ...[
             const SizedBox(height: AppUI.s12),
-            Row(
+            Wrap(
+              spacing: AppUI.s8,
+              runSpacing: AppUI.s8,
               children: [
                 if (status == 'pendiente')
                   _ActionChip(
                     label: 'Confirmar',
                     icon: Icons.check_rounded,
-                    onTap: () => onStatus('confirmada'),
+                    onTap: onConfirm,
                   ),
                 _ActionChip(
-                  label: 'Atendida',
-                  icon: Icons.done_all_rounded,
-                  onTap: () => onStatus('atendida'),
+                  label: 'Cobrar',
+                  icon: Icons.point_of_sale_rounded,
+                  onTap: onConvert,
                 ),
+                if (phone?.isNotEmpty == true)
+                  _ActionChip(
+                    label: 'Recordar',
+                    icon: Icons.chat_rounded,
+                    onTap: onRemind,
+                  ),
                 _ActionChip(
                   label: 'Cancelar',
                   icon: Icons.close_rounded,
                   danger: true,
-                  onTap: () => onStatus('cancelada'),
+                  onTap: onCancel,
                 ),
               ],
             ),
@@ -278,17 +365,14 @@ class _ActionChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final color = danger ? Colors.redAccent : AppTheme.primary;
-    return Padding(
-      padding: const EdgeInsets.only(right: AppUI.s8),
-      child: OutlinedButton.icon(
-        onPressed: onTap,
-        icon: Icon(icon, size: 16, color: color),
-        label: Text(label, style: TextStyle(color: color, fontSize: 13)),
-        style: OutlinedButton.styleFrom(
-          side: BorderSide(color: color.withValues(alpha: 0.4)),
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-          minimumSize: const Size(0, 36),
-        ),
+    return OutlinedButton.icon(
+      onPressed: onTap,
+      icon: Icon(icon, size: 16, color: color),
+      label: Text(label, style: TextStyle(color: color, fontSize: 13)),
+      style: OutlinedButton.styleFrom(
+        side: BorderSide(color: color.withValues(alpha: 0.4)),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        minimumSize: const Size(0, 36),
       ),
     );
   }

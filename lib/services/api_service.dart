@@ -1860,6 +1860,18 @@ class ApiService {
     }
   }
 
+  /// Convierte una cita atendida en venta (congela la comisión).
+  Future<Map<String, dynamic>> convertAppointment(
+      String id, {String paymentMethod = 'cash'}) async {
+    try {
+      final response = await _dio.post('/api/v1/appointments/$id/convert',
+          data: {'payment_method': paymentMethod});
+      return _extractData(response);
+    } on DioException catch (e) {
+      throw AppError.fromDioException(e);
+    }
+  }
+
   // ── Spec 084 — comisiones/liquidación a profesionales ──────────────────
 
   /// Esquema de pago activo de un profesional (null si no tiene).

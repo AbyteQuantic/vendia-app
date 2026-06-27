@@ -1,12 +1,18 @@
 // Spec: specs/061-catalogo-online-hub/spec.md
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:vendia_pos/screens/online_store/catalog_online_hub_screen.dart';
 import 'package:vendia_pos/services/api_service.dart';
 import 'package:vendia_pos/services/auth_service.dart';
+
+// Spec 084 — el hub ahora lee enable_staff_commissions; sin este mock el
+// method channel de secure storage cuelga el pumpAndSettle.
+const _secureStorageChannel =
+    MethodChannel('plugins.it_nomads.com/flutter_secure_storage');
 
 class _FakeApi extends ApiService {
   _FakeApi(this._url) : super(AuthService());
@@ -30,6 +36,19 @@ Future<void> _pump(WidgetTester tester, String? url) async {
 void main() {
   setUpAll(() {
     dotenv.testLoad(fileInput: 'API_BASE_URL=http://localhost:8080');
+  });
+
+  setUp(() {
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(_secureStorageChannel, (call) async {
+      if (call.method == 'readAll') return <String, String>{};
+      return null; // sin flags → enableStaffCommissions=false
+    });
+  });
+
+  tearDown(() {
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(_secureStorageChannel, null);
   });
 
   testWidgets('con link: muestra URL, vista previa, compartir y copiar',
