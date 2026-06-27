@@ -45,6 +45,10 @@ const List<BusinessTypeMeta> kBusinessTypes = [
   BusinessTypeMeta(
       'proveedor_mayorista', Icons.warehouse_rounded, 'Proveedor Mayorista'),
   BusinessTypeMeta('proveedor_agricola', Icons.grass_rounded, 'Proveedor Agrícola'),
+  // Spec 084 — peluquerías, barberías y salones: servicios con profesionales,
+  // turnos/citas y liquidación. Su tipo implica la capacidad de Servicios.
+  BusinessTypeMeta(
+      'peluqueria_barberia', Icons.content_cut_rounded, 'Peluquería / Barbería'),
 ];
 
 /// Alias legacy → value vigente (mismo mapeo que el header del Dashboard).

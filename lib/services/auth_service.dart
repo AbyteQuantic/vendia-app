@@ -452,6 +452,11 @@ class FeatureFlags {
   /// Panel de proveedor (pedidos entrantes + anti-merma). Default OFF.
   final bool enableSupplierMode;
 
+  /// Spec 084: comisiones/liquidación a profesionales (peluquería/barbería).
+  /// Gatilla la atribución de servicios por profesional y la liquidación.
+  /// Espejo de `tenants.feature_flags.enable_staff_commissions`. Default OFF.
+  final bool enableStaffCommissions;
+
   const FeatureFlags({
     this.enableTables = false,
     this.enableKDS = false,
@@ -470,6 +475,7 @@ class FeatureFlags {
     this.enablePurchaseOrders = false,
     this.enableEvents = false,
     this.enableSupplierMode = false,
+    this.enableStaffCommissions = false,
   });
 
   factory FeatureFlags.fromJson(Map<String, dynamic> json) => FeatureFlags(
@@ -504,5 +510,7 @@ class FeatureFlags {
         enableEvents: json['enable_events'] == true,
         // Spec 075 — viaja dentro de feature_flags.
         enableSupplierMode: json['enable_supplier_mode'] == true,
+        // Spec 084 — comisiones/liquidación a profesionales.
+        enableStaffCommissions: json['enable_staff_commissions'] == true,
       );
 }

@@ -101,6 +101,15 @@ class StepConfig extends StatelessWidget {
       icon: Icons.grass_rounded,
       description: 'Cosecha y víveres\nal por mayor',
     ),
+    // Spec 084 — peluquería/barbería/salón: servicios con profesionales,
+    // turnos/citas y liquidación por comisión/arriendo/sueldo.
+    _BusinessTypeOption(
+      key: Key('btype_peluqueria'),
+      value: 'peluqueria_barberia',
+      label: 'Peluquería /\nBarbería',
+      icon: Icons.content_cut_rounded,
+      description: 'Servicios, turnos\ny pago a profesionales',
+    ),
   ];
 
   @override
