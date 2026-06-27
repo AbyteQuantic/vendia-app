@@ -15,6 +15,7 @@ import '../../database/sync/pending_product_push.dart';
 import '../../database/local_product_factory.dart';
 import 'product_save_flow.dart';
 import '../../services/api_service.dart';
+import '../../utils/text_normalize.dart';
 import '../../services/app_error.dart';
 import '../../services/auth_service.dart';
 import '../../services/image_normalizer.dart' show ImageNormalizationException;
@@ -864,7 +865,7 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
         'image_url': _photoUrl,
         'presentation': _presentation,
         'content': _contentCtrl.text.trim(),
-        'category': _categoryCtrl.text.trim(),
+        'category': canonicalValue(_categoryCtrl.text, _categorySuggestions),
         'characteristics': _characteristicsCtrl.text.trim(),
         'is_age_restricted': _isAgeRestricted,
       });
@@ -1157,7 +1158,7 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
               'barcode': _skuCtrl.text.trim(),
               'presentation': _presentation,
               'content': _contentCtrl.text.trim(),
-              'category': _categoryCtrl.text.trim(),
+              'category': canonicalValue(_categoryCtrl.text, _categorySuggestions),
               'characteristics': _characteristicsCtrl.text.trim(),
               'expiry_date': expiryIso ?? '',
               'is_age_restricted': _isAgeRestricted,
@@ -1178,7 +1179,7 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
               'barcode': _skuCtrl.text.trim(),
               'presentation': _presentation,
               'content': _contentCtrl.text.trim(),
-              'category': _categoryCtrl.text.trim(),
+              'category': canonicalValue(_categoryCtrl.text, _categorySuggestions),
               'characteristics': _characteristicsCtrl.text.trim(),
               'is_age_restricted': _isAgeRestricted,
               if (expiryIso != null) 'expiry_date': expiryIso,
@@ -1235,7 +1236,7 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
             barcode: _skuCtrl.text.trim(),
             presentation: _presentation,
             content: _contentCtrl.text.trim(),
-            category: _categoryCtrl.text.trim(),
+            category: canonicalValue(_categoryCtrl.text, _categorySuggestions),
             characteristics: _characteristicsCtrl.text.trim(),
             expiryDate: _expiryDate,
           );

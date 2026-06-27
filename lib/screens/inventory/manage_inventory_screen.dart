@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 import '../../database/database_service.dart';
 import '../../theme/app_theme.dart';
+import '../../utils/text_normalize.dart';
 import '../../theme/app_ui.dart';
 import '../../services/api_service.dart';
 import '../../services/app_error.dart';
@@ -1011,7 +1012,7 @@ class _EditProductSheetState extends State<_EditProductSheet> {
         'content': _contentCtrl.text.trim(),
         'barcode': _skuCtrl.text.trim(),
         // Spec 068 — categoría (con autocomplete) + características.
-        'category': _categoryCtrl.text.trim(),
+        'category': canonicalValue(_categoryCtrl.text, _categorySuggestions),
         'characteristics': _characteristicsCtrl.text.trim(),
         // Spec 063 — venta para mayores de 18 (licor, cigarrillos).
         'is_age_restricted': _isAgeRestricted,

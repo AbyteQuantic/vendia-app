@@ -10,6 +10,7 @@
 import 'package:flutter/material.dart';
 
 import '../theme/app_theme.dart';
+import '../utils/text_normalize.dart';
 
 class AdvancedProductOptions extends StatefulWidget {
   final TextEditingController categoryController;
@@ -31,9 +32,9 @@ class AdvancedProductOptions extends StatefulWidget {
 }
 
 class _AdvancedProductOptionsState extends State<AdvancedProductOptions> {
-  // Normaliza para COMPARAR (insensible a mayúsculas/espacios), nunca para
-  // mutar lo guardado.
-  String _norm(String s) => s.trim().toLowerCase();
+  // Normaliza para COMPARAR (insensible a mayúsculas/tildes/espacios), nunca
+  // para mutar lo guardado. Usa la clave compartida foldKey.
+  String _norm(String s) => foldKey(s);
 
   /// Sugerencias filtradas por lo que va escribiendo, deduplicadas, máx. 8.
   /// Esconde la que ya coincide exactamente (no tiene sentido re-sugerirla).

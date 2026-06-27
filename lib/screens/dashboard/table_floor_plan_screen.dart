@@ -4,6 +4,7 @@ import '../../services/api_service.dart';
 import '../../services/auth_service.dart';
 import '../../theme/app_theme.dart';
 import '../../theme/app_ui.dart';
+import '../../utils/text_normalize.dart';
 import '../../widgets/branch_selector_drawer.dart';
 import '../../widgets/table_menu_qr_sheet.dart';
 
@@ -26,20 +27,8 @@ InputDecoration _mesaField(String label, {String? hint}) => InputDecoration(
       ),
     );
 
-/// Normaliza un nombre de área para COMPARAR (sin tildes, sin espacios extra,
-/// minúsculas) y así detectar duplicados por typo/mayúsculas/acentos.
-String foldAreaKey(String s) {
-  var t = s.trim().toLowerCase();
-  const from = 'áàäâãéèëêíìïîóòöôõúùüûñ';
-  const to = 'aaaaaeeeeiiiiooooouuuun';
-  final b = StringBuffer();
-  for (final ch in t.split('')) {
-    final i = from.indexOf(ch);
-    b.write(i >= 0 ? to[i] : ch);
-  }
-  // colapsa espacios internos múltiples
-  return b.toString().replaceAll(RegExp(r'\s+'), ' ');
-}
+/// Clave anti-duplicados de área (alias del util compartido foldKey).
+String foldAreaKey(String s) => foldKey(s);
 
 /// Floor Plan Editor — grid interactivo para gestionar mesas (UI normalizada
 /// al kit AppUI). Todas las operaciones ocurren en memoria hasta "Guardar".
@@ -157,14 +146,7 @@ class _TableFloorPlanScreenState extends State<TableFloorPlanScreen> {
   /// Devuelve la grafía CANÓNICA de un área: si ya existe una equivalente
   /// (ignorando tildes/mayúsculas/espacios), reutiliza esa; si no, la guarda
   /// tal cual (trim). Evita "Terraza"/"terraza"/"terrasa " como áreas distintas.
-  String _canonicalArea(String typed) {
-    final t = foldAreaKey(typed);
-    if (t.isEmpty) return '';
-    for (final a in _existingAreas()) {
-      if (foldAreaKey(a) == t) return a;
-    }
-    return typed.trim();
-  }
+  String _canonicalArea(String typed) => canonicalValue(typed, _existingAreas());
 
   void _showCreateDialog(int x, int y) {
     final ctrl = TextEditingController(text: 'Mesa ${_tables.length + 1}');
