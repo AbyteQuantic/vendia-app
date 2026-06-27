@@ -1860,6 +1860,18 @@ class ApiService {
     }
   }
 
+  /// Marca asistencia de un profesional (hoy por defecto) — arriendo por días.
+  Future<void> markAttendance(String employeeUuid, {String? date}) async {
+    try {
+      await _dio.post('/api/v1/staff-attendance', data: {
+        'employee_uuid': employeeUuid,
+        if (date != null) 'date': date,
+      });
+    } on DioException catch (e) {
+      throw AppError.fromDioException(e);
+    }
+  }
+
   /// Convierte una cita atendida en venta (congela la comisión).
   Future<Map<String, dynamic>> convertAppointment(
       String id, {String paymentMethod = 'cash'}) async {

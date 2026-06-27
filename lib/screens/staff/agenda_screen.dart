@@ -136,6 +136,75 @@ class _AgendaScreenState extends State<AgendaScreen> {
     await launchUrl(uri, mode: LaunchMode.externalApplication);
   }
 
+  // Backlog #2 — marcar asistencia de hoy (para el arriendo de silla por días).
+  Future<void> _openAttendance() async {
+    HapticFeedback.lightImpact();
+    List<Map<String, dynamic>> staff = const [];
+    try {
+      staff = await _api.fetchEmployees();
+      staff = staff.where((e) => (e['is_active'] as bool?) ?? true).toList();
+    } catch (_) {/* sin lista → sheet vacío */}
+    if (!mounted) return;
+    final marked = <String>{};
+    await showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setSheet) => SafeArea(
+          child: ListView(
+            shrinkWrap: true,
+            padding: const EdgeInsets.all(AppUI.s16),
+            children: [
+              const Text('Asistencia de hoy', style: AppUI.title),
+              const SizedBox(height: 4),
+              const Text(
+                  'Marque los profesionales que asistieron hoy. El arriendo de '
+                  'silla se cobra solo por los días presentes.',
+                  style: AppUI.bodySoft),
+              const SizedBox(height: AppUI.s12),
+              if (staff.isEmpty)
+                const Padding(
+                  padding: EdgeInsets.all(AppUI.s12),
+                  child: Text('No hay profesionales activos.',
+                      style: AppUI.bodySoft),
+                ),
+              for (final e in staff)
+                Builder(builder: (_) {
+                  final id = (e['uuid'] ?? e['id']) as String?;
+                  final done = id != null && marked.contains(id);
+                  return ListTile(
+                    leading: Icon(
+                      done ? Icons.check_circle_rounded : Icons.circle_outlined,
+                      color: done ? const Color(0xFF10B981) : AppUI.inkSoft,
+                    ),
+                    title: Text((e['name'] as String?) ?? 'Profesional'),
+                    onTap: done || id == null
+                        ? null
+                        : () async {
+                            try {
+                              await _api.markAttendance(id);
+                              setSheet(() => marked.add(id));
+                            } catch (_) {
+                              if (ctx.mounted) {
+                                ScaffoldMessenger.of(ctx).showSnackBar(
+                                    const SnackBar(
+                                        content: Text(
+                                            'No se pudo marcar la asistencia.')));
+                              }
+                            }
+                          },
+                  );
+                }),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   /// Agrupa por día (yyyy-mm-dd) preservando el orden ascendente.
   Map<String, List<Map<String, dynamic>>> _byDay() {
     final map = <String, List<Map<String, dynamic>>>{};
@@ -162,6 +231,13 @@ class _AgendaScreenState extends State<AgendaScreen> {
       appBar: glassAppBar(
         title: 'Agenda de turnos',
         onBack: () => Navigator.of(context).maybePop(),
+        actions: [
+          IconButton(
+            tooltip: 'Asistencia de hoy',
+            icon: const Icon(Icons.how_to_reg_rounded),
+            onPressed: _openAttendance,
+          ),
+        ],
       ),
       body: RefreshIndicator(
         onRefresh: _load,
