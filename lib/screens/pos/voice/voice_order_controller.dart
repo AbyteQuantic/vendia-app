@@ -105,6 +105,103 @@ PreviewModel buildPreview(
   );
 }
 
+/// PURA: MERGE de nuevos comandos sobre una previsualización existente
+/// (corrección por voz dentro de la preview, sin tocar el carrito). agregar
+/// acumula sobre la línea del mismo producto; quitar resta/elimina; fijar_cantidad
+/// fija; vaciar limpia las líneas; el destino y cobrar se actualizan.
+PreviewModel mergeIntoPreview(
+  PreviewModel current,
+  VoiceOrderResult result,
+  List<Product> catalog,
+  ProductResolver resolver,
+) {
+  var target = current.target;
+  var hasCobrar = current.hasCobrar;
+  var hasVaciar = current.hasVaciar;
+  final lines = List<PreviewLine>.from(current.lines);
+
+  PreviewLine? findByProduct(Product p) {
+    for (final l in lines) {
+      if (l.product != null && l.product!.uuid == p.uuid) return l;
+    }
+    return null;
+  }
+
+  for (final cmd in result.commands) {
+    switch (cmd.action) {
+      case VoiceAction.fijarMesa:
+      case VoiceAction.fijarCliente:
+        if (cmd.target != null) target = cmd.target;
+      case VoiceAction.vaciar:
+        lines.clear();
+      case VoiceAction.cobrar:
+        hasCobrar = true;
+      case VoiceAction.agregar:
+      case VoiceAction.quitar:
+      case VoiceAction.fijarCantidad:
+        final spoken = cmd.item ?? '';
+        if (spoken.isEmpty) break;
+        final res = resolver.resolve(spoken, catalog);
+        final qty = cmd.quantity ?? (cmd.action == VoiceAction.quitar ? 0 : 1);
+        if (res.status == ResolveStatus.matched && res.product != null) {
+          final existing = findByProduct(res.product!);
+          if (cmd.action == VoiceAction.quitar) {
+            if (existing != null) {
+              if (cmd.quantity == null || existing.quantity - qty <= 0) {
+                lines.remove(existing);
+              } else {
+                existing.quantity -= qty;
+              }
+            }
+          } else if (cmd.action == VoiceAction.fijarCantidad) {
+            if (existing != null) {
+              existing.quantity = qty;
+            } else {
+              lines.add(PreviewLine(
+                  action: VoiceAction.fijarCantidad,
+                  spokenName: spoken,
+                  product: res.product,
+                  quantity: qty,
+                  status: ResolveStatus.matched));
+            }
+          } else {
+            // agregar
+            if (existing != null) {
+              existing.quantity += qty;
+            } else {
+              lines.add(PreviewLine(
+                  action: VoiceAction.agregar,
+                  spokenName: spoken,
+                  product: res.product,
+                  quantity: qty,
+                  status: ResolveStatus.matched));
+            }
+          }
+        } else if (cmd.action != VoiceAction.quitar) {
+          // Producto ambiguo / no encontrado en una corrección de agregar/fijar:
+          // mostrarlo para que el tendero lo resuelva.
+          lines.add(PreviewLine(
+            action: cmd.action,
+            spokenName: spoken,
+            product: res.product,
+            quantity: qty < 0 ? 0 : qty,
+            status: res.status,
+            candidates: res.candidates,
+          ));
+        }
+      case VoiceAction.desconocido:
+        break;
+    }
+  }
+  return PreviewModel(
+    target: target,
+    lines: lines,
+    hasCobrar: hasCobrar,
+    hasVaciar: hasVaciar,
+    clarifyPrompt: current.clarifyPrompt,
+  );
+}
+
 /// Resultado de aplicar la previsualización al carrito.
 class ApplyOutcome {
   final int appliedLines;
@@ -153,8 +250,16 @@ class VoiceOrderController extends ChangeNotifier {
   PreviewModel get preview => _preview;
   bool _consumed = false; // guard anti-doble-aplicación
   String? _activeIndexAtPreview;
+  bool _correcting = false; // segunda grabación que MERGEA sobre la preview
 
   String? _stopPath;
+
+  /// Inicia una corrección por voz SOBRE la preview actual ("agregue dos panes
+  /// más", "quite la gaseosa", "que el agua sean tres"). Mergea, no reemplaza.
+  Future<void> startCorrection() async {
+    _correcting = true;
+    await startRecording();
+  }
 
   void _set(VoicePhase p, {String? error}) {
     _phase = p;
@@ -198,7 +303,23 @@ class VoiceOrderController extends ChangeNotifier {
       disposeRecordedAudio(_stopPath!);
       _set(VoicePhase.resolving);
 
+      final correcting = _correcting;
+      _correcting = false;
       final result = VoiceOrderResult.fromJson(json);
+
+      // CORRECCIÓN: mergea sobre la preview existente; nunca la pierde.
+      if (correcting) {
+        if (result.degraded || result.commands.isEmpty) {
+          _set(VoicePhase.review,
+              error: 'No entendí la corrección. Intente otra vez.');
+          return;
+        }
+        _preview = mergeIntoPreview(_preview, result, cart.allProducts, resolver);
+        _consumed = false;
+        _set(VoicePhase.review);
+        return;
+      }
+
       if (result.degraded) {
         _set(VoicePhase.error,
             error:
@@ -216,6 +337,7 @@ class VoiceOrderController extends ChangeNotifier {
       }
       _set(VoicePhase.review);
     } catch (_) {
+      _correcting = false;
       _set(VoicePhase.error,
           error: 'No se pudo procesar el audio. Intente de nuevo.');
     }
@@ -315,6 +437,7 @@ class VoiceOrderController extends ChangeNotifier {
   void reset() {
     _preview = const PreviewModel();
     _consumed = false;
+    _correcting = false;
     _activeIndexAtPreview = null;
     _set(VoicePhase.idle);
   }

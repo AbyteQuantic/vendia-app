@@ -91,27 +91,33 @@ class _VoiceOrderSheetState extends State<_VoiceOrderSheet> {
         const SizedBox(height: AppUI.s8),
         Text(
           recording
-              ? 'Suelte cuando termine de hablar.'
-              : 'Mantenga presionado y diga qué lleva.\nEjemplo: «dos Águila y una agua para la mesa 3».',
+              ? 'Toque el micrófono cuando termine.'
+              : 'Toque el micrófono y diga qué lleva.\nEjemplo: «dos Águila y una agua para la mesa 3».',
           textAlign: TextAlign.center,
           style: AppUI.bodySoft,
         ),
         const SizedBox(height: AppUI.s24),
         GestureDetector(
-          onTapDown: (_) {
+          key: const Key('voice_mic_button'),
+          onTap: () {
             HapticFeedback.mediumImpact();
-            c.startRecording();
+            if (recording) {
+              c.stopAndProcess();
+            } else {
+              c.startRecording();
+            }
           },
-          onTapUp: (_) => c.stopAndProcess(),
-          onTapCancel: () => c.stopAndProcess(),
           child: Container(
-            width: 96, height: 96,
+            width: 104, height: 104,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
               color: recording ? AppTheme.primary : AppTheme.primary.withValues(alpha: 0.12),
+              boxShadow: recording
+                  ? [BoxShadow(color: AppTheme.primary.withValues(alpha: 0.3), blurRadius: 24, spreadRadius: 4)]
+                  : null,
             ),
-            child: Icon(Icons.mic_rounded,
-                size: 44, color: recording ? Colors.white : AppTheme.primary),
+            child: Icon(recording ? Icons.stop_rounded : Icons.mic_rounded,
+                size: 48, color: recording ? Colors.white : AppTheme.primary),
           ),
         ),
         const SizedBox(height: AppUI.s24),
@@ -185,7 +191,23 @@ class _VoiceOrderSheetState extends State<_VoiceOrderSheet> {
                 Icons.delete_outline_rounded, 'Pidió VACIAR la orden — se confirmará aparte.'),
             if (preview.hasCobrar) _flagCard(
                 Icons.point_of_sale_rounded, 'Pidió COBRAR — abrirá el cobro al confirmar.'),
-            const SizedBox(height: AppUI.s16),
+            if (c.error != null) ...[
+              const SizedBox(height: AppUI.s8),
+              _hintCard(c.error!),
+            ],
+            const SizedBox(height: AppUI.s12),
+            // Corrección por voz SOBRE esta preview (mergea, no reemplaza).
+            OutlinedButton.icon(
+              key: const Key('voice_correct_button'),
+              onPressed: () {
+                HapticFeedback.mediumImpact();
+                c.startCorrection();
+              },
+              icon: const Icon(Icons.mic_rounded, size: 18),
+              label: const Text('Corregir hablando (ej: «quite la gaseosa»)'),
+              style: OutlinedButton.styleFrom(minimumSize: const Size.fromHeight(44)),
+            ),
+            const SizedBox(height: AppUI.s12),
             FilledButton.icon(
               onPressed: applicable == 0 && !preview.hasCobrar && !preview.hasVaciar
                   ? null

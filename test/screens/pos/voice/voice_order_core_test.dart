@@ -129,4 +129,82 @@ void main() {
       expect(preview.lines, isEmpty);
     });
   });
+
+  group('mergeIntoPreview (corrección por voz)', () {
+    final catalog = [
+      p('Águila Light', uuid: 'aguila'),
+      p('Agua Cristal', uuid: 'agua'),
+    ];
+    PreviewModel base() => buildPreview(
+          VoiceOrderResult.fromJson({
+            'commands': [
+              {'action': 'agregar', 'item': 'aguila', 'quantity': 2, 'raw': ''},
+              {'action': 'agregar', 'item': 'agua', 'quantity': 1, 'raw': ''},
+            ],
+          }),
+          catalog,
+          resolver,
+        );
+
+    test('"agregue una agua más" acumula sobre la línea existente', () {
+      final merged = mergeIntoPreview(
+        base(),
+        VoiceOrderResult.fromJson({
+          'commands': [
+            {'action': 'agregar', 'item': 'agua', 'quantity': 1, 'raw': 'una agua mas'}
+          ]
+        }),
+        catalog,
+        resolver,
+      );
+      final agua = merged.lines.firstWhere((l) => l.product!.uuid == 'agua');
+      expect(agua.quantity, 2); // 1 + 1, no se duplica la línea
+      expect(merged.lines.length, 2);
+    });
+
+    test('"quite la gaseosa/aguila" elimina la línea', () {
+      final merged = mergeIntoPreview(
+        base(),
+        VoiceOrderResult.fromJson({
+          'commands': [
+            {'action': 'quitar', 'item': 'aguila', 'quantity': null, 'raw': 'quite'}
+          ]
+        }),
+        catalog,
+        resolver,
+      );
+      expect(merged.lines.any((l) => l.product!.uuid == 'aguila'), isFalse);
+      expect(merged.lines.length, 1);
+    });
+
+    test('"que el agua sean tres" fija la cantidad', () {
+      final merged = mergeIntoPreview(
+        base(),
+        VoiceOrderResult.fromJson({
+          'commands': [
+            {'action': 'fijar_cantidad', 'item': 'agua', 'quantity': 3, 'raw': ''}
+          ]
+        }),
+        catalog,
+        resolver,
+      );
+      final agua = merged.lines.firstWhere((l) => l.product!.uuid == 'agua');
+      expect(agua.quantity, 3);
+    });
+
+    test('corrección que agrega un producto nuevo añade línea', () {
+      final merged = mergeIntoPreview(
+        base(),
+        VoiceOrderResult.fromJson({
+          'commands': [
+            {'action': 'agregar', 'item': 'agua cristal', 'quantity': 1, 'raw': ''},
+            {'action': 'fijar_mesa', 'target': {'type': 'mesa', 'mesa': '5'}, 'raw': ''}
+          ]
+        }),
+        catalog,
+        resolver,
+      );
+      expect(merged.target!.mesa, '5'); // destino actualizado
+    });
+  });
 }
