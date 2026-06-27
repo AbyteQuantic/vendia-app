@@ -1629,6 +1629,37 @@ class ApiService {
     }
   }
 
+  /// Spec 085 — vender por voz: envía el audio (BYTES, web-safe) a
+  /// `/ai/voice-order` y devuelve el sobre {commands, transcript,
+  /// clarify_prompt, degraded}. Nunca rompe la venta: ante error de red el
+  /// caller cae a edición manual (el backend ya degrada con 200).
+  Future<Map<String, dynamic>> voiceOrder({
+    required Uint8List audioBytes,
+    required String mimeType,
+    String filename = 'vendia_voice_order',
+  }) async {
+    try {
+      final fields = <String, dynamic>{
+        'audio_file': MultipartFile.fromBytes(
+          audioBytes,
+          filename: filename,
+          contentType: DioMediaType.parse(mimeType),
+        ),
+      };
+      if (currentBranchId != null && currentBranchId!.isNotEmpty) {
+        fields['branch_id'] = currentBranchId!;
+      }
+      final response = await _dio.post(
+        '/api/v1/ai/voice-order',
+        data: FormData.fromMap(fields),
+        options: Options(receiveTimeout: const Duration(seconds: 60)),
+      );
+      return _extractData(response);
+    } on DioException catch (e) {
+      throw AppError.fromDioException(e);
+    }
+  }
+
   /// Spec 065 — Recipe Studio: dicta una receta por voz. Envía el audio
   /// (BYTES, web-safe) a `/ai/voice-recipe` y devuelve la receta estructurada
   /// `{name, description, yield, prep_time, ingredients:[{name,quantity,unit}],

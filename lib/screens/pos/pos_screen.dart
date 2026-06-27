@@ -16,6 +16,7 @@ import '../../widgets/stock_badge.dart';
 import '../../utils/beep.dart';
 import '../../widgets/sync_status_banner.dart';
 import 'cart_controller.dart';
+import 'voice/voice_order_sheet.dart';
 import 'account_qr_screen.dart';
 import 'widgets/container_dialog.dart';
 import 'scan_screen.dart';
@@ -1467,6 +1468,28 @@ class _PosScreenBodyState extends State<_PosScreenBody> {
   }
 
   // ── Smart Action Button Handler ──────────────────────────────────────────
+  // Spec 085 — vender por voz: abre la hoja, aplica al carrito activo tras la
+  // confirmación, y enruta cobrar/vaciar por los caminos existentes.
+  Future<void> _openVoiceOrder(CartController ctrl) async {
+    HapticFeedback.lightImpact();
+    final outcome = await showVoiceOrderSheet(context, ctrl);
+    if (outcome == null || !mounted) return;
+    if (outcome.requestEmpty) {
+      ctrl.clearActiveCart();
+    }
+    if (outcome.appliedLines > 0) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(outcome.appliedLines == 1
+            ? 'Agregué 1 producto al pedido.'
+            : 'Agregué ${outcome.appliedLines} productos al pedido.'),
+        behavior: SnackBarBehavior.floating,
+      ));
+    }
+    if (outcome.requestCheckout && ctrl.activeCart.isNotEmpty) {
+      _handleSmartAction(ctrl);
+    }
+  }
+
   void _handleSmartAction(CartController ctrl) {
     HapticFeedback.heavyImpact();
     switch (ctrl.activeContext.type) {
@@ -2300,6 +2323,23 @@ class _PosScreenBodyState extends State<_PosScreenBody> {
                                     },
                                   )
                                 : const SizedBox.shrink(),
+                          ),
+                          // Spec 085 — vender por voz (1 toque, junto a buscar).
+                          Padding(
+                            padding: const EdgeInsets.only(right: 6),
+                            child: GestureDetector(
+                              key: const Key('pos_voice_mic'),
+                              onTap: () => _openVoiceOrder(ctrl),
+                              child: Container(
+                                width: 38, height: 38,
+                                decoration: BoxDecoration(
+                                  color: AppTheme.primary.withValues(alpha: 0.12),
+                                  borderRadius: BorderRadius.circular(10),
+                                ),
+                                child: const Icon(Icons.mic_rounded,
+                                    color: AppTheme.primary, size: 22),
+                              ),
+                            ),
                           ),
                           Padding(
                             padding: const EdgeInsets.only(right: 6),
