@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:rive/rive.dart' hide LinearGradient;
 import '../../services/auth_service.dart';
+import '../../services/seasonal_branding_controller.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/vendia_logo.dart';
 import '../auth/login_screen.dart';
@@ -177,8 +178,10 @@ class _AnimatedSplashScreenState extends State<AnimatedSplashScreen>
 
   @override
   Widget build(BuildContext context) {
+    // Spec 086 — fondo de temporada si hay campaña activa (fail-safe a marca).
+    final seasonal = watchSeasonalBranding(context);
     return Scaffold(
-      backgroundColor: AppTheme.primary,
+      backgroundColor: seasonal.splashBg ?? AppTheme.primary,
       body: _riveAvailable ? _buildRive() : _buildFallback(),
     );
   }

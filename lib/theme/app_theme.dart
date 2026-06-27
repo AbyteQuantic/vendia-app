@@ -26,7 +26,13 @@ class AppTheme {
   static const Color _darkTextSecondary = Color(0xFFC8CBD0);
   static const Color _darkBorder = Color(0xFF2A2D3E);
 
-  static ThemeData get light => _buildTheme(
+  static ThemeData get light => lightWith();
+
+  /// Spec 086 — tema claro con override OPCIONAL del color de acento (branding
+  /// estacional). NO muta los const de la paleta: el override es una CAPA que
+  /// solo afecta colorScheme.secondary/tertiary; la acción primaria (#0E6BA8)
+  /// y la identidad se conservan. Sin override → acento de marca.
+  static ThemeData lightWith({Color? accentOverride}) => _buildTheme(
         brightness: Brightness.light,
         primary: AppTheme.primary,
         background: AppTheme.background,
@@ -34,6 +40,7 @@ class AppTheme {
         textPrimary: AppTheme.textPrimary,
         textSecondary: AppTheme.textSecondary,
         borderColor: AppTheme.borderColor,
+        accent: accentOverride ?? AppTheme.accent,
       );
 
   static ThemeData get dark => _buildTheme(
@@ -54,6 +61,7 @@ class AppTheme {
     required Color textPrimary,
     required Color textSecondary,
     required Color borderColor,
+    Color accent = AppTheme.accent,
   }) {
     return ThemeData(
       useMaterial3: true,
@@ -63,7 +71,7 @@ class AppTheme {
         primary: primary,
         surface: background,
         brightness: brightness,
-      ),
+      ).copyWith(secondary: accent, tertiary: accent),
       scaffoldBackgroundColor: background,
       fontFamily: 'Inter',
 

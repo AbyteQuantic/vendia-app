@@ -3825,6 +3825,29 @@ class ApiService {
     }
   }
 
+  /// Spec 086 — branding estacional (PÚBLICO, pre-login). ETag/304 como el
+  /// catálogo. Nunca crítico: el caller cae a marca normal si falla.
+  Future<({Map<String, dynamic>? data, String etag, bool notModified})>
+      fetchSeasonalBranding({String? etag}) async {
+    try {
+      final response = await _dio.get(
+        '/api/v1/branding/season',
+        options: Options(
+          headers:
+              etag != null && etag.isNotEmpty ? {'If-None-Match': etag} : null,
+          validateStatus: (s) => s != null && s < 500,
+        ),
+      );
+      final newEtag = (response.headers.value('etag') ?? etag ?? '').toString();
+      if (response.statusCode == 304) {
+        return (data: null, etag: newEtag, notModified: true);
+      }
+      return (data: _extractData(response), etag: newEtag, notModified: false);
+    } on DioException catch (e) {
+      throw AppError.fromDioException(e);
+    }
+  }
+
   Future<Map<String, dynamic>> updateStoreConfig(
       Map<String, dynamic> data) async {
     try {

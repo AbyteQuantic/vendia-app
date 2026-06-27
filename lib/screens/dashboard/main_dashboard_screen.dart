@@ -8,6 +8,7 @@ import '../../services/branch_provider.dart';
 import '../../services/panic_trigger_service.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/online_orders_bell.dart';
+import '../../widgets/seasonal_banner.dart';
 import '../../widgets/panic_button.dart';
 import '../../widgets/sync_status_banner.dart';
 import '../admin/admin_hub_screen.dart';
@@ -169,6 +170,9 @@ class _MainDashboardScreenState extends State<MainDashboardScreen> {
                         ],
                       ),
                       const SizedBox(height: 16),
+                      // Spec 086 — banner estacional (server-driven). SizedBox
+                      // vacío si no hay temporada → cero impacto en el layout.
+                      const SeasonalBanner(),
                       // Title + storefront status pill on the same line so
                       // the open/closed state is the first thing the
                       // tendero sees on the dashboard — the catálogo

@@ -11,6 +11,8 @@ import 'database/sync/sales_sync.dart';
 import 'database/sync/sync_service.dart';
 import 'services/active_fiado_service.dart';
 import 'services/api_service.dart';
+import 'services/seasonal_branding_controller.dart';
+import 'services/seasonal_branding_service.dart';
 import 'services/auth_service.dart';
 import 'services/task_center_controller.dart';
 import 'services/backend_warmup.dart';
@@ -90,10 +92,14 @@ class _VendIAAppState extends State<VendIAApp> {
   // BranchesListScreen crash with ProviderNotFoundException the
   // second the tendero tapped "Mis Sucursales".
   late final BranchProvider _branchProvider;
+  // Spec 086 — branding estacional (server-driven). Se siembra de cache al
+  // arranque (acento en cold-start) y se revalida en segundo plano.
+  final SeasonalBrandingController _seasonal = SeasonalBrandingController();
 
   @override
   void initState() {
     super.initState();
+    _loadBranding();
     _connectivityMonitor = ConnectivityMonitor();
     _syncService = SyncService(
       db: DatabaseService.instance,
@@ -193,11 +199,20 @@ class _VendIAAppState extends State<VendIAApp> {
     }
   }
 
+  // Spec 086 — siembra el branding cacheado (aplica el acento en cold-start) y
+  // luego revalida con el servidor (fail-safe: si falla, queda la marca normal).
+  Future<void> _loadBranding() async {
+    _seasonal.seed(await SeasonalBrandingService().cached());
+    if (mounted) setState(() {});
+    await _seasonal.refresh();
+  }
+
   @override
   void dispose() {
     _syncService.dispose();
     _connectivityMonitor.dispose();
     _branchProvider.dispose();
+    _seasonal.dispose();
     super.dispose();
   }
 
@@ -213,13 +228,18 @@ class _VendIAAppState extends State<VendIAApp> {
         ChangeNotifierProvider(create: (_) => NotificationToastController()),
         // Spec 078 — Centro de Tareas unificado: poller único app-wide.
         ChangeNotifierProvider(create: (_) => TaskCenterController(ApiService(AuthService()))),
+        // Spec 086 — branding estacional disponible app-wide (banner/saludo).
+        ChangeNotifierProvider.value(value: _seasonal),
       ],
       child: MaterialApp(
         title: 'VendIA',
         debugShowCheckedModeBanner: false,
         navigatorKey: PremiumUpsellController.navigatorKey,
         scaffoldMessengerKey: ApiService.scaffoldKey,
-        theme: AppTheme.light,
+        // Acento estacional en cold-start (desde cache sembrada); sin override
+        // → acento de marca. Re-temar en vivo se evita (parpadeo); banner/saludo
+        // sí refrescan en vivo via Consumer del controller.
+        theme: AppTheme.lightWith(accentOverride: _seasonal.activeAccent),
         // Force light mode — dark mode not yet supported for Gerontodiseño
         themeMode: ThemeMode.light,
         // Disable overscroll glow/stretch globally (fixes teal circles on Android 12+)
