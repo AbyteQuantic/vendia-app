@@ -124,6 +124,16 @@ class AppError implements Exception {
       );
     }
 
+    if (statusCode == 429) {
+      return AppError(
+        type: AppErrorType.network,
+        message: 'Demasiadas solicitudes en poco tiempo. '
+            'Espere unos segundos e intente de nuevo.',
+        statusCode: 429,
+        errorCode: rawCode,
+      );
+    }
+
     if (statusCode != null && statusCode >= 500) {
       final serverMsg = data is Map ? data['error'] as String? : null;
       // When the backend includes a "detail" field (e.g. pass-through
