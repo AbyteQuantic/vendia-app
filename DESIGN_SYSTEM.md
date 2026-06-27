@@ -32,22 +32,29 @@ Antes de dar por terminada una pantalla, pase el **checklist** del final.
 Logo: marca **VendIA** (check que se vuelve flecha ascendente, en azul→cyan).
 Tagline: *"POS móvil y herramientas para emprendedores"*.
 
-### Paleta azul-cyan
-> ⚠️ **Hex pendientes de confirmar con el fundador** (leídos del board de marca,
-> aproximados). Una vez confirmados, son los definitivos en `app_theme.dart`.
+**Componentes de logo** (`lib/widgets/vendia_logo.dart`, NO imágenes):
+- `VendiaWordmark` — «Vend» + «**IA**» (IA en cyan de marca, mayúscula).
+- `VendiaMark` — cuadrado redondeado con el check/flecha en gradiente azul→cyan.
+- `VendiaLogo` — marca + wordmark en fila (headers/onboarding).
 
-| Rol | Token | Hex (propuesto) |
-|-----|-------|-----------------|
-| Azul de marca (acción) | `AppTheme.primary` | `#0E6BA8` *(confirmar)* |
-| Azul profundo / ink | `AppTheme.primaryDark` | `#0A2540` *(confirmar)* |
-| Cyan de acento | `AppTheme.accent` *(nuevo)* | `#22C3E6` *(confirmar)* |
-| Cyan claro (fondos suaves) | tint | `#E6F7FB` *(confirmar)* |
+### Paleta azul-cyan (aplicada en `app_theme.dart`)
+| Rol | Token | Hex |
+|-----|-------|-----|
+| Azul de marca (acción) | `AppTheme.primary` | `#0E6BA8` |
+| Azul profundo / ink | `AppTheme.primaryDark` | `#0A2540` |
+| Cyan de acento (la «IA») | `AppTheme.accent` | `#22C3E6` |
+| Cyan claro (fondos suaves) | `AppTheme.accentSoft` | `#E6F7FB` |
 | Éxito / Error / Aviso | success/error/warning | se conservan |
 
-### Tipografía de marca
-> ⚠️ **Pendiente:** nombre de la fuente o archivo `.ttf/.otf`. Hoy la app usa
-> `Roboto`. Al confirmar, se declara en `pubspec.yaml` (`fonts:` o `google_fonts`)
-> y se fija `fontFamily` en `app_theme.dart` (un solo lugar).
+> Base afinable con el fundador viendo la app; cualquier ajuste va SOLO en
+> `app_theme.dart` (un único lugar).
+
+### Tipografía de marca: **Inter** (= equivalente libre a la fuente de Apple, SF Pro)
+Apple usa San Francisco (propietaria, no empaquetable fuera de iOS). Usamos
+**Inter** (OFL), diseñada como equivalente directo de SF: idéntica en estilo y
+consistente en iOS/Android/web. Empaquetada en `assets/fonts/` (400/500/600/700)
+y declarada en `pubspec.yaml`; `fontFamily: 'Inter'` se fija SOLO en
+`app_theme.dart`. Las TextStyle del kit heredan esta familia.
 
 ---
 

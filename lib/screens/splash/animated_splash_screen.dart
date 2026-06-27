@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:rive/rive.dart' hide LinearGradient;
 import '../../services/auth_service.dart';
 import '../../theme/app_theme.dart';
+import '../../widgets/vendia_logo.dart';
 import '../auth/login_screen.dart';
 import '../onboarding/post_login_gate.dart';
 
@@ -234,15 +235,8 @@ class _AnimatedSplashScreenState extends State<AnimatedSplashScreen>
                       position: _textSlide,
                       child: Column(
                         children: [
-                          const Text(
-                            'VendIA',
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontSize: 44,
-                              fontWeight: FontWeight.bold,
-                              letterSpacing: -1.5,
-                            ),
-                          ),
+                          const VendiaWordmark(
+                              fontSize: 44, baseColor: Colors.white),
                           const SizedBox(height: 8),
                           Text(
                             'Su tienda, inteligente',

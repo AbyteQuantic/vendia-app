@@ -10,6 +10,7 @@ import '../../services/auth_service.dart';
 import '../../services/role_manager.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/turnstile_captcha.dart';
+import '../../widgets/vendia_logo.dart';
 import '../onboarding/post_login_gate.dart';
 import '../onboarding/onboarding_stepper.dart';
 import 'branch_selector_screen.dart'; // exports WorkspaceInfo + WorkspaceSelectorScreen
@@ -348,37 +349,11 @@ class _LoginScreenState extends State<LoginScreen> {
                       children: [
                         const SizedBox(height: 24),
 
-                        // ── Hero — logo oficial de VendIA en circle ────
-                        // Mismo container blanco con sombra que el Welcome
-                        // pero más chico (110dp) porque hay form abajo.
-                        Container(
-                          width: 110,
-                          height: 110,
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            color: Colors.white,
-                            boxShadow: [
-                              BoxShadow(
-                                color: const Color(0xFF1E3A8A)
-                                    .withValues(alpha: 0.35),
-                                blurRadius: 24,
-                                offset: const Offset(0, 12),
-                              ),
-                              BoxShadow(
-                                color: Colors.white.withValues(alpha: 0.15),
-                                blurRadius: 6,
-                                offset: const Offset(-2, -3),
-                              ),
-                            ],
-                          ),
-                          padding: const EdgeInsets.all(10),
-                          child: ClipOval(
-                            child: Image.asset(
-                              'assets/images/vendia_icon_1024.png',
-                              fit: BoxFit.contain,
-                            ),
-                          ),
-                        ),
+                        // ── Hero — logo de marca VendIA (mark + wordmark) ────
+                        const VendiaMark(size: 96),
+                        const SizedBox(height: 14),
+                        const VendiaWordmark(
+                            fontSize: 34, baseColor: Colors.white),
                         const SizedBox(height: 18),
 
                         // ── Título ────────────────────────────────────────

@@ -3,6 +3,7 @@ import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:vendia_pos/screens/splash/animated_splash_screen.dart';
+import 'package:vendia_pos/widgets/vendia_logo.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -23,6 +24,8 @@ void main() {
     await tester.pumpWidget(const MaterialApp(home: AnimatedSplashScreen()));
     await tester.pump();
 
-    expect(find.text('VendIA'), findsOneWidget);
+    // Spec design system: la marca se renderiza con el wordmark de marca
+    // (VendiaWordmark: «Vend» + «IA» en cyan), no un Text plano.
+    expect(find.byType(VendiaWordmark), findsOneWidget);
   });
 }

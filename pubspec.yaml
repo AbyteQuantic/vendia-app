@@ -127,3 +127,16 @@ flutter:
     - assets/rive/
     - assets/audio/
     - assets/onboarding/
+  # Tipografía de marca (Spec design system): Inter, equivalente libre a la
+  # fuente de Apple (SF Pro). OFL — empaquetada para iOS/Android/web consistente.
+  fonts:
+    - family: Inter
+      fonts:
+        - asset: assets/fonts/Inter-Regular.ttf
+          weight: 400
+        - asset: assets/fonts/Inter-Medium.ttf
+          weight: 500
+        - asset: assets/fonts/Inter-SemiBold.ttf
+          weight: 600
+        - asset: assets/fonts/Inter-Bold.ttf
+          weight: 700

@@ -1,10 +1,14 @@
 import 'package:flutter/material.dart';
 
 class AppTheme {
-  // ─── Light palette (warm, high-contrast) ───
-  static const Color primary = Color(0xFF1A2FA0);
-  static const Color primaryLight = Color(0xFF3D5AFE);
-  static const Color primaryDark = Color(0xFF0D1B6F);
+  // ─── Marca VendIA — paleta azul-cyan unificada (design system).
+  //     Fuente única de verdad del color de acción. Hex base propuestos
+  //     (2026-06-27, board "Nueva identidad VendIA"); afinables con el fundador.
+  static const Color primary = Color(0xFF0E6BA8); // azul de marca (acción)
+  static const Color primaryLight = Color(0xFF2E97D4);
+  static const Color primaryDark = Color(0xFF0A2540); // azul profundo / ink marca
+  static const Color accent = Color(0xFF22C3E6); // cyan de acento (la "IA" del logo)
+  static const Color accentSoft = Color(0xFFE6F7FB); // cyan claro para fondos suaves
   static const Color background = Color(0xFFFFFBF7);
   static const Color surfaceGrey = Color(0xFFF3F0EC);
   static const Color textPrimary = Color(0xFF1A1A1A);
@@ -61,7 +65,7 @@ class AppTheme {
         brightness: brightness,
       ),
       scaffoldBackgroundColor: background,
-      fontFamily: 'Roboto',
+      fontFamily: 'Inter',
 
       // ─── Typography (all sizes ≥ 18px for accessibility) ───
       textTheme: TextTheme(
@@ -109,7 +113,7 @@ class AppTheme {
           fontSize: 24,
           fontWeight: FontWeight.bold,
           color: textPrimary,
-          fontFamily: 'Roboto',
+          fontFamily: 'Inter',
         ),
         iconTheme: IconThemeData(color: textPrimary, size: 28),
       ),
@@ -219,12 +223,12 @@ class AppTheme {
           fontSize: 24,
           fontWeight: FontWeight.bold,
           color: textPrimary,
-          fontFamily: 'Roboto',
+          fontFamily: 'Inter',
         ),
         contentTextStyle: TextStyle(
           fontSize: 18,
           color: textSecondary,
-          fontFamily: 'Roboto',
+          fontFamily: 'Inter',
         ),
       ),
 
