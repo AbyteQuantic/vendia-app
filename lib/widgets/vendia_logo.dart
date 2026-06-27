@@ -37,34 +37,23 @@ class VendiaWordmark extends StatelessWidget {
   }
 }
 
-/// Marca gráfica: cuadrado redondeado con el check que asciende como flecha,
-/// trazo en gradiente azul→cyan. [size] es el lado del cuadrado.
+/// Marca gráfica VendIA: el ícono oficial (smartphone + flecha de crecimiento,
+/// gradiente azul→cyan) en un cuadrado redondeado. Usa el MISMO asset que el
+/// ícono de la app para una identidad consistente. [size] es el lado.
 class VendiaMark extends StatelessWidget {
   final double size;
-  final bool filledBackground;
 
-  const VendiaMark({super.key, this.size = 48, this.filledBackground = true});
+  const VendiaMark({super.key, this.size = 48});
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      width: size,
-      height: size,
-      decoration: BoxDecoration(
-        gradient: filledBackground
-            ? const LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [AppTheme.primaryDark, AppTheme.primary],
-              )
-            : null,
-        borderRadius: BorderRadius.circular(size * 0.28),
-      ),
-      child: CustomPaint(
-        painter: _CheckArrowPainter(
-          color: filledBackground ? Colors.white : AppTheme.primary,
-          accent: AppTheme.accent,
-        ),
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(size * 0.28),
+      child: Image.asset(
+        'assets/images/vendia_icon_1024.png',
+        width: size,
+        height: size,
+        fit: BoxFit.cover,
       ),
     );
   }
@@ -88,54 +77,4 @@ class VendiaLogo extends StatelessWidget {
       ],
     );
   }
-}
-
-class _CheckArrowPainter extends CustomPainter {
-  final Color color;
-  final Color accent;
-
-  _CheckArrowPainter({required this.color, required this.accent});
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final w = size.width;
-    final h = size.height;
-    final stroke = w * 0.12;
-
-    // Check que sube y se convierte en flecha ascendente (arriba-derecha).
-    final path = Path()
-      ..moveTo(w * 0.24, h * 0.52)
-      ..lineTo(w * 0.43, h * 0.70) // bajada del check
-      ..lineTo(w * 0.78, h * 0.26); // subida larga (flecha)
-
-    final paint = Paint()
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = stroke
-      ..strokeCap = StrokeCap.round
-      ..strokeJoin = StrokeJoin.round
-      ..shader = LinearGradient(
-        begin: Alignment.bottomLeft,
-        end: Alignment.topRight,
-        colors: [color, accent],
-      ).createShader(Rect.fromLTWH(0, 0, w, h));
-    canvas.drawPath(path, paint);
-
-    // Punta de flecha en el extremo superior derecho.
-    final head = Path()
-      ..moveTo(w * 0.78, h * 0.26)
-      ..lineTo(w * 0.62, h * 0.27)
-      ..moveTo(w * 0.78, h * 0.26)
-      ..lineTo(w * 0.77, h * 0.42);
-    final headPaint = Paint()
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = stroke
-      ..strokeCap = StrokeCap.round
-      ..strokeJoin = StrokeJoin.round
-      ..color = accent;
-    canvas.drawPath(head, headPaint);
-  }
-
-  @override
-  bool shouldRepaint(_CheckArrowPainter old) =>
-      old.color != color || old.accent != accent;
 }
