@@ -1627,6 +1627,9 @@ class _PosScreenBodyState extends State<_PosScreenBody> {
                   item.customDescription ?? item.product.name,
               'custom_unit_price':
                   item.customUnitPrice ?? item.product.price,
+              // Spec 084 — profesional que realizó el servicio (congela comisión).
+              if (item.employeeUuid != null && item.employeeUuid!.isNotEmpty)
+                'employee_uuid': item.employeeUuid,
             };
           }
           return {
@@ -1640,6 +1643,9 @@ class _PosScreenBodyState extends State<_PosScreenBody> {
             // es 'retail' o el producto no tiene tier, equivale al
             // price legacy.
             'unit_price': item.product.priceForTier(priceTier),
+            // Spec 084 — servicio de catálogo (Product.is_service) atribuido.
+            if (item.employeeUuid != null && item.employeeUuid!.isNotEmpty)
+              'employee_uuid': item.employeeUuid,
           };
         }).toList(),
       };

@@ -150,6 +150,11 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   // hoy (AC-07). Cuando es ON renderizamos un tile "Cliente" al inicio.
   bool _enableCustomerManagement = false;
 
+  // Spec 084 — asignar el profesional que realizó cada servicio (congela
+  // comisión). Fail-closed: OFF → cero UI nueva.
+  bool _enableStaffCommissions = false;
+  List<Map<String, dynamic>> _staff = const [];
+
   static const _denominations = [2000, 5000, 10000, 20000, 50000, 100000];
 
   // F029: usamos `_currentTotal` (refrescado en cada build con el tier
@@ -220,6 +225,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     _loadFiadoFlag();
     _loadPriceTierConfig();
     _loadCustomerManagementFlag();
+    _loadStaffCommissions();
     if (widget.forceFiadoFlow) {
       // Defer until the first frame so the Scaffold + AppBar are mounted
       // and the handshake bottom sheet can attach to a real BuildContext.
@@ -342,6 +348,104 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     }
   }
 
+  // Spec 084 — si el negocio liquida a profesionales, carga la lista de
+  // empleados activos para asignar el servicio al que lo hizo. Fail-closed.
+  Future<void> _loadStaffCommissions() async {
+    try {
+      final flags = await AuthService().getFeatureFlags();
+      if (!mounted || !flags.enableStaffCommissions) return;
+      final emps = await ApiService(AuthService()).fetchEmployees();
+      if (!mounted) return;
+      setState(() {
+        _enableStaffCommissions = true;
+        _staff = emps
+            .where((e) => (e['is_active'] as bool?) ?? true)
+            .toList();
+      });
+    } catch (_) {
+      if (mounted) setState(() => _enableStaffCommissions = false);
+    }
+  }
+
+  // Spec 084 — sección "Profesional por servicio": una fila por línea de
+  // servicio con un selector del profesional que lo realizó. La asignación
+  // viaja en el payload (employee_uuid por línea) y el backend congela la
+  // comisión. Líneas sin asignar quedan como "no asignado".
+  List<Widget> _buildStaffAssignSection() {
+    final serviceItems = widget.items
+        .where((it) => it.isService || it.product.isService)
+        .toList();
+    if (serviceItems.isEmpty || _staff.isEmpty) return const [];
+    return [
+      const Text('Profesional por servicio',
+          style: TextStyle(
+              fontSize: 20,
+              fontWeight: FontWeight.bold,
+              color: AppTheme.textPrimary)),
+      const SizedBox(height: 4),
+      const Text('Asigne quién realizó cada servicio para liquidar su comisión.',
+          style: TextStyle(fontSize: 13, color: AppTheme.textSecondary)),
+      const SizedBox(height: 12),
+      Container(
+        decoration: BoxDecoration(
+          color: AppTheme.surfaceGrey,
+          borderRadius: BorderRadius.circular(20),
+        ),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+        child: Column(
+          children: [
+            for (final it in serviceItems)
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 8),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        it.customDescription ?? it.product.name,
+                        style: const TextStyle(
+                            fontSize: 15, color: AppTheme.textPrimary),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    DropdownButton<String?>(
+                      key: Key('staff_pick_${it.product.uuid}'),
+                      value: it.employeeUuid,
+                      hint: const Text('Profesional'),
+                      underline: const SizedBox.shrink(),
+                      items: [
+                        const DropdownMenuItem<String?>(
+                          value: null,
+                          child: Text('Sin asignar'),
+                        ),
+                        for (final e in _staff)
+                          DropdownMenuItem<String?>(
+                            value: e['uuid'] as String? ?? e['id'] as String?,
+                            child: Text((e['name'] as String?) ?? 'Empleado'),
+                          ),
+                      ],
+                      onChanged: (val) {
+                        setState(() {
+                          it.employeeUuid = val;
+                          it.employeeName = val == null
+                              ? null
+                              : _staff.firstWhere(
+                                  (e) =>
+                                      (e['uuid'] ?? e['id']) == val,
+                                  orElse: () => const {},
+                                )['name'] as String?;
+                        });
+                      },
+                    ),
+                  ],
+                ),
+              ),
+          ],
+        ),
+      ),
+      const SizedBox(height: 16),
+    ];
+  }
+
   String _formatCOP(int amount) {
     if (amount == 0) return '\$0';
     final negative = amount < 0;
@@ -444,6 +548,11 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                   if (_enableCustomerManagement && cartCtrl != null) ...[
                     _buildCustomerTile(cartCtrl),
                     const SizedBox(height: 16),
+                  ],
+
+                  // Spec 084 — asignar el profesional que realizó cada servicio.
+                  if (_enableStaffCommissions) ...[
+                    ..._buildStaffAssignSection(),
                   ],
 
                   // ── F029: selector "Tipo de precio" — solo cuando

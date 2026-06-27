@@ -13,12 +13,19 @@ class CartItem {
   final String? customDescription;
   final double? customUnitPrice;
 
+  /// Spec 084 — profesional que realiza el servicio (peluquería/barbería).
+  /// Mutable como [quantity]: se asigna al cobrar. Solo aplica a servicios.
+  String? employeeUuid;
+  String? employeeName;
+
   CartItem({
     required this.product,
     this.quantity = 1,
     this.isService = false,
     this.customDescription,
     this.customUnitPrice,
+    this.employeeUuid,
+    this.employeeName,
   });
 
   double get subtotal => product.price * quantity;
@@ -29,6 +36,8 @@ class CartItem {
         if (isService) 'is_service': true,
         if (customDescription != null) 'custom_description': customDescription,
         if (customUnitPrice != null) 'custom_unit_price': customUnitPrice,
+        if (employeeUuid != null) 'employee_uuid': employeeUuid,
+        if (employeeName != null) 'employee_name': employeeName,
       };
 
   factory CartItem.fromJson(Map<String, dynamic> json) => CartItem(
@@ -37,6 +46,8 @@ class CartItem {
         isService: json['is_service'] == true,
         customDescription: json['custom_description'] as String?,
         customUnitPrice: (json['custom_unit_price'] as num?)?.toDouble(),
+        employeeUuid: json['employee_uuid'] as String?,
+        employeeName: json['employee_name'] as String?,
       );
 
   static String encodeList(List<CartItem> items) =>

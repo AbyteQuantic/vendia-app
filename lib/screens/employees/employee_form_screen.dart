@@ -5,6 +5,8 @@ import 'package:uuid/uuid.dart';
 
 import '../../models/branch.dart';
 import '../../models/employee.dart';
+import '../../services/api_service.dart';
+import '../../services/auth_service.dart';
 import '../../utils/credit_labels.dart';
 import '../../widgets/branch_selector_drawer.dart';
 
@@ -42,6 +44,17 @@ class _EmployeeFormScreenState extends State<EmployeeFormScreen> {
   final _pinController = TextEditingController();
   EmployeeRole _selectedRole = EmployeeRole.cashier;
   String? _selectedBranchId;
+
+  // Spec 084 — esquema de pago (peluquería/barbería). Solo se muestra si el
+  // negocio liquida a profesionales (enable_staff_commissions). Se guarda con
+  // una llamada aparte a PUT /employees/:uuid/pay-config al guardar.
+  bool _enableStaffCommissions = false;
+  String? _payModel; // commission | fixed_per_job | chair_rent | salary_commission
+  String _whoCollects = 'shop';
+  final _commissionPctCtrl = TextEditingController();
+  final _fixedPerJobCtrl = TextEditingController();
+  final _rentRateCtrl = TextEditingController();
+  final _baseSalaryCtrl = TextEditingController();
 
   bool get _isEditing => widget.employee != null;
 
@@ -82,12 +95,44 @@ class _EmployeeFormScreenState extends State<EmployeeFormScreen> {
         !widget.branches.any((b) => b.id == _selectedBranchId)) {
       _selectedBranchId = null;
     }
+    _loadPaySchema();
+  }
+
+  // Spec 084 — lee el flag y, si está editando, precarga el esquema vigente.
+  Future<void> _loadPaySchema() async {
+    try {
+      final flags = await AuthService().getFeatureFlags();
+      if (!mounted || !flags.enableStaffCommissions) return;
+      setState(() => _enableStaffCommissions = true);
+      if (!_isEditing) return;
+      final cfg =
+          await ApiService(AuthService()).getPayConfig(widget.employee!.uuid);
+      if (!mounted || cfg == null) return;
+      setState(() {
+        _payModel = cfg['pay_model'] as String?;
+        _whoCollects = (cfg['who_collects'] as String?) ?? 'shop';
+        final pct = cfg['commission_pct'];
+        final fixed = cfg['fixed_per_job'];
+        final rent = cfg['rent_rate'];
+        final base = cfg['base_salary'];
+        if (pct != null) _commissionPctCtrl.text = '${(pct as num)}';
+        if (fixed != null) _fixedPerJobCtrl.text = '${(fixed as num).round()}';
+        if (rent != null) _rentRateCtrl.text = '${(rent as num).round()}';
+        if (base != null) _baseSalaryCtrl.text = '${(base as num).round()}';
+      });
+    } catch (_) {
+      // Fail-closed: sin sección de pago.
+    }
   }
 
   @override
   void dispose() {
     _nameController.dispose();
     _pinController.dispose();
+    _commissionPctCtrl.dispose();
+    _fixedPerJobCtrl.dispose();
+    _rentRateCtrl.dispose();
+    _baseSalaryCtrl.dispose();
     super.dispose();
   }
 
@@ -96,7 +141,7 @@ class _EmployeeFormScreenState extends State<EmployeeFormScreen> {
     setState(() => _selectedRole = role);
   }
 
-  void _saveEmployee() {
+  Future<void> _saveEmployee() async {
     HapticFeedback.mediumImpact();
     if (!_formKey.currentState!.validate()) return;
 
@@ -116,7 +161,145 @@ class _EmployeeFormScreenState extends State<EmployeeFormScreen> {
             branchId: branchId,
           );
 
-    Navigator.of(context).pop(employee);
+    // Spec 084 — guarda el esquema de pago (llamada aparte, por uuid). No
+    // bloquea el guardado del empleado si falla; solo avisa.
+    if (_enableStaffCommissions && _payModel != null) {
+      final body = _payConfigBody();
+      if (body != null) {
+        try {
+          await ApiService(AuthService())
+              .putPayConfig(employee.uuid, body);
+        } catch (_) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                content: Text('El empleado se guardó, pero no se pudo '
+                    'guardar el esquema de pago. Inténtelo de nuevo.')));
+          }
+        }
+      }
+    }
+
+    if (mounted) Navigator.of(context).pop(employee);
+  }
+
+  /// Arma el body de PUT /pay-config según el modelo elegido, o null si falta
+  /// el parámetro obligatorio.
+  Map<String, dynamic>? _payConfigBody() {
+    double? num(TextEditingController c) =>
+        double.tryParse(c.text.trim().replaceAll('.', '').replaceAll(',', '.'));
+    final m = _payModel!;
+    final body = <String, dynamic>{'pay_model': m};
+    switch (m) {
+      case 'commission':
+        final p = double.tryParse(_commissionPctCtrl.text.trim());
+        if (p == null) return null;
+        body['commission_pct'] = p;
+      case 'fixed_per_job':
+        final f = num(_fixedPerJobCtrl);
+        if (f == null) return null;
+        body['fixed_per_job'] = f;
+      case 'chair_rent':
+        final r = num(_rentRateCtrl);
+        if (r == null) return null;
+        body['rent_rate'] = r;
+        body['who_collects'] = _whoCollects;
+      case 'salary_commission':
+        final b = num(_baseSalaryCtrl);
+        if (b == null) return null;
+        body['base_salary'] = b;
+        final p = double.tryParse(_commissionPctCtrl.text.trim());
+        if (p != null) body['commission_pct'] = p;
+    }
+    return body;
+  }
+
+  Widget _payField(TextEditingController c, String label, String suffix) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 12),
+      child: TextFormField(
+        controller: c,
+        keyboardType: const TextInputType.numberWithOptions(decimal: true),
+        decoration: InputDecoration(
+          labelText: label,
+          suffixText: suffix,
+          border: const OutlineInputBorder(),
+          isDense: true,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildPaySection() {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.06),
+            blurRadius: 10,
+            offset: const Offset(0, 3),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          DropdownButtonFormField<String>(
+            key: const Key('pay_model_dropdown'),
+            initialValue: _payModel,
+            isExpanded: true,
+            decoration: const InputDecoration(
+              labelText: 'Modelo de pago',
+              border: OutlineInputBorder(),
+              isDense: true,
+            ),
+            items: const [
+              DropdownMenuItem(
+                  value: 'commission', child: Text('Comisión por servicio')),
+              DropdownMenuItem(
+                  value: 'fixed_per_job', child: Text('Pago fijo por trabajo')),
+              DropdownMenuItem(
+                  value: 'chair_rent', child: Text('Arriendo de silla')),
+              DropdownMenuItem(
+                  value: 'salary_commission',
+                  child: Text('Sueldo base + comisión')),
+            ],
+            onChanged: (v) => setState(() => _payModel = v),
+          ),
+          if (_payModel == 'commission')
+            _payField(_commissionPctCtrl, 'Comisión por servicio', '%'),
+          if (_payModel == 'fixed_per_job')
+            _payField(_fixedPerJobCtrl, 'Valor fijo por trabajo', '\$'),
+          if (_payModel == 'chair_rent') ...[
+            _payField(_rentRateCtrl, 'Arriendo (por día)', '\$'),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                const Expanded(
+                    child: Text('¿Quién le cobra al cliente?',
+                        style: TextStyle(fontSize: 14))),
+                DropdownButton<String>(
+                  value: _whoCollects,
+                  onChanged: (v) =>
+                      setState(() => _whoCollects = v ?? 'shop'),
+                  items: const [
+                    DropdownMenuItem(value: 'shop', child: Text('El salón')),
+                    DropdownMenuItem(
+                        value: 'pro', child: Text('El profesional')),
+                  ],
+                ),
+              ],
+            ),
+          ],
+          if (_payModel == 'salary_commission') ...[
+            _payField(_baseSalaryCtrl, 'Sueldo base (por periodo)', '\$'),
+            _payField(_commissionPctCtrl, 'Comisión adicional', '%'),
+          ],
+        ],
+      ),
+    );
   }
 
   @override
@@ -206,6 +389,22 @@ class _EmployeeFormScreenState extends State<EmployeeFormScreen> {
                 ),
                 const SizedBox(height: 14),
                 _buildRoleSelector(),
+
+                // ─── Spec 084: esquema de pago (peluquería/barbería) ───
+                if (_enableStaffCommissions) ...[
+                  const SizedBox(height: 32),
+                  const Text(
+                    'Cómo le paga',
+                    style: TextStyle(
+                      fontFamily: 'Inter',
+                      fontSize: 18,
+                      fontWeight: FontWeight.w600,
+                      color: Color(0xFF1A1A1A),
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  _buildPaySection(),
+                ],
                 const SizedBox(height: 40),
 
                 // ─── Save button ───
