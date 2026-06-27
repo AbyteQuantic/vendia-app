@@ -19,6 +19,7 @@ import '../promotions/promo_builder_screen.dart';
 import '../promotions/promotions_list_screen.dart';
 import 'catalog_customize_screen.dart';
 import 'catalog_organize_screen.dart';
+import 'mesas_config_screen.dart';
 
 class CatalogOnlineHubScreen extends StatefulWidget {
   const CatalogOnlineHubScreen({super.key, ApiService? apiOverride})
@@ -131,6 +132,12 @@ class _CatalogOnlineHubScreenState extends State<CatalogOnlineHubScreen> {
                 icon: Icons.reorder_rounded,
                 title: 'Organizar productos (orden, ocultar, destacar)',
                 onTap: () => _go(const CatalogOrganizeScreen()),
+              ),
+              // Spec 083 — atención en mesa: activar mesas + QR por mesa.
+              _ActionRow(
+                icon: Icons.table_restaurant_rounded,
+                title: 'Mesas y código QR',
+                onTap: () => _go(const MesasConfigScreen()),
               ),
             ],
           ),

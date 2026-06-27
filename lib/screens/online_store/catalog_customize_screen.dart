@@ -13,7 +13,6 @@ import '../../services/api_service.dart';
 import '../../services/auth_service.dart';
 import '../../services/app_error.dart';
 import '../../widgets/logo_ai_editor_sheet.dart';
-import '../dashboard/table_floor_plan_screen.dart';
 
 class CatalogCustomizeScreen extends StatefulWidget {
   final ApiService? api;
@@ -34,10 +33,6 @@ class _CatalogCustomizeScreenState extends State<CatalogCustomizeScreen> {
   String _logoUrl = '';
   String _businessType = '';
   String _initialSlug = '';
-  // Spec 083 — ¿la tienda atiende en mesas? Activa la capacidad enable_tables y
-  // habilita configurar mesas/áreas + QR por mesa.
-  bool _hasTables = false;
-  bool _tablesBusy = false;
   bool _loading = true;
   bool _saving = false;
   bool _coverBusy = false;
@@ -88,9 +83,6 @@ class _CatalogCustomizeScreenState extends State<CatalogCustomizeScreen> {
         _logoUrl = (d['logo_url'] as String?) ?? '';
         final types = (d['business_types'] as List?)?.map((e) => e.toString()).toList();
         _businessType = (types != null && types.isNotEmpty) ? types.first : '';
-        // Spec 083 — capacidad de mesas (raíz o dentro de feature_flags).
-        final ff = (d['feature_flags'] as Map?)?.cast<String, dynamic>();
-        _hasTables = d['enable_tables'] == true || (ff?['enable_tables'] == true);
         _loading = false;
       });
     } catch (e) {
@@ -99,31 +91,6 @@ class _CatalogCustomizeScreenState extends State<CatalogCustomizeScreen> {
         _error = e is AppError ? e.message : 'No pudimos cargar la personalización.';
         _loading = false;
       });
-    }
-  }
-
-  // Spec 083 — activa/desactiva la capacidad de mesas. Manda solo
-  // config:{has_tables} — el backend deriva el resto de toggles de los flags
-  // actuales (no borra otras capacidades).
-  Future<void> _toggleTables(bool v) async {
-    setState(() {
-      _hasTables = v;
-      _tablesBusy = true;
-    });
-    HapticFeedback.mediumImpact();
-    try {
-      final res = await _api.updateBusinessProfile({
-        'config': {'has_tables': v},
-      });
-      await AuthService().saveFeatureFlagsFromProfile(res);
-      if (!mounted) return;
-      _snack(v ? 'Mesas activadas' : 'Mesas desactivadas', ok: true);
-    } catch (e) {
-      if (!mounted) return;
-      setState(() => _hasTables = !v); // revertir si falla
-      _snack('No se pudo guardar: $e');
-    } finally {
-      if (mounted) setState(() => _tablesBusy = false);
     }
   }
 
@@ -359,54 +326,6 @@ class _CatalogCustomizeScreenState extends State<CatalogCustomizeScreen> {
                         runSpacing: 12,
                         children: [for (final hex in _swatches) _swatch(hex)],
                       ),
-                    ]),
-                    const SizedBox(height: AppUI.s16),
-
-                    _section('Mesas', [
-                      _label('¿Su tienda atiende en mesas?'),
-                      const SizedBox(height: 4),
-                      Text(
-                        'Active las mesas para generar un QR por mesa: sus '
-                        'clientes piden desde la mesa y el pedido llega al '
-                        'Centro de Tareas con la mesa indicada.',
-                        style: AppUI.bodySoft.copyWith(fontSize: 13),
-                      ),
-                      SwitchListTile(
-                        key: const Key('catalog_toggle_tables'),
-                        contentPadding: EdgeInsets.zero,
-                        value: _hasTables,
-                        onChanged: _tablesBusy ? null : _toggleTables,
-                        activeThumbColor: AppTheme.primary,
-                        title: const Text('Tiene mesas',
-                            style: TextStyle(fontWeight: FontWeight.w700)),
-                      ),
-                      if (_hasTables)
-                        InkWell(
-                          key: const Key('catalog_manage_tables'),
-                          onTap: () {
-                            HapticFeedback.lightImpact();
-                            Navigator.of(context).push(MaterialPageRoute(
-                              builder: (_) => TableFloorPlanScreen(
-                                slug: _slugCtrl.text.trim(),
-                              ),
-                            ));
-                          },
-                          borderRadius: BorderRadius.circular(AppUI.radiusSm),
-                          child: const Padding(
-                            padding: EdgeInsets.symmetric(vertical: 10),
-                            child: Row(children: [
-                              Icon(Icons.table_restaurant_rounded,
-                                  color: AppTheme.primary),
-                              SizedBox(width: 12),
-                              Expanded(
-                                child: Text('Configurar mesas, áreas y QR',
-                                    style: AppUI.bodyStrong),
-                              ),
-                              Icon(Icons.chevron_right_rounded,
-                                  color: AppTheme.textSecondary),
-                            ]),
-                          ),
-                        ),
                     ]),
                     const SizedBox(height: AppUI.s16),
 

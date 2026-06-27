@@ -51,6 +51,13 @@ void main() {
     expect(find.text('Promociones y combos'), findsOneWidget);
   });
 
+  // Spec 083 — la opción de configurar mesas + QR DEBE estar visible en el hub
+  // (regresión: antes quedó enterrada dentro de "Nombre, eslogan...").
+  testWidgets('muestra la opción "Mesas y código QR"', (tester) async {
+    await _pump(tester, 'https://tienda.vendia.store/mi-tienda');
+    expect(find.text('Mesas y código QR'), findsOneWidget);
+  });
+
   testWidgets('sin link configurado → muestra guía, no botones de link',
       (tester) async {
     await _pump(tester, null);
