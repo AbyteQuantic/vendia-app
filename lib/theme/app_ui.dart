@@ -258,6 +258,7 @@ class MinimalBadge extends StatelessWidget {
 PreferredSizeWidget glassAppBar({
   required String title,
   VoidCallback? onBack,
+  List<Widget>? actions,
 }) {
   return AppBar(
     backgroundColor: Colors.white.withValues(alpha: 0.65),
@@ -265,6 +266,7 @@ PreferredSizeWidget glassAppBar({
     elevation: 0,
     scrolledUnderElevation: 0,
     titleSpacing: 0,
+    actions: actions,
     leading: onBack == null
         ? null
         : IconButton(

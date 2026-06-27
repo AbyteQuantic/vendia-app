@@ -187,6 +187,7 @@ void main() {
         enableFurnitureJobs: true,
         enablePurchaseOrders: true,
         enableEvents: true,
+        enableStaffCommissions: true, // Spec 084 — módulo Liquidaciones
       );
       final unactivated = unactivatedOptionalModules(flags);
       expect(unactivated, isEmpty);

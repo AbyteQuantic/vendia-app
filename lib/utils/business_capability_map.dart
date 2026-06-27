@@ -125,6 +125,14 @@ enum OptionalCapability {
   /// el Dashboard muestra "Eventos" para crear, publicar y gestionar la
   /// inscripción/asistencia.
   events,
+
+  /// "Paga comisiones/liquida a sus profesionales" (Spec 084, peluquería).
+  /// → enable_staff_commissions
+  ///
+  /// Implícita para peluquería/barbería; opt-in para otros tipos. Cuando está
+  /// ON: el editor de empleado muestra "Cómo le paga", el cobro permite asignar
+  /// el profesional, y el Dashboard muestra "Liquidaciones".
+  staffCommissions,
 }
 
 /// Retorna las [OptionalCapability] que el [businessType] YA concede
@@ -148,6 +156,7 @@ Set<OptionalCapability> impliedCapabilities(String? businessType) {
     'reparacion_muebles',
     'manufactura',
     'emprendimiento_general',
+    'peluqueria_barberia',
   };
 
   if (foodTypes.contains(businessType)) {
@@ -156,6 +165,11 @@ Set<OptionalCapability> impliedCapabilities(String? businessType) {
 
   if (serviceTypes.contains(businessType)) {
     result.add(OptionalCapability.services);
+  }
+
+  // Spec 084 — peluquería/barbería implica liquidación a profesionales.
+  if (businessType == 'peluqueria_barberia') {
+    result.add(OptionalCapability.staffCommissions);
   }
 
   // deposito_construccion → granel implícito
@@ -223,6 +237,12 @@ Set<OptionalCapability> defaultCapabilitiesForType(String? businessType) {
       };
     case 'emprendimiento_general':
       return const {OptionalCapability.customerManagement};
+    case 'peluqueria_barberia': // Spec 084
+      return const {
+        OptionalCapability.services,
+        OptionalCapability.staffCommissions,
+        OptionalCapability.customerManagement,
+      };
     default: // tienda_barrio, minimercado, null
       return const {};
   }

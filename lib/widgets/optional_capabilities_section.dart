@@ -238,7 +238,8 @@ class OptionalCapabilitiesSection extends StatelessWidget {
         case OptionalCapability.furnitureJobs:
         case OptionalCapability.purchaseOrders:
         case OptionalCapability.events:
-          // F037/F042: estas capacidades se activan desde "Capacidades del
+        case OptionalCapability.staffCommissions:
+          // F037/F042/084: estas capacidades se activan desde "Capacidades del
           // negocio" / reel del Dashboard, no desde esta sección.
           break;
       }

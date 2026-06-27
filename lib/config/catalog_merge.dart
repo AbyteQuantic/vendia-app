@@ -137,6 +137,8 @@ bool _capEnabled(String key, FeatureFlags f) {
       return f.enableFractionalUnits;
     case 'enable_events':
       return f.enableEvents;
+    case 'enable_staff_commissions':
+      return f.enableStaffCommissions;
     default:
       return false;
   }

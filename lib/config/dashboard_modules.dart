@@ -54,6 +54,7 @@ import '../screens/work_orders/work_orders_screen.dart';
 import '../screens/capabilities/capabilities_registry.dart';
 import '../screens/capabilities/capability_scaffold.dart';
 import '../screens/events/events_list_screen.dart';
+import '../screens/staff/liquidations_screen.dart';
 import '../screens/tables/tables_screen.dart';
 
 /// Las 4 categorías con encabezado del Dashboard (spec §4.1).
@@ -389,6 +390,18 @@ const List<DashboardModule> dashboardModules = [
     capability: OptionalCapability.marketingHub,
     destination: PromoManagementScreen.new,
   ),
+  // Spec 084 — peluquería/barbería: liquidación a profesionales.
+  DashboardModule(
+    id: 'liquidaciones',
+    title: 'Liquidaciones',
+    subtitle: 'Comisiones, arriendo de silla y pagos a profesionales',
+    icon: Icons.content_cut_rounded,
+    color: Color(0xFF10B981),
+    category: ModuleCategory.miNegocio,
+    layer: ModuleLayer.optional,
+    capability: OptionalCapability.staffCommissions,
+    destination: LiquidationsScreen.new,
+  ),
   DashboardModule(
     id: 'configuracion',
     title: 'Ajustes de mi Negocio',
@@ -459,6 +472,7 @@ bool capabilityEnabled(OptionalCapability? cap, FeatureFlags flags) {
     OptionalCapability.furnitureJobs => flags.enableFurnitureJobs,
     OptionalCapability.purchaseOrders => flags.enablePurchaseOrders,
     OptionalCapability.events => flags.enableEvents,
+    OptionalCapability.staffCommissions => flags.enableStaffCommissions,
     null => false,
   };
 }
@@ -483,6 +497,7 @@ OptionalCapability? capabilityFromConfigKey(String? key) {
     'enable_furniture_jobs' => OptionalCapability.furnitureJobs,
     'enable_purchase_orders' => OptionalCapability.purchaseOrders,
     'enable_events' => OptionalCapability.events,
+    'enable_staff_commissions' => OptionalCapability.staffCommissions,
     _ => null,
   };
 }

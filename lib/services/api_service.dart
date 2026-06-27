@@ -1830,6 +1830,78 @@ class ApiService {
     }
   }
 
+  // ── Spec 084 — comisiones/liquidación a profesionales ──────────────────
+
+  /// Esquema de pago activo de un profesional (null si no tiene).
+  Future<Map<String, dynamic>?> getPayConfig(String employeeUuid) async {
+    try {
+      final response =
+          await _dio.get('/api/v1/employees/$employeeUuid/pay-config');
+      final data = _extractData(response);
+      return data['data'] == null ? null : data['data'] as Map<String, dynamic>;
+    } on DioException catch (e) {
+      throw AppError.fromDioException(e);
+    }
+  }
+
+  /// Crea/actualiza el esquema de pago (effective-dated en el backend).
+  Future<Map<String, dynamic>> putPayConfig(
+      String employeeUuid, Map<String, dynamic> data) async {
+    try {
+      final response = await _dio
+          .put('/api/v1/employees/$employeeUuid/pay-config', data: data);
+      return _extractData(response);
+    } on DioException catch (e) {
+      throw AppError.fromDioException(e);
+    }
+  }
+
+  /// Liquidación (preview) por profesional en un rango. Devuelve {from,until,rows}.
+  Future<Map<String, dynamic>> getLiquidation({
+    String? from,
+    String? until,
+    String? employeeUuid,
+  }) async {
+    try {
+      final params = <String, dynamic>{};
+      if (from != null) params['from'] = from;
+      if (until != null) params['until'] = until;
+      if (employeeUuid != null) params['employee_uuid'] = employeeUuid;
+      final bid = currentBranchId;
+      if (bid != null && bid.isNotEmpty) params['branch_id'] = bid;
+      final response = await _dio.get('/api/v1/payouts/liquidation',
+          queryParameters: params);
+      final data = _extractData(response);
+      return data['data'] as Map<String, dynamic>;
+    } on DioException catch (e) {
+      throw AppError.fromDioException(e);
+    }
+  }
+
+  /// Registra un pago/anticipo/arriendo (append-only).
+  Future<Map<String, dynamic>> createPayout(Map<String, dynamic> data) async {
+    try {
+      final response = await _dio.post('/api/v1/payouts', data: data);
+      return _extractData(response);
+    } on DioException catch (e) {
+      throw AppError.fromDioException(e);
+    }
+  }
+
+  /// Historial de pagos registrados (opcional filtrado por profesional).
+  Future<List<dynamic>> listPayouts({String? employeeUuid}) async {
+    try {
+      final params = <String, dynamic>{};
+      if (employeeUuid != null) params['employee_uuid'] = employeeUuid;
+      final response =
+          await _dio.get('/api/v1/payouts', queryParameters: params);
+      final data = _extractData(response);
+      return (data['data'] as List<dynamic>?) ?? const [];
+    } on DioException catch (e) {
+      throw AppError.fromDioException(e);
+    }
+  }
+
   Future<Map<String, dynamic>> fetchSales({
     int page = 1,
     int perPage = 20,
