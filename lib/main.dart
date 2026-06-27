@@ -11,6 +11,7 @@ import 'database/sync/sales_sync.dart';
 import 'database/sync/sync_service.dart';
 import 'services/active_fiado_service.dart';
 import 'services/api_service.dart';
+import 'services/app_icon_service.dart';
 import 'services/seasonal_branding_controller.dart';
 import 'services/seasonal_branding_service.dart';
 import 'services/auth_service.dart';
@@ -205,6 +206,9 @@ class _VendIAAppState extends State<VendIAApp> {
     _seasonal.seed(await SeasonalBrandingService().cached());
     if (mounted) setState(() {});
     await _seasonal.refresh();
+    // Spec 086 — ícono nativo de temporada en cold-start (idempotente; web NO-OP;
+    // nunca rompe el arranque). Selecciona un set PRE-EMPAQUETADO por icon_variant.
+    await applySeasonalIcon(_seasonal.branding.iconVariant);
   }
 
   @override

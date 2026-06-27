@@ -14,7 +14,7 @@ void main() {
     });
 
     test('temporada activa parsea overrides anidados', () {
-      final b = SeasonalBranding.fromJson({
+      final b = SeasonalBranding.fromJson(const {
         'active': true,
         'key': 'navidad_2026',
         'accent_hex': '#C0392B',
@@ -32,12 +32,13 @@ void main() {
     });
 
     test('hex inválido → null (cae al token de marca)', () {
-      final b = SeasonalBranding.fromJson({'active': true, 'accent_hex': '#zzz'});
+      final b =
+          SeasonalBranding.fromJson(const {'active': true, 'accent_hex': '#zzz'});
       expect(b.accentColor, isNull);
     });
 
     test('sin banner → hasBanner=false', () {
-      expect(SeasonalBranding.fromJson({'active': true}).hasBanner, isFalse);
+      expect(SeasonalBranding.fromJson(const {'active': true}).hasBanner, isFalse);
     });
   });
 

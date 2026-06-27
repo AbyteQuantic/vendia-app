@@ -76,6 +76,104 @@
                 android:name="android.hardware.usb.action.USB_DEVICE_ATTACHED"
                 android:resource="@xml/device_filter"/>
         </activity>
+
+        <!-- Spec 086 — branding estacional: cambio de ícono nativo sin store
+             release (flutter_dynamic_icon_plus). MainActivity SIGUE siendo el
+             ícono por defecto (conserva su LAUNCHER + el USB_DEVICE_ATTACHED de
+             la impresora ESC/POS — NO se toca). Cada temporada es un
+             activity-alias adicional, deshabilitado por defecto; el plugin lo
+             habilita en cold-start cuando icon_variant lo pide. Para agregar una
+             temporada nueva: pre-empaquetar sus mipmaps + un activity-alias aquí
+             con android:name=".<variant>" (debe coincidir con seasonal_icons.dart). -->
+        <service
+            android:name="com.solusibejo.flutter_dynamic_icon_plus.FlutterDynamicIconPlusService"
+            android:stopWithTask="false"/>
+
+        <activity-alias
+            android:label="VendIA"
+            android:icon="@mipmap/ic_launcher_navidad"
+            android:roundIcon="@mipmap/ic_launcher_navidad"
+            android:name=".navidad"
+            android:exported="true"
+            android:enabled="false"
+            android:targetActivity=".MainActivity">
+            <meta-data
+                android:name="io.flutter.embedding.android.NormalTheme"
+                android:resource="@style/NormalTheme"/>
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN"/>
+                <category android:name="android.intent.category.LAUNCHER"/>
+            </intent-filter>
+        </activity-alias>
+
+        <activity-alias
+            android:label="VendIA"
+            android:icon="@mipmap/ic_launcher_mundial"
+            android:roundIcon="@mipmap/ic_launcher_mundial"
+            android:name=".mundial"
+            android:exported="true"
+            android:enabled="false"
+            android:targetActivity=".MainActivity">
+            <meta-data
+                android:name="io.flutter.embedding.android.NormalTheme"
+                android:resource="@style/NormalTheme"/>
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN"/>
+                <category android:name="android.intent.category.LAUNCHER"/>
+            </intent-filter>
+        </activity-alias>
+
+        <activity-alias
+            android:label="VendIA"
+            android:icon="@mipmap/ic_launcher_dia_mujer"
+            android:roundIcon="@mipmap/ic_launcher_dia_mujer"
+            android:name=".dia_mujer"
+            android:exported="true"
+            android:enabled="false"
+            android:targetActivity=".MainActivity">
+            <meta-data
+                android:name="io.flutter.embedding.android.NormalTheme"
+                android:resource="@style/NormalTheme"/>
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN"/>
+                <category android:name="android.intent.category.LAUNCHER"/>
+            </intent-filter>
+        </activity-alias>
+
+        <activity-alias
+            android:label="VendIA"
+            android:icon="@mipmap/ic_launcher_dia_madre"
+            android:roundIcon="@mipmap/ic_launcher_dia_madre"
+            android:name=".dia_madre"
+            android:exported="true"
+            android:enabled="false"
+            android:targetActivity=".MainActivity">
+            <meta-data
+                android:name="io.flutter.embedding.android.NormalTheme"
+                android:resource="@style/NormalTheme"/>
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN"/>
+                <category android:name="android.intent.category.LAUNCHER"/>
+            </intent-filter>
+        </activity-alias>
+
+        <activity-alias
+            android:label="VendIA"
+            android:icon="@mipmap/ic_launcher_dia_padre"
+            android:roundIcon="@mipmap/ic_launcher_dia_padre"
+            android:name=".dia_padre"
+            android:exported="true"
+            android:enabled="false"
+            android:targetActivity=".MainActivity">
+            <meta-data
+                android:name="io.flutter.embedding.android.NormalTheme"
+                android:resource="@style/NormalTheme"/>
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN"/>
+                <category android:name="android.intent.category.LAUNCHER"/>
+            </intent-filter>
+        </activity-alias>
+
         <!-- image_cropper (uCrop) — required so the QR cropper screen
              can launch from the payment-methods upload flow. The
              AppCompat.Light.NoActionBar theme is the default that

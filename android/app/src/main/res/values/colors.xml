@@ -1,4 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <color name="ic_launcher_background">#0A2540</color>
+    <color name="ic_launcher_navidad_background">#6E1218</color>
+    <color name="ic_launcher_mundial_background">#103D14</color>
+    <color name="ic_launcher_dia_mujer_background">#4A1F63</color>
+    <color name="ic_launcher_dia_madre_background">#9B1255</color>
+    <color name="ic_launcher_dia_padre_background">#003A45</color>
 </resources>
