@@ -6,7 +6,25 @@ estrechas (360dp), no actualiza la app frecuentemente, y un overflow rompe la
 funcionalidad — no es solo cosmético.
 
 > Cualquier agente (humano o IA) que toque `lib/screens/**` o `lib/widgets/**`
-> debe leer este archivo + `DESIGN.md` antes de empezar.
+> debe leer este archivo + `DESIGN.md` + **[`DESIGN_SYSTEM.md`](DESIGN_SYSTEM.md)**
+> antes de empezar.
+
+## 0. 🏆 REGLA DE ORO — Design System (HARD)
+
+La **fuente única de verdad** del aspecto es [`DESIGN_SYSTEM.md`](DESIGN_SYSTEM.md).
+Es OBLIGATORIO antes de crear/ajustar cualquier UI:
+
+- **Tokens centralizados:** colores/tipografía/espaciado SOLO desde `app_theme.dart`
+  + `AppUI` (`app_ui.dart`). Prohibido hardcodear `Color(0x..)`, fontSize sueltos
+  o `EdgeInsets` mágicos en pantallas.
+- **Componentes del kit:** use `AppButton`, `SoftCard`, `InsetGroupedList`,
+  `glassAppBar`. **Nunca** `ElevatedButton`/`OutlinedButton` crudos en pantallas
+  (su theme legacy de 22px/64dp parte el texto en 360dp — causa real del bug del
+  modal de voz, 2026-06-27).
+- **Cero overflow / cero texto partido a 360dp**; botones de UNA línea.
+- **Marca:** acción = `AppTheme.primary` (azul de marca); logo y fuente oficiales.
+
+Pase el **checklist** de `DESIGN_SYSTEM.md` antes de dar una pantalla por terminada.
 
 ## 1. Headers y AppBars
 

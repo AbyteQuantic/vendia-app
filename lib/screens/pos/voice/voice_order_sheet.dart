@@ -147,23 +147,16 @@ class _VoiceOrderSheetState extends State<_VoiceOrderSheet> {
         Text(c.error ?? 'No se pudo procesar.',
             textAlign: TextAlign.center, style: AppUI.bodySoft),
         const SizedBox(height: AppUI.s24),
-        Row(
-          children: [
-            Expanded(
-              child: OutlinedButton(
-                onPressed: () => Navigator.of(context).pop(),
-                child: const Text('Cerrar'),
-              ),
-            ),
-            const SizedBox(width: AppUI.s12),
-            Expanded(
-              child: FilledButton(
-                onPressed: c.reset,
-                style: FilledButton.styleFrom(backgroundColor: AppTheme.primary),
-                child: const Text('Hablar otra vez'),
-              ),
-            ),
-          ],
+        AppButton(
+          label: 'Hablar otra vez',
+          icon: Icons.mic_rounded,
+          onPressed: c.reset,
+        ),
+        const SizedBox(height: AppUI.s8),
+        AppButton(
+          label: 'Cerrar',
+          variant: AppButtonVariant.secondary,
+          onPressed: () => Navigator.of(context).pop(),
         ),
       ],
     );
@@ -195,45 +188,42 @@ class _VoiceOrderSheetState extends State<_VoiceOrderSheet> {
               const SizedBox(height: AppUI.s8),
               _hintCard(c.error!),
             ],
-            const SizedBox(height: AppUI.s12),
+            const SizedBox(height: AppUI.s8),
+            const Text('Diga p. ej.: «quite la gaseosa» o «que el agua sean tres».',
+                style: AppUI.bodySoft),
+            const SizedBox(height: AppUI.s16),
+            // Acción primaria: aplicar al pedido.
+            AppButton(
+              label: 'Agregar al pedido',
+              icon: Icons.check_rounded,
+              onPressed: applicable == 0 && !preview.hasCobrar && !preview.hasVaciar
+                  ? null
+                  : _apply,
+            ),
+            const SizedBox(height: AppUI.s8),
             // Corrección por voz SOBRE esta preview (mergea, no reemplaza).
-            OutlinedButton.icon(
+            AppButton(
               key: const Key('voice_correct_button'),
+              label: 'Corregir hablando',
+              icon: Icons.mic_rounded,
+              variant: AppButtonVariant.secondary,
               onPressed: () {
                 HapticFeedback.mediumImpact();
                 c.startCorrection();
               },
-              icon: const Icon(Icons.mic_rounded, size: 18),
-              label: const Text('Corregir hablando (ej: «quite la gaseosa»)'),
-              style: OutlinedButton.styleFrom(minimumSize: const Size.fromHeight(44)),
             ),
-            const SizedBox(height: AppUI.s12),
-            FilledButton.icon(
-              onPressed: applicable == 0 && !preview.hasCobrar && !preview.hasVaciar
-                  ? null
-                  : _apply,
-              icon: const Icon(Icons.check_rounded),
-              label: const Text('Agregar al pedido'),
-              style: FilledButton.styleFrom(
-                backgroundColor: AppTheme.primary,
-                minimumSize: const Size.fromHeight(50),
-              ),
-            ),
-            const SizedBox(height: AppUI.s8),
+            const SizedBox(height: AppUI.s4),
             Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Expanded(
-                  child: OutlinedButton(
-                    onPressed: c.reset,
-                    child: const Text('Hablar otra vez'),
-                  ),
+                TextButton(
+                  onPressed: c.reset,
+                  child: const Text('Empezar de nuevo',
+                      style: TextStyle(fontSize: 14)),
                 ),
-                const SizedBox(width: AppUI.s12),
-                Expanded(
-                  child: OutlinedButton(
-                    onPressed: () => Navigator.of(context).pop(),
-                    child: const Text('Cancelar'),
-                  ),
+                TextButton(
+                  onPressed: () => Navigator.of(context).pop(),
+                  child: const Text('Cancelar', style: TextStyle(fontSize: 14)),
                 ),
               ],
             ),

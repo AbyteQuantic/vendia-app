@@ -20,6 +20,8 @@ import 'dart:ui';
 
 import 'package:flutter/material.dart';
 
+import 'app_theme.dart';
+
 abstract final class AppUI {
   // ── Espaciado (escala 8px) ──
   static const double s4 = 4;
@@ -102,6 +104,91 @@ abstract final class AppUI {
     color: ink,
     fontFeatures: [FontFeature.tabularFigures()],
   );
+}
+
+/// Variantes del botón estándar del design system.
+enum AppButtonVariant { primary, secondary, danger }
+
+/// AppButton — botón ESTÁNDAR del design system (regla de oro). Tamaño y
+/// tipografía consistentes con el kit (alto 50, radio 12, texto 16 w600,
+/// una sola línea con ellipsis — nunca se parte). Úselo SIEMPRE en lugar de
+/// ElevatedButton/OutlinedButton crudos (cuyo theme legacy de 22px/64dp parte
+/// el texto en pantallas estrechas).
+class AppButton extends StatelessWidget {
+  final String label;
+  final VoidCallback? onPressed;
+  final IconData? icon;
+  final AppButtonVariant variant;
+  final bool expand;
+
+  const AppButton({
+    super.key,
+    required this.label,
+    required this.onPressed,
+    this.icon,
+    this.variant = AppButtonVariant.primary,
+    this.expand = true,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    const brand = AppTheme.primary;
+    const danger = AppTheme.error;
+    final Color fg = switch (variant) {
+      AppButtonVariant.primary => Colors.white,
+      AppButtonVariant.secondary => brand,
+      AppButtonVariant.danger => Colors.white,
+    };
+    final Color? bg = switch (variant) {
+      AppButtonVariant.primary => brand,
+      AppButtonVariant.secondary => null,
+      AppButtonVariant.danger => danger,
+    };
+    final label0 = Text(
+      label,
+      maxLines: 1,
+      overflow: TextOverflow.ellipsis,
+      textAlign: TextAlign.center,
+      style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: fg),
+    );
+    final child = icon == null
+        ? label0
+        : Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(icon, size: 20, color: fg),
+              const SizedBox(width: AppUI.s8),
+              Flexible(child: label0),
+            ],
+          );
+    final shape = RoundedRectangleBorder(
+      borderRadius: BorderRadius.circular(AppUI.radius),
+    );
+    final btn = variant == AppButtonVariant.secondary
+        ? OutlinedButton(
+            onPressed: onPressed,
+            style: OutlinedButton.styleFrom(
+              foregroundColor: brand,
+              minimumSize: const Size(0, 50),
+              shape: shape,
+              side: BorderSide(color: brand.withValues(alpha: 0.5), width: 1.5),
+              textStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+            ),
+            child: child,
+          )
+        : FilledButton(
+            onPressed: onPressed,
+            style: FilledButton.styleFrom(
+              backgroundColor: bg,
+              foregroundColor: fg,
+              minimumSize: const Size(0, 50),
+              shape: shape,
+              textStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+            ),
+            child: child,
+          );
+    return expand ? SizedBox(width: double.infinity, child: btn) : btn;
+  }
 }
 
 /// Botón de acción secundaria (Ghost): ícono + texto, sin relleno de color.
