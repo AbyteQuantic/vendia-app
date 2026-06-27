@@ -16,7 +16,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import 'carousel_navigation.dart';
-import 'dashboard_ui_kit.dart';
 
 /// Datos para una card del carrusel de KPIs.
 class KpiCardData {
@@ -336,162 +335,144 @@ class _KpiCard extends StatelessWidget {
                 child: ClipRRect(
                   // -1 para que la imagen no se asome por fuera del borde 1px.
                   borderRadius: BorderRadius.circular(23),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                  // Estructura "opción 3": imagen a sangre completa con una
+                  // etiqueta glass abajo (título + valor). El coverflow sigue
+                  // siendo horizontal.
+                  child: Stack(
+                    fit: StackFit.expand,
                     children: [
-                      // ── Foto arriba (proporción póster — domina) ────
-                      Expanded(
-                        flex: 5,
-                        child: Stack(
-                          fit: StackFit.expand,
-                          children: [
-                            Container(color: accent.withValues(alpha: 0.18)),
-                            Image.network(
-                              data.photoUrl,
-                              fit: BoxFit.cover,
-                              errorBuilder: (_, __, ___) =>
-                                  _placeholder(accent, data.fallbackIcon),
-                              loadingBuilder: (_, child, progress) {
-                                if (progress == null) return child;
-                                return _placeholder(accent, data.fallbackIcon);
-                              },
-                            ),
-                            // Botón "quitar del inicio" — solo en capacidades
-                            // activas. Desactiva la capacidad y la regresa al
-                            // listado de "Descubre más opciones".
-                            if (data.onRemove != null)
-                              Positioned(
-                                top: 8,
-                                right: 8,
-                                child: Material(
-                                  color: Colors.black.withValues(alpha: 0.45),
-                                  shape: const CircleBorder(),
-                                  child: InkWell(
-                                    customBorder: const CircleBorder(),
-                                    onTap: () {
-                                      HapticFeedback.mediumImpact();
-                                      data.onRemove!();
-                                    },
-                                    child: const Padding(
-                                      padding: EdgeInsets.all(7),
-                                      child: Icon(Icons.close_rounded,
-                                          size: 18, color: Colors.white),
-                                    ),
-                                  ),
-                                ),
+                      Container(color: accent.withValues(alpha: 0.18)),
+                      Image.network(
+                        data.photoUrl,
+                        fit: BoxFit.cover,
+                        errorBuilder: (_, __, ___) =>
+                            _placeholder(accent, data.fallbackIcon),
+                        loadingBuilder: (_, child, progress) {
+                          if (progress == null) return child;
+                          return _placeholder(accent, data.fallbackIcon);
+                        },
+                      ),
+                      // Scrim inferior (decorativo → ignora toques) para que el
+                      // texto se lea sobre la foto.
+                      const Positioned.fill(
+                        child: IgnorePointer(
+                          child: DecoratedBox(
+                            decoration: BoxDecoration(
+                              gradient: LinearGradient(
+                                begin: Alignment.center,
+                                end: Alignment.bottomCenter,
+                                colors: [Colors.transparent, Color(0x99000000)],
                               ),
-                          ],
+                            ),
+                          ),
                         ),
                       ),
-                      // ── Bloque blanco inferior con info estructurada ─
-                      Expanded(
-                        flex: 4,
-                        child: Padding(
-                          padding: const EdgeInsets.fromLTRB(20, 18, 16, 16),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              // Título + subtitle (zona "destino" /
-                              // "ubicación" del estilo de referencia).
-                              Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
+                      // Etiqueta glass inferior (estructura "opción 3"): título,
+                      // valor/estado y subtítulo (si viene). IgnorePointer para
+                      // que el toque caiga en el InkWell de la card (abre).
+                      Positioned(
+                        left: 12,
+                        right: 12,
+                        bottom: 12,
+                        child: IgnorePointer(
+                          child: Container(
+                            padding: const EdgeInsets.fromLTRB(14, 10, 14, 10),
+                            decoration: BoxDecoration(
+                              color: Colors.black.withValues(alpha: 0.42),
+                              borderRadius: BorderRadius.circular(16),
+                              border: Border.all(
+                                  color: Colors.white.withValues(alpha: 0.18)),
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Text(
+                                  data.title,
+                                  style: const TextStyle(
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w600,
+                                    color: Colors.white70,
+                                    letterSpacing: 0.2,
+                                  ),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                                const SizedBox(height: 2),
+                                if (data.onRemove != null)
+                                  Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      const Icon(Icons.check_circle_rounded,
+                                          size: 14, color: Color(0xFF34D399)),
+                                      const SizedBox(width: 4),
+                                      Flexible(
+                                        child: Text(
+                                          data.value,
+                                          style: const TextStyle(
+                                              fontSize: 14,
+                                              fontWeight: FontWeight.w800,
+                                              color: Colors.white),
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                      ),
+                                    ],
+                                  )
+                                else
                                   Text(
-                                    data.title,
+                                    data.value,
                                     style: const TextStyle(
-                                      fontSize: 20,
-                                      fontWeight: FontWeight.w700,
-                                      color: DashUI.ink,
-                                      height: 1.15,
+                                      fontSize: 19,
+                                      fontWeight: FontWeight.w900,
+                                      color: Colors.white,
+                                      height: 1.0,
                                       letterSpacing: -0.3,
                                     ),
                                     maxLines: 1,
                                     overflow: TextOverflow.ellipsis,
                                   ),
-                                  if (data.subtitle != null) ...[
-                                    const SizedBox(height: 4),
-                                    Row(
-                                      children: [
-                                        Icon(Icons.fiber_manual_record,
-                                            size: 8,
-                                            color: accent.withValues(alpha: 0.8)),
-                                        const SizedBox(width: 6),
-                                        Flexible(
-                                          child: Text(
-                                            data.subtitle!,
-                                            style: const TextStyle(
-                                              fontSize: 13,
-                                              fontWeight: FontWeight.w500,
-                                              color: DashUI.inkSoft,
-                                            ),
-                                            maxLines: 1,
-                                            overflow: TextOverflow.ellipsis,
-                                          ),
-                                        ),
-                                      ],
+                                if (data.subtitle != null) ...[
+                                  const SizedBox(height: 3),
+                                  Text(
+                                    data.subtitle!,
+                                    style: const TextStyle(
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w500,
+                                      color: Colors.white70,
                                     ),
-                                  ],
-                                ],
-                              ),
-                              // Zona inferior. Para KPIs: valor grande.
-                              // Para capacidades activas (onRemove != null):
-                              // el estado ("Activo") es un badge semántico
-                              // pequeño y alineado — no un texto suelto
-                              // gigante compitiendo con el título.
-                              Row(
-                                crossAxisAlignment: CrossAxisAlignment.end,
-                                children: [
-                                  Expanded(
-                                    child: data.onRemove != null
-                                        ? Align(
-                                            alignment: Alignment.centerLeft,
-                                            child: DashStatusBadge(
-                                              label: data.value,
-                                              color: const Color(0xFF059669),
-                                            ),
-                                          )
-                                        : Text(
-                                            data.value,
-                                            style: TextStyle(
-                                              fontSize: 28,
-                                              fontWeight: FontWeight.w900,
-                                              color: accent,
-                                              height: 1.0,
-                                              letterSpacing: -0.5,
-                                            ),
-                                            maxLines: 1,
-                                            overflow: TextOverflow.ellipsis,
-                                          ),
-                                  ),
-                                  const SizedBox(width: 12),
-                                  Material(
-                                    color: accent,
-                                    shape: const CircleBorder(),
-                                    elevation: 0,
-                                    child: InkWell(
-                                      customBorder: const CircleBorder(),
-                                      onTap: () {
-                                        HapticFeedback.lightImpact();
-                                        data.onTap();
-                                      },
-                                      child: const Padding(
-                                        padding: EdgeInsets.all(14),
-                                        child: Icon(
-                                          Icons.arrow_forward_rounded,
-                                          color: Colors.white,
-                                          size: 26,
-                                        ),
-                                      ),
-                                    ),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
                                   ),
                                 ],
-                              ),
-                            ],
+                              ],
+                            ),
                           ),
                         ),
                       ),
+                      // Botón "quitar del inicio" — ÚLTIMO (encima de todo) y
+                      // tappable. Solo en capacidades activas.
+                      if (data.onRemove != null)
+                        Positioned(
+                          top: 8,
+                          right: 8,
+                          child: Material(
+                            color: Colors.black.withValues(alpha: 0.45),
+                            shape: const CircleBorder(),
+                            child: InkWell(
+                              customBorder: const CircleBorder(),
+                              onTap: () {
+                                HapticFeedback.mediumImpact();
+                                data.onRemove!();
+                              },
+                              child: const Padding(
+                                padding: EdgeInsets.all(7),
+                                child: Icon(Icons.close_rounded,
+                                    size: 18, color: Colors.white),
+                              ),
+                            ),
+                          ),
+                        ),
                     ],
                   ),
                 ),
