@@ -19,6 +19,8 @@ import 'cart_controller.dart';
 import 'account_qr_screen.dart';
 import 'widgets/container_dialog.dart';
 import 'scan_screen.dart';
+import 'table_qr_scan_screen.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'checkout_screen.dart';
 import 'sale_success_screen.dart';
 import 'cuaderno_fiados_screen.dart';
@@ -1152,6 +1154,47 @@ class _PosScreenBodyState extends State<_PosScreenBody> {
                 style: TextStyle(fontSize: 15, color: accentColor,
                     fontWeight: FontWeight.w600)),
             const SizedBox(height: 16),
+            // Spec 083 — el mesero escanea el QR de la mesa para abrir su cuenta
+            // (ayuda a clientes que no quieren/saben pedir desde su celular).
+            if (!kIsWeb && _tables.isNotEmpty) ...[
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  key: const Key('scan_table_qr'),
+                  onPressed: () async {
+                    final mesaId = await Navigator.of(context).push<String>(
+                      MaterialPageRoute(builder: (_) => const TableQrScanScreen()),
+                    );
+                    if (mesaId == null || !mounted) return;
+                    final match = _tables.firstWhere(
+                      (t) => (t['id'] as String?) == mesaId,
+                      orElse: () => <String, dynamic>{},
+                    );
+                    if (match.isEmpty) {
+                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                        content: Text('El QR no corresponde a una mesa de esta tienda'),
+                        behavior: SnackBarBehavior.floating,
+                      ));
+                      return;
+                    }
+                    HapticFeedback.mediumImpact();
+                    ctrl.setContext(AccountContext(
+                      type: mesaType,
+                      tableLabel: match['label'] as String? ?? '',
+                    ));
+                    if (mounted) Navigator.of(context).pop();
+                  },
+                  icon: const Icon(Icons.qr_code_scanner_rounded),
+                  label: const Text('Escanear QR de mesa'),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: accentColor,
+                    side: BorderSide(color: accentColor),
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 12),
+            ],
             _tables.isEmpty
                 ? Padding(
                     padding: const EdgeInsets.symmetric(vertical: 24),
