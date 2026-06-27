@@ -26,6 +26,21 @@ InputDecoration _mesaField(String label, {String? hint}) => InputDecoration(
       ),
     );
 
+/// Normaliza un nombre de área para COMPARAR (sin tildes, sin espacios extra,
+/// minúsculas) y así detectar duplicados por typo/mayúsculas/acentos.
+String foldAreaKey(String s) {
+  var t = s.trim().toLowerCase();
+  const from = 'áàäâãéèëêíìïîóòöôõúùüûñ';
+  const to = 'aaaaaeeeeiiiiooooouuuun';
+  final b = StringBuffer();
+  for (final ch in t.split('')) {
+    final i = from.indexOf(ch);
+    b.write(i >= 0 ? to[i] : ch);
+  }
+  // colapsa espacios internos múltiples
+  return b.toString().replaceAll(RegExp(r'\s+'), ' ');
+}
+
 /// Floor Plan Editor — grid interactivo para gestionar mesas (UI normalizada
 /// al kit AppUI). Todas las operaciones ocurren en memoria hasta "Guardar".
 class TableFloorPlanScreen extends StatefulWidget {
@@ -124,9 +139,37 @@ class _TableFloorPlanScreenState extends State<TableFloorPlanScreen> {
     }
   }
 
+  /// Áreas YA creadas (distintas, conservando la primera grafía vista). Sirven
+  /// de sugerencias en el campo "Área" para no duplicar por typo/mayúsculas.
+  List<String> _existingAreas() {
+    final seen = <String>{};
+    final out = <String>[];
+    for (final t in _tables.values) {
+      final a = t.area.trim();
+      if (a.isEmpty) continue;
+      final k = foldAreaKey(a);
+      if (seen.add(k)) out.add(a);
+    }
+    out.sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
+    return out;
+  }
+
+  /// Devuelve la grafía CANÓNICA de un área: si ya existe una equivalente
+  /// (ignorando tildes/mayúsculas/espacios), reutiliza esa; si no, la guarda
+  /// tal cual (trim). Evita "Terraza"/"terraza"/"terrasa " como áreas distintas.
+  String _canonicalArea(String typed) {
+    final t = foldAreaKey(typed);
+    if (t.isEmpty) return '';
+    for (final a in _existingAreas()) {
+      if (foldAreaKey(a) == t) return a;
+    }
+    return typed.trim();
+  }
+
   void _showCreateDialog(int x, int y) {
     final ctrl = TextEditingController(text: 'Mesa ${_tables.length + 1}');
-    final areaCtrl = TextEditingController();
+    var areaValue = '';
+    final areas = _existingAreas();
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -144,10 +187,10 @@ class _TableFloorPlanScreenState extends State<TableFloorPlanScreen> {
               decoration: _mesaField('Nombre', hint: 'Mesa 1'),
             ),
             const SizedBox(height: AppUI.s12),
-            TextField(
-              controller: areaCtrl,
-              style: const TextStyle(fontSize: 16, color: AppUI.ink),
-              decoration: _mesaField('Área (opcional)', hint: 'Terraza, Salón, Barra…'),
+            _AreaAutocomplete(
+              initial: '',
+              options: areas,
+              onChanged: (v) => areaValue = v,
             ),
           ],
         ),
@@ -166,7 +209,7 @@ class _TableFloorPlanScreenState extends State<TableFloorPlanScreen> {
                 _tables['$x,$y'] = _TableData(
                   id: '',
                   label: name,
-                  area: areaCtrl.text.trim(),
+                  area: _canonicalArea(areaValue),
                   gridX: x,
                   gridY: y,
                   capacity: 4,
@@ -275,8 +318,10 @@ class _TableFloorPlanScreenState extends State<TableFloorPlanScreen> {
   void _showEditDialog(String key) {
     final table = _tables[key]!;
     final nameCtrl = TextEditingController(text: table.label);
-    final areaCtrl = TextEditingController(text: table.area);
+    var areaValue = table.area;
     final capCtrl = TextEditingController(text: table.capacity.toString());
+    // Sugerencias = áreas de OTRAS mesas (la propia ya está representada por su valor).
+    final areas = _existingAreas();
 
     showDialog(
       context: context,
@@ -295,10 +340,10 @@ class _TableFloorPlanScreenState extends State<TableFloorPlanScreen> {
               decoration: _mesaField('Nombre'),
             ),
             const SizedBox(height: AppUI.s12),
-            TextField(
-              controller: areaCtrl,
-              style: const TextStyle(fontSize: 16, color: AppUI.ink),
-              decoration: _mesaField('Área (opcional)', hint: 'Terraza, Salón, Barra…'),
+            _AreaAutocomplete(
+              initial: table.area,
+              options: areas,
+              onChanged: (v) => areaValue = v,
             ),
             const SizedBox(height: AppUI.s12),
             TextField(
@@ -323,7 +368,7 @@ class _TableFloorPlanScreenState extends State<TableFloorPlanScreen> {
               setState(() {
                 _tables[key] = table.copyWith(
                   label: name,
-                  area: areaCtrl.text.trim(),
+                  area: _canonicalArea(areaValue),
                   capacity: int.tryParse(capCtrl.text) ?? table.capacity,
                 );
                 _dirty = true;
@@ -580,6 +625,73 @@ class _TableFloorPlanScreenState extends State<TableFloorPlanScreen> {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// Campo "Área" con autocompletado de las áreas ya creadas (estilo AppUI).
+/// Sugiere mientras se escribe para evitar duplicados por typo/mayúsculas.
+class _AreaAutocomplete extends StatelessWidget {
+  const _AreaAutocomplete({
+    required this.initial,
+    required this.options,
+    required this.onChanged,
+  });
+
+  final String initial;
+  final List<String> options;
+  final ValueChanged<String> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return Autocomplete<String>(
+      initialValue: TextEditingValue(text: initial),
+      optionsBuilder: (tev) {
+        final q = foldAreaKey(tev.text);
+        if (q.isEmpty) return options;
+        return options.where((o) => foldAreaKey(o).contains(q));
+      },
+      onSelected: onChanged,
+      fieldViewBuilder: (context, controller, focusNode, _) {
+        return TextField(
+          controller: controller,
+          focusNode: focusNode,
+          onChanged: onChanged,
+          textCapitalization: TextCapitalization.words,
+          style: const TextStyle(fontSize: 16, color: AppUI.ink),
+          decoration: _mesaField('Área (opcional)', hint: 'Terraza, Salón, Barra…'),
+        );
+      },
+      optionsViewBuilder: (context, onSelected, opts) => Align(
+        alignment: Alignment.topLeft,
+        child: Material(
+          elevation: 4,
+          borderRadius: BorderRadius.circular(AppUI.radius),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxHeight: 180, maxWidth: 320),
+            child: ListView(
+              padding: EdgeInsets.zero,
+              shrinkWrap: true,
+              children: [
+                for (final o in opts)
+                  InkWell(
+                    onTap: () => onSelected(o),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: AppUI.s16, vertical: AppUI.s12),
+                      child: Row(children: [
+                        const Icon(Icons.place_outlined,
+                            size: 18, color: AppUI.inkSoft),
+                        const SizedBox(width: AppUI.s8),
+                        Expanded(child: Text(o, style: AppUI.bodyStrong)),
+                      ]),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ),
       ),
     );
   }
