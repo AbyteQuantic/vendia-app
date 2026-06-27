@@ -4,11 +4,17 @@ import '../../services/api_service.dart';
 import '../../services/auth_service.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/branch_selector_drawer.dart';
+import '../../widgets/table_menu_qr_sheet.dart';
 
 /// Floor Plan Editor — Gerontodiseño: grid interactivo para gestionar mesas.
 /// Todas las operaciones ocurren en memoria hasta presionar "Guardar".
 class TableFloorPlanScreen extends StatefulWidget {
-  const TableFloorPlanScreen({super.key});
+  /// Spec 083 — slug de la tienda para generar el QR del menú por mesa
+  /// (tienda.vendia.store/<slug>?mesa=<id>). Vacío → el botón de QR pide
+  /// configurar primero el enlace del catálogo.
+  final String? slug;
+
+  const TableFloorPlanScreen({super.key, this.slug});
 
   @override
   State<TableFloorPlanScreen> createState() => _TableFloorPlanScreenState();
@@ -46,6 +52,7 @@ class _TableFloorPlanScreenState extends State<TableFloorPlanScreen> {
           _tables[key] = _TableData(
             id: t['id'] as String? ?? '',
             label: t['label'] as String? ?? '',
+            area: t['area'] as String? ?? '',
             gridX: x,
             gridY: y,
             capacity: (t['capacity'] as num?)?.toInt() ?? 4,
@@ -69,6 +76,7 @@ class _TableFloorPlanScreenState extends State<TableFloorPlanScreen> {
           .map((t) => {
                 'id': t.id,
                 'label': t.label,
+                'area': t.area,
                 'grid_x': t.gridX,
                 'grid_y': t.gridY,
                 'capacity': t.capacity,
@@ -98,6 +106,7 @@ class _TableFloorPlanScreenState extends State<TableFloorPlanScreen> {
 
   void _showCreateDialog(int x, int y) {
     final ctrl = TextEditingController(text: 'Mesa ${_tables.length + 1}');
+    final areaCtrl = TextEditingController();
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -105,14 +114,29 @@ class _TableFloorPlanScreenState extends State<TableFloorPlanScreen> {
         title: const Text('Nueva Mesa',
             style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold,
                 color: Colors.black87)),
-        content: TextField(
-          controller: ctrl,
-          autofocus: true,
-          style: const TextStyle(fontSize: 22, color: Colors.black87),
-          decoration: const InputDecoration(
-            hintText: 'Nombre de la mesa',
-            hintStyle: TextStyle(color: Color(0xFFB0A99A)),
-          ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: ctrl,
+              autofocus: true,
+              style: const TextStyle(fontSize: 22, color: Colors.black87),
+              decoration: const InputDecoration(
+                hintText: 'Nombre de la mesa',
+                hintStyle: TextStyle(color: Color(0xFFB0A99A)),
+              ),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: areaCtrl,
+              style: const TextStyle(fontSize: 18, color: Colors.black87),
+              decoration: const InputDecoration(
+                labelText: 'Área (opcional)',
+                hintText: 'Terraza, Salón, Barra…',
+                hintStyle: TextStyle(color: Color(0xFFB0A99A)),
+              ),
+            ),
+          ],
         ),
         actions: [
           TextButton(
@@ -128,6 +152,7 @@ class _TableFloorPlanScreenState extends State<TableFloorPlanScreen> {
                 _tables['$x,$y'] = _TableData(
                   id: '',
                   label: name,
+                  area: areaCtrl.text.trim(),
                   gridX: x,
                   gridY: y,
                   capacity: 4,
@@ -178,10 +203,27 @@ class _TableFloorPlanScreenState extends State<TableFloorPlanScreen> {
                     fontSize: 24, fontWeight: FontWeight.w800,
                     color: Colors.black87)),
             const SizedBox(height: 4),
-            Text('Capacidad: ${table.capacity} sillas',
+            Text(
+                table.area.isNotEmpty
+                    ? '${table.area} · ${table.capacity} sillas'
+                    : 'Capacidad: ${table.capacity} sillas',
                 style: const TextStyle(
                     fontSize: 16, color: AppTheme.textSecondary)),
-            const SizedBox(height: 20),
+            const SizedBox(height: 16),
+            // Spec 083 — QR del menú de la mesa (catálogo con ?mesa=<id>).
+            SizedBox(
+              width: double.infinity,
+              child: _ActionButton(
+                icon: Icons.qr_code_2_rounded,
+                label: 'QR del menú de la mesa',
+                color: AppTheme.primary,
+                onTap: () {
+                  Navigator.of(ctx).pop();
+                  _openTableQr(table);
+                },
+              ),
+            ),
+            const SizedBox(height: 12),
             Row(
               children: [
                 Expanded(
@@ -222,6 +264,7 @@ class _TableFloorPlanScreenState extends State<TableFloorPlanScreen> {
   void _showEditDialog(String key) {
     final table = _tables[key]!;
     final nameCtrl = TextEditingController(text: table.label);
+    final areaCtrl = TextEditingController(text: table.area);
     final capCtrl = TextEditingController(text: table.capacity.toString());
 
     showDialog(
@@ -239,6 +282,15 @@ class _TableFloorPlanScreenState extends State<TableFloorPlanScreen> {
               autofocus: true,
               style: const TextStyle(fontSize: 20, color: Colors.black87),
               decoration: const InputDecoration(labelText: 'Nombre'),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: areaCtrl,
+              style: const TextStyle(fontSize: 20, color: Colors.black87),
+              decoration: const InputDecoration(
+                labelText: 'Área (opcional)',
+                hintText: 'Terraza, Salón, Barra…',
+              ),
             ),
             const SizedBox(height: 12),
             TextField(
@@ -262,6 +314,7 @@ class _TableFloorPlanScreenState extends State<TableFloorPlanScreen> {
               setState(() {
                 _tables[key] = table.copyWith(
                   label: name,
+                  area: areaCtrl.text.trim(),
                   capacity: int.tryParse(capCtrl.text) ?? table.capacity,
                 );
                 _dirty = true;
@@ -279,6 +332,29 @@ class _TableFloorPlanScreenState extends State<TableFloorPlanScreen> {
           ),
         ],
       ),
+    );
+  }
+
+  // Spec 083 — abre el QR del menú de una mesa. Requiere que la mesa esté
+  // GUARDADA (tiene id) y un slug del catálogo configurado.
+  void _openTableQr(_TableData table) {
+    final slug = (widget.slug ?? '').trim();
+    if (slug.isEmpty) {
+      _showSnack('Primero configure el enlace de su tienda en el catálogo.',
+          isError: true);
+      return;
+    }
+    if (table.id.isEmpty || _dirty) {
+      _showSnack('Guarde la distribución antes de generar el QR de la mesa.',
+          isError: true);
+      return;
+    }
+    showTableMenuQrSheet(
+      context,
+      slug: slug,
+      tableId: table.id,
+      tableLabel: table.label,
+      area: table.area,
     );
   }
 
@@ -534,6 +610,7 @@ class _TableFloorPlanScreenState extends State<TableFloorPlanScreen> {
 class _TableData {
   final String id;
   final String label;
+  final String area; // Spec 083 — zona opcional (Terraza/Salón…)
   final int gridX;
   final int gridY;
   final int capacity;
@@ -541,6 +618,7 @@ class _TableData {
   _TableData({
     required this.id,
     required this.label,
+    this.area = '',
     required this.gridX,
     required this.gridY,
     required this.capacity,
@@ -549,6 +627,7 @@ class _TableData {
   _TableData copyWith({
     String? id,
     String? label,
+    String? area,
     int? gridX,
     int? gridY,
     int? capacity,
@@ -556,6 +635,7 @@ class _TableData {
     return _TableData(
       id: id ?? this.id,
       label: label ?? this.label,
+      area: area ?? this.area,
       gridX: gridX ?? this.gridX,
       gridY: gridY ?? this.gridY,
       capacity: capacity ?? this.capacity,
