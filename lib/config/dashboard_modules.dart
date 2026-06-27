@@ -54,6 +54,7 @@ import '../screens/work_orders/work_orders_screen.dart';
 import '../screens/capabilities/capabilities_registry.dart';
 import '../screens/capabilities/capability_scaffold.dart';
 import '../screens/events/events_list_screen.dart';
+import '../screens/staff/agenda_screen.dart';
 import '../screens/staff/liquidations_screen.dart';
 import '../screens/tables/tables_screen.dart';
 
@@ -389,6 +390,18 @@ const List<DashboardModule> dashboardModules = [
     layer: ModuleLayer.optional,
     capability: OptionalCapability.marketingHub,
     destination: PromoManagementScreen.new,
+  ),
+  // Spec 084 Fase 2 — agenda de turnos/citas (peluquería/barbería).
+  DashboardModule(
+    id: 'agenda_turnos',
+    title: 'Agenda de turnos',
+    subtitle: 'Citas reservadas por sus clientes en línea',
+    icon: Icons.event_available_rounded,
+    color: Color(0xFF0EA5E9),
+    category: ModuleCategory.vender,
+    layer: ModuleLayer.optional,
+    capability: OptionalCapability.staffCommissions,
+    destination: AgendaScreen.new,
   ),
   // Spec 084 — peluquería/barbería: liquidación a profesionales.
   DashboardModule(

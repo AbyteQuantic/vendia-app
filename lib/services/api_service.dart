@@ -1830,6 +1830,36 @@ class ApiService {
     }
   }
 
+  // ── Spec 084 Fase 2 — agenda de citas/turnos ───────────────────────────
+
+  /// Agenda del salón en un rango (default backend [ayer,+90d]).
+  Future<List<dynamic>> getAppointments({String? from, String? until, String? status}) async {
+    try {
+      final params = <String, dynamic>{};
+      if (from != null) params['from'] = from;
+      if (until != null) params['until'] = until;
+      if (status != null) params['status'] = status;
+      final response =
+          await _dio.get('/api/v1/appointments', queryParameters: params);
+      final data = _extractData(response);
+      return (data['data'] as List<dynamic>?) ?? const [];
+    } on DioException catch (e) {
+      throw AppError.fromDioException(e);
+    }
+  }
+
+  /// Actualiza el estado/horario/profesional de una cita.
+  Future<Map<String, dynamic>> updateAppointment(
+      String id, Map<String, dynamic> data) async {
+    try {
+      final response =
+          await _dio.patch('/api/v1/appointments/$id', data: data);
+      return _extractData(response);
+    } on DioException catch (e) {
+      throw AppError.fromDioException(e);
+    }
+  }
+
   // ── Spec 084 — comisiones/liquidación a profesionales ──────────────────
 
   /// Esquema de pago activo de un profesional (null si no tiene).

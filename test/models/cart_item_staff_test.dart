@@ -5,7 +5,7 @@ import 'package:vendia_pos/models/product.dart';
 
 void main() {
   Product p() =>
-      Product(id: 1, uuid: 'p1', name: 'Corte', price: 10000, stock: 0);
+      const Product(id: 1, uuid: 'p1', name: 'Corte', price: 10000, stock: 0);
 
   test('toJson incluye employee_uuid/name solo cuando se asigna', () {
     final unassigned = CartItem(product: p(), isService: true);

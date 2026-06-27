@@ -38,15 +38,32 @@ class _CreateServiceScreenState extends State<CreateServiceScreen> {
   final _nameCtrl = TextEditingController();
   final _priceCtrl = TextEditingController();
   final _descCtrl = TextEditingController();
+  // Spec 084 — duración (para citas) + comisión del servicio. Solo se muestran
+  // si el negocio liquida a profesionales (peluquería/barbería).
+  final _durationCtrl = TextEditingController();
+  final _commissionCtrl = TextEditingController();
+  bool _staffMode = false;
   String _category = 'Servicios';
   XFile? _photo;
   bool _saving = false;
+
+  @override
+  void initState() {
+    super.initState();
+    AuthService().getFeatureFlags().then((f) {
+      if (mounted && f.enableStaffCommissions) {
+        setState(() => _staffMode = true);
+      }
+    });
+  }
 
   @override
   void dispose() {
     _nameCtrl.dispose();
     _priceCtrl.dispose();
     _descCtrl.dispose();
+    _durationCtrl.dispose();
+    _commissionCtrl.dispose();
     super.dispose();
   }
 
@@ -108,6 +125,14 @@ class _CreateServiceScreenState extends State<CreateServiceScreen> {
       };
       final desc = _descCtrl.text.trim();
       if (desc.isNotEmpty) data['description'] = desc;
+
+      // Spec 084 — duración (citas) + comisión por servicio (peluquería).
+      if (_staffMode) {
+        final dur = int.tryParse(_durationCtrl.text.trim());
+        if (dur != null && dur > 0) data['duration_min'] = dur;
+        final pct = double.tryParse(_commissionCtrl.text.trim());
+        if (pct != null) data['commission_pct'] = pct;
+      }
 
       final created = await api.createProduct(data);
 
@@ -198,6 +223,23 @@ class _CreateServiceScreenState extends State<CreateServiceScreen> {
             maxLines: 3,
             textCapitalization: TextCapitalization.sentences,
           ),
+          // Spec 084 — duración (para reservar turnos) + comisión del profesional.
+          if (_staffMode) ...[
+            const SizedBox(height: 12),
+            _Field(
+              controller: _durationCtrl,
+              label: 'Duración (minutos) — para reservar turnos',
+              hint: 'Ej: 30',
+              keyboardType: TextInputType.number,
+            ),
+            const SizedBox(height: 12),
+            _Field(
+              controller: _commissionCtrl,
+              label: 'Comisión del profesional (%) — opcional',
+              hint: 'Ej: 40',
+              keyboardType: TextInputType.number,
+            ),
+          ],
           const SizedBox(height: 16),
           const Text('Categoría',
               style: TextStyle(

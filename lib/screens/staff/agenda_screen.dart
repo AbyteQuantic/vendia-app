@@ -1,0 +1,313 @@
+// Spec: specs/084-peluqueria-salon/spec.md (Fase 2 — agenda de citas/turnos)
+//
+// Agenda del salón: lista las citas reservadas (públicas + creadas) agrupadas
+// por día, con su estado y acciones rápidas (confirmar / atendida / cancelar).
+// Estética kit AppUI.
+
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+
+import '../../services/api_service.dart';
+import '../../services/auth_service.dart';
+import '../../theme/app_theme.dart';
+import '../../theme/app_ui.dart';
+
+class AgendaScreen extends StatefulWidget {
+  const AgendaScreen({super.key, ApiService? apiOverride})
+      : _apiOverride = apiOverride;
+  final ApiService? _apiOverride;
+
+  @override
+  State<AgendaScreen> createState() => _AgendaScreenState();
+}
+
+class _AgendaScreenState extends State<AgendaScreen> {
+  late final ApiService _api =
+      widget._apiOverride ?? ApiService(AuthService());
+
+  bool _loading = true;
+  String? _error;
+  List<Map<String, dynamic>> _appts = const [];
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+    try {
+      final rows = await _api.getAppointments();
+      if (mounted) {
+        setState(() {
+          _appts = rows.cast<Map<String, dynamic>>();
+          _loading = false;
+        });
+      }
+    } catch (_) {
+      if (mounted) {
+        setState(() {
+          _error = 'No se pudo cargar la agenda.';
+          _loading = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _setStatus(Map<String, dynamic> a, String status) async {
+    HapticFeedback.lightImpact();
+    try {
+      await _api.updateAppointment(a['id'] as String, {'status': status});
+      await _load();
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('No se pudo actualizar la cita.')),
+        );
+      }
+    }
+  }
+
+  /// Agrupa por día (yyyy-mm-dd) preservando el orden ascendente.
+  Map<String, List<Map<String, dynamic>>> _byDay() {
+    final map = <String, List<Map<String, dynamic>>>{};
+    for (final a in _appts) {
+      final iso = a['starts_at'] as String?;
+      if (iso == null) continue;
+      final dt = DateTime.tryParse(iso)?.toLocal();
+      if (dt == null) continue;
+      final key =
+          '${dt.year}-${dt.month.toString().padLeft(2, '0')}-${dt.day.toString().padLeft(2, '0')}';
+      map.putIfAbsent(key, () => []).add(a);
+    }
+    return map;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final topPad = MediaQuery.paddingOf(context).top + kToolbarHeight + AppUI.s8;
+    final byDay = _byDay();
+    final days = byDay.keys.toList()..sort();
+    return Scaffold(
+      backgroundColor: AppUI.pageBg,
+      extendBodyBehindAppBar: true,
+      appBar: glassAppBar(
+        title: 'Agenda de turnos',
+        onBack: () => Navigator.of(context).maybePop(),
+      ),
+      body: RefreshIndicator(
+        onRefresh: _load,
+        child: ListView(
+          padding: EdgeInsets.fromLTRB(AppUI.s16, topPad, AppUI.s16, AppUI.s24),
+          children: [
+            if (_loading)
+              const Padding(
+                padding: EdgeInsets.only(top: AppUI.s24),
+                child: Center(child: CircularProgressIndicator()),
+              )
+            else if (_error != null)
+              _InfoCard(text: _error!)
+            else if (_appts.isEmpty)
+              const _InfoCard(
+                text:
+                    'Aún no hay turnos reservados. Comparta su link de reservas '
+                    'para que sus clientes aparten su turno en línea.',
+              )
+            else
+              for (final day in days) ...[
+                Padding(
+                  padding: const EdgeInsets.only(
+                      left: AppUI.s4, top: AppUI.s8, bottom: AppUI.s8),
+                  child: Text(_dayLabel(day), style: AppUI.sectionLabel),
+                ),
+                ...byDay[day]!.map((a) => Padding(
+                      padding: const EdgeInsets.only(bottom: AppUI.s12),
+                      child: _ApptCard(a: a, onStatus: (s) => _setStatus(a, s)),
+                    )),
+              ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  String _dayLabel(String key) {
+    final d = DateTime.tryParse(key);
+    if (d == null) return key;
+    const months = [
+      'enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio',
+      'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'
+    ];
+    return '${d.day} de ${months[d.month - 1]}';
+  }
+}
+
+String agendaStatusLabel(String? s) {
+  switch (s) {
+    case 'pendiente':
+      return 'Pendiente';
+    case 'confirmada':
+      return 'Confirmada';
+    case 'atendida':
+      return 'Atendida';
+    case 'cancelada':
+      return 'Cancelada';
+    case 'no_show':
+      return 'No llegó';
+    default:
+      return s ?? '';
+  }
+}
+
+Color agendaStatusColor(String? s) {
+  switch (s) {
+    case 'confirmada':
+      return AppTheme.primary;
+    case 'atendida':
+      return const Color(0xFF10B981);
+    case 'cancelada':
+    case 'no_show':
+      return Colors.redAccent;
+    default:
+      return AppUI.inkSoft;
+  }
+}
+
+class _ApptCard extends StatelessWidget {
+  const _ApptCard({required this.a, required this.onStatus});
+  final Map<String, dynamic> a;
+  final void Function(String status) onStatus;
+
+  String _time() {
+    final dt = DateTime.tryParse(a['starts_at'] as String? ?? '')?.toLocal();
+    if (dt == null) return '';
+    return dt.toLocal().toString().substring(11, 16);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final status = a['status'] as String?;
+    final svc = (a['service_name'] as String?)?.trim();
+    final pro = (a['employee_name'] as String?)?.trim();
+    final cliente = (a['customer_name'] as String?)?.trim();
+    final phone = (a['customer_phone'] as String?)?.trim();
+    final active = status != 'cancelada' && status != 'atendida';
+    return SoftCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Text(_time(),
+                  style: AppUI.bodyStrong.copyWith(color: AppTheme.primary)),
+              const SizedBox(width: AppUI.s12),
+              Expanded(
+                child: Text(svc?.isNotEmpty == true ? svc! : 'Servicio',
+                    style: AppUI.bodyStrong),
+              ),
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                decoration: BoxDecoration(
+                  color: agendaStatusColor(status).withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(AppUI.radiusSm),
+                ),
+                child: Text(agendaStatusLabel(status),
+                    style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: agendaStatusColor(status))),
+              ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          Text(
+            [
+              if (pro?.isNotEmpty == true) pro,
+              if (cliente?.isNotEmpty == true) cliente,
+              if (phone?.isNotEmpty == true) phone,
+            ].join(' · '),
+            style: AppUI.bodySoft,
+          ),
+          if (active) ...[
+            const SizedBox(height: AppUI.s12),
+            Row(
+              children: [
+                if (status == 'pendiente')
+                  _ActionChip(
+                    label: 'Confirmar',
+                    icon: Icons.check_rounded,
+                    onTap: () => onStatus('confirmada'),
+                  ),
+                _ActionChip(
+                  label: 'Atendida',
+                  icon: Icons.done_all_rounded,
+                  onTap: () => onStatus('atendida'),
+                ),
+                _ActionChip(
+                  label: 'Cancelar',
+                  icon: Icons.close_rounded,
+                  danger: true,
+                  onTap: () => onStatus('cancelada'),
+                ),
+              ],
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _ActionChip extends StatelessWidget {
+  const _ActionChip({
+    required this.label,
+    required this.icon,
+    required this.onTap,
+    this.danger = false,
+  });
+  final String label;
+  final IconData icon;
+  final VoidCallback onTap;
+  final bool danger;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = danger ? Colors.redAccent : AppTheme.primary;
+    return Padding(
+      padding: const EdgeInsets.only(right: AppUI.s8),
+      child: OutlinedButton.icon(
+        onPressed: onTap,
+        icon: Icon(icon, size: 16, color: color),
+        label: Text(label, style: TextStyle(color: color, fontSize: 13)),
+        style: OutlinedButton.styleFrom(
+          side: BorderSide(color: color.withValues(alpha: 0.4)),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+          minimumSize: const Size(0, 36),
+        ),
+      ),
+    );
+  }
+}
+
+class _InfoCard extends StatelessWidget {
+  const _InfoCard({required this.text});
+  final String text;
+  @override
+  Widget build(BuildContext context) {
+    return SoftCard(
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Icon(Icons.event_note_rounded, color: AppTheme.primary),
+          const SizedBox(width: AppUI.s12),
+          Expanded(child: Text(text, style: AppUI.bodySoft)),
+        ],
+      ),
+    );
+  }
+}
