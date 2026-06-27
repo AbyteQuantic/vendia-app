@@ -114,10 +114,15 @@ flutter_launcher_icons:
   android: true
   ios: true
   image_path: "assets/images/vendia_icon_1024.png"
-  adaptive_icon_background: "#667EEA"
+  adaptive_icon_background: "#0A2540" # azul profundo de marca (antes púrpura)
   adaptive_icon_foreground: "assets/images/vendia_icon_android.png"
   min_sdk_android: 21
   remove_alpha_ios: true
+  web:
+    generate: true
+    image_path: "assets/images/vendia_icon_1024.png"
+    background_color: "#0A2540"
+    theme_color: "#0E6BA8"
 
 flutter:
   uses-material-design: true
