@@ -3,11 +3,31 @@ import 'package:flutter/services.dart';
 import '../../services/api_service.dart';
 import '../../services/auth_service.dart';
 import '../../theme/app_theme.dart';
+import '../../theme/app_ui.dart';
 import '../../widgets/branch_selector_drawer.dart';
 import '../../widgets/table_menu_qr_sheet.dart';
 
-/// Floor Plan Editor — Gerontodiseño: grid interactivo para gestionar mesas.
-/// Todas las operaciones ocurren en memoria hasta presionar "Guardar".
+/// Campo de texto del kit (radius AppUI, sin relleno crema). Reusado por los
+/// diálogos de crear/editar mesa para mantener la UI normalizada (AppUI).
+InputDecoration _mesaField(String label, {String? hint}) => InputDecoration(
+      labelText: label,
+      hintText: hint,
+      labelStyle: const TextStyle(color: AppUI.inkSoft),
+      hintStyle: const TextStyle(color: AppUI.inkSoft),
+      isDense: true,
+      contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+      enabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(AppUI.radius),
+        borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
+      ),
+      focusedBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(AppUI.radius),
+        borderSide: const BorderSide(color: AppTheme.primary, width: 1.6),
+      ),
+    );
+
+/// Floor Plan Editor — grid interactivo para gestionar mesas (UI normalizada
+/// al kit AppUI). Todas las operaciones ocurren en memoria hasta "Guardar".
 class TableFloorPlanScreen extends StatefulWidget {
   /// Spec 083 — slug de la tienda para generar el QR del menú por mesa
   /// (tienda.vendia.store/<slug>?mesa=<id>). Vacío → el botón de QR pide
@@ -110,41 +130,35 @@ class _TableFloorPlanScreenState extends State<TableFloorPlanScreen> {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-        title: const Text('Nueva Mesa',
-            style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold,
-                color: Colors.black87)),
+        backgroundColor: Colors.white,
+        surfaceTintColor: Colors.transparent,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppUI.radius * 2)),
+        title: const Text('Nueva mesa', style: AppUI.title),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             TextField(
               controller: ctrl,
               autofocus: true,
-              style: const TextStyle(fontSize: 22, color: Colors.black87),
-              decoration: const InputDecoration(
-                hintText: 'Nombre de la mesa',
-                hintStyle: TextStyle(color: Color(0xFFB0A99A)),
-              ),
+              style: const TextStyle(fontSize: 16, color: AppUI.ink),
+              decoration: _mesaField('Nombre', hint: 'Mesa 1'),
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: AppUI.s12),
             TextField(
               controller: areaCtrl,
-              style: const TextStyle(fontSize: 18, color: Colors.black87),
-              decoration: const InputDecoration(
-                labelText: 'Área (opcional)',
-                hintText: 'Terraza, Salón, Barra…',
-                hintStyle: TextStyle(color: Color(0xFFB0A99A)),
-              ),
+              style: const TextStyle(fontSize: 16, color: AppUI.ink),
+              decoration: _mesaField('Área (opcional)', hint: 'Terraza, Salón, Barra…'),
             ),
           ],
         ),
+        actionsPadding: const EdgeInsets.fromLTRB(AppUI.s16, 0, AppUI.s16, AppUI.s12),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(),
             child: const Text('Cancelar',
-                style: TextStyle(fontSize: 18, color: AppTheme.textSecondary)),
+                style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: AppUI.inkSoft)),
           ),
-          ElevatedButton(
+          FilledButton(
             onPressed: () {
               final name = ctrl.text.trim();
               if (name.isEmpty) return;
@@ -162,14 +176,13 @@ class _TableFloorPlanScreenState extends State<TableFloorPlanScreen> {
               HapticFeedback.lightImpact();
               Navigator.of(ctx).pop();
             },
-            style: ElevatedButton.styleFrom(
+            style: FilledButton.styleFrom(
               backgroundColor: AppTheme.primary,
-              foregroundColor: Colors.white,
-              shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(14)),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppUI.radius)),
+              padding: const EdgeInsets.symmetric(horizontal: AppUI.s24, vertical: AppUI.s12),
             ),
             child: const Text('Crear',
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
           ),
         ],
       ),
@@ -192,24 +205,22 @@ class _TableFloorPlanScreenState extends State<TableFloorPlanScreen> {
           children: [
             Container(
               width: 40, height: 4,
-              margin: const EdgeInsets.only(bottom: 20),
+              margin: const EdgeInsets.only(bottom: AppUI.s24),
               decoration: BoxDecoration(
-                color: const Color(0xFFD6D0C8),
+                color: const Color(0xFFE2E8F0),
                 borderRadius: BorderRadius.circular(2),
               ),
             ),
             Text(table.label,
                 style: const TextStyle(
-                    fontSize: 24, fontWeight: FontWeight.w800,
-                    color: Colors.black87)),
-            const SizedBox(height: 4),
+                    fontSize: 22, fontWeight: FontWeight.w800, color: AppUI.ink)),
+            const SizedBox(height: AppUI.s4),
             Text(
                 table.area.isNotEmpty
                     ? '${table.area} · ${table.capacity} sillas'
                     : 'Capacidad: ${table.capacity} sillas',
-                style: const TextStyle(
-                    fontSize: 16, color: AppTheme.textSecondary)),
-            const SizedBox(height: 16),
+                style: AppUI.bodySoft),
+            const SizedBox(height: AppUI.s16),
             // Spec 083 — QR del menú de la mesa (catálogo con ?mesa=<id>).
             SizedBox(
               width: double.infinity,
@@ -223,14 +234,14 @@ class _TableFloorPlanScreenState extends State<TableFloorPlanScreen> {
                 },
               ),
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: AppUI.s12),
             Row(
               children: [
                 Expanded(
                   child: _ActionButton(
                     icon: Icons.edit_rounded,
                     label: 'Editar',
-                    color: const Color(0xFF3B82F6),
+                    color: AppTheme.primary,
                     onTap: () {
                       Navigator.of(ctx).pop();
                       _showEditDialog(key);
@@ -270,44 +281,42 @@ class _TableFloorPlanScreenState extends State<TableFloorPlanScreen> {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-        title: const Text('Editar Mesa',
-            style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold,
-                color: Colors.black87)),
+        backgroundColor: Colors.white,
+        surfaceTintColor: Colors.transparent,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppUI.radius * 2)),
+        title: const Text('Editar mesa', style: AppUI.title),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             TextField(
               controller: nameCtrl,
               autofocus: true,
-              style: const TextStyle(fontSize: 20, color: Colors.black87),
-              decoration: const InputDecoration(labelText: 'Nombre'),
+              style: const TextStyle(fontSize: 16, color: AppUI.ink),
+              decoration: _mesaField('Nombre'),
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: AppUI.s12),
             TextField(
               controller: areaCtrl,
-              style: const TextStyle(fontSize: 20, color: Colors.black87),
-              decoration: const InputDecoration(
-                labelText: 'Área (opcional)',
-                hintText: 'Terraza, Salón, Barra…',
-              ),
+              style: const TextStyle(fontSize: 16, color: AppUI.ink),
+              decoration: _mesaField('Área (opcional)', hint: 'Terraza, Salón, Barra…'),
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: AppUI.s12),
             TextField(
               controller: capCtrl,
               keyboardType: TextInputType.number,
-              style: const TextStyle(fontSize: 20, color: Colors.black87),
-              decoration: const InputDecoration(labelText: 'Sillas'),
+              style: const TextStyle(fontSize: 16, color: AppUI.ink),
+              decoration: _mesaField('Sillas'),
             ),
           ],
         ),
+        actionsPadding: const EdgeInsets.fromLTRB(AppUI.s16, 0, AppUI.s16, AppUI.s12),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(),
             child: const Text('Cancelar',
-                style: TextStyle(fontSize: 18, color: AppTheme.textSecondary)),
+                style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: AppUI.inkSoft)),
           ),
-          ElevatedButton(
+          FilledButton(
             onPressed: () {
               final name = nameCtrl.text.trim();
               if (name.isEmpty) return;
@@ -321,14 +330,13 @@ class _TableFloorPlanScreenState extends State<TableFloorPlanScreen> {
               });
               Navigator.of(ctx).pop();
             },
-            style: ElevatedButton.styleFrom(
+            style: FilledButton.styleFrom(
               backgroundColor: AppTheme.primary,
-              foregroundColor: Colors.white,
-              shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(14)),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppUI.radius)),
+              padding: const EdgeInsets.symmetric(horizontal: AppUI.s24, vertical: AppUI.s12),
             ),
             child: const Text('Guardar',
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
           ),
         ],
       ),
@@ -372,42 +380,36 @@ class _TableFloorPlanScreenState extends State<TableFloorPlanScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFFFFBF7),
+      backgroundColor: AppUI.pageBg,
       appBar: AppBar(
-        backgroundColor: const Color(0xFFFFFBF7),
+        backgroundColor: Colors.white,
+        surfaceTintColor: Colors.transparent,
         elevation: 0,
+        scrolledUnderElevation: 0,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back_rounded,
-              color: AppTheme.textPrimary, size: 28),
+          icon: const Icon(Icons.arrow_back_rounded, color: AppUI.ink),
           onPressed: () => Navigator.of(context).pop(),
         ),
-        title: const Text(
-          'Plano de Mesas',
-          style: TextStyle(
-            fontSize: 24,
-            fontWeight: FontWeight.w800,
-            color: AppTheme.textPrimary,
-          ),
-        ),
+        title: const Text('Plano de mesas', style: AppUI.title),
         actions: [
           const Padding(
-              padding: EdgeInsets.only(right: 8),
+              padding: EdgeInsets.only(right: AppUI.s8),
               child: Center(child: BranchSelectorChip())),
           if (_dirty)
             Padding(
-              padding: const EdgeInsets.only(right: 12),
+              padding: const EdgeInsets.only(right: AppUI.s12),
               child: Center(
                 child: Container(
                   padding:
                       const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                   decoration: BoxDecoration(
-                    color: AppTheme.warning.withValues(alpha: 0.15),
-                    borderRadius: BorderRadius.circular(8),
+                    color: AppTheme.warning.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(AppUI.radiusSm),
                   ),
                   child: const Text('Sin guardar',
                       style: TextStyle(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w600,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
                           color: AppTheme.warning)),
                 ),
               ),
@@ -427,17 +429,15 @@ class _TableFloorPlanScreenState extends State<TableFloorPlanScreen> {
       children: [
         // Legend
         const Padding(
-          padding: EdgeInsets.fromLTRB(24, 8, 24, 8),
+          padding: EdgeInsets.fromLTRB(AppUI.s24, AppUI.s12, AppUI.s24, AppUI.s8),
           child: Row(
             children: [
-              Icon(Icons.info_outline_rounded,
-                  size: 18, color: AppTheme.textSecondary),
-              SizedBox(width: 8),
+              Icon(Icons.info_outline_rounded, size: 18, color: AppUI.inkSoft),
+              SizedBox(width: AppUI.s8),
               Expanded(
                 child: Text(
-                  'Toque un espacio vacío para agregar mesa. Toque una mesa para editar o eliminar.',
-                  style: TextStyle(
-                      fontSize: 14, color: AppTheme.textSecondary),
+                  'Toque un espacio vacío para agregar mesa. Toque una mesa para editar, ver su QR o eliminar.',
+                  style: AppUI.bodySoft,
                 ),
               ),
             ],
@@ -488,9 +488,9 @@ class _TableFloorPlanScreenState extends State<TableFloorPlanScreen> {
     return Container(
       padding: const EdgeInsets.all(4),
       decoration: BoxDecoration(
-        color: const Color(0xFF3B82F6).withValues(alpha: 0.12),
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: const Color(0xFF3B82F6), width: 2),
+        color: AppTheme.primary.withValues(alpha: 0.10),
+        borderRadius: BorderRadius.circular(AppUI.radius),
+        border: Border.all(color: AppTheme.primary.withValues(alpha: 0.6), width: 1.5),
       ),
       child: FittedBox(
         fit: BoxFit.scaleDown,
@@ -498,24 +498,18 @@ class _TableFloorPlanScreenState extends State<TableFloorPlanScreen> {
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             const Icon(Icons.table_restaurant_rounded,
-                color: Color(0xFF3B82F6), size: 26),
+                color: AppTheme.primary, size: 26),
             const SizedBox(height: 2),
             Text(
               table.label,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: const TextStyle(
-                fontSize: 13,
-                fontWeight: FontWeight.w700,
-                color: Color(0xFF1E3A5F),
-              ),
+                fontSize: 13, fontWeight: FontWeight.w700, color: AppUI.ink),
             ),
             Text(
               '${table.capacity} sillas',
-              style: TextStyle(
-                fontSize: 10,
-                color: const Color(0xFF3B82F6).withValues(alpha: 0.7),
-              ),
+              style: const TextStyle(fontSize: 10, color: AppUI.inkSoft),
             ),
           ],
         ),
@@ -526,16 +520,12 @@ class _TableFloorPlanScreenState extends State<TableFloorPlanScreen> {
   Widget _buildEmptyCell() {
     return Container(
       decoration: BoxDecoration(
-        color: const Color(0xFFF5F0EB),
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(
-          color: const Color(0xFFD6D0C8),
-          style: BorderStyle.solid,
-        ),
+        color: AppUI.hairline,
+        borderRadius: BorderRadius.circular(AppUI.radius),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
       ),
-      child: Center(
-        child: Icon(Icons.add_rounded,
-            color: const Color(0xFFB0A99A).withValues(alpha: 0.5), size: 24),
+      child: const Center(
+        child: Icon(Icons.add_rounded, color: AppUI.inkSoft, size: 22),
       ),
     );
   }
@@ -543,60 +533,48 @@ class _TableFloorPlanScreenState extends State<TableFloorPlanScreen> {
   Widget _buildBottomBar() {
     return Container(
       padding: EdgeInsets.fromLTRB(
-          24, 12, 24, MediaQuery.of(context).padding.bottom + 12),
-      decoration: BoxDecoration(
+          AppUI.s16, AppUI.s12, AppUI.s16, MediaQuery.paddingOf(context).bottom + AppUI.s12),
+      decoration: const BoxDecoration(
         color: Colors.white,
         boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.06),
-            blurRadius: 12,
-            offset: const Offset(0, -2),
-          ),
+          BoxShadow(color: Color(0x0F000000), blurRadius: 16, offset: Offset(0, -2)),
         ],
       ),
       child: Row(
         children: [
-          // Table counter
+          // Contador de mesas
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+            padding: const EdgeInsets.symmetric(horizontal: AppUI.s16, vertical: 10),
             decoration: BoxDecoration(
-              color: const Color(0xFF3B82F6).withValues(alpha: 0.1),
-              borderRadius: BorderRadius.circular(14),
+              color: AppTheme.primary.withValues(alpha: 0.08),
+              borderRadius: BorderRadius.circular(AppUI.radius),
             ),
             child: Text(
               '${_tables.length}',
               style: const TextStyle(
-                  fontSize: 24,
-                  fontWeight: FontWeight.w800,
-                  color: Color(0xFF3B82F6)),
+                  fontSize: 22, fontWeight: FontWeight.w800, color: AppTheme.primary),
             ),
           ),
-          const SizedBox(width: 12),
-          // Save button
+          const SizedBox(width: AppUI.s12),
           Expanded(
             child: SizedBox(
-              height: 60,
-              child: ElevatedButton.icon(
+              height: 52,
+              child: FilledButton.icon(
                 onPressed: _saving ? null : _syncTables,
                 icon: _saving
                     ? const SizedBox(
-                        width: 24,
-                        height: 24,
-                        child: CircularProgressIndicator(
-                            color: Colors.white, strokeWidth: 2.5))
-                    : const Text('\u{1F4BE}', style: TextStyle(fontSize: 22)),
+                        width: 20, height: 20,
+                        child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2.4))
+                    : const Icon(Icons.save_rounded, size: 20),
                 label: Text(
-                  _saving ? 'Guardando...' : 'Guardar Distribución',
-                  style: const TextStyle(
-                      fontSize: 20, fontWeight: FontWeight.bold),
+                  _saving ? 'Guardando…' : 'Guardar distribución',
+                  style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
                 ),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: AppTheme.success,
-                  foregroundColor: Colors.white,
-                  disabledBackgroundColor:
-                      AppTheme.success.withValues(alpha: 0.6),
+                style: FilledButton.styleFrom(
+                  backgroundColor: AppTheme.primary,
+                  disabledBackgroundColor: AppTheme.primary.withValues(alpha: 0.5),
                   shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(18)),
+                      borderRadius: BorderRadius.circular(AppUI.radius)),
                 ),
               ),
             ),
