@@ -613,8 +613,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
         title: 'Catálogo Online',
         value: 'Tu tienda en línea',
         subtitle: 'Personalice y comparta',
+        // Vitrina/tienda en línea (no comida): pega con "tu catálogo".
         photoUrl:
-            'https://images.pexels.com/photos/4198015/pexels-photo-4198015.jpeg?auto=compress&cs=tinysrgb&w=480&h=360&fit=crop',
+            'https://images.unsplash.com/photo-1472851294608-062f824d29cc?q=80&w=480&h=360&auto=format&fit=crop',
         fallbackIcon: Icons.storefront_rounded,
         accentColor: AppTheme.success,
         onTap: () => Navigator.of(context).push(MaterialPageRoute(

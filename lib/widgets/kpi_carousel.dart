@@ -79,7 +79,8 @@ class _KpiCarouselState extends State<KpiCarousel> {
   // 0.66 — más bajo que antes (0.70) para que asome MÁS de las cards
   // vecinas: así se nota de inmediato que hay más ítems a los lados y
   // el conjunto se ve más junto, no una card aislada en el centro.
-  final double _viewportFraction = 0.66;
+  // 0.62: deja ver MÁS de las cards vecinas → se sienten más cercanas entre sí.
+  final double _viewportFraction = 0.62;
 
   @override
   void initState() {
@@ -283,7 +284,7 @@ class _KpiCard extends StatelessWidget {
         final d = signed.abs();
         final scale = 1.0 - (d * 0.10);
         final opacity = 1.0 - (d * 0.35);
-        final rotationY = -signed * 0.42; // radianes (~24°)
+        final rotationY = -signed * 0.55; // radianes (~31°) — más arco tipo aro
         final transform = Matrix4.identity()
           ..setEntry(3, 2, 0.0014)
           ..scaleByDouble(scale, scale, 1.0, 1.0)
@@ -298,7 +299,7 @@ class _KpiCard extends StatelessWidget {
         );
       },
       child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
+          padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 8),
           child: Material(
             elevation: 0,
             color: Colors.transparent,
