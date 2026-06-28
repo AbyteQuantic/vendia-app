@@ -786,7 +786,10 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
     }
   }
 
-  Future<void> _enhanceOrGeneratePhoto({String? instruction}) async {
+  // forceGenerate=true ignora la foto del tendero y crea una desde cero (opción
+  // "Crear con IA"); por defecto, si hay foto, la MEJORA ("Mejorar con IA").
+  Future<void> _enhanceOrGeneratePhoto(
+      {String? instruction, bool forceGenerate = false}) async {
     // Validate required fields for a good AI result
     final missingFields = <String>[];
     if (_nameCtrl.text.trim().isEmpty) missingFields.add('nombre');
@@ -822,7 +825,8 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
       return;
     }
 
-    final hasExistingPhoto = _photoUrl != null && _photoUrl!.isNotEmpty;
+    final hasExistingPhoto =
+        !forceGenerate && _photoUrl != null && _photoUrl!.isNotEmpty;
 
     HapticFeedback.lightImpact();
     setState(() => _enhancing = true);
@@ -1562,22 +1566,46 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
                               ],
                             ),
                             const SizedBox(height: 8),
-                            _actionButton(
-                              label: _enhancing
-                                  ? (hasPhoto ? 'Mejorando...' : 'Generando...')
-                                  : (hasPhoto
-                                      ? 'Mejorar con IA'
-                                      : 'Generar con IA'),
-                              icon: _enhancing
-                                  ? null
-                                  : (hasPhoto
-                                      ? Icons.auto_fix_high_rounded
-                                      : Icons.auto_awesome_rounded),
-                              color: const Color(0xFF7C3AED),
-                              loading: _enhancing,
-                              onTap:
-                                  _enhancing ? null : _enhanceOrGeneratePhoto,
-                            ),
+                            // Spec 018 — opciones de IA claras y separadas:
+                            // con foto → MEJORAR (su foto) o CREAR (desde cero);
+                            // sin foto → solo CREAR. (Tomar/Galería arriba.)
+                            if (hasPhoto) ...[
+                              _actionButton(
+                                label: _enhancing
+                                    ? 'Procesando…'
+                                    : 'Mejorar foto con IA',
+                                icon: Icons.auto_fix_high_rounded,
+                                color: const Color(0xFF7C3AED),
+                                loading: _enhancing,
+                                onTap: _enhancing
+                                    ? null
+                                    : () => _enhanceOrGeneratePhoto(),
+                              ),
+                              const SizedBox(height: 8),
+                              _actionButton(
+                                label: _enhancing
+                                    ? 'Procesando…'
+                                    : 'Crear foto con IA',
+                                icon: Icons.auto_awesome_rounded,
+                                color: const Color(0xFF0E6BA8),
+                                loading: _enhancing,
+                                onTap: _enhancing
+                                    ? null
+                                    : () => _enhanceOrGeneratePhoto(
+                                        forceGenerate: true),
+                              ),
+                            ] else
+                              _actionButton(
+                                label:
+                                    _enhancing ? 'Generando…' : 'Crear foto con IA',
+                                icon: Icons.auto_awesome_rounded,
+                                color: const Color(0xFF7C3AED),
+                                loading: _enhancing,
+                                onTap: _enhancing
+                                    ? null
+                                    : () => _enhanceOrGeneratePhoto(
+                                        forceGenerate: true),
+                              ),
                             // Spec 017 FR-05: si la IA alteró el resultado, el
                             // tendero escribe indicaciones y reintenta.
                             if (hasPhoto && _imageIsSuggested && !_enhancing)
