@@ -1,5 +1,5 @@
+import 'dart:async';
 import 'dart:math';
-import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import '../../services/auth_service.dart';
 import '../../theme/app_theme.dart';
@@ -24,9 +24,17 @@ class AnimatedSplashScreen extends StatefulWidget {
 class _AnimatedSplashScreenState extends State<AnimatedSplashScreen> {
   // Piso del splash = lo que dura el dibujado de VendIA + 1 logo (~2.4s), así
   // se alcanza a ver el efecto antes de navegar.
-  static const _minSplashDuration = Duration(milliseconds: kIsWeb ? 2400 : 2600);
+  // Tope de seguridad: si la animación no termina (assets que no cargan), entrar.
+  static const _maxSplashDuration = Duration(seconds: 7);
 
   late final List<String> _logos;
+  bool _animDone = false;
+  bool _authResolved = false;
+  bool _navigated = false;
+  bool _hasSession = false;
+  String _ownerName = '';
+  String _businessName = '';
+  Timer? _safeguard;
 
   @override
   void initState() {
@@ -34,28 +42,45 @@ class _AnimatedSplashScreenState extends State<AnimatedSplashScreen> {
     // VendIA constante + 1 logo al azar (distinto cada apertura).
     final other = SplashAssets.randomOther(Random());
     _logos = [SplashAssets.vendia, other];
-    _init();
+    _resolveAuth();
+    // Salvaguarda: si los assets no cargan (web lento/roto), entrar igual.
+    _safeguard = Timer(_maxSplashDuration, () {
+      _animDone = true;
+      _maybeGo();
+    });
   }
 
-  Future<void> _init() async {
-    final stopwatch = Stopwatch()..start();
+  @override
+  void dispose() {
+    _safeguard?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _resolveAuth() async {
     final auth = AuthService();
-    final hasSession = await auth.hasSession();
-    String ownerName = '';
-    String businessName = '';
-    if (hasSession) {
-      ownerName = await auth.getOwnerName() ?? '';
-      businessName = await auth.getBusinessName() ?? '';
+    final has = await auth.hasSession();
+    if (has) {
+      _ownerName = await auth.getOwnerName() ?? '';
+      _businessName = await auth.getBusinessName() ?? '';
     }
-    final elapsed = stopwatch.elapsed;
-    if (elapsed < _minSplashDuration) {
-      await Future.delayed(_minSplashDuration - elapsed);
-    }
-    if (!mounted) return;
+    _hasSession = has;
+    _authResolved = true;
+    _maybeGo();
+  }
+
+  // Navega cuando la animación TERMINÓ (esperó la carga) y la auth está lista.
+  void _onAnimDone() {
+    _animDone = true;
+    _maybeGo();
+  }
+
+  void _maybeGo() {
+    if (_navigated || !_animDone || !_authResolved || !mounted) return;
+    _navigated = true;
     _navigate(
-        hasSession: hasSession,
-        ownerName: ownerName,
-        businessName: businessName);
+        hasSession: _hasSession,
+        ownerName: _ownerName,
+        businessName: _businessName);
   }
 
   void _navigate({
@@ -94,10 +119,11 @@ class _AnimatedSplashScreenState extends State<AnimatedSplashScreen> {
                 height: 300,
                 child: LogoSequenceReveal(
                   logos: _logos,
-                  draw: const Duration(milliseconds: 700),
-                  hold: const Duration(milliseconds: 250),
-                  erase: const Duration(milliseconds: 300),
+                  draw: const Duration(milliseconds: 750),
+                  hold: const Duration(milliseconds: 300),
+                  erase: const Duration(milliseconds: 350),
                   overlap: const Duration(milliseconds: 150),
+                  onDone: _onAnimDone,
                 ),
               ),
               const SizedBox(height: 16),

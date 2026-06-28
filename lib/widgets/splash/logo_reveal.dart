@@ -117,7 +117,7 @@ class LogoSequenceReveal extends StatefulWidget {
 
 class _LogoSequenceRevealState extends State<LogoSequenceReveal>
     with SingleTickerProviderStateMixin {
-  ui.FragmentProgram? _program;
+  ui.FragmentShader? _shader;
   final Map<String, (ui.Image, ui.Image)> _imgs = {};
   late final AnimationController _ctrl;
   late final List<double> _starts; // segundos
@@ -150,7 +150,12 @@ class _LogoSequenceRevealState extends State<LogoSequenceReveal>
   }
 
   Future<void> _boot() async {
-    _program = await SplashAssets.program();
+    try {
+      final program = await SplashAssets.program();
+      _shader = program?.fragmentShader();
+    } catch (_) {
+      _shader = null; // fail-safe: logo estático
+    }
     for (final name in widget.logos.toSet()) {
       try {
         _imgs[name] = await SplashAssets.load(name);
@@ -197,9 +202,9 @@ class _LogoSequenceRevealState extends State<LogoSequenceReveal>
 
   @override
   Widget build(BuildContext context) {
-    final program = _program;
+    final shader = _shader;
     // Fail-safe: sin shader/assets → logo VendIA estático (nunca pantalla rota).
-    if (!_ready || program == null) {
+    if (!_ready || shader == null) {
       return Center(
         child: Image.asset('assets/images/vendia_icon_1024.png',
             width: 140, height: 140,
@@ -208,13 +213,10 @@ class _LogoSequenceRevealState extends State<LogoSequenceReveal>
     }
     return AnimatedBuilder(
       animation: _ctrl,
-      builder: (_, __) {
-        final layers = _layersAt(_ctrl.value * _total);
-        return CustomPaint(
-          painter: _RevealPainter(program.fragmentShader(), layers),
-          size: Size.infinite,
-        );
-      },
+      builder: (_, __) => CustomPaint(
+        painter: _RevealPainter(shader, _layersAt(_ctrl.value * _total)),
+        size: Size.infinite,
+      ),
     );
   }
 }
