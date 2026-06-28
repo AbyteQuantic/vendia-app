@@ -39,14 +39,48 @@ Future<String> resolveRecordingPath() async =>
 /// universal fallback), and Gemini needs the right one to pick a decoder.
 Future<RecordedAudio> readRecordedAudioImpl(String stopResult) async {
   final blob = await _fetchBlob(stopResult);
-  final rawType = (blob.type).toLowerCase().split(';').first.trim();
-  final mime = rawType.isNotEmpty ? rawType : 'audio/webm';
   final bytes = await _blobToBytes(blob);
+  // El MIME debe coincidir con los BYTES reales o Gemini no decodifica y el
+  // backend responde `degraded` (el "no hay señal" en iPhone). Por eso el
+  // contenido manda: 1) magic bytes del contenedor, 2) blob.type si es claro,
+  // 3) WAV como último recurso (Web Audio funciona en todos y Gemini lo lee).
+  final sniffed = _sniffMime(bytes);
+  final rawType = (blob.type).toLowerCase().split(';').first.trim();
+  final mime = sniffed ?? (rawType.isNotEmpty ? rawType : 'audio/wav');
   return RecordedAudio(
     bytes: bytes,
     mimeType: mime,
     filename: 'vendia_voice.${_extForMime(mime)}',
   );
+}
+
+/// Detecta el contenedor de audio por su firma (magic bytes). Devuelve el MIME
+/// real o null si no reconoce la firma. Robusto en iOS Safari, donde `blob.type`
+/// suele venir vacío y delataba el formato como webm por error.
+String? _sniffMime(Uint8List b) {
+  if (b.length < 12) return null;
+  bool eq(int off, List<int> sig) {
+    for (var i = 0; i < sig.length; i++) {
+      if (b[off + i] != sig[i]) return false;
+    }
+    return true;
+  }
+
+  // RIFF....WAVE → WAV
+  if (eq(0, [0x52, 0x49, 0x46, 0x46]) && eq(8, [0x57, 0x41, 0x56, 0x45])) {
+    return 'audio/wav';
+  }
+  // 0x1A45DFA3 → Matroska/WebM
+  if (eq(0, [0x1A, 0x45, 0xDF, 0xA3])) return 'audio/webm';
+  // 'OggS' → Ogg
+  if (eq(0, [0x4F, 0x67, 0x67, 0x53])) return 'audio/ogg';
+  // ....'ftyp' → contenedor ISO-BMFF (mp4/m4a, lo que graba iOS con aacLc)
+  if (eq(4, [0x66, 0x74, 0x79, 0x70])) return 'audio/mp4';
+  // 'ID3' o frame sync 0xFFEx/0xFFFx → MP3
+  if (eq(0, [0x49, 0x44, 0x33]) || (b[0] == 0xFF && (b[1] & 0xE0) == 0xE0)) {
+    return 'audio/mpeg';
+  }
+  return null;
 }
 
 /// Maps an audio MIME type to a sensible file extension (a hint for the

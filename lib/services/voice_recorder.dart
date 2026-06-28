@@ -43,11 +43,12 @@ class RecordedAudio {
     required this.filename,
   });
 
-  /// Raw audio bytes — m4a on mobile, WebM/Opus on web.
+  /// Raw audio bytes — m4a on mobile; en web WebM/Opus (Chrome) o WAV (iOS).
   final Uint8List bytes;
 
-  /// Real MIME type of [bytes], forwarded to the backend so Gemini picks
-  /// the right decoder. `audio/m4a` on mobile, `audio/webm` on web.
+  /// Real MIME type of [bytes], detectado por magic bytes y reenviado al
+  /// backend para que Gemini elija el decoder correcto. `audio/m4a` en móvil;
+  /// en web `audio/webm` (Chrome) o `audio/wav` (Safari/iOS).
   final String mimeType;
 
   /// Filename used for the multipart part. Carries the right extension
@@ -67,16 +68,18 @@ RecordConfig recordConfigForPlatform() {
 }
 
 /// Web-only ordered list of encoders to try, best-compatible first:
-///   1. opus  → WebM/Opus (Chrome, Firefox, Android web).
-///   2. aacLc → audio/mp4  (Safari/iOS — the ONLY MediaRecorder codec it
-///      supports; Opus made `start()` throw "encoder not supported",
-///      which is exactly why the mic "did nothing" on iPhone).
-///   3. wav   → record_web records WAV via the Web Audio API (NOT
-///      MediaRecorder), so it works on every browser as a last resort.
+///   1. opus  → WebM/Opus (Chrome, Firefox, Android web). Gemini decodes it.
+///   2. wav   → record_web records WAV via the Web Audio API (NOT
+///      MediaRecorder), so it works on EVERY browser — incluido Safari/iOS —
+///      y Gemini lo decodifica de forma confiable. Va ANTES que aacLc porque
+///      en iPhone `opus` no existe y el contenedor mp4/AAC de aacLc le da
+///      problemas al decoder de Gemini (devolvía `degraded`, "no hay señal").
+///      WAV mono @ 16 kHz es liviano (90 s ≈ 2.9 MB, bajo el cap de 10 MB).
+///   3. aacLc → audio/mp4 (último recurso si WAV no estuviera disponible).
 const List<AudioEncoder> _webEncoderPreference = [
   AudioEncoder.opus,
-  AudioEncoder.aacLc,
   AudioEncoder.wav,
+  AudioEncoder.aacLc,
 ];
 
 /// Picks the [RecordConfig] that actually works in THIS browser.

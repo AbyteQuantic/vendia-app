@@ -295,6 +295,15 @@ class VoiceOrderController extends ChangeNotifier {
         return;
       }
       final audio = await _readAudio(_stopPath!);
+      // Audio diminuto = no se captó voz (permiso recién dado, toque muy corto,
+      // mic mudo). Mejor un mensaje claro que mandar bytes vacíos a la IA y
+      // recibir `degraded`.
+      if (audio.bytes.length < 1200) {
+        _set(VoicePhase.error,
+            error: 'No alcancé a escucharle. Hable cerquita y un poco más.');
+        disposeRecordedAudio(_stopPath!);
+        return;
+      }
       final json = await _api(
         audioBytes: audio.bytes,
         mimeType: audio.mimeType,

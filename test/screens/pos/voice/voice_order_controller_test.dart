@@ -26,9 +26,11 @@ class _FakeRecorder implements AudioRecorder {
 
 Future<String> _fakePath() async => 'fake-clip';
 Future<RecordedAudio> _fakeAudio(String _) async => RecordedAudio(
-      bytes: Uint8List.fromList(const [1, 2, 3]),
-      mimeType: 'audio/webm',
-      filename: 'v.webm',
+      // Tamaño realista (> umbral de "audio diminuto" del controller); el audio
+      // real siempre supera el guard. 3 bytes simulaba un clip imposible.
+      bytes: Uint8List(2048),
+      mimeType: 'audio/wav',
+      filename: 'v.wav',
     );
 
 VoiceOrderApi _api(Map<String, dynamic> result) =>
@@ -86,6 +88,29 @@ void main() {
     await c.stopAndProcess();
     expect(c.phase, VoicePhase.error);
     expect(cart.activeCart, isEmpty);
+  });
+
+  test('audio diminuto → error claro, NO llama a la IA (no degraded)', () async {
+    var apiCalled = false;
+    final c = VoiceOrderController(
+      cart: cart,
+      recorder: _FakeRecorder(grant: true),
+      apiCall: ({required audioBytes, required mimeType, required filename}) async {
+        apiCalled = true;
+        return {'commands': []};
+      },
+      resolvePath: _fakePath,
+      readAudio: (_) async => RecordedAudio(
+        bytes: Uint8List.fromList(const [1, 2, 3]), // clip vacío/imposible
+        mimeType: 'audio/wav',
+        filename: 'v.wav',
+      ),
+    );
+    await c.startRecording();
+    await c.stopAndProcess();
+    expect(c.phase, VoicePhase.error);
+    expect(c.error, contains('escuchar'));
+    expect(apiCalled, isFalse); // no malgasta una llamada a Gemini con audio vacío
   });
 
   test('permiso de micrófono denegado → error accionable', () async {
