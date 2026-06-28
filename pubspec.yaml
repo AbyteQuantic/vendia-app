@@ -127,12 +127,15 @@ flutter_launcher_icons:
 
 flutter:
   uses-material-design: true
+  shaders:
+    - shaders/logo_reveal.frag   # Spec 087 — revelado del splash por orden de trazo
   assets:
     - .env
     - assets/images/
     - assets/rive/
     - assets/audio/
     - assets/onboarding/
+    - assets/splash/             # Spec 087 — logos + mapas de orden (13 logos)
   # Tipografía de marca (Spec design system): Inter, equivalente libre a la
   # fuente de Apple (SF Pro). OFL — empaquetada para iOS/Android/web consistente.
   fonts:
