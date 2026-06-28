@@ -330,18 +330,29 @@ class CartController extends ChangeNotifier {
       _productsLoaded = true;
       notifyListeners();
 
-      // Then pull from server and replace local
+      // Then pull from server and replace local.
       try {
         final api = ApiService(AuthService());
         // sellableOnly: el POS no vende platos de menú incompletos (sin receta
         // con ingredientes). Mantiene la caché Isar limpia para que tampoco
         // aparezcan offline. Spec 078.
-        final res =
-            await api.fetchProducts(page: 1, perPage: 100, sellableOnly: true);
-        final data = res['data'] as List? ?? [];
-        final serverProducts = data
-            .map((e) => LocalProduct.fromJson(e as Map<String, dynamic>))
-            .toList();
+        //
+        // Spec 088: TRAER TODAS LAS PÁGINAS. Antes pedía solo page:1/perPage:100,
+        // así una tienda con 500+ SKUs solo veía 100 en la selección manual.
+        // Recorremos en bucle hasta total_pages (tope de seguridad 50 páginas =
+        // 5000 productos) y acumulamos.
+        final serverProducts = <LocalProduct>[];
+        var page = 1;
+        var totalPages = 1;
+        do {
+          final res = await api.fetchProducts(
+              page: page, perPage: 100, sellableOnly: true);
+          final data = res['data'] as List? ?? [];
+          serverProducts.addAll(
+              data.map((e) => LocalProduct.fromJson(e as Map<String, dynamic>)));
+          totalPages = (res['total_pages'] as num?)?.toInt() ?? 1;
+          page++;
+        } while (page <= totalPages && page <= 50);
         await db.replaceAllProducts(serverProducts);
         _products = serverProducts.map(_localToProduct).toList();
         // Debug: log products with images
