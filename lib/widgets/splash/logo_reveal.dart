@@ -236,14 +236,8 @@ class _LogoSequenceRevealState extends State<LogoSequenceReveal>
 
   @override
   Widget build(BuildContext context) {
-    // Fail-safe: aún cargando → logo VendIA estático (nunca pantalla rota).
-    if (!_ready) {
-      return Center(
-        child: Image.asset('assets/images/vendia_icon_1024.png',
-            width: 140, height: 140,
-            errorBuilder: (_, __, ___) => const SizedBox.shrink()),
-      );
-    }
+    // Mientras carga: nada (blanco). NO mostramos el ícono estático oscuro.
+    if (!_ready) return const SizedBox.shrink();
     return AnimatedBuilder(
       animation: _ctrl,
       builder: (_, __) => CustomPaint(
