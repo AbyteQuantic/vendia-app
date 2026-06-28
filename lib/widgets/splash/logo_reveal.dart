@@ -1,95 +1,141 @@
 // Spec: specs/087-splash-loader-animado/spec.md
 //
-// Revelado de logos "dibujándolos" por orden de trazo (cobertura 100%) con un
-// fragment shader. VendIA es la constante; el resto entra al azar. Nativo,
-// 60fps, web + móvil. Fail-safe: si el shader/asset falla, no rompe nada.
+// Revelado de logos "dibujándolos" siguiendo el trazo, revelando el PNG real.
+// SIN fragment shader → funciona en TODO navegador (Flutter web NO soporta image
+// samplers en shaders). Usa PathMetrics (recorrido del trazo) + recorte de imagen
+// (BlendMode.srcIn). VendIA es la constante; el resto entra al azar. Fail-safe total.
 
-import 'dart:async';
+import 'dart:convert';
 import 'dart:math';
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
-/// Carga (con caché) del shader y los assets de cada logo.
+/// Datos de un logo: imagen nítida + recorrido del trazo (0..1) + grosor (0..1).
+class LogoData {
+  LogoData(this.image, this.path, this.pen);
+  final ui.Image image;
+  final ui.Path path;
+  final double pen;
+}
+
 class SplashAssets {
   static const String vendia = 'vendia';
-  static const List<String> all = [
-    'vendia', 'cursor', 'cap', 'cutlery', 'store', 'burger', 'vaso',
-    'cohete', 'camion', 'carrito', 'moto', 'l4599', 'l4594',
+
+  /// Pool del splash/loader: logos cuyo trazo cubre ~100% (se ven completos con
+  /// la técnica sin shader). Se excluyen los de relleno que el trazo no llena
+  /// (vaso, moto, cutlery, cap, store) para que NUNCA salga incompleto.
+  static const List<String> others = [
+    'cursor', 'burger', 'camion', 'carrito', 'cohete', 'l4594', 'l4599',
   ];
-  static List<String> get others =>
-      all.where((n) => n != vendia).toList(growable: false);
 
-  static ui.FragmentProgram? _program;
-  static final Map<String, ui.Image> _images = {};
+  static Map<String, dynamic>? _paths;
+  static final Map<String, LogoData> _cache = {};
 
-  /// Prepara el shader. Devuelve null si no se pudo (fail-safe).
-  static Future<ui.FragmentProgram?> program() async {
-    if (_program != null) return _program;
-    try {
-      _program = await ui.FragmentProgram.fromAsset('shaders/logo_reveal.frag');
-    } catch (_) {
-      _program = null;
-    }
-    return _program;
+  static Future<Map<String, dynamic>> _loadPaths() async {
+    if (_paths != null) return _paths!;
+    final raw = await rootBundle.loadString('assets/splash/splash_paths.json');
+    return _paths = jsonDecode(raw) as Map<String, dynamic>;
   }
 
   static Future<ui.Image> _img(String path) async {
-    final cached = _images[path];
-    if (cached != null) return cached;
     final data = await rootBundle.load(path);
     final codec = await ui.instantiateImageCodec(data.buffer.asUint8List());
-    final frame = await codec.getNextFrame();
-    return _images[path] = frame.image;
+    return (await codec.getNextFrame()).image;
   }
 
-  /// (logo, mapaDeOrden) de un logo por nombre.
-  static Future<(ui.Image, ui.Image)> load(String name) async =>
-      (await _img('assets/splash/$name.png'),
-       await _img('assets/splash/${name}_order.png'));
+  /// Carga (con caché) un logo: imagen + Path del trazo + grosor.
+  static Future<LogoData> load(String name) async {
+    final cached = _cache[name];
+    if (cached != null) return cached;
+    final paths = await _loadPaths();
+    final entry = paths[name] as Map<String, dynamic>;
+    final pen = (entry['pen'] as num).toDouble();
+    final p = ui.Path();
+    for (final sub in (entry['subs'] as List)) {
+      final pts = sub as List;
+      final a = pts[0] as List;
+      p.moveTo((a[0] as num).toDouble(), (a[1] as num).toDouble());
+      for (var i = 1; i < pts.length; i++) {
+        final b = pts[i] as List;
+        p.lineTo((b[0] as num).toDouble(), (b[1] as num).toDouble());
+      }
+    }
+    final img = await _img('assets/splash/$name.png');
+    return _cache[name] = LogoData(img, p, pen);
+  }
 
-  /// Un logo al azar distinto de [exclude].
   static String randomOther(Random r, {String? exclude}) {
     final pool = others.where((n) => n != exclude).toList();
     return pool[r.nextInt(pool.length)];
   }
 }
 
-/// Estado de una capa visible en un instante (logo + progreso de dibujado/borrado).
+/// Capa visible: logo + rango del trazo a mostrar [from..to] (0..1).
 @immutable
 class RevealLayer {
-  const RevealLayer(this.logo, this.order, this.progress, this.erase);
-  final ui.Image logo;
-  final ui.Image order;
-  final double progress; // 0..1 dibujado
-  final double erase;    // 0..1 borrado por la cola
+  const RevealLayer(this.data, this.from, this.to);
+  final LogoData data;
+  final double from;
+  final double to;
 }
 
 class _RevealPainter extends CustomPainter {
-  _RevealPainter(this.shader, this.layers);
-  final ui.FragmentShader shader;
+  _RevealPainter(this.layers);
   final List<RevealLayer> layers;
-  final double feather = 0.03;
 
-  @override
-  void paint(Canvas canvas, Size size) {
-    for (final l in layers) {
-      shader
-        ..setFloat(0, size.width)
-        ..setFloat(1, size.height)
-        ..setFloat(2, l.progress)
-        ..setFloat(3, l.erase)
-        ..setFloat(4, feather)
-        ..setImageSampler(0, l.logo)
-        ..setImageSampler(1, l.order);
-      canvas.drawRect(Offset.zero & size, Paint()..shader = shader);
+  /// Porción del Path entre [from..to] recorriendo los subtrazos en orden.
+  ui.Path _range(ui.Path src, double from, double to) {
+    final out = ui.Path();
+    final metrics = src.computeMetrics().toList();
+    final total = metrics.fold<double>(0, (a, m) => a + m.length);
+    if (total <= 0) return out;
+    final fromL = from * total, toL = to * total;
+    double cum = 0;
+    for (final m in metrics) {
+      final s = cum, e = cum + m.length;
+      final a = fromL.clamp(s, e) - s, b = toL.clamp(s, e) - s;
+      if (b > a) out.addPath(m.extractPath(a, b), Offset.zero);
+      cum = e;
     }
+    return out;
   }
 
   @override
-  bool shouldRepaint(covariant _RevealPainter old) =>
-      old.layers != layers;
+  void paint(Canvas canvas, Size size) {
+    final side = size.shortestSide;
+    canvas.save();
+    canvas.translate((size.width - side) / 2, (size.height - side) / 2);
+    canvas.scale(side, side); // Path y grosor viven en 0..1
+    const unit = Rect.fromLTWH(0, 0, 1, 1);
+    for (final l in layers) {
+      final drawn = _range(l.data.path, l.from, l.to);
+      if (drawn.computeMetrics().isEmpty) continue;
+      canvas.saveLayer(unit, Paint());
+      canvas.drawPath(
+        drawn,
+        Paint()
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = l.data.pen
+          ..strokeCap = StrokeCap.round
+          ..strokeJoin = StrokeJoin.round
+          ..color = const Color(0xFFFFFFFF),
+      );
+      final img = l.data.image;
+      canvas.drawImageRect(
+        img,
+        Rect.fromLTWH(0, 0, img.width.toDouble(), img.height.toDouble()),
+        unit,
+        Paint()..blendMode = BlendMode.srcIn,
+      );
+      canvas.restore();
+    }
+    canvas.restore();
+  }
+
+  @override
+  bool shouldRepaint(covariant _RevealPainter old) => old.layers != layers;
 }
 
 /// Reproduce una secuencia de logos que se dibujan (encadenados). Reusable por
@@ -117,11 +163,10 @@ class LogoSequenceReveal extends StatefulWidget {
 
 class _LogoSequenceRevealState extends State<LogoSequenceReveal>
     with SingleTickerProviderStateMixin {
-  ui.FragmentShader? _shader;
-  final Map<String, (ui.Image, ui.Image)> _imgs = {};
+  final Map<String, LogoData> _data = {};
   late final AnimationController _ctrl;
-  late final List<double> _starts; // segundos
-  late final double _total;        // segundos
+  late final List<double> _starts;
+  late final double _total;
   bool _ready = false;
 
   double get _d => widget.draw.inMilliseconds / 1000;
@@ -150,15 +195,9 @@ class _LogoSequenceRevealState extends State<LogoSequenceReveal>
   }
 
   Future<void> _boot() async {
-    try {
-      final program = await SplashAssets.program();
-      _shader = program?.fragmentShader();
-    } catch (_) {
-      _shader = null; // fail-safe: logo estático
-    }
     for (final name in widget.logos.toSet()) {
       try {
-        _imgs[name] = await SplashAssets.load(name);
+        _data[name] = await SplashAssets.load(name);
       } catch (_) {/* fail-safe: ese logo no se pinta */}
     }
     if (!mounted) return;
@@ -166,32 +205,27 @@ class _LogoSequenceRevealState extends State<LogoSequenceReveal>
     _ctrl.forward(from: 0);
   }
 
+  double _ease(double t) {
+    t = t.clamp(0.0, 1.0);
+    return t * t * (3 - 2 * t);
+  }
+
   List<RevealLayer> _layersAt(double t) {
     final out = <RevealLayer>[];
     for (var i = 0; i < widget.logos.length; i++) {
-      final pair = _imgs[widget.logos[i]];
-      if (pair == null) continue;
+      final d = _data[widget.logos[i]];
+      if (d == null) continue;
       final local = t - _starts[i];
       if (local < 0 || local > _d + _h + _e) continue;
-      double prog, er;
       if (local < _d) {
-        prog = local / _d;
-        er = 0;
+        out.add(RevealLayer(d, 0, _ease(local / _d)));
       } else if (local < _d + _h) {
-        prog = 1;
-        er = 0;
+        out.add(RevealLayer(d, 0, 1));
       } else {
-        prog = 1;
-        er = (local - _d - _h) / _e;
+        out.add(RevealLayer(d, _ease((local - _d - _h) / _e), 1));
       }
-      out.add(RevealLayer(pair.$1, pair.$2, _ease(prog), _ease(er)));
     }
     return out;
-  }
-
-  double _ease(double t) {
-    t = t.clamp(0.0, 1.0);
-    return t * t * (3 - 2 * t); // smoothstep
   }
 
   @override
@@ -202,9 +236,8 @@ class _LogoSequenceRevealState extends State<LogoSequenceReveal>
 
   @override
   Widget build(BuildContext context) {
-    final shader = _shader;
-    // Fail-safe: sin shader/assets → logo VendIA estático (nunca pantalla rota).
-    if (!_ready || shader == null) {
+    // Fail-safe: aún cargando → logo VendIA estático (nunca pantalla rota).
+    if (!_ready) {
       return Center(
         child: Image.asset('assets/images/vendia_icon_1024.png',
             width: 140, height: 140,
@@ -214,7 +247,7 @@ class _LogoSequenceRevealState extends State<LogoSequenceReveal>
     return AnimatedBuilder(
       animation: _ctrl,
       builder: (_, __) => CustomPaint(
-        painter: _RevealPainter(shader, _layersAt(_ctrl.value * _total)),
+        painter: _RevealPainter(_layersAt(_ctrl.value * _total)),
         size: Size.infinite,
       ),
     );

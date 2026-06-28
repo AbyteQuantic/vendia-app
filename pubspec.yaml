@@ -127,8 +127,6 @@ flutter_launcher_icons:
 
 flutter:
   uses-material-design: true
-  shaders:
-    - shaders/logo_reveal.frag   # Spec 087 — revelado del splash por orden de trazo
   assets:
     - .env
     - assets/images/
