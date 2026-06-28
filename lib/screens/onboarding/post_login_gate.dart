@@ -23,7 +23,6 @@ import 'package:flutter/material.dart';
 
 import '../../services/api_service.dart';
 import '../../services/auth_service.dart';
-import '../../theme/app_theme.dart';
 import '../dashboard/dashboard_screen.dart';
 import 'welcome_screen.dart';
 
@@ -105,13 +104,9 @@ class _PostLoginGateState extends State<PostLoginGate> {
   Widget build(BuildContext context) {
     final resolved = _onboardingCompleted;
     if (resolved == null) {
-      // Carga breve mientras se lee el flag del secure storage.
-      return const Scaffold(
-        backgroundColor: Color(0xFFF8FAFC),
-        body: Center(
-          child: CircularProgressIndicator(color: AppTheme.primary),
-        ),
-      );
+      // Carga breve (lee un flag local). Sin spinner: pantalla blanca para una
+      // transición limpia desde el splash (no mostrar el loader genérico).
+      return const Scaffold(backgroundColor: Colors.white, body: SizedBox.shrink());
     }
 
     if (!resolved) {
