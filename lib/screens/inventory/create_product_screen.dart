@@ -22,6 +22,7 @@ import '../../services/image_normalizer.dart' show ImageNormalizationException;
 import '../../theme/app_theme.dart';
 import '../../utils/barcode_validator.dart';
 import '../../utils/currency_input.dart';
+import '../../widgets/ai_instruction_dialog.dart';
 import '../../widgets/dashboard_ui_kit.dart';
 import '../../theme/app_ui.dart';
 import '../../widgets/advanced_product_options.dart';
@@ -785,7 +786,7 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
     }
   }
 
-  Future<void> _enhanceOrGeneratePhoto() async {
+  Future<void> _enhanceOrGeneratePhoto({String? instruction}) async {
     // Validate required fields for a good AI result
     final missingFields = <String>[];
     if (_nameCtrl.text.trim().isEmpty) missingFields.add('nombre');
@@ -873,7 +874,8 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
       // If product has a photo URL, enhance it. Otherwise, generate from scratch.
       final Map<String, dynamic> result;
       if (hasExistingPhoto) {
-        result = await api.enhanceProductPhoto(_pendingUuid!);
+        result = await api.enhanceProductPhoto(_pendingUuid!,
+            instruction: instruction);
       } else {
         result = await api.generateProductImage(_pendingUuid!);
       }
@@ -1576,6 +1578,22 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
                               onTap:
                                   _enhancing ? null : _enhanceOrGeneratePhoto,
                             ),
+                            // Spec 017 FR-05: si la IA alteró el resultado, el
+                            // tendero escribe indicaciones y reintenta.
+                            if (hasPhoto && _imageIsSuggested && !_enhancing)
+                              TextButton.icon(
+                                onPressed: () async {
+                                  final hint =
+                                      await showAiInstructionDialog(context);
+                                  if (hint != null) {
+                                    await _enhanceOrGeneratePhoto(
+                                        instruction: hint);
+                                  }
+                                },
+                                icon: const Icon(Icons.edit_note_rounded,
+                                    size: 18),
+                                label: const Text('¿No quedó bien? Dar indicaciones'),
+                              ),
                           ],
                         ),
                       ),

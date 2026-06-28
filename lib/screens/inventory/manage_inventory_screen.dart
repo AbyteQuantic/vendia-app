@@ -11,6 +11,7 @@ import '../../services/auth_service.dart';
 import '../../services/image_normalizer.dart' show ImageNormalizationException;
 import '../../utils/barcode_validator.dart';
 import '../../utils/currency_input.dart';
+import '../../widgets/ai_instruction_dialog.dart';
 import '../../widgets/branch_selector_drawer.dart';
 import '../../widgets/branch_aware_reload.dart';
 import '../../widgets/negative_stock_banner.dart';
@@ -912,13 +913,32 @@ class _EditProductSheetState extends State<_EditProductSheet> {
                 _executeAiPhoto(useExisting: false);
               },
             ),
+            // Spec 017 FR-05: corregir un resultado alterado con indicaciones
+            // escritas. Solo si ya hay una foto que mejorar.
+            if (_photoUrl != null && _photoUrl!.isNotEmpty) ...[
+              const SizedBox(height: 12),
+              _AiOptionTile(
+                icon: Icons.edit_note_rounded,
+                color: const Color(0xFF0E6BA8),
+                title: 'Corregir con indicaciones',
+                subtitle: 'Dígale a la IA qué ajustar (respeta su producto)',
+                onTap: () async {
+                  Navigator.of(ctx).pop();
+                  final hint = await showAiInstructionDialog(context);
+                  if (hint != null) {
+                    _executeAiPhoto(useExisting: true, instruction: hint);
+                  }
+                },
+              ),
+            ],
           ],
         ),
       ),
     );
   }
 
-  Future<void> _executeAiPhoto({required bool useExisting}) async {
+  Future<void> _executeAiPhoto(
+      {required bool useExisting, String? instruction}) async {
     final id = widget.product['id'] as String? ?? '';
     final currentName = _nameCtrl.text.trim();
     final currentPresentation = _presentation;
@@ -948,6 +968,7 @@ class _EditProductSheetState extends State<_EditProductSheet> {
           name: currentName,
           presentation: currentPresentation,
           content: currentContent,
+          instruction: instruction,
         );
       } else {
         result = await api.generateProductImage(id,

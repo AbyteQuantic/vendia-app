@@ -1359,6 +1359,7 @@ class ApiService {
     String? name,
     String? presentation,
     String? content,
+    String? instruction,
   }) async {
     final params = <String, String>{};
     if (name != null && name.isNotEmpty) params['name'] = name;
@@ -1366,6 +1367,11 @@ class ApiService {
       params['presentation'] = presentation;
     }
     if (content != null && content.isNotEmpty) params['content'] = content;
+    // Spec 017 FR-05: indicación escrita por el tendero para corregir un
+    // resultado alterado (opcional).
+    if (instruction != null && instruction.trim().isNotEmpty) {
+      params['instruction'] = instruction.trim();
+    }
     // Spec 016: POST returns 202 with a job_id; _runAiPhotoJob then polls
     // for the result, so callers keep their plain `await` + loader.
     return _runAiPhotoJob(uuid, '/enhance', params);
