@@ -13,6 +13,7 @@ import '../../utils/barcode_validator.dart';
 import '../../utils/currency_input.dart';
 import '../../widgets/ai_instruction_dialog.dart';
 import '../../widgets/branch_selector_drawer.dart';
+import '../../widgets/product_image.dart';
 import '../../widgets/branch_aware_reload.dart';
 import '../../widgets/negative_stock_banner.dart';
 import '../../widgets/picked_image_preview.dart';
@@ -557,16 +558,16 @@ class _ProductTile extends StatelessWidget {
                   width: 60,
                   height: 60,
                   color: Colors.white,
-                  child: imgSrc != null && imgSrc.isNotEmpty
-                      ? Image.network(imgSrc,
-                          fit: BoxFit.contain,
-                          cacheWidth: 180, cacheHeight: 180, // PERF: decode a tamaño
-                          errorBuilder: (_, __, ___) => const Icon(
-                              Icons.image_not_supported_rounded,
-                              size: 28,
-                              color: AppTheme.textSecondary))
-                      : const Icon(Icons.inventory_2_outlined,
-                          size: 28, color: AppTheme.textSecondary),
+                  // Spec 090: caché en disco del thumbnail (listado de inventario).
+                  child: ProductImage(
+                    url: imgSrc,
+                    width: 60,
+                    height: 60,
+                    fit: BoxFit.contain,
+                    placeholder: const Center(
+                        child: Icon(Icons.inventory_2_outlined,
+                            size: 28, color: AppTheme.textSecondary)),
+                  ),
                 ),
               ),
               const SizedBox(width: 14),

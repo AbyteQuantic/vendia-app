@@ -9,6 +9,7 @@ import '../../models/cart_item.dart';
 import '../../models/product.dart';
 import '../../services/notification_toast_controller.dart';
 import '../../theme/app_theme.dart';
+import '../../widgets/product_image.dart';
 import '../../widgets/task_center_sheet.dart';
 import '../../widgets/panic_button.dart';
 import '../../widgets/table_qr_sheet.dart';
@@ -2775,21 +2776,14 @@ class _ProductCard extends StatelessWidget {
   }
 
   Widget _buildImage(double h) {
-    final url = product.imageUrl;
-    if (url != null && url.isNotEmpty) {
-      return Image.network(
-        url,
-        height: h,
-        width: double.infinity,
-        fit: BoxFit.contain,
-        // Decodifica al tamaño de la tile (×3 cubre el DPR del móvil) en vez de a
-        // la resolución nativa de la foto — menos CPU/memoria en el grid. Audit 2026-06-24.
-        cacheHeight: (h * 3).round(),
-        errorBuilder: (_, __, ___) => _placeholder(h),
-        loadingBuilder: (_, child, p) => p == null ? child : _placeholder(h),
-      );
-    }
-    return _placeholder(h);
+    // Spec 090: caché en disco (no re-descargar las fotos en cada apertura) +
+    // decodificado pequeño + placeholder. La grilla ya es .builder (solo visibles).
+    return ProductImage(
+      url: product.imageUrl,
+      height: h,
+      fit: BoxFit.contain,
+      placeholder: _placeholder(h),
+    );
   }
 
   Widget _placeholder(double h) {
@@ -3995,29 +3989,20 @@ class _ProductDetailSheet extends StatelessWidget {
             padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
             child: ClipRRect(
               borderRadius: BorderRadius.circular(20),
-              child: (product.imageUrl != null && product.imageUrl!.isNotEmpty)
-                  ? Image.network(
-                      product.imageUrl!,
-                      height: 200,
-                      width: double.infinity,
-                      fit: BoxFit.contain,
-                      errorBuilder: (_, __, ___) => Container(
-                        height: 200,
-                        color: const Color(0xFFF0F4FF),
-                        child: const Center(
-                          child: Icon(Icons.inventory_2_rounded,
-                              color: AppTheme.primary, size: 48),
-                        ),
-                      ),
-                    )
-                  : Container(
-                      height: 200,
-                      color: const Color(0xFFF0F4FF),
-                      child: const Center(
-                        child: Icon(Icons.inventory_2_rounded,
-                            color: AppTheme.primary, size: 48),
-                      ),
-                    ),
+              // Spec 090: ProductImage = caché en disco + placeholder unificado.
+              child: ProductImage(
+                url: product.imageUrl,
+                height: 200,
+                fit: BoxFit.contain,
+                placeholder: Container(
+                  height: 200,
+                  color: const Color(0xFFF0F4FF),
+                  child: const Center(
+                    child: Icon(Icons.inventory_2_rounded,
+                        color: AppTheme.primary, size: 48),
+                  ),
+                ),
+              ),
             ),
           ),
           Padding(
