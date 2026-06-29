@@ -172,6 +172,11 @@ class ColdStartRetryInterceptor extends Interceptor {
       case DioExceptionType.cancel:
       case DioExceptionType.unknown:
         return false;
+      // dio 5.10 añadió transformTimeout y podría añadir más valores: no son
+      // cold starts de red → no reintentar. default a prueba de futuro para que
+      // dart2js no rompa el build web por un switch no exhaustivo.
+      default:
+        return false;
     }
   }
 }
