@@ -31,4 +31,34 @@ class PendingOperation {
         ? decoded
         : Map<String, dynamic>.from(decoded as Map);
   }
+
+  // Spec 092: persistencia offline en web (localStorage). Serializa TODOS los
+  // campos para sobrevivir a un refresh, no solo el payload de sync.
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'uuid': uuid,
+        'entity': entity,
+        'action': action,
+        'jsonData': jsonData,
+        'clientUpdatedAt': clientUpdatedAt.toIso8601String(),
+        'retryCount': retryCount,
+        'createdAt': createdAt.toIso8601String(),
+        'tenantId': tenantId,
+      };
+
+  static PendingOperation fromJson(Map<String, dynamic> j) {
+    return PendingOperation()
+      ..id = (j['id'] as num?)?.toInt() ?? 0
+      ..uuid = j['uuid'] as String? ?? ''
+      ..entity = j['entity'] as String? ?? ''
+      ..action = j['action'] as String? ?? ''
+      ..jsonData = j['jsonData'] as String? ?? ''
+      ..clientUpdatedAt =
+          DateTime.tryParse(j['clientUpdatedAt'] as String? ?? '') ??
+              DateTime.now()
+      ..retryCount = (j['retryCount'] as num?)?.toInt() ?? 0
+      ..createdAt =
+          DateTime.tryParse(j['createdAt'] as String? ?? '') ?? DateTime.now()
+      ..tenantId = j['tenantId'] as String? ?? '';
+  }
 }

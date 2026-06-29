@@ -15,6 +15,9 @@
 // La API pública refleja exactamente database_service_io.dart para que los
 // ~28 consumidores compilen sin cambios.
 import 'dart:async';
+import 'dart:convert';
+
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'collections/local_catalog_product.dart';
 import 'collections/local_payment_method.dart';
@@ -74,18 +77,68 @@ class DatabaseService {
     if (!_paymentMethodsCtrl.isClosed) _paymentMethodsCtrl.add(null);
   }
 
-  Future<void> init() async {
-    // No-op en web: no hay base de datos persistente que abrir.
+  // ── Persistencia web (Spec 092) ───────────────────────────────────────────
+  // En web NO hay Isar; el trabajo NO sincronizado (ventas sin subir + cola de
+  // operaciones pendientes) se persiste en localStorage (vía SharedPreferences)
+  // para que una venta offline NO se pierda al refrescar. El catálogo/productos
+  // NO se persisten: se re-descargan del servidor.
+  static const _kSales = 'vendia_web_sales';
+  static const _kPending = 'vendia_web_pending';
+
+  Future<void> _persistSales() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      // Solo las NO sincronizadas (lo que se perdería de verdad).
+      final pending = _sales.where((s) => !s.synced).map((s) => s.toJson()).toList();
+      await prefs.setString(_kSales, jsonEncode(pending));
+    } catch (_) {/* nunca romper el flujo de venta por persistencia */}
   }
 
-  /// En web no hay persistencia entre sesiones, así que el cambio de tenant
-  /// solo limpia los almacenes en memoria.
+  Future<void> _persistPending() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(
+          _kPending, jsonEncode(_pendingOps.map((o) => o.toJson()).toList()));
+    } catch (_) {}
+  }
+
+  Future<void> _loadPersisted() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final s = prefs.getString(_kSales);
+      if (s != null && s.isNotEmpty) {
+        for (final e in (jsonDecode(s) as List)) {
+          _sales.add(LocalSale.fromJson(e as Map<String, dynamic>));
+        }
+      }
+      final p = prefs.getString(_kPending);
+      if (p != null && p.isNotEmpty) {
+        for (final e in (jsonDecode(p) as List)) {
+          final op = PendingOperation.fromJson(e as Map<String, dynamic>);
+          _pendingOps.add(op);
+          if (op.id >= _pendingSeq) _pendingSeq = op.id + 1;
+        }
+      }
+    } catch (_) {/* cache corrupta → arrancar limpio, no romper */}
+  }
+
+  Future<void> init() async {
+    // Spec 092: recuperar ventas no sincronizadas + cola pendiente del localStorage.
+    await _loadPersisted();
+    _emitSales();
+  }
+
+  /// Cambio de tenant: limpia memoria Y la persistencia web (no mezclar datos
+  /// entre tiendas).
   Future<void> clearIfTenantChanged(String? newTenantId) async {
     if (newTenantId == null || newTenantId.isEmpty) return;
     _products.clear();
     _sales.clear();
     _customers.clear();
     _credits.clear();
+    _pendingOps.clear();
+    await _persistSales();
+    await _persistPending();
     _emitProducts();
     _emitSales();
   }
@@ -202,17 +255,20 @@ class DatabaseService {
 
   Future<void> insertSale(LocalSale sale) async {
     _sales.add(sale);
+    await _persistSales(); // Spec 092: sobrevive a un refresh
     _emitSales();
   }
 
   Future<void> insertSales(List<LocalSale> sales) async {
     if (sales.isEmpty) return;
     _sales.addAll(sales);
+    await _persistSales();
     _emitSales();
   }
 
   Future<void> markSaleSynced(LocalSale sale) async {
     sale.synced = true;
+    await _persistSales(); // ya sincronizada → sale de la cola persistida
     _emitSales();
   }
 
@@ -229,6 +285,7 @@ class DatabaseService {
         product.stock = (product.stock - item.quantity).clamp(0, 999999);
       }
     }
+    await _persistSales(); // Spec 092: venta offline sobrevive a un refresh
     _emitSales();
     _emitProducts();
   }
@@ -297,16 +354,19 @@ class DatabaseService {
   Future<void> addPendingOp(PendingOperation op) async {
     if (op.id == 0) op.id = _pendingSeq++;
     _pendingOps.add(op);
+    await _persistPending(); // Spec 092
   }
 
   Future<void> removePendingOps(List<int> ids) async {
     _pendingOps.removeWhere((op) => ids.contains(op.id));
+    await _persistPending(); // Spec 092
   }
 
   Future<void> incrementRetryCount(int id) async {
     for (final op in _pendingOps) {
       if (op.id == id) {
         op.retryCount++;
+        await _persistPending(); // Spec 092: conservar el conteo de reintentos
         return;
       }
     }
