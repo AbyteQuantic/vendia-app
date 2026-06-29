@@ -915,6 +915,20 @@ class _EditProductSheetState extends State<_EditProductSheet> {
                 _executeAiPhoto(useExisting: false);
               },
             ),
+            // Spec 094: foto de estudio generativa (mejor ángulo). Solo con foto.
+            if (_photoUrl != null && _photoUrl!.isNotEmpty) ...[
+              const SizedBox(height: 12),
+              _AiOptionTile(
+                icon: Icons.camera_enhance_rounded,
+                color: const Color(0xFF0E7490),
+                title: 'Foto de estudio (IA)',
+                subtitle: 'Mejora el ángulo usando su foto (puede estilizar)',
+                onTap: () {
+                  Navigator.of(ctx).pop();
+                  _executeAiPhoto(useExisting: true, studio: true);
+                },
+              ),
+            ],
             // Spec 017 FR-05: corregir un resultado alterado con indicaciones
             // escritas. Solo si ya hay una foto que mejorar.
             if (_photoUrl != null && _photoUrl!.isNotEmpty) ...[
@@ -940,7 +954,7 @@ class _EditProductSheetState extends State<_EditProductSheet> {
   }
 
   Future<void> _executeAiPhoto(
-      {required bool useExisting, String? instruction}) async {
+      {required bool useExisting, String? instruction, bool studio = false}) async {
     final id = widget.product['id'] as String? ?? '';
     final currentName = _nameCtrl.text.trim();
     final currentPresentation = _presentation;
@@ -971,6 +985,7 @@ class _EditProductSheetState extends State<_EditProductSheet> {
           presentation: currentPresentation,
           content: currentContent,
           instruction: instruction,
+          mode: studio ? 'studio' : null,
         );
       } else {
         result = await api.generateProductImage(id,

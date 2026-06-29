@@ -1360,6 +1360,7 @@ class ApiService {
     String? presentation,
     String? content,
     String? instruction,
+    String? mode, // Spec 094: 'studio' = foto de estudio generativa (otro ángulo)
   }) async {
     final params = <String, String>{};
     if (name != null && name.isNotEmpty) params['name'] = name;
@@ -1367,6 +1368,7 @@ class ApiService {
       params['presentation'] = presentation;
     }
     if (content != null && content.isNotEmpty) params['content'] = content;
+    if (mode != null && mode.isNotEmpty) params['mode'] = mode;
     // Spec 017 FR-05: indicación escrita por el tendero para corregir un
     // resultado alterado (opcional).
     if (instruction != null && instruction.trim().isNotEmpty) {

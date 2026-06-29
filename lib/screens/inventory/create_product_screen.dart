@@ -790,7 +790,7 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
   // forceGenerate=true ignora la foto del tendero y crea una desde cero (opción
   // "Crear con IA"); por defecto, si hay foto, la MEJORA ("Mejorar con IA").
   Future<void> _enhanceOrGeneratePhoto(
-      {String? instruction, bool forceGenerate = false}) async {
+      {String? instruction, bool forceGenerate = false, bool studio = false}) async {
     // Validate required fields for a good AI result
     final missingFields = <String>[];
     if (_nameCtrl.text.trim().isEmpty) missingFields.add('nombre');
@@ -880,7 +880,7 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
       final Map<String, dynamic> result;
       if (hasExistingPhoto) {
         result = await api.enhanceProductPhoto(_pendingUuid!,
-            instruction: instruction);
+            instruction: instruction, mode: studio ? 'studio' : null);
       } else {
         result = await api.generateProductImage(_pendingUuid!);
       }
@@ -1599,6 +1599,20 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
                                     : () => _enhanceOrGeneratePhoto(
                                         forceGenerate: true),
                               ),
+                              const SizedBox(height: 8),
+                              // Spec 094: foto de estudio generativa (mejor ángulo,
+                              // usa su foto como referencia; puede estilizar).
+                              _actionButton(
+                                label: _enhancing
+                                    ? 'Procesando…'
+                                    : 'Foto de estudio (IA)',
+                                icon: Icons.camera_enhance_rounded,
+                                color: const Color(0xFF0E7490),
+                                loading: _enhancing,
+                                onTap: _enhancing
+                                    ? null
+                                    : () => _enhanceOrGeneratePhoto(studio: true),
+                              ),
                             ] else
                               _actionButton(
                                 label:
@@ -1633,8 +1647,9 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
                             const SizedBox(height: 6),
                             Text(
                               hasPhoto
-                                  ? '«Mejorar» quita el fondo y mejora la foto SIN cambiar su producto. '
-                                      '«Crear» hace una imagen nueva con IA (no usa su foto).'
+                                  ? '«Mejorar» quita el fondo SIN cambiar su producto. '
+                                      '«Foto de estudio» mejora el ángulo (puede estilizar). '
+                                      '«Crear» hace una imagen nueva (no usa su foto).'
                                   : 'Crea una imagen con IA a partir del nombre (no es una foto real del producto).',
                               style: const TextStyle(
                                   fontSize: 12.5,
