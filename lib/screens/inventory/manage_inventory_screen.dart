@@ -898,7 +898,7 @@ class _EditProductSheetState extends State<_EditProductSheet> {
               icon: Icons.auto_fix_high_rounded,
               color: const Color(0xFF3B82F6),
               title: 'Mejorar foto actual',
-              subtitle: 'Quita el fondo y mejora la foto sin cambiar su producto',
+              subtitle: 'Foto de estudio fiel (fondo, sombra y reflejo), sin cambiar su producto',
               onTap: () {
                 Navigator.of(ctx).pop();
                 _executeAiPhoto(useExisting: true);

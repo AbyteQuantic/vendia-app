@@ -1647,8 +1647,8 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
                             const SizedBox(height: 6),
                             Text(
                               hasPhoto
-                                  ? '«Mejorar» quita el fondo SIN cambiar su producto. '
-                                      '«Foto de estudio» mejora el ángulo (puede estilizar). '
+                                  ? '«Mejorar» = foto de estudio fiel (fondo, sombra y reflejo) SIN cambiar su producto. '
+                                      '«Foto de estudio» prueba otro ángulo (puede estilizar). '
                                       '«Crear» hace una imagen nueva (no usa su foto).'
                                   : 'Crea una imagen con IA a partir del nombre (no es una foto real del producto).',
                               style: const TextStyle(
