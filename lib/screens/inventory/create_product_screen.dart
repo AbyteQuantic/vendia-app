@@ -27,6 +27,7 @@ import '../../widgets/dashboard_ui_kit.dart';
 import '../../theme/app_ui.dart';
 import '../../widgets/advanced_product_options.dart';
 import '../../widgets/branch_selector_drawer.dart';
+import '../../widgets/full_image_viewer.dart';
 import '../../widgets/picked_image_preview.dart';
 import '../pos/scan_screen.dart';
 
@@ -1517,9 +1518,13 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
                   Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      // Photo thumbnail (110x110)
+                      // Photo thumbnail (110x110). Con imagen → ampliar (zoom);
+                      // sin imagen → tomar foto.
                       GestureDetector(
-                        onTap: _takePhoto,
+                        onTap: (_photoFile != null ||
+                                (_photoUrl != null && _photoUrl!.isNotEmpty))
+                            ? _openImageViewer
+                            : _takePhoto,
                         child: ClipRRect(
                           borderRadius: BorderRadius.circular(16),
                           child: Container(
@@ -1622,6 +1627,20 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
                                     size: 18),
                                 label: const Text('¿No quedó bien? Dar indicaciones'),
                               ),
+                            // Spec 017 — aclarar qué hace cada opción: el caso de
+                            // confusión fue usar "Crear" (genera desde el nombre,
+                            // NO usa la foto) esperando que respetara el producto.
+                            const SizedBox(height: 6),
+                            Text(
+                              hasPhoto
+                                  ? '«Mejorar» conserva su producto y solo mejora la foto. '
+                                      '«Crear» hace una imagen nueva con IA (no usa su foto).'
+                                  : 'Crea una imagen con IA a partir del nombre (no es una foto real del producto).',
+                              style: const TextStyle(
+                                  fontSize: 12.5,
+                                  height: 1.3,
+                                  color: AppTheme.textSecondary),
+                            ),
                           ],
                         ),
                       ),
@@ -2267,6 +2286,19 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
         ),
       ),
     );
+  }
+
+  // Ampliar la imagen del producto (la del tendero o la generada por IA).
+  void _openImageViewer() {
+    final Widget child;
+    if (_photoFile != null) {
+      child = PickedImagePreview(file: _photoFile!, fit: BoxFit.contain);
+    } else if (_photoUrl != null && _photoUrl!.isNotEmpty) {
+      child = Image.network(_photoUrl!, fit: BoxFit.contain);
+    } else {
+      return;
+    }
+    showFullImageViewer(context, child: child);
   }
 
   Widget _buildPhotoContent() {

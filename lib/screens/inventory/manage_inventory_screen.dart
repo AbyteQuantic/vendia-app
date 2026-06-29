@@ -13,6 +13,7 @@ import '../../utils/barcode_validator.dart';
 import '../../utils/currency_input.dart';
 import '../../widgets/ai_instruction_dialog.dart';
 import '../../widgets/branch_selector_drawer.dart';
+import '../../widgets/full_image_viewer.dart';
 import '../../widgets/product_image.dart';
 import '../../widgets/branch_aware_reload.dart';
 import '../../widgets/negative_stock_banner.dart';
@@ -1064,6 +1065,19 @@ class _EditProductSheetState extends State<_EditProductSheet> {
 
   // (helper widgets below)
 
+  // Ampliar la imagen del producto (la del tendero o la generada por IA).
+  void _openImageViewer() {
+    final Widget child;
+    if (_photoFile != null) {
+      child = PickedImagePreview(file: _photoFile!, fit: BoxFit.contain);
+    } else if (_photoUrl != null && _photoUrl!.isNotEmpty) {
+      child = Image.network(_photoUrl!, fit: BoxFit.contain);
+    } else {
+      return;
+    }
+    showFullImageViewer(context, child: child);
+  }
+
   Widget _photoPlaceholder() {
     return Column(
       mainAxisAlignment: MainAxisAlignment.center,
@@ -1299,7 +1313,11 @@ class _EditProductSheetState extends State<_EditProductSheet> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   GestureDetector(
-                    onTap: () => _pickPhoto(ImageSource.camera),
+                    // Con imagen → ampliar (zoom); sin imagen → tomar foto.
+                    onTap: (_photoFile != null ||
+                            (_photoUrl != null && _photoUrl!.isNotEmpty))
+                        ? _openImageViewer
+                        : () => _pickPhoto(ImageSource.camera),
                     child: ClipRRect(
                       borderRadius: BorderRadius.circular(16),
                       child: Container(
