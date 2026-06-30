@@ -297,10 +297,36 @@ class DatabaseService {
   /// Replaces direct `db.isar` access from the sync layer so the Isar
   /// engine stays encapsulated (web build has no Isar — see
   /// database_service_web.dart).
+  ///
+  /// UPSERT por `uuid` — mismo patrón que [upsertCustomer] más abajo.
+  /// `LocalSale.uuid` tiene `@Index(unique: true)`; el dedupe de
+  /// `SalesSyncService.pullFromServer` solo compara contra las últimas 500
+  /// ventas locales (`getRecentSales(limit: 500)`). Si una venta del
+  /// servidor con un uuid que YA existe localmente cae fuera de esa
+  /// ventana (tienda multi-cajero/multi-dispositivo, o cualquier tienda
+  /// con +500 ventas acumuladas), un `put()` ciego —sin copiar el
+  /// `isarId` existente— intenta crear una fila nueva con un uuid
+  /// duplicado: Isar lanza `IsarError: Unique index violated`, el
+  /// `writeTxn` ENTERO hace rollback (ninguna de las ventas del batch se
+  /// guarda, ni siquiera las válidas) y el `catch` exterior de
+  /// `pullFromServer` se traga el error sin avisar al cajero. Efecto:
+  /// esa única venta duplicada envenena el pull completo en cada ciclo
+  /// desde entonces — ninguna venta nueva de otros dispositivos vuelve a
+  /// bajar a este. Buscar la fila existente por uuid y copiarle el
+  /// `isarId` antes de `put()` (igual que upsertCustomer) hace que la
+  /// operación sea un UPDATE en vez de un INSERT colisionando, sin
+  /// importar la ventana de dedupe usada arriba en pullFromServer.
   Future<void> insertSales(List<LocalSale> sales) async {
     if (sales.isEmpty) return;
     await isar.writeTxn(() async {
       for (final sale in sales) {
+        final existing = await isar.localSales
+            .filter()
+            .uuidEqualTo(sale.uuid)
+            .findFirst();
+        if (existing != null) {
+          sale.isarId = existing.isarId;
+        }
         await isar.localSales.put(sale);
       }
     });

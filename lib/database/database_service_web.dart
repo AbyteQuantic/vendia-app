@@ -261,6 +261,17 @@ class DatabaseService {
 
   Future<void> insertSales(List<LocalSale> sales) async {
     if (sales.isEmpty) return;
+    // UPSERT por uuid — espejo del fix en database_service_io.dart
+    // (insertSales con Isar): un `addAll` ciego podía dejar la MISMA venta
+    // duplicada en la lista en memoria si pullFromServer la traía de
+    // nuevo fuera de la ventana de dedupe de las últimas 500 locales. Aquí
+    // no hay índice único que viole (no rompe nada), pero sí duplicaba la
+    // venta en el historial visible — quitamos la fila vieja con el mismo
+    // uuid antes de agregar la nueva, igual que el resto de upserts de
+    // este stub (ver upsertCustomer/upsertCredit).
+    for (final sale in sales) {
+      _sales.removeWhere((s) => s.uuid == sale.uuid);
+    }
     _sales.addAll(sales);
     await _persistSales();
     _emitSales();

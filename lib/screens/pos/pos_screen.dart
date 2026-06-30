@@ -36,6 +36,7 @@ import '../../services/panic_trigger_service.dart';
 import '../../services/receipt_builder.dart';
 import '../../services/tax_settings_service.dart';
 import '../../database/collections/local_sale.dart';
+import '../../database/sync/sales_sync.dart';
 import '../../utils/credit_labels.dart';
 import '../inventory/add_merchandise_screen.dart';
 import '../payments/confirm_payment_scanner_screen.dart';
@@ -1617,6 +1618,18 @@ class _PosScreenBodyState extends State<_PosScreenBody> {
       // el customer pertenezca al tenant.
       String? customerId,
       }) async {
+    // Guard compartido con SalesSyncService.pushToServer (sweep periódico
+    // de 30 s / reconexión): si ese sweep ya está subiendo esta MISMA venta
+    // ahora mismo, no la dupliques aquí. Antes ambos caminos llamaban a
+    // api.createSale de forma independiente para el mismo uuid, confiando
+    // ciegamente en que el backend fuera idempotente — en una red lenta el
+    // timer podía disparar justo cuando este push inmediato seguía en
+    // vuelo y la misma venta salía POSTeada dos veces casi simultáneamente.
+    if (!acquireSalePush(saleUuid)) {
+      debugPrint('[SALE_SYNC] $saleUuid ya en vuelo por el sweep periódico '
+          '— se omite para no duplicar el POST');
+      return;
+    }
     try {
       final api = ApiService(AuthService());
       // Spec 049 (IVA): desglose de IVA para que el servidor lo GUARDE
@@ -1718,6 +1731,8 @@ class _PosScreenBodyState extends State<_PosScreenBody> {
           ),
         ));
       }
+    } finally {
+      releaseSalePush(saleUuid);
     }
   }
 
