@@ -791,12 +791,17 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
   // "Crear con IA"); por defecto, si hay foto, la MEJORA ("Mejorar con IA").
   Future<void> _enhanceOrGeneratePhoto(
       {String? instruction, bool forceGenerate = false, bool studio = false}) async {
-    // Validate required fields for a good AI result
+    // Validate required fields for a good AI result. El precio es obligatorio
+    // porque la IA crea primero el producto en el backend (que exige precio) para
+    // tener un ID; sin precio fallaba con un error técnico ('Price required').
     final missingFields = <String>[];
     if (_nameCtrl.text.trim().isEmpty) missingFields.add('nombre');
     if (_presentation.isEmpty) missingFields.add('presentación');
     if (_contentCtrl.text.trim().isEmpty) {
       missingFields.add('contenido (ej: 350ml)');
+    }
+    if (CurrencyUtils.parseToDouble(_sellPriceCtrl.text) <= 0) {
+      missingFields.add('precio');
     }
 
     if (missingFields.isNotEmpty) {
