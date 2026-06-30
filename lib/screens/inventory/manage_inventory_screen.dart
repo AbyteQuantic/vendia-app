@@ -894,11 +894,13 @@ class _EditProductSheetState extends State<_EditProductSheet> {
               style: const TextStyle(fontSize: 14, color: AppTheme.textSecondary),
             ),
             const SizedBox(height: 20),
+            // Spec 094: el tendero elige — quitar fondo (deja el producto igual) o
+            // mejorar con IA (limpia/mejora, puede cambiar detalles).
             _AiOptionTile(
               icon: Icons.auto_fix_high_rounded,
               color: const Color(0xFF3B82F6),
-              title: 'Mejorar foto actual',
-              subtitle: 'Foto de estudio fiel (fondo blanco + luz), sin cambiar su producto',
+              title: 'Quitar fondo',
+              subtitle: 'Deja su producto igual sobre fondo blanco de estudio',
               onTap: () {
                 Navigator.of(ctx).pop();
                 _executeAiPhoto(useExisting: true);
@@ -907,6 +909,17 @@ class _EditProductSheetState extends State<_EditProductSheet> {
             const SizedBox(height: 12),
             _AiOptionTile(
               icon: Icons.auto_awesome_rounded,
+              color: const Color(0xFF0E7490),
+              title: 'Mejorar con IA',
+              subtitle: 'Limpia y mejora el producto (puede cambiar detalles)',
+              onTap: () {
+                Navigator.of(ctx).pop();
+                _executeAiPhoto(useExisting: true, mode: 'improve');
+              },
+            ),
+            const SizedBox(height: 12),
+            _AiOptionTile(
+              icon: Icons.add_photo_alternate_rounded,
               color: const Color(0xFF7C3AED),
               title: 'Generar imagen nueva',
               subtitle: 'Crea una imagen desde cero basada en el nombre y presentación',
@@ -915,20 +928,6 @@ class _EditProductSheetState extends State<_EditProductSheet> {
                 _executeAiPhoto(useExisting: false);
               },
             ),
-            // Spec 094: foto de estudio generativa (mejor ángulo). Solo con foto.
-            if (_photoUrl != null && _photoUrl!.isNotEmpty) ...[
-              const SizedBox(height: 12),
-              _AiOptionTile(
-                icon: Icons.camera_enhance_rounded,
-                color: const Color(0xFF0E7490),
-                title: 'Foto de estudio (IA)',
-                subtitle: 'Mejora el ángulo usando su foto (puede estilizar)',
-                onTap: () {
-                  Navigator.of(ctx).pop();
-                  _executeAiPhoto(useExisting: true, studio: true);
-                },
-              ),
-            ],
             // Spec 017 FR-05: corregir un resultado alterado con indicaciones
             // escritas. Solo si ya hay una foto que mejorar.
             if (_photoUrl != null && _photoUrl!.isNotEmpty) ...[
@@ -954,7 +953,7 @@ class _EditProductSheetState extends State<_EditProductSheet> {
   }
 
   Future<void> _executeAiPhoto(
-      {required bool useExisting, String? instruction, bool studio = false}) async {
+      {required bool useExisting, String? instruction, String? mode}) async {
     final id = widget.product['id'] as String? ?? '';
     final currentName = _nameCtrl.text.trim();
     final currentPresentation = _presentation;
@@ -985,7 +984,7 @@ class _EditProductSheetState extends State<_EditProductSheet> {
           presentation: currentPresentation,
           content: currentContent,
           instruction: instruction,
-          mode: studio ? 'studio' : null,
+          mode: mode,
         );
       } else {
         result = await api.generateProductImage(id,
