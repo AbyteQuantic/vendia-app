@@ -99,7 +99,7 @@ class DatabaseService {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString(
           _kPending, jsonEncode(_pendingOps.map((o) => o.toJson()).toList()));
-    } catch (_) {}
+    } catch (_) {/* nunca romper el flujo de la cola por persistencia */}
   }
 
   Future<void> _loadPersisted() async {
