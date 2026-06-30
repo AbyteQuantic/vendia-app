@@ -13,6 +13,20 @@ import 'sales_sync.dart';
 
 enum SyncStatus { synced, syncing, offline, error }
 
+/// Tope de reintentos para un op de la cola genérica de /sync/batch antes de
+/// descartarlo. Igual al umbral que ya existía (retryCount > 10) pero ahora
+/// el op se DESCARTA al llegar al tope en vez de quedar congelado
+/// re-enviándose (y re-envenenando el lote) para siempre.
+const int maxSyncOpRetries = 10;
+
+/// True cuando una operación de la cola genérica debe DESCARTARSE en vez de
+/// reintentarse. Ver el comentario en syncNow() sobre por qué la señal es
+/// retryCount y no un status code (a diferencia de
+/// `isPermanentSalePushError` en sales_sync.dart, que sí puede confiar en
+/// 400/422 porque /sales es un endpoint dedicado por venta).
+@visibleForTesting
+bool shouldDropSyncOp(int retryCount) => retryCount >= maxSyncOpRetries;
+
 class SyncService extends ChangeNotifier {
   final DatabaseService _db;
   final ConnectivityMonitor _connectivity;
@@ -100,37 +114,57 @@ class SyncService extends ChangeNotifier {
       }
 
       final token = await _auth.getToken();
-      final payload = ops.map((op) => op.toSyncPayload()).toList();
 
-      final response = await _dio.post(
-        '/api/v1/sync/batch',
-        data: {'operations': payload},
-        options: Options(headers: {'Authorization': 'Bearer $token'}),
-      );
+      // Cada operación va en su PROPIO POST /sync/batch (lote de 1), no
+      // todas juntas en un solo request. El backend envuelve el lote
+      // completo en una transacción (sync_service.go ProcessBatch): un
+      // único op con payload inválido hace fallar la transacción entera, y
+      // el código viejo dejaba TODOS los ops de ese lote (hasta 50) sin
+      // sincronizar para siempre porque el op envenenado nunca se quitaba
+      // de getPendingOps() — el bug histórico del "lote envenenado" (Spec
+      // 047, arreglado para ventas vía /sales) reproducido aquí para
+      // fiado/crédito (entity credit_account/credit_payment), que siguen
+      // yendo por /sync/batch. Mandando uno por uno, un op malo nunca
+      // bloquea a sus hermanos de cola.
+      for (final op in ops) {
+        try {
+          final response = await _dio.post(
+            '/api/v1/sync/batch',
+            data: {'operations': [op.toSyncPayload()]},
+            options: Options(headers: {'Authorization': 'Bearer $token'}),
+          );
 
-      final successIds = <int>[];
-      final responseData = response.data as Map<String, dynamic>?;
+          final responseData = response.data as Map<String, dynamic>?;
+          final serverChanges = responseData?['server_changes'] as List?;
+          if (serverChanges != null) {
+            await _applyServerChanges(serverChanges);
+          }
 
-      if (responseData != null) {
-        // Apply server changes if any
-        final serverChanges = responseData['server_changes'] as List?;
-        if (serverChanges != null) {
-          await _applyServerChanges(serverChanges);
+          await _db.removePendingOps([op.id]);
+        } catch (e) {
+          // El backend no distingue error permanente (payload inválido) de
+          // transitorio (red caída, hiccup de BD) con un status code propio
+          // para un op suelto — todo error de processOperation vuelve como
+          // 500 genérico. Por eso la señal es retryCount: tras
+          // maxSyncOpRetries intentos se asume payload permanentemente
+          // inválido y se descarta (log fuerte) en vez de dejarlo congelado
+          // re-envenenando cada sync para siempre.
+          if (shouldDropSyncOp(op.retryCount)) {
+            debugPrint('[SYNC] ⚠️ Operación descartada tras '
+                '$maxSyncOpRetries intentos '
+                '(${op.entity}/${op.action} ${op.uuid}): $e');
+            await _db.removePendingOps([op.id]);
+          } else {
+            await _db.incrementRetryCount(op.id);
+            debugPrint('[SYNC] Push transitorio falló para ${op.entity} '
+                '${op.uuid} (reintentará): $e');
+          }
+          // Sigue con el siguiente op — uno malo no bloquea a los demás.
         }
       }
 
-      // Mark all sent ops as successful
-      successIds.addAll(ops.map((op) => op.id));
-      await _db.removePendingOps(successIds);
-
       await _refreshPendingCount();
       _status = _pendingCount > 0 ? SyncStatus.error : SyncStatus.synced;
-    } on DioException catch (_) {
-      for (final op in await _db.getPendingOps(limit: 50)) {
-        if (op.retryCount > 10) continue;
-        await _db.incrementRetryCount(op.id);
-      }
-      _status = SyncStatus.error;
     } catch (_) {
       _status = SyncStatus.error;
     }
