@@ -87,6 +87,51 @@ void main() {
       );
     });
 
+    // Bug real reportado: el tendero fotografió un llavero 3D de Stitch;
+    // al escribir el nombre y tocar la sugerencia de autocompletado, su
+    // foto quedó reemplazada en silencio por la de OTRO llavero (2D, de
+    // otro tenant) del catálogo global "user" — matcheado solo por nombre.
+    test(
+        'un catálogo aportado por otro tenant (source "user") NUNCA se '
+        'auto-aplica, aunque no haya foto propia', () {
+      expect(
+        CreateProductImagePolicy.canApplySuggestedImage(
+          hasMerchantPhoto: false,
+          suggestedUrl: 'https://catalog.example/otro-llavero.png',
+          isUserContributedCatalog: true,
+        ),
+        isFalse,
+        reason: 'mismo nombre no implica mismo objeto físico para '
+            'artículos con variación real (llaveros, artesanías, ropa)',
+      );
+    });
+
+    test(
+        'un catálogo global estandarizado (Open Food Facts / barcode) SÍ '
+        'se auto-aplica sin foto propia — caso seguro, cero fricción', () {
+      expect(
+        CreateProductImagePolicy.canApplySuggestedImage(
+          hasMerchantPhoto: false,
+          suggestedUrl: 'https://off.example/coca-cola-350ml.png',
+          isUserContributedCatalog: false,
+        ),
+        isTrue,
+        reason: 'producto empacado estandarizado: mismo barcode/nombre '
+            'SÍ es el mismo objeto físico',
+      );
+    });
+
+    test('la foto propia del tendero sigue ganando aunque sea catálogo "off"', () {
+      expect(
+        CreateProductImagePolicy.canApplySuggestedImage(
+          hasMerchantPhoto: true,
+          suggestedUrl: 'https://off.example/coca-cola-350ml.png',
+          isUserContributedCatalog: false,
+        ),
+        isFalse,
+      );
+    });
+
     test('an empty or null suggested url never applies', () {
       expect(
         CreateProductImagePolicy.canApplySuggestedImage(
