@@ -227,8 +227,10 @@ class SyncService extends ChangeNotifier {
           .toList();
       // Replace all local products with server data (removes deleted ones)
       await _db.replaceAllProducts(products);
-    } catch (_) {
+    } catch (e) {
       // Silent fail on pull — local data still works
+      debugPrint(
+          '[SYNC] Pull de productos falló, se mantiene el caché local: $e');
     }
 
     // Pull tenant payment methods so the checkout can render the
@@ -248,8 +250,10 @@ class SyncService extends ChangeNotifier {
               LocalPaymentMethod.fromJson(e as Map<String, dynamic>))
           .toList();
       await _db.replaceAllPaymentMethods(methods);
-    } catch (_) {
+    } catch (e) {
       // Silent: leave the previous cache in place
+      debugPrint(
+          '[SYNC] Pull de métodos de pago falló, se mantiene el caché previo: $e');
     }
 
     // Spec 053 — PULL de mesas abiertas: un dispositivo nuevo / reconectado
@@ -268,8 +272,10 @@ class SyncService extends ChangeNotifier {
           .whereType<Map<String, dynamic>>()
           .toList();
       await _db.applyServerOpenTabs(tabsList);
-    } catch (_) {
+    } catch (e) {
       // Silent: las mesas locales siguen funcionando sin el pull.
+      debugPrint(
+          '[SYNC] Pull de mesas abiertas falló, se mantienen las mesas locales: $e');
     }
   }
 
