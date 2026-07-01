@@ -57,6 +57,16 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
   // preview and upload work on web, where `XFile.path` is a blob URL.
   XFile? _photoFile;
   String? _photoUrl; // from barcode lookup
+  // La foto REAL que el tendero tomó/eligió/escaneó, subida una sola vez —
+  // NUNCA el resultado de una acción de IA. Bug real reportado: probar
+  // "Quitar fondo" y luego "Mejorar con IA" sobre la misma foto daba "el
+  // mismo resultado" porque la segunda acción tomaba _photoUrl, que para
+  // ese momento YA era el resultado de la primera (línea ~927 lo
+  // sobrescribe) — cada acción de IA debe partir siempre de la foto
+  // original, nunca del resultado de la acción anterior. null hasta que se
+  // sube la primera vez; _pickPhoto la invalida (foto nueva → nuevo
+  // original).
+  String? _originalPhotoUrl;
   String? _pendingUuid; // set after create, before enhance
   String? _pendingCatalogImageId; // set after enhance/generate, sent on save
   List<String> _catalogImages = []; // accepted images from catalog
@@ -782,6 +792,7 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
         // chosen photo is the one that gets saved.
         _photoFile = photo;
         _photoUrl = null;
+        _originalPhotoUrl = null; // foto nueva → invalida el original viejo
         _pendingCatalogImageId = null;
         _imageIsSuggested = false;
         _suggestedImageSourceName = '';
@@ -871,6 +882,12 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
       // there is nothing to "ignore". Any genuine error (network,
       // validation, server) now propagates to the catch block below and
       // is shown to the user in Spanish.
+      // is_draft=true — este producto existe SOLO porque enhance/generate
+      // necesitan un ID real en BD; el tendero no tocó "Guardar". El
+      // backend lo excluye de GET /products (inventario, POS,
+      // autocompletado "Mi tienda") hasta que _save lo confirme con
+      // is_draft=false. Bug real reportado: sin esto, cada prueba de foto
+      // dejaba un producto huérfano visible en el inventario del tendero.
       await api.createProduct({
         'id': _pendingUuid,
         'name': _nameCtrl.text.trim().isEmpty
@@ -884,6 +901,7 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
         'category': canonicalValue(_categoryCtrl.text, _categorySuggestions),
         'characteristics': _characteristicsCtrl.text.trim(),
         'is_age_restricted': _isAgeRestricted,
+        'is_draft': true,
       });
 
       // BUG REAL reportado: si el tendero ya tomó/eligió su foto pero el
@@ -896,20 +914,48 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
       // 3D real terminaba reemplazado por un Stitch genérico inventado
       // desde el nombre — mismo personaje, diseño totalmente distinto.
       // Subir la foto AQUÍ, antes de decidir la rama, es el fix.
+      //
+      // SEGUNDO BUG REAL reportado: probar "Quitar fondo" y luego "Mejorar
+      // con IA" (u otro modo) sobre la MISMA foto daba "el mismo
+      // resultado" — porque tras la primera acción, _photoUrl quedaba
+      // apuntando al RESULTADO de esa acción (línea ~975: `_photoUrl =
+      // url;`), y la segunda acción lo tomaba como si fuera la foto
+      // original, reprocesando un resultado ya recortado/realzado en vez
+      // de comparar ambos modos contra la misma foto real — compone
+      // errores de recorte y hace que ambos modos luzcan parecidos.
+      // _originalPhotoUrl es la foto REAL, subida una sola vez; cada
+      // acción de IA siempre reasigna image_url a ESE valor antes de
+      // llamar a enhance/generate, sin importar qué haya en _photoUrl.
       final pickedPhoto = _photoFile;
-      if (!forceGenerate && pickedPhoto != null && _photoUrl == null) {
-        final uploadRes =
-            await api.uploadProductPhoto(_pendingUuid!, pickedPhoto);
-        final uploadedUrl = (uploadRes['photo_url'] as String?) ??
-            (uploadRes['image_url'] as String?);
-        if (uploadedUrl != null && uploadedUrl.isNotEmpty) {
-          _photoUrl = uploadedUrl;
-          await api.updateProduct(_pendingUuid!, {'image_url': uploadedUrl});
+      if (!forceGenerate) {
+        if (_originalPhotoUrl == null) {
+          if (pickedPhoto != null) {
+            final uploadRes =
+                await api.uploadProductPhoto(_pendingUuid!, pickedPhoto);
+            final uploadedUrl = (uploadRes['photo_url'] as String?) ??
+                (uploadRes['image_url'] as String?);
+            if (uploadedUrl != null && uploadedUrl.isNotEmpty) {
+              _originalPhotoUrl = uploadedUrl;
+              _photoUrl = uploadedUrl;
+              await api.updateProduct(
+                  _pendingUuid!, {'image_url': uploadedUrl});
+            }
+          } else if (_photoUrl != null && _photoUrl!.isNotEmpty) {
+            // Ya había una foto (código de barras, sugerencia, foto de
+            // catálogo elegida explícitamente) sin pasar por _pickPhoto —
+            // esa es la original para esta sesión de pruebas.
+            _originalPhotoUrl = _photoUrl;
+          }
+        } else if (_photoUrl != _originalPhotoUrl) {
+          // Una acción de IA anterior ya sobrescribió image_url con SU
+          // resultado — reasignar la original antes de esta nueva acción.
+          await api.updateProduct(
+              _pendingUuid!, {'image_url': _originalPhotoUrl});
         }
       }
 
       final hasExistingPhoto =
-          !forceGenerate && _photoUrl != null && _photoUrl!.isNotEmpty;
+          !forceGenerate && _originalPhotoUrl != null && _originalPhotoUrl!.isNotEmpty;
 
       // If product has a photo URL, enhance it. Otherwise, generate from scratch.
       final Map<String, dynamic> result;
@@ -1190,7 +1236,10 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
       final outcome = await persistProductOfflineFirst(
         serverWrite: () async {
           if (_pendingUuid != null) {
-            // Product was already created by enhance — update it
+            // Product was already created by enhance — update it.
+            // is_draft=false: el tendero SÍ tocó "Guardar" — este es el
+            // único punto donde un producto creado solo para probar fotos
+            // de IA se confirma como parte real de su inventario.
             await api.updateProduct(id, {
               'name': productName,
               'price': price,
@@ -1204,6 +1253,7 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
               'characteristics': _characteristicsCtrl.text.trim(),
               'expiry_date': expiryIso ?? '',
               'is_age_restricted': _isAgeRestricted,
+              'is_draft': false,
               if (_pendingCatalogImageId != null)
                 'catalog_image_id': _pendingCatalogImageId,
               ...tierExtras,
@@ -1371,6 +1421,22 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
         ],
       ),
     );
+    if (result == true) {
+      // El tendero confirmó descartar sin guardar. Si probó fotos de IA,
+      // _pendingUuid apunta a un producto is_draft=true creado solo para
+      // esas pruebas (ver createProduct más arriba) — bórralo del backend
+      // ahora en vez de dejarlo huérfano para siempre. Best-effort: el
+      // filtro is_draft en GET /products ya lo oculta del inventario aunque
+      // esto falle (ej. sin conexión), así que un error aquí no debe
+      // bloquear la salida de la pantalla.
+      final orphanUuid = _pendingUuid;
+      if (orphanUuid != null) {
+        unawaited(ApiService(AuthService())
+            .deleteProduct(orphanUuid)
+            .catchError((Object e) => debugPrint(
+                '[NUEVO_PRODUCTO] No se pudo borrar el borrador $orphanUuid: $e')));
+      }
+    }
     return result ?? false;
   }
 
