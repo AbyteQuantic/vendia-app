@@ -710,11 +710,13 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
     _suggestions = [];
 
     setState(() {
-      // Auto-fill image — D2: only when the merchant has not taken/picked
-      // their own photo; their photo always wins over a suggested one.
+      // Auto-fill image — D2 (ver CreateProductImagePolicy.canApplySuggestedImage
+      // para el porqué de isUserContributedCatalog: catálogo "user" no se
+      // auto-aplica, solo queda disponible en el carrusel explícito abajo).
       if (CreateProductImagePolicy.canApplySuggestedImage(
         hasMerchantPhoto: _photoFile != null,
         suggestedUrl: s.imageUrl,
+        isUserContributedCatalog: s.source == 'user',
       )) {
         _photoUrl = s.imageUrl;
         _imageIsSuggested = true;
@@ -2593,11 +2595,27 @@ class CreateProductImagePolicy {
   /// D2 — the merchant's own photo (camera or gallery) always wins: once
   /// [hasMerchantPhoto] is true no suggested image may overwrite it. An
   /// empty or null [suggestedUrl] is never adopted.
+  ///
+  /// [isUserContributedCatalog] — true when the suggestion's image comes
+  /// from `CatalogProduct.Source == "user"`: a photo another TENANT
+  /// contributed to the shared cross-tenant catalog, matched here only by
+  /// product NAME. For manufactured/packaged goods (source "off"/"local",
+  /// matched by barcode against Open Food Facts — a real global standard)
+  /// the same name/barcode reliably means the same physical product, so
+  /// auto-applying stays zero-friction. For items with real physical
+  /// variation between units (llaveros, artesanías, ropa, comida casera)
+  /// "same name" does NOT mean "same object": a merchant reported that
+  /// tapping a name-autocomplete suggestion silently replaced his real
+  /// keychain photo with a different tenant's differently-shaped keychain.
+  /// Those must be adopted only through the explicit catalog-image strip
+  /// tap (`_catalogImages` in the screen), never auto-applied here.
   static bool canApplySuggestedImage({
     required bool hasMerchantPhoto,
     required String? suggestedUrl,
+    bool isUserContributedCatalog = false,
   }) {
     if (hasMerchantPhoto) return false;
+    if (isUserContributedCatalog) return false;
     return suggestedUrl != null && suggestedUrl.trim().isNotEmpty;
   }
 
