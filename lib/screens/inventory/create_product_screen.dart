@@ -833,8 +833,11 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
       return;
     }
 
-    final hasExistingPhoto =
-        !forceGenerate && _photoUrl != null && _photoUrl!.isNotEmpty;
+    // Solo para el texto del snackbar (aproximado): la decisión REAL de
+    // "mejorar" vs "generar" se recalcula más abajo, después de subir
+    // _photoFile si hace falta.
+    final willUsePhoto = !forceGenerate &&
+        (_photoFile != null || (_photoUrl != null && _photoUrl!.isNotEmpty));
 
     HapticFeedback.lightImpact();
     setState(() => _enhancing = true);
@@ -843,7 +846,7 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
     // tendero it is processing so the wait never reads as a failure.
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
       content: Text(
-        hasExistingPhoto
+        willUsePhoto
             ? 'Procesando tu foto con IA…'
             : 'Generando la imagen con IA…',
         style: const TextStyle(fontSize: 16),
@@ -882,6 +885,31 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
         'characteristics': _characteristicsCtrl.text.trim(),
         'is_age_restricted': _isAgeRestricted,
       });
+
+      // BUG REAL reportado: si el tendero ya tomó/eligió su foto pero el
+      // producto es nuevo (aún sin "Guardar"), _photoFile tiene la foto
+      // real pero _photoUrl sigue null — la foto solo se sube al backend
+      // en _saveProduct. Sin este paso, hasExistingPhoto (abajo) salía
+      // FALSE aunque el tendero ya tuviera su foto lista, y "Quitar
+      // fondo"/"Mejorar con IA" tomaban la rama de generateProductImage:
+      // texto→imagen SIN ninguna foto de referencia. Resultado: un Stitch
+      // 3D real terminaba reemplazado por un Stitch genérico inventado
+      // desde el nombre — mismo personaje, diseño totalmente distinto.
+      // Subir la foto AQUÍ, antes de decidir la rama, es el fix.
+      final pickedPhoto = _photoFile;
+      if (!forceGenerate && pickedPhoto != null && _photoUrl == null) {
+        final uploadRes =
+            await api.uploadProductPhoto(_pendingUuid!, pickedPhoto);
+        final uploadedUrl = (uploadRes['photo_url'] as String?) ??
+            (uploadRes['image_url'] as String?);
+        if (uploadedUrl != null && uploadedUrl.isNotEmpty) {
+          _photoUrl = uploadedUrl;
+          await api.updateProduct(_pendingUuid!, {'image_url': uploadedUrl});
+        }
+      }
+
+      final hasExistingPhoto =
+          !forceGenerate && _photoUrl != null && _photoUrl!.isNotEmpty;
 
       // If product has a photo URL, enhance it. Otherwise, generate from scratch.
       final Map<String, dynamic> result;
