@@ -55,6 +55,12 @@ class SalesSyncService {
       }
 
       if (newSales.isNotEmpty) {
+        // insertSales hace UPSERT por uuid (ver database_service_io.dart) —
+        // aunque este dedupe por las últimas 500 ventas locales filtre la
+        // gran mayoría de repetidos, ya no es la ÚNICA defensa: si una
+        // venta del servidor cae fuera de esa ventana (multi-cajero,
+        // tienda con +500 ventas), insertSales la actualiza en vez de
+        // chocar contra el índice único de Isar.
         await db.insertSales(newSales);
         debugPrint('[SALES_SYNC] Pulled ${newSales.length} sales from server');
       }
@@ -85,6 +91,17 @@ class SalesSyncService {
       int synced = 0;
 
       for (final sale in unsynced) {
+        // Guard compartido con el push inmediato del screen
+        // (_syncSaleToBackend en pos_screen.dart): si ese camino fire-and-
+        // forget ya está subiendo esta misma venta ahora mismo, NO la
+        // dupliques aquí. Si termina bien la deja synced=true (este sweep
+        // ni la vuelve a ver); si falla la deja synced=false y este sweep
+        // la recoge la próxima vuelta del timer de 30 s.
+        if (!acquireSalePush(sale.uuid)) {
+          debugPrint('[SALES_SYNC] ${sale.uuid} ya en vuelo por otro camino '
+              '— se omite para no duplicar el POST');
+          continue;
+        }
         try {
           // Skip sales with non-UUID ids (legacy timestamp-based)
           if (!sale.uuid.contains('-') || sale.uuid.length < 32) {
@@ -155,6 +172,8 @@ class SalesSyncService {
                 '(reintentará): $e');
           }
           // Continue with next sale — don't block on one failure
+        } finally {
+          releaseSalePush(sale.uuid);
         }
       }
 
@@ -174,6 +193,40 @@ class SalesSyncService {
     await pushToServer();
   }
 }
+
+/// Reservas activas de UUIDs de venta que algún camino — el push inmediato
+/// fire-and-forget del screen (`_syncSaleToBackend` en pos_screen.dart) o el
+/// sweep periódico de [SalesSyncService.pushToServer] — está subiendo AHORA
+/// MISMO al backend. Antes cada camino llamaba a `api.createSale` para la
+/// misma venta de forma totalmente independiente, confiando ciegamente en
+/// que el backend fuera idempotente por UUID (nunca verificado/forzado del
+/// lado del cliente): en una conexión lenta, el timer de 30 s podía disparar
+/// justo cuando el push inmediato del screen seguía en vuelo y la MISMA
+/// venta salía POSTeada casi simultáneamente por los dos caminos.
+///
+/// `acquireSalePush`/`releaseSalePush` son el guard compartido: CUALQUIER
+/// caller que vaya a invocar `api.createSale` para una venta debe reservar
+/// su uuid primero con [acquireSalePush]. Si devuelve false, otro camino ya
+/// la tiene en vuelo — este caller debe abstenerse de llamar a createSale
+/// (la venta queda igual de servida: el dueño actual la marca synced al
+/// terminar, o la deja synced=false para que el siguiente sweep la levante
+/// si falla). Quien adquiere la reserva DEBE liberarla con
+/// [releaseSalePush] en un `finally`.
+final Set<String> _salesPushInFlight = <String>{};
+
+/// API pública intencional (NO `@visibleForTesting`): la usan tanto
+/// `pos_screen.dart` (push inmediato) como esta misma clase (sweep
+/// periódico), en archivos distintos — es el punto de coordinación entre
+/// los dos caminos, no un detalle interno expuesto solo para tests.
+bool acquireSalePush(String uuid) => _salesPushInFlight.add(uuid);
+
+/// Ver [acquireSalePush].
+void releaseSalePush(String uuid) => _salesPushInFlight.remove(uuid);
+
+/// Solo para tests: limpia el guard global entre casos para que no se
+/// contaminen entre sí (el Set es de módulo, no de instancia).
+@visibleForTesting
+void resetSalesPushInFlightForTest() => _salesPushInFlight.clear();
 
 /// True cuando un fallo al subir una venta es PERMANENTE: el servidor rechazó
 /// el payload por contrato (HTTP 400/422), así que reintentar cada 30 s es
