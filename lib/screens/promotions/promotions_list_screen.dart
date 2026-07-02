@@ -23,6 +23,7 @@ import '../../models/broadcast_promotion.dart';
 import '../../services/api_service.dart';
 import '../../services/auth_service.dart';
 import '../../theme/app_theme.dart';
+import '../../theme/app_ui.dart';
 import '../../widgets/branch_selector_drawer.dart';
 import 'promotion_detail_screen.dart';
 import 'promotion_form_screen.dart';
@@ -127,27 +128,13 @@ class _PromotionsListScreenState extends State<PromotionsListScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppTheme.background,
-      appBar: AppBar(
-        backgroundColor: AppTheme.background,
-        elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back_rounded,
-              color: AppTheme.textPrimary, size: 28),
-          tooltip: 'Volver',
-          onPressed: () => Navigator.of(context).pop(),
-        ),
-        title: const Text(
-          'Mis anuncios',
-          style: TextStyle(
-            fontSize: 24,
-            fontWeight: FontWeight.bold,
-            color: AppTheme.textPrimary,
-          ),
-        ),
+      backgroundColor: AppUI.pageBg,
+      appBar: glassAppBar(
+        title: 'Mis anuncios',
+        onBack: () => Navigator.of(context).maybePop(),
         actions: const [
           Padding(
-            padding: EdgeInsets.only(right: 8),
+            padding: EdgeInsets.only(right: AppUI.s16),
             child: Center(child: BranchSelectorChip()),
           ),
         ],
@@ -157,13 +144,17 @@ class _PromotionsListScreenState extends State<PromotionsListScreen> {
         onPressed: _openNew,
         backgroundColor: AppTheme.primary,
         foregroundColor: Colors.white,
-        icon: const Icon(Icons.add_rounded),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(AppUI.radius),
+        ),
+        icon: const Icon(Icons.add_rounded, size: 20),
         label: const Text(
           'Nueva',
-          style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800),
+          style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
         ),
       ),
       body: SafeArea(
+        top: false,
         child: Column(
           children: [
             _filterChips(),
@@ -253,8 +244,8 @@ class _PromotionsListScreenState extends State<PromotionsListScreen> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(Icons.campaign_outlined,
-                  size: 56, color: Colors.grey.shade400),
+              const Icon(Icons.campaign_outlined,
+                  size: 56, color: AppUI.inkSoft),
               const SizedBox(height: 16),
               Text(
                 _filter == null
@@ -304,17 +295,14 @@ class _PromotionCard extends StatelessWidget {
     final state = promotion.state;
     final color = promotionStateColor(state);
     return Material(
-      color: Colors.white,
-      borderRadius: BorderRadius.circular(16),
+      color: Colors.transparent,
+      borderRadius: BorderRadius.circular(AppUI.radius),
       child: InkWell(
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(AppUI.radius),
         onTap: onTap,
         child: Container(
-          padding: const EdgeInsets.all(14),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: AppTheme.borderColor),
-          ),
+          padding: const EdgeInsets.all(AppUI.s16),
+          decoration: AppUI.card(),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -325,51 +313,44 @@ class _PromotionCard extends StatelessWidget {
                       promotion.title.isNotEmpty
                           ? promotion.title
                           : 'Sin título',
-                      style: const TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.w800,
-                        color: AppTheme.textPrimary,
-                      ),
+                      style: AppUI.bodyStrong,
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
                     ),
                   ),
-                  const SizedBox(width: 8),
+                  const SizedBox(width: AppUI.s8),
                   Container(
                     padding: const EdgeInsets.symmetric(
-                        horizontal: 10, vertical: 4),
+                        horizontal: AppUI.s8, vertical: 4),
                     decoration: BoxDecoration(
                       color: color.withValues(alpha: 0.12),
-                      borderRadius: BorderRadius.circular(8),
+                      borderRadius: BorderRadius.circular(6),
                     ),
                     child: Text(
                       state.label,
                       style: TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w800,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
                         color: color,
                       ),
                     ),
                   ),
                 ],
               ),
-              const SizedBox(height: 8),
+              const SizedBox(height: AppUI.s8),
               Row(
                 children: [
                   const Icon(Icons.event_rounded,
-                      size: 16, color: AppTheme.textSecondary),
+                      size: 16, color: AppUI.inkSoft),
                   const SizedBox(width: 4),
                   Text(
                     'Vigencia: ${_fmtDate(promotion.validFrom)} - '
                     '${_fmtDate(promotion.validUntil)}',
-                    style: const TextStyle(
-                      fontSize: 14,
-                      color: AppTheme.textSecondary,
-                    ),
+                    style: AppUI.bodySoft,
                   ),
                 ],
               ),
-              const SizedBox(height: 8),
+              const SizedBox(height: AppUI.s8),
               Row(
                 children: [
                   _Metric(
@@ -419,18 +400,15 @@ class _Metric extends StatelessWidget {
           Text(
             '$value ',
             style: const TextStyle(
-              fontSize: 15,
-              fontWeight: FontWeight.w800,
-              color: AppTheme.textPrimary,
+              fontSize: 14,
+              fontWeight: FontWeight.w600,
+              color: AppUI.ink,
             ),
           ),
           Flexible(
             child: Text(
               label,
-              style: const TextStyle(
-                fontSize: 13,
-                color: AppTheme.textSecondary,
-              ),
+              style: const TextStyle(fontSize: 12, color: AppUI.inkSoft),
               overflow: TextOverflow.ellipsis,
             ),
           ),
