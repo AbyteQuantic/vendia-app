@@ -1,9 +1,12 @@
 // Catálogo canónico de tipos de negocio: valor backend → ícono + label
 // legible. Fuente única para la barra de tipos del Dashboard
-// (BusinessTypesBar). El grid de selección en
-// `screens/dashboard/business_profile_screen.dart` mantiene su propia
-// copia de la tupla (value, icon, label) — si agregas o renombras un
-// tipo, sincroniza ambos.
+// (BusinessTypesBar) Y para el grid de selección de
+// `screens/dashboard/business_profile_screen.dart` — antes cada uno
+// mantenía su propia copia de la tupla (value, icon, label) y se
+// desincronizaron dos veces (Spec 075 proveedores, Spec 084 peluquería):
+// el grid de perfil se quedó atrás mientras la barra y el onboarding ya
+// mostraban los tipos nuevos. Ahora ambos consumen esta misma lista —
+// agregar o renombrar un tipo aquí basta.
 //
 // Los `value` deben coincidir EXACTO con los que emite el backend
 // (migración de tenant). Hay alias legacy mapeados al ícono/label

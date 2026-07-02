@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:geocoding/geocoding.dart';
 import 'package:image_picker/image_picker.dart';
+import '../../config/business_types.dart';
 import '../../services/api_service.dart';
 import '../../services/auth_service.dart';
 import '../../services/image_normalizer.dart';
@@ -52,24 +53,15 @@ class _BusinessProfileScreenState extends State<BusinessProfileScreen> {
   // (business_capabilities_screen.dart). El perfil del negocio queda
   // solo con los DATOS del negocio: nombre, NIT, logo, tipo, dirección.
 
-  // 1:1 con la whitelist del backend (models.ValidBusinessTypes,
-  // migración 020). Cada entry es (valor_snake_case, ícono, etiqueta).
-  // Cualquier cambio en la columna de valor debe ir acompañado de una
-  // migración — handlers.validateBusinessTypes rechaza cualquier otro
-  // string con HTTP 400 antes de que llegue al DB CHECK.
-  static const _businessTypes = [
-    ('tienda_barrio', Icons.store_rounded, 'Tienda de Barrio'),
-    ('minimercado', Icons.local_grocery_store_rounded, 'Minimercado'),
-    ('deposito_construccion', Icons.inventory_2_rounded, 'Depósito / Ferretería'),
-    ('restaurante', Icons.restaurant_rounded, 'Restaurante'),
-    ('comidas_rapidas', Icons.fastfood_rounded, 'Comidas Rápidas'),
-    ('bar', Icons.local_bar_rounded, 'Bar / Discoteca'),
-    ('manufactura', Icons.precision_manufacturing_rounded, 'Manufactura'),
-    ('reparacion_muebles', Icons.build_rounded, 'Reparación / Servicios'),
-    ('emprendimiento_general', Icons.rocket_launch_rounded, 'Emprendimiento General'),
-    // F042 — academias/institutos: al elegirlo se activa el módulo de Eventos.
-    ('academias_instituciones', Icons.school_rounded, 'Academias e Instituciones'),
-  ];
+  // Bug real reportado: esta pantalla mantenía su PROPIA copia de la lista
+  // de tipos de negocio, separada de `config/business_types.dart`
+  // (kBusinessTypes) — con dos migraciones (Spec 075 proveedores, Spec 084
+  // peluquería/barbería) la copia local quedó desactualizada mientras la
+  // barra del Dashboard y el onboarding sí mostraban los tipos nuevos. Usar
+  // la lista canónica aquí elimina esa clase de bug: solo hay una fuente de
+  // la verdad, ya 1:1 con la whitelist del backend
+  // (models.ValidBusinessTypes) por construcción.
+  static const _businessTypes = kBusinessTypes;
 
   // Legacy values that early-2026 tenants still carry in storage.
   // Maps each deprecated value to its new canonical one so the screen
@@ -255,8 +247,8 @@ class _BusinessProfileScreenState extends State<BusinessProfileScreen> {
     // Use the friendly label for the prompt so Gemini sees Spanish
     // copy instead of the snake_case enum value.
     final typeLabel = _businessTypes
-            .where((t) => t.$1 == selected)
-            .map((t) => t.$3)
+            .where((t) => t.value == selected)
+            .map((t) => t.label)
             .firstOrNull ??
         selected;
 
@@ -575,9 +567,9 @@ class _BusinessProfileScreenState extends State<BusinessProfileScreen> {
       shrinkWrap: true,
       physics: const NeverScrollableScrollPhysics(),
       children: _businessTypes.map((t) {
-        final value = t.$1;
-        final icon = t.$2;
-        final label = t.$3;
+        final value = t.value;
+        final icon = t.icon;
+        final label = t.label;
         final selected = _selectedTypes.contains(value);
         return Semantics(
           button: true,
