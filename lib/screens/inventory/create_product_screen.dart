@@ -36,6 +36,19 @@ class CreateProductScreen extends StatefulWidget {
   final String? initialSku;
   const CreateProductScreen({super.key, this.initialSku});
 
+  /// Aviso para que el tendero encuadre el producto completo antes de tomar
+  /// la foto. Bug real reportado repetidamente: una foto que corta la punta
+  /// de una correa/cadena produce un resultado de IA "incompleto" — el
+  /// pipeline de "Quitar fondo"/"Mejorar con IA" es no-generativo a
+  /// propósito (nunca inventa el producto, ver Spec 094) y por lo tanto
+  /// jamás puede completar lo que la cámara no capturó. Público (en el
+  /// widget, no en el State) para que el widget test verifique el texto
+  /// exacto sin duplicarlo.
+  static const String framingTip =
+      'Encuadra el producto COMPLETO, con espacio libre alrededor. Si tiene '
+      'correas, cadenas o partes que cuelguen, asegúrate de que quepan '
+      'enteras — la foto no se puede completar después.';
+
   @override
   State<CreateProductScreen> createState() => _CreateProductScreenState();
 }
@@ -1672,6 +1685,42 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
                               ],
                             ),
                             const SizedBox(height: 8),
+                            // Aviso de encuadre — solo antes de tener foto (una
+                            // vez elegida/tomada, ya no aplica). No bloquea
+                            // nada: es una franja informativa siempre visible
+                            // mientras la card está en ese estado.
+                            if (!hasPhoto) ...[
+                              Container(
+                                key: const Key('framing_tip_banner'),
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 10, vertical: 8),
+                                decoration: BoxDecoration(
+                                  color: AppTheme.warning.withValues(alpha: 0.12),
+                                  border: Border.all(
+                                      color: AppTheme.warning.withValues(alpha: 0.4)),
+                                  borderRadius: BorderRadius.circular(10),
+                                ),
+                                child: const Row(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Icon(Icons.info_outline_rounded,
+                                        size: 16, color: AppTheme.warning),
+                                    SizedBox(width: 6),
+                                    Expanded(
+                                      child: Text(
+                                        CreateProductScreen.framingTip,
+                                        style: TextStyle(
+                                          fontSize: 11.5,
+                                          height: 1.3,
+                                          color: AppTheme.warning,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+                            ],
                             // Spec 094 — el tendero elige: QUITAR FONDO (deja el
                             // producto igual) o MEJORAR con IA (limpia/mejora). Sin
                             // foto → solo CREAR.
