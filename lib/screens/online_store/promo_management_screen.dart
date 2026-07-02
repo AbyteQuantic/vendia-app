@@ -8,6 +8,7 @@ import '../../services/api_service.dart';
 import '../../services/app_error.dart';
 import '../../services/auth_service.dart';
 import '../../theme/app_theme.dart';
+import '../../theme/app_ui.dart';
 import '../../widgets/branch_selector_drawer.dart';
 import '../promotions/promo_builder_screen.dart';
 
@@ -366,44 +367,52 @@ class _PromoManagementScreenState extends State<PromoManagementScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppTheme.background,
-      body: SafeArea(
-        top: false,
-        child: Column(
-          children: [
-            _buildHeader(),
-            Expanded(
-              child: RefreshIndicator.adaptive(
-                onRefresh: _loadAll,
-                child: SingleChildScrollView(
-                  physics: const AlwaysScrollableScrollPhysics(),
-                  // Padding inferior generoso: el FAB extendido (alto
-                  // 64) más el offset de `centerFloat` (~16) más el
-                  // safe area inferior nos pisaban la última card.
-                  // Subimos a 160 con safe-area añadida para que el
-                  // tile inferior quede holgadamente por encima del
-                  // botón en cualquier resolución (PO image_125).
-                  padding: EdgeInsets.fromLTRB(
-                      24,
-                      24,
-                      24,
-                      160 + MediaQuery.of(context).padding.bottom),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      _buildCatalogCard(),
-                      const SizedBox(height: 20),
-                      _buildVisibilityCard(),
-                      const SizedBox(height: 16),
-                      _buildSuggestionCard(),
-                      const SizedBox(height: 24),
-                      _buildPromosSection(),
-                    ],
-                  ),
+      backgroundColor: AppUI.pageBg,
+      extendBodyBehindAppBar: true,
+      appBar: glassAppBar(
+        title: 'Mis Combos',
+        onBack: () => Navigator.of(context).maybePop(),
+        actions: const [
+          Padding(
+            padding: EdgeInsets.only(right: AppUI.s16),
+            child: Center(child: BranchSelectorChip()),
+          ),
+        ],
+      ),
+      body: RefreshIndicator.adaptive(
+        onRefresh: _loadAll,
+        child: SingleChildScrollView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          // Padding inferior generoso: el FAB extendido (alto
+          // 64) más el offset de `centerFloat` (~16) más el
+          // safe area inferior nos pisaban la última card.
+          // Subimos a 160 con safe-area añadida para que el
+          // tile inferior quede holgadamente por encima del
+          // botón en cualquier resolución (PO image_125).
+          padding: EdgeInsets.fromLTRB(
+              AppUI.s16,
+              MediaQuery.of(context).padding.top + kToolbarHeight + AppUI.s16,
+              AppUI.s16,
+              160 + MediaQuery.of(context).padding.bottom),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Padding(
+                padding: EdgeInsets.only(left: AppUI.s4, bottom: AppUI.s16),
+                child: Text(
+                  'Ofertas visibles en su catálogo web',
+                  style: AppUI.bodySoft,
                 ),
               ),
-            ),
-          ],
+              _buildCatalogCard(),
+              const SizedBox(height: AppUI.s24),
+              _buildVisibilityCard(),
+              const SizedBox(height: AppUI.s16),
+              _buildSuggestionCard(),
+              const SizedBox(height: AppUI.s24),
+              _buildPromosSection(),
+            ],
+          ),
         ),
       ),
       floatingActionButton: _buildCreatePromoFab(),
@@ -428,115 +437,24 @@ class _PromoManagementScreenState extends State<PromoManagementScreen> {
           foregroundColor: Colors.white,
           elevation: 6,
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(20),
+            borderRadius: BorderRadius.circular(AppUI.radius),
           ),
-          icon: const Icon(Icons.auto_awesome_rounded, size: 24),
+          icon: const Icon(Icons.auto_awesome_rounded, size: 22),
           label: const Text(
-            '✨ Crear Nuevo Combo',
+            'Crear Nuevo Combo',
             style: TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.w700,
-              letterSpacing: 0.2,
+              fontSize: 16,
+              fontWeight: FontWeight.w600,
             ),
           ),
         ),
-      ),
-    );
-  }
-
-  Widget _buildHeader() {
-    return Container(
-      width: double.infinity,
-      padding: EdgeInsets.only(
-        top: MediaQuery.of(context).padding.top + 16,
-        left: 24,
-        right: 24,
-        bottom: 28,
-      ),
-      decoration: const BoxDecoration(
-        gradient: LinearGradient(
-          colors: [Color(0xFFF59E0B), Color(0xFFFF6B6B)],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-        borderRadius: BorderRadius.only(
-          bottomLeft: Radius.circular(32),
-          bottomRight: Radius.circular(32),
-        ),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              IconButton(
-                icon: const Icon(Icons.arrow_back_rounded,
-                    color: Colors.white, size: 28),
-                onPressed: () {
-                  HapticFeedback.lightImpact();
-                  Navigator.of(context).pop();
-                },
-              ),
-              // Bug real reportado: esta pantalla (el listado real de
-              // combos) no mostraba ninguna sucursal, a diferencia de
-              // PromotionsListScreen y PromoBuilderScreen, que sí traen
-              // BranchSelectorChip — inconsistente incluso visualmente.
-              // Envuelto en blanco porque el chip está pensado para fondo
-              // claro y este header es un degradado naranja/rojo. Cero
-              // impacto para tenants mono-sede (el chip no renderiza nada).
-              Padding(
-                padding: const EdgeInsets.only(top: 4),
-                child: DecoratedBox(
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(20),
-                  ),
-                  child: const BranchSelectorChip(),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          const Text(
-            'Mis Combos',
-            style: TextStyle(
-              fontSize: 28,
-              fontWeight: FontWeight.bold,
-              color: Colors.white,
-            ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            'Ofertas visibles en su catálogo web',
-            style: TextStyle(
-              fontSize: 18,
-              color: Colors.white.withValues(alpha: 0.85),
-            ),
-          ),
-        ],
       ),
     );
   }
 
   Widget _buildCatalogCard() {
-    return Container(
+    return SoftCard(
       key: const Key('catalog_card'),
-      width: double.infinity,
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: [
-            const Color(0xFF7C3AED).withValues(alpha: 0.08),
-            const Color(0xFF7C3AED).withValues(alpha: 0.02),
-          ],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(
-            color: const Color(0xFF7C3AED).withValues(alpha: 0.25)),
-      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -546,26 +464,19 @@ class _PromoManagementScreenState extends State<PromoManagementScreen> {
                 width: 44,
                 height: 44,
                 decoration: BoxDecoration(
-                  color: const Color(0xFF7C3AED).withValues(alpha: 0.15),
-                  borderRadius: BorderRadius.circular(12),
+                  color: AppTheme.primary.withValues(alpha: 0.10),
+                  borderRadius: BorderRadius.circular(10),
                 ),
                 child: const Icon(Icons.storefront_rounded,
-                    color: Color(0xFF7C3AED), size: 24),
+                    color: AppTheme.primary, size: 22),
               ),
-              const SizedBox(width: 12),
+              const SizedBox(width: AppUI.s12),
               const Expanded(
-                child: Text(
-                  'Tu Catálogo Online',
-                  style: TextStyle(
-                    fontSize: 20,
-                    fontWeight: FontWeight.bold,
-                    color: AppTheme.textPrimary,
-                  ),
-                ),
+                child: Text('Tu Catálogo Online', style: AppUI.bodyStrong),
               ),
             ],
           ),
-          const SizedBox(height: 14),
+          const SizedBox(height: AppUI.s16),
           // URL box — tap para copiar, long-press para editar. Se
           // muestra incluso en error para que el botón "Editar" siga
           // teniendo sentido visual.
@@ -573,18 +484,18 @@ class _PromoManagementScreenState extends State<PromoManagementScreen> {
             key: const Key('catalog_url_box'),
             onTap: _publicUrl == null ? null : _copyCatalogLink,
             child: Container(
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+              padding: const EdgeInsets.symmetric(
+                  horizontal: AppUI.s12, vertical: AppUI.s12),
               decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(14),
-                border: Border.all(color: Colors.grey.shade200),
+                color: AppUI.pageBg,
+                borderRadius: BorderRadius.circular(AppUI.radius),
+                border: Border.all(color: AppUI.hairline),
               ),
               child: Row(
                 children: [
                   const Icon(Icons.link_rounded,
-                      size: 20, color: Color(0xFF7C3AED)),
-                  const SizedBox(width: 8),
+                      size: 18, color: AppTheme.primary),
+                  const SizedBox(width: AppUI.s8),
                   Expanded(
                     child: Text(
                       _publicUrl ??
@@ -594,70 +505,41 @@ class _PromoManagementScreenState extends State<PromoManagementScreen> {
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
-                        fontSize: 15,
+                        fontSize: 14,
                         color: _publicUrl != null
-                            ? AppTheme.textPrimary
-                            : AppTheme.textSecondary,
+                            ? AppUI.ink
+                            : AppUI.inkSoft,
                         fontWeight: FontWeight.w500,
                       ),
                     ),
                   ),
                   if (_publicUrl != null)
                     const Icon(Icons.copy_rounded,
-                        size: 18, color: AppTheme.textSecondary),
+                        size: 16, color: AppUI.inkSoft),
                 ],
               ),
             ),
           ),
-          const SizedBox(height: 14),
+          const SizedBox(height: AppUI.s16),
           Row(
             children: [
               Expanded(
-                child: OutlinedButton.icon(
+                child: AppButton(
                   key: const Key('btn_edit_slug'),
+                  label: 'Editar Link',
+                  icon: Icons.edit_rounded,
+                  variant: AppButtonVariant.secondary,
                   onPressed: _slug == null ? null : _openEditSlugSheet,
-                  icon: const Icon(Icons.edit_rounded, size: 18),
-                  label: const Text('Editar Link'),
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: const Color(0xFF7C3AED),
-                    side: const BorderSide(color: Color(0xFF7C3AED)),
-                    padding: const EdgeInsets.symmetric(vertical: 14),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(14),
-                    ),
-                    textStyle: const TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
                 ),
               ),
-              const SizedBox(width: 12),
-              // Share — CTA secundario más pesado visualmente
-              // (gerontodiseño): usa el color primario de la app,
-              // icono grande y elevación para que quede obvio que es
-              // el botón que manda el catálogo al cliente por
-              // WhatsApp/etc.
+              const SizedBox(width: AppUI.s12),
               Expanded(
                 flex: 2,
-                child: ElevatedButton.icon(
+                child: AppButton(
                   key: const Key('btn_share_catalog'),
+                  label: 'Compartir',
+                  icon: Icons.ios_share_rounded,
                   onPressed: _publicUrl == null ? null : _shareCatalog,
-                  icon: const Icon(Icons.ios_share_rounded, size: 22),
-                  label: const Text('Compartir'),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: AppTheme.primary,
-                    foregroundColor: Colors.white,
-                    elevation: 3,
-                    padding: const EdgeInsets.symmetric(vertical: 18),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(14),
-                    ),
-                    textStyle: const TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.w800,
-                    ),
-                  ),
                 ),
               ),
             ],
@@ -668,43 +550,20 @@ class _PromoManagementScreenState extends State<PromoManagementScreen> {
   }
 
   Widget _buildVisibilityCard() {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(24),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.06),
-            blurRadius: 10,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
+    return SoftCard(
       child: Row(
         children: [
           const Expanded(
-            child: Text(
-              'Sección de Ofertas visible',
-              style: TextStyle(
-                fontSize: 20,
-                fontWeight: FontWeight.w600,
-                color: AppTheme.textPrimary,
-              ),
-            ),
+            child: Text('Sección de Ofertas visible', style: AppUI.bodyStrong),
           ),
-          Transform.scale(
-            scale: 1.3,
-            child: Switch(
-              value: _offersVisible,
-              onChanged: (val) {
-                HapticFeedback.mediumImpact();
-                _setOffersVisible(val);
-              },
-              activeThumbColor: Colors.white,
-              activeTrackColor: AppTheme.success,
-            ),
+          Switch(
+            value: _offersVisible,
+            onChanged: (val) {
+              HapticFeedback.mediumImpact();
+              _setOffersVisible(val);
+            },
+            activeThumbColor: Colors.white,
+            activeTrackColor: AppTheme.success,
           ),
         ],
       ),
@@ -780,33 +639,23 @@ class _PromoManagementScreenState extends State<PromoManagementScreen> {
   Widget _buildOfferCard(_PromoVM p) {
     return Container(
       key: Key('promo_${p.id}'),
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.06),
-            blurRadius: 10,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
+      margin: const EdgeInsets.only(bottom: AppUI.s12),
+      padding: const EdgeInsets.all(AppUI.s16),
+      decoration: AppUI.card(),
       child: Row(
         children: [
           Container(
-            width: 56,
-            height: 56,
+            width: 52,
+            height: 52,
             decoration: BoxDecoration(
-              color: AppTheme.surfaceGrey,
-              borderRadius: BorderRadius.circular(16),
+              color: AppUI.hairline,
+              borderRadius: BorderRadius.circular(14),
             ),
             child: Center(
-              child: Text(p.emoji, style: const TextStyle(fontSize: 30)),
+              child: Text(p.emoji, style: const TextStyle(fontSize: 26)),
             ),
           ),
-          const SizedBox(width: 14),
+          const SizedBox(width: AppUI.s12),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -817,12 +666,7 @@ class _PromoManagementScreenState extends State<PromoManagementScreen> {
                   // empanad..." truncado donde había espacio sobrado.
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    fontSize: 19,
-                    fontWeight: FontWeight.w600,
-                    color: AppTheme.textPrimary,
-                    height: 1.2,
-                  ),
+                  style: AppUI.bodyStrong,
                 ),
                 if (p.subtitle.isNotEmpty) ...[
                   const SizedBox(height: 2),
@@ -833,37 +677,33 @@ class _PromoManagementScreenState extends State<PromoManagementScreen> {
                     // 2× Produ…" leía como error visual.
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      fontSize: 13,
-                      height: 1.3,
-                      color: AppTheme.textSecondary,
-                    ),
+                    style: AppUI.bodySoft,
                   ),
                 ],
-                const SizedBox(height: 6),
+                const SizedBox(height: AppUI.s8),
                 Row(
                   children: [
                     if (p.totalRegular > p.totalPromo) ...[
                       Text(
                         '\$${_formatNumber(p.totalRegular)}',
-                        style: TextStyle(
-                          fontSize: 15,
-                          color: Colors.grey.shade500,
+                        style: const TextStyle(
+                          fontSize: 14,
+                          color: AppUI.inkSoft,
                           decoration: TextDecoration.lineThrough,
-                          decorationColor: Colors.grey.shade500,
+                          decorationColor: AppUI.inkSoft,
                         ),
                       ),
-                      const SizedBox(width: 8),
+                      const SizedBox(width: AppUI.s8),
                     ],
                     Text(
                       '\$${_formatNumber(p.totalPromo)}',
-                      // Precio destacado en naranja-brand. AppTheme.error
-                      // (rojo) se leía como alerta — el precio de una
-                      // promo activa debe ser positivo, no estresante.
+                      // Precio destacado en el azul de marca — un rojo se
+                      // leería como alerta, y el precio de un combo activo
+                      // debe verse positivo, no estresante.
                       style: const TextStyle(
-                        fontSize: 20,
+                        fontSize: 18,
                         fontWeight: FontWeight.bold,
-                        color: Color(0xFFEA580C),
+                        color: AppTheme.primary,
                       ),
                     ),
                   ],
@@ -881,6 +721,9 @@ class _PromoManagementScreenState extends State<PromoManagementScreen> {
                 width: 44,
                 height: 44,
                 decoration: BoxDecoration(
+                  // WhatsApp: excepción justificada a la paleta — el
+                  // verde real de la marca es lo que el tendero reconoce
+                  // como "esto comparte por WhatsApp" de un vistazo.
                   color: const Color(0xFF25D366).withValues(alpha: 0.12),
                   borderRadius: BorderRadius.circular(12),
                 ),
@@ -1007,18 +850,11 @@ class _EditSlugSheetState extends State<_EditSlugSheet> {
             ),
           ),
           const SizedBox(height: 20),
-          const Text(
-            'Editar enlace de tu tienda',
-            style: TextStyle(
-              fontSize: 22,
-              fontWeight: FontWeight.bold,
-              color: AppTheme.textPrimary,
-            ),
-          ),
+          const Text('Editar enlace de tu tienda', style: AppUI.title),
           const SizedBox(height: 6),
           const Text(
             'Solo minúsculas, números y guiones.',
-            style: TextStyle(fontSize: 14, color: AppTheme.textSecondary),
+            style: AppUI.bodySoft,
           ),
           const SizedBox(height: 20),
           TextField(
@@ -1043,19 +879,19 @@ class _EditSlugSheetState extends State<_EditSlugSheet> {
           const SizedBox(height: 20),
           SizedBox(
             width: double.infinity,
-            child: ElevatedButton(
+            child: FilledButton(
               key: const Key('btn_save_slug'),
               onPressed: _saving ? null : _save,
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF7C3AED),
+              style: FilledButton.styleFrom(
+                backgroundColor: AppTheme.primary,
                 foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(vertical: 14),
+                minimumSize: const Size(0, 50),
                 shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(14),
+                  borderRadius: BorderRadius.circular(AppUI.radius),
                 ),
                 textStyle: const TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.w700,
+                  fontSize: 16,
+                  fontWeight: FontWeight.w600,
                 ),
               ),
               child: _saving
@@ -1088,99 +924,66 @@ class _EmptyPromosCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
+    return SoftCard(
       key: const Key('promos_empty'),
-      width: double.infinity,
-      padding: const EdgeInsets.all(24),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: [
-            AppTheme.primary.withValues(alpha: 0.06),
-            AppTheme.primary.withValues(alpha: 0.015),
-          ],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: AppTheme.primary.withValues(alpha: 0.2)),
-      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
               Container(
-                width: 44,
-                height: 44,
+                width: 40,
+                height: 40,
                 decoration: BoxDecoration(
-                  color: AppTheme.primary.withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(12),
+                  color: AppTheme.primary.withValues(alpha: 0.10),
+                  borderRadius: BorderRadius.circular(10),
                 ),
                 child: const Icon(Icons.auto_awesome_rounded,
-                    color: AppTheme.primary, size: 24),
+                    color: AppTheme.primary, size: 22),
               ),
-              const SizedBox(width: 12),
+              const SizedBox(width: AppUI.s12),
               const Expanded(
-                child: Text(
-                  '¿Qué es un combo?',
-                  style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                    color: AppTheme.textPrimary,
-                  ),
-                ),
+                child: Text('¿Qué es un combo?', style: AppUI.bodyStrong),
               ),
             ],
           ),
-          const SizedBox(height: 14),
+          const SizedBox(height: AppUI.s12),
           const Text(
             'Atrae más clientes a tu catálogo agrupando productos.',
-            style: TextStyle(
-              fontSize: 16,
-              height: 1.35,
-              color: AppTheme.textPrimary,
-            ),
+            style: AppUI.bodySoft,
           ),
-          const SizedBox(height: 10),
+          const SizedBox(height: AppUI.s12),
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            padding: const EdgeInsets.symmetric(
+                horizontal: AppUI.s12, vertical: AppUI.s8),
             decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: Colors.grey.shade200),
+              color: AppUI.pageBg,
+              borderRadius: BorderRadius.circular(AppUI.radiusSm),
             ),
             child: const Row(
               children: [
-                Text('🍞', style: TextStyle(fontSize: 22)),
-                SizedBox(width: 6),
-                Text('+', style: TextStyle(fontSize: 18, color: AppTheme.textSecondary)),
-                SizedBox(width: 6),
-                Text('🥛', style: TextStyle(fontSize: 22)),
-                SizedBox(width: 10),
-                Text('=', style: TextStyle(fontSize: 18, color: AppTheme.textSecondary)),
-                SizedBox(width: 10),
+                Text('🍞', style: TextStyle(fontSize: 20)),
+                SizedBox(width: AppUI.s8),
+                Text('+', style: TextStyle(fontSize: 16, color: AppUI.inkSoft)),
+                SizedBox(width: AppUI.s8),
+                Text('🥛', style: TextStyle(fontSize: 20)),
+                SizedBox(width: AppUI.s8),
+                Text('=', style: TextStyle(fontSize: 16, color: AppUI.inkSoft)),
+                SizedBox(width: AppUI.s8),
                 Flexible(
                   child: Text(
                     'Combo Desayuno',
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w700,
-                      color: AppTheme.textPrimary,
-                    ),
+                    style: AppUI.bodyStrong,
                     overflow: TextOverflow.ellipsis,
                   ),
                 ),
               ],
             ),
           ),
-          const SizedBox(height: 12),
-          Text(
+          const SizedBox(height: AppUI.s12),
+          const Text(
             'Usa el botón "Crear Nuevo Combo" de abajo para armar tu primer combo.',
-            style: TextStyle(
-              fontSize: 14,
-              height: 1.35,
-              color: Colors.grey.shade700,
-            ),
+            style: AppUI.bodySoft,
           ),
         ],
       ),
@@ -1199,27 +1002,27 @@ class _ErrorStateCard extends StatelessWidget {
     return Container(
       key: const Key('promos_error'),
       width: double.infinity,
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.all(AppUI.s16),
       decoration: BoxDecoration(
         color: AppTheme.error.withValues(alpha: 0.06),
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(AppUI.radius),
         border: Border.all(color: AppTheme.error.withValues(alpha: 0.2)),
       ),
       child: Column(
         children: [
           const Icon(Icons.error_outline_rounded,
-              color: AppTheme.error, size: 40),
-          const SizedBox(height: 10),
+              color: AppTheme.error, size: 36),
+          const SizedBox(height: AppUI.s8),
           Text(
             message,
             textAlign: TextAlign.center,
-            style: const TextStyle(fontSize: 15, color: AppTheme.textPrimary),
+            style: const TextStyle(fontSize: 14, color: AppUI.ink),
           ),
-          const SizedBox(height: 12),
-          TextButton.icon(
+          const SizedBox(height: AppUI.s8),
+          GhostButton(
+            icon: Icons.refresh_rounded,
+            label: 'Reintentar',
             onPressed: onRetry,
-            icon: const Icon(Icons.refresh_rounded),
-            label: const Text('Reintentar'),
           ),
         ],
       ),
@@ -1251,20 +1054,19 @@ class _SmartSuggestionCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Paleta derivada del tono — warning usa el naranja del theme,
-    // idea usa un dorado suave para diferenciarlo sin chocar con el
-    // rojo de "error" ni el verde de "success".
-    final accent = tone == _SuggestionTone.warning
-        ? AppTheme.warning
-        : const Color(0xFFB8860B);
+    // Paleta derivada del tono — warning usa el naranja del theme
+    // (alerta real: productos por vencer); idea usa el azul de marca
+    // (sugerencia neutra/positiva) en vez de un dorado fuera de paleta.
+    final accent =
+        tone == _SuggestionTone.warning ? AppTheme.warning : AppTheme.primary;
 
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.all(18),
+      padding: const EdgeInsets.all(AppUI.s16),
       decoration: BoxDecoration(
         color: accent.withValues(alpha: 0.06),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: accent.withValues(alpha: 0.45), width: 1.5),
+        borderRadius: BorderRadius.circular(AppUI.radius),
+        border: Border.all(color: accent.withValues(alpha: 0.35)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1277,56 +1079,36 @@ class _SmartSuggestionCard extends StatelessWidget {
                 height: 40,
                 decoration: BoxDecoration(
                   color: accent.withValues(alpha: 0.15),
-                  borderRadius: BorderRadius.circular(12),
+                  borderRadius: BorderRadius.circular(10),
                 ),
-                child: Icon(icon, color: accent, size: 24),
+                child: Icon(icon, color: accent, size: 22),
               ),
-              const SizedBox(width: 12),
+              const SizedBox(width: AppUI.s12),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      title,
-                      style: const TextStyle(
-                        fontSize: 17,
-                        fontWeight: FontWeight.w700,
-                        color: AppTheme.textPrimary,
-                      ),
-                    ),
+                    Text(title, style: AppUI.bodyStrong),
                     const SizedBox(height: 4),
-                    Text(
-                      body,
-                      style: const TextStyle(
-                        fontSize: 15,
-                        height: 1.35,
-                        color: AppTheme.textPrimary,
-                      ),
-                    ),
+                    Text(body, style: AppUI.bodySoft),
                   ],
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: AppUI.s12),
           Align(
             alignment: Alignment.centerRight,
-            child: TextButton.icon(
+            child: GhostButton(
               key: Key(
                 tone == _SuggestionTone.warning
                     ? 'btn_suggestion_expiring'
                     : 'btn_suggestion_idea',
               ),
+              icon: Icons.arrow_forward_rounded,
+              label: actionLabel,
+              color: accent,
               onPressed: onAction,
-              icon: const Icon(Icons.arrow_forward_rounded, size: 18),
-              label: Text(actionLabel),
-              style: TextButton.styleFrom(
-                foregroundColor: accent,
-                textStyle: const TextStyle(
-                  fontSize: 15,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
             ),
           ),
         ],

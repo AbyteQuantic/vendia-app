@@ -6,6 +6,7 @@ import 'package:vendia_pos/database/collections/local_product.dart';
 import 'package:vendia_pos/screens/online_store/promo_management_screen.dart';
 import 'package:vendia_pos/services/api_service.dart';
 import 'package:vendia_pos/services/auth_service.dart';
+import 'package:vendia_pos/theme/app_ui.dart';
 
 // ── Fake ApiService ───────────────────────────────────────────────────────────
 //
@@ -102,11 +103,13 @@ void main() {
       );
 
       // Edit + Share buttons are wired and enabled (they were disabled
-      // while the slug was null during the initial frame).
-      final editBtn = tester.widget<OutlinedButton>(
+      // while the slug was null during the initial frame). Both are the
+      // design-system AppButton now (UI_RULES §0 — no raw
+      // Elevated/OutlinedButton on screens).
+      final editBtn = tester.widget<AppButton>(
         find.byKey(const Key('btn_edit_slug')),
       );
-      final shareBtn = tester.widget<ElevatedButton>(
+      final shareBtn = tester.widget<AppButton>(
         find.byKey(const Key('btn_share_catalog')),
       );
       expect(editBtn.onPressed, isNotNull);
@@ -127,7 +130,7 @@ void main() {
 
       // CTA principal (bottom-pinned) — debe existir y estar habilitado.
       expect(find.byKey(const Key('btn_create_promo')), findsOneWidget);
-      expect(find.text('✨ Crear Nuevo Combo'), findsOneWidget);
+      expect(find.text('Crear Nuevo Combo'), findsOneWidget);
 
       // Con promos e inventario sano no mostramos ninguna sugerencia
       // — sería ruido innecesario.
