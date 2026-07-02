@@ -10,6 +10,7 @@ import '../../database/collections/local_product.dart';
 import '../../services/api_service.dart';
 import '../../services/auth_service.dart';
 import '../../theme/app_theme.dart';
+import '../../theme/app_ui.dart';
 import '../../widgets/branch_selector_drawer.dart';
 import 'promo_share_screen.dart';
 
@@ -665,7 +666,7 @@ class _PromoBuilderScreenState extends State<PromoBuilderScreen> {
       SnackBar(
         content: Text(msg, style: const TextStyle(fontSize: 16)),
         behavior: SnackBarBehavior.floating,
-        backgroundColor: AppTheme.textPrimary,
+        backgroundColor: AppUI.ink,
       ),
     );
   }
@@ -675,26 +676,13 @@ class _PromoBuilderScreenState extends State<PromoBuilderScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppTheme.background,
-      appBar: AppBar(
-        backgroundColor: AppTheme.background,
-        elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back_rounded,
-              color: AppTheme.textPrimary, size: 28),
-          onPressed: () => Navigator.of(context).pop(),
-        ),
-        title: Text(
-          'Crear combo — Paso ${_currentStep + 1} de 4',
-          style: const TextStyle(
-            fontSize: 18,
-            fontWeight: FontWeight.bold,
-            color: AppTheme.textPrimary,
-          ),
-        ),
+      backgroundColor: AppUI.pageBg,
+      appBar: glassAppBar(
+        title: 'Crear combo — Paso ${_currentStep + 1} de 4',
+        onBack: () => Navigator.of(context).pop(),
         actions: const [
           Padding(
-            padding: EdgeInsets.only(right: 8),
+            padding: EdgeInsets.only(right: AppUI.s8),
             child: Center(child: BranchSelectorChip()),
           ),
         ],
@@ -713,7 +701,7 @@ class _PromoBuilderScreenState extends State<PromoBuilderScreen> {
 
   Widget _stepperBar() {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
+      padding: const EdgeInsets.fromLTRB(AppUI.s16, AppUI.s4, AppUI.s16, AppUI.s8),
       child: Row(
         children: List.generate(4, (i) {
           final active = i <= _currentStep;
@@ -722,7 +710,7 @@ class _PromoBuilderScreenState extends State<PromoBuilderScreen> {
               margin: const EdgeInsets.symmetric(horizontal: 3),
               height: 6,
               decoration: BoxDecoration(
-                color: active ? AppTheme.primary : AppTheme.borderColor,
+                color: active ? AppTheme.primary : AppUI.border,
                 borderRadius: BorderRadius.circular(3),
               ),
             ),
@@ -757,12 +745,13 @@ class _PromoBuilderScreenState extends State<PromoBuilderScreen> {
         // Extracted out of the ListView so the inventory scrolls under
         // a sticky search bar (less tiring on a 6" phone).
         Padding(
-          padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+          padding: const EdgeInsets.fromLTRB(
+              AppUI.s16, AppUI.s8, AppUI.s16, 0),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               _promoTypeSelector(),
-              const SizedBox(height: 14),
+              const SizedBox(height: AppUI.s12),
               TextField(
                 controller: _nameCtrl,
                 style: const TextStyle(fontSize: 18),
@@ -777,9 +766,9 @@ class _PromoBuilderScreenState extends State<PromoBuilderScreen> {
                   prefixIcon: const Icon(Icons.local_offer_rounded),
                 ),
               ),
-              const SizedBox(height: 12),
+              const SizedBox(height: AppUI.s12),
               if (_lines.isNotEmpty) _selectedChipsRow(),
-              const SizedBox(height: 10),
+              const SizedBox(height: AppUI.s8),
               _searchField(),
             ],
           ),
@@ -805,7 +794,7 @@ class _PromoBuilderScreenState extends State<PromoBuilderScreen> {
             subtitle: 'Varios productos juntos',
           ),
         ),
-        const SizedBox(width: 10),
+        const SizedBox(width: AppUI.s8),
         Expanded(
           child: _typeCard(
             type: _PromoType.buyXPayY,
@@ -827,17 +816,17 @@ class _PromoBuilderScreenState extends State<PromoBuilderScreen> {
     final selected = _promoType == type;
     return InkWell(
       key: Key('promo_type_${type.name}'),
-      borderRadius: BorderRadius.circular(14),
+      borderRadius: BorderRadius.circular(AppUI.radius),
       onTap: () => _setPromoType(type),
       child: Container(
-        padding: const EdgeInsets.all(12),
+        padding: const EdgeInsets.all(AppUI.s12),
         decoration: BoxDecoration(
           color: selected
               ? AppTheme.primary.withValues(alpha: 0.08)
               : Colors.white,
-          borderRadius: BorderRadius.circular(14),
+          borderRadius: BorderRadius.circular(AppUI.radius),
           border: Border.all(
-            color: selected ? AppTheme.primary : AppTheme.borderColor,
+            color: selected ? AppTheme.primary : AppUI.border,
             width: selected ? 2 : 1,
           ),
         ),
@@ -848,28 +837,23 @@ class _PromoBuilderScreenState extends State<PromoBuilderScreen> {
               children: [
                 Icon(icon,
                     size: 22,
-                    color: selected
-                        ? AppTheme.primary
-                        : AppTheme.textSecondary),
-                const SizedBox(width: 6),
+                    color: selected ? AppTheme.primary : AppUI.inkSoft),
+                const SizedBox(width: AppUI.s8),
                 if (selected)
                   const Icon(Icons.check_circle_rounded,
                       size: 18, color: AppTheme.primary),
               ],
             ),
-            const SizedBox(height: 6),
+            const SizedBox(height: AppUI.s8),
             Text(title,
                 style: TextStyle(
                   fontSize: 15,
                   fontWeight: FontWeight.w700,
-                  color: selected
-                      ? AppTheme.primary
-                      : AppTheme.textPrimary,
+                  color: selected ? AppTheme.primary : AppUI.ink,
                 )),
-            const SizedBox(height: 2),
+            const SizedBox(height: 4),
             Text(subtitle,
-                style: const TextStyle(
-                    fontSize: 12, color: AppTheme.textSecondary)),
+                style: const TextStyle(fontSize: 12, color: AppUI.inkSoft)),
           ],
         ),
       ),
@@ -935,7 +919,7 @@ class _PromoBuilderScreenState extends State<PromoBuilderScreen> {
             ),
             onDeleted: () => _removeLine(l.product.uuid),
             deleteIcon: const Icon(Icons.close_rounded, size: 18),
-            deleteIconColor: AppTheme.textSecondary,
+            deleteIconColor: AppUI.inkSoft,
           );
         }).toList(),
       ),
@@ -965,7 +949,7 @@ class _PromoBuilderScreenState extends State<PromoBuilderScreen> {
             mainAxisSize: MainAxisSize.min,
             children: [
               const Icon(Icons.inventory_2_outlined,
-                  size: 56, color: AppTheme.textSecondary),
+                  size: 56, color: AppUI.inkSoft),
               const SizedBox(height: 12),
               const Text(
                 'Aún no tienes productos en tu inventario',
@@ -975,18 +959,23 @@ class _PromoBuilderScreenState extends State<PromoBuilderScreen> {
                   fontWeight: FontWeight.w600,
                 ),
               ),
-              const SizedBox(height: 6),
+              const SizedBox(height: AppUI.s8),
               const Text(
                 'Agrega productos primero para poder armar combos.',
                 textAlign: TextAlign.center,
                 style: TextStyle(
-                    fontSize: 13, color: AppTheme.textSecondary),
+                    fontSize: 13, color: AppUI.inkSoft),
               ),
-              const SizedBox(height: 14),
-              OutlinedButton.icon(
-                onPressed: _retryLoadProducts,
-                icon: const Icon(Icons.refresh_rounded),
-                label: const Text('Volver a cargar'),
+              const SizedBox(height: AppUI.s12),
+              SizedBox(
+                width: 200,
+                child: AppButton(
+                  label: 'Volver a cargar',
+                  icon: Icons.refresh_rounded,
+                  variant: AppButtonVariant.secondary,
+                  expand: false,
+                  onPressed: _retryLoadProducts,
+                ),
               ),
             ],
           ),
@@ -1002,7 +991,7 @@ class _PromoBuilderScreenState extends State<PromoBuilderScreen> {
             'Ningún producto coincide con tu búsqueda.',
             textAlign: TextAlign.center,
             style:
-                TextStyle(fontSize: 15, color: AppTheme.textSecondary),
+                TextStyle(fontSize: 15, color: AppUI.inkSoft),
           ),
         ),
       );
@@ -1011,7 +1000,8 @@ class _PromoBuilderScreenState extends State<PromoBuilderScreen> {
     return ListView.separated(
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
       itemCount: _searchResults.length,
-      separatorBuilder: (_, __) => const Divider(height: 1),
+      separatorBuilder: (_, __) =>
+          const Divider(height: 1, color: AppUI.hairline),
       itemBuilder: (_, i) => _resultTile(_searchResults[i]),
     );
   }
@@ -1028,7 +1018,7 @@ class _PromoBuilderScreenState extends State<PromoBuilderScreen> {
       dense: false,
       title: Text(p.name, style: const TextStyle(fontSize: 16)),
       subtitle: Text(_cop(p.price),
-          style: const TextStyle(fontSize: 14, color: AppTheme.textSecondary)),
+          style: const TextStyle(fontSize: 14, color: AppUI.inkSoft)),
       trailing: already
           ? const Icon(Icons.check_circle_rounded, color: AppTheme.success)
           : IconButton(
@@ -1074,10 +1064,10 @@ class _PromoBuilderScreenState extends State<PromoBuilderScreen> {
   Widget _comboTotalField() {
     return Container(
       key: const Key('combo_total_field'),
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(AppUI.s16),
       decoration: BoxDecoration(
         color: AppTheme.primary.withValues(alpha: 0.05),
-        borderRadius: BorderRadius.circular(18),
+        borderRadius: BorderRadius.circular(AppUI.radius),
         border: Border.all(color: AppTheme.primary, width: 2),
       ),
       child: Column(
@@ -1087,14 +1077,14 @@ class _PromoBuilderScreenState extends State<PromoBuilderScreen> {
             children: [
               Icon(Icons.local_offer_rounded,
                   color: AppTheme.primary, size: 22),
-              SizedBox(width: 8),
+              SizedBox(width: AppUI.s8),
               Expanded(
                 child: Text(
                   '¿En cuánto va a vender este combo?',
                   style: TextStyle(
                     fontSize: 17,
                     fontWeight: FontWeight.w800,
-                    color: AppTheme.textPrimary,
+                    color: AppUI.ink,
                   ),
                 ),
               ),
@@ -1102,10 +1092,10 @@ class _PromoBuilderScreenState extends State<PromoBuilderScreen> {
           ),
           const SizedBox(height: 4),
           const Padding(
-            padding: EdgeInsets.only(left: 30),
+            padding: EdgeInsets.only(left: 32),
             child: Text(
               'Usted solo pone el precio total. Nosotros hacemos las cuentas.',
-              style: TextStyle(fontSize: 13, color: AppTheme.textSecondary),
+              style: TextStyle(fontSize: 13, color: AppUI.inkSoft),
             ),
           ),
           const SizedBox(height: 12),
@@ -1117,7 +1107,7 @@ class _PromoBuilderScreenState extends State<PromoBuilderScreen> {
             style: const TextStyle(
               fontSize: 34,
               fontWeight: FontWeight.w900,
-              color: AppTheme.textPrimary,
+              color: AppUI.ink,
               letterSpacing: 0.5,
             ),
             textAlign: TextAlign.center,
@@ -1131,20 +1121,20 @@ class _PromoBuilderScreenState extends State<PromoBuilderScreen> {
               hintText: _suggestedComboTotal > 0
                   ? _suggestedComboTotal.toString()
                   : '0',
-              hintStyle: TextStyle(
+              hintStyle: const TextStyle(
                 fontSize: 32,
-                color: Colors.grey.shade400,
+                color: AppUI.inkSoft,
               ),
               filled: true,
               fillColor: Colors.white,
               contentPadding: const EdgeInsets.symmetric(
-                  vertical: 12, horizontal: 12),
+                  vertical: AppUI.s12, horizontal: AppUI.s12),
               enabledBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(14),
-                borderSide: BorderSide(color: Colors.grey.shade300),
+                borderRadius: BorderRadius.circular(AppUI.radius),
+                borderSide: const BorderSide(color: AppUI.border),
               ),
               focusedBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(14),
+                borderRadius: BorderRadius.circular(AppUI.radius),
                 borderSide:
                     const BorderSide(color: AppTheme.primary, width: 2),
               ),
@@ -1164,15 +1154,15 @@ class _PromoBuilderScreenState extends State<PromoBuilderScreen> {
       // producto, pero si alguien llega aquí mostramos un mensaje
       // claro en vez de crashear.
       return Container(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(AppUI.s16),
         decoration: BoxDecoration(
           color: AppTheme.warning.withValues(alpha: 0.08),
-          borderRadius: BorderRadius.circular(14),
+          borderRadius: BorderRadius.circular(AppUI.radius),
           border: Border.all(color: AppTheme.warning.withValues(alpha: 0.4)),
         ),
         child: const Text(
           'Vuelve al paso anterior y elige el producto de la oferta.',
-          style: TextStyle(fontSize: 15, color: AppTheme.textPrimary),
+          style: TextStyle(fontSize: 15, color: AppUI.ink),
         ),
       );
     }
@@ -1182,13 +1172,8 @@ class _PromoBuilderScreenState extends State<PromoBuilderScreen> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         // Producto escogido — fila compacta, no roba la pantalla.
-        Container(
-          padding: const EdgeInsets.all(14),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: AppTheme.borderColor),
-          ),
+        SoftCard(
+          padding: const EdgeInsets.all(AppUI.s16),
           child: Row(
             children: [
               Container(
@@ -1201,7 +1186,7 @@ class _PromoBuilderScreenState extends State<PromoBuilderScreen> {
                 child: const Icon(Icons.shopping_bag_rounded,
                     color: AppTheme.primary),
               ),
-              const SizedBox(width: 12),
+              const SizedBox(width: AppUI.s12),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -1212,14 +1197,14 @@ class _PromoBuilderScreenState extends State<PromoBuilderScreen> {
                     const SizedBox(height: 2),
                     Text('Precio unitario: ${_cop(p.price)}',
                         style: const TextStyle(
-                            fontSize: 13, color: AppTheme.textSecondary)),
+                            fontSize: 13, color: AppUI.inkSoft)),
                   ],
                 ),
               ),
             ],
           ),
         ),
-        const SizedBox(height: 16),
+        const SizedBox(height: AppUI.s16),
         _bigStepper(
           key: const Key('stepper_buy'),
           label: 'El cliente LLEVA',
@@ -1234,7 +1219,7 @@ class _PromoBuilderScreenState extends State<PromoBuilderScreen> {
             if (_payQty < 1) _payQty = 1;
           }),
         ),
-        const SizedBox(height: 14),
+        const SizedBox(height: AppUI.s12),
         _bigStepper(
           key: const Key('stepper_pay'),
           label: 'El cliente PAGA',
@@ -1244,10 +1229,10 @@ class _PromoBuilderScreenState extends State<PromoBuilderScreen> {
           max: _buyQty - 1, // paga siempre < lleva (si no, no es oferta)
           onChanged: (v) => setState(() => _payQty = v),
         ),
-        const SizedBox(height: 14),
+        const SizedBox(height: AppUI.s12),
         // Mini preview del slogan para validación visual.
         Container(
-          padding: const EdgeInsets.all(14),
+          padding: const EdgeInsets.all(AppUI.s16),
           decoration: BoxDecoration(
             gradient: LinearGradient(
               colors: [
@@ -1257,7 +1242,7 @@ class _PromoBuilderScreenState extends State<PromoBuilderScreen> {
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
             ),
-            borderRadius: BorderRadius.circular(14),
+            borderRadius: BorderRadius.circular(AppUI.radius),
           ),
           child: Text(
             'Lleva $_buyQty, paga $_payQty · Te regalas ${_buyQty - _payQty} '
@@ -1266,7 +1251,7 @@ class _PromoBuilderScreenState extends State<PromoBuilderScreen> {
             style: const TextStyle(
               fontSize: 16,
               fontWeight: FontWeight.w700,
-              color: AppTheme.textPrimary,
+              color: AppUI.ink,
             ),
           ),
         ),
@@ -1289,10 +1274,10 @@ class _PromoBuilderScreenState extends State<PromoBuilderScreen> {
     final canInc = max == null || value < max;
     return Container(
       key: key,
-      padding: const EdgeInsets.all(14),
+      padding: const EdgeInsets.all(AppUI.s16),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(AppUI.radius),
         border: Border.all(color: highlight.withValues(alpha: 0.35), width: 1.5),
       ),
       child: Column(
@@ -1304,7 +1289,7 @@ class _PromoBuilderScreenState extends State<PromoBuilderScreen> {
                 color: highlight,
                 letterSpacing: 0.5,
               )),
-          const SizedBox(height: 10),
+          const SizedBox(height: AppUI.s8),
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
@@ -1340,7 +1325,7 @@ class _PromoBuilderScreenState extends State<PromoBuilderScreen> {
           const SizedBox(height: 4),
           const Text('unidades',
               style: TextStyle(
-                  fontSize: 13, color: AppTheme.textSecondary)),
+                  fontSize: 13, color: AppUI.inkSoft)),
         ],
       ),
     );
@@ -1374,42 +1359,37 @@ class _PromoBuilderScreenState extends State<PromoBuilderScreen> {
   /// edita aquí — se distribuye proporcionalmente a partir del input
   /// global "¿En cuánto va a vender este combo?".
   Widget _lineEditor(_PromoLine l) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppTheme.borderColor),
-      ),
-      child: Row(
-        children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  l.product.name,
-                  style: const TextStyle(
-                      fontSize: 17, fontWeight: FontWeight.w700),
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                ),
-                const SizedBox(height: 6),
-                Text(
-                  'Precio normal: ${_cop(l.product.price)}',
-                  style: const TextStyle(
-                      fontSize: 14, color: AppTheme.textSecondary),
-                ),
-              ],
+    return Padding(
+      padding: const EdgeInsets.only(bottom: AppUI.s12),
+      child: SoftCard(
+        child: Row(
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    l.product.name,
+                    style: const TextStyle(
+                        fontSize: 17, fontWeight: FontWeight.w700),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    'Precio normal: ${_cop(l.product.price)}',
+                    style: const TextStyle(fontSize: 14, color: AppUI.inkSoft),
+                  ),
+                ],
+              ),
             ),
-          ),
-          const SizedBox(width: 12),
-          _bigSquareStepper(
-            value: l.quantity,
-            onChanged: (v) => setState(() => l.quantity = v),
-          ),
-        ],
+            const SizedBox(width: AppUI.s12),
+            _bigSquareStepper(
+              value: l.quantity,
+              onChanged: (v) => setState(() => l.quantity = v),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -1443,7 +1423,7 @@ class _PromoBuilderScreenState extends State<PromoBuilderScreen> {
               style: const TextStyle(
                 fontSize: 30,
                 fontWeight: FontWeight.w800,
-                color: AppTheme.textPrimary,
+                color: AppUI.ink,
               ),
             ),
           ),
@@ -1469,10 +1449,10 @@ class _PromoBuilderScreenState extends State<PromoBuilderScreen> {
       color: enabled
           ? AppTheme.primary
           : AppTheme.primary.withValues(alpha: 0.3),
-      borderRadius: BorderRadius.circular(12),
+      borderRadius: BorderRadius.circular(AppUI.radius),
       child: InkWell(
         onTap: enabled ? onTap : null,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(AppUI.radius),
         child: SizedBox(
           width: 56,
           height: 56,
@@ -1494,16 +1474,16 @@ class _PromoBuilderScreenState extends State<PromoBuilderScreen> {
         _isProfitable ? AppTheme.success : AppTheme.error;
     return Container(
       key: const Key('summary_receipt_card'),
-      padding: const EdgeInsets.all(18),
+      padding: const EdgeInsets.all(AppUI.s16),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(18),
+        borderRadius: BorderRadius.circular(AppUI.radius),
         border: Border.all(
             color: profitColor.withValues(alpha: 0.5), width: 2),
         boxShadow: [
           BoxShadow(
             color: profitColor.withValues(alpha: 0.12),
-            blurRadius: 14,
+            blurRadius: 24,
             offset: const Offset(0, 4),
           ),
         ],
@@ -1514,33 +1494,33 @@ class _PromoBuilderScreenState extends State<PromoBuilderScreen> {
           const Row(
             children: [
               Icon(Icons.receipt_long_rounded,
-                  color: AppTheme.textSecondary, size: 20),
-              SizedBox(width: 8),
+                  color: AppUI.inkSoft, size: 20),
+              SizedBox(width: AppUI.s8),
               Text(
                 'La cuenta rápida',
                 style: TextStyle(
                   fontSize: 15,
                   fontWeight: FontWeight.w700,
-                  color: AppTheme.textSecondary,
+                  color: AppUI.inkSoft,
                   letterSpacing: 0.3,
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 14),
+          const SizedBox(height: AppUI.s12),
           _receiptRow(
             label: 'Precio normal por separado:',
             value: _cop(_totalRegular),
-            color: AppTheme.textSecondary,
+            color: AppUI.inkSoft,
           ),
-          const SizedBox(height: 6),
+          const SizedBox(height: AppUI.s8),
           _receiptRow(
             label: 'Costo de su mercancía:',
             value: _cop(_estimatedCost),
-            color: AppTheme.textSecondary,
+            color: AppUI.inkSoft,
           ),
           const Padding(
-            padding: EdgeInsets.symmetric(vertical: 12),
+            padding: EdgeInsets.symmetric(vertical: AppUI.s12),
             child: DashedDivider(),
           ),
           _receiptRow(
@@ -1549,12 +1529,13 @@ class _PromoBuilderScreenState extends State<PromoBuilderScreen> {
             color: AppTheme.warning,
             bold: true,
           ),
-          const SizedBox(height: 14),
+          const SizedBox(height: AppUI.s12),
           Container(
-            padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 14),
+            padding: const EdgeInsets.symmetric(
+                vertical: AppUI.s12, horizontal: AppUI.s16),
             decoration: BoxDecoration(
               color: profitColor.withValues(alpha: 0.08),
-              borderRadius: BorderRadius.circular(14),
+              borderRadius: BorderRadius.circular(AppUI.radius),
               border: Border.all(
                   color: profitColor.withValues(alpha: 0.4), width: 1.5),
             ),
@@ -1585,12 +1566,12 @@ class _PromoBuilderScreenState extends State<PromoBuilderScreen> {
             ),
           ),
           if (!_isProfitable) ...[
-            const SizedBox(height: 10),
+            const SizedBox(height: AppUI.s8),
             Container(
-              padding: const EdgeInsets.all(12),
+              padding: const EdgeInsets.all(AppUI.s12),
               decoration: BoxDecoration(
                 color: AppTheme.error.withValues(alpha: 0.08),
-                borderRadius: BorderRadius.circular(12),
+                borderRadius: BorderRadius.circular(AppUI.radius),
               ),
               child: const Text(
                 '⚠️ Con este precio usted pierde plata. Suba el precio del combo o quite algún producto.',
@@ -1648,7 +1629,7 @@ class _PromoBuilderScreenState extends State<PromoBuilderScreen> {
         const SizedBox(height: 4),
         const Text(
           'Activa gatillos mentales para que tus clientes compren más rápido.',
-          style: TextStyle(fontSize: 14, color: AppTheme.textSecondary),
+          style: TextStyle(fontSize: 14, color: AppUI.inkSoft),
         ),
         const SizedBox(height: 20),
 
@@ -1659,18 +1640,18 @@ class _PromoBuilderScreenState extends State<PromoBuilderScreen> {
           subtitle: 'La promo desaparece automáticamente en 24h',
           enabled: _isTimeLimited,
           onChanged: (v) => setState(() => _isTimeLimited = v),
-          child: _isTimeLimited 
+          child: _isTimeLimited
             ? Container(
-                margin: const EdgeInsets.only(top: 12),
-                padding: const EdgeInsets.all(10),
+                margin: const EdgeInsets.only(top: AppUI.s12),
+                padding: const EdgeInsets.all(AppUI.s12),
                 decoration: BoxDecoration(
                   color: AppTheme.warning.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(10),
+                  borderRadius: BorderRadius.circular(AppUI.radiusSm),
                 ),
                 child: const Row(
                   children: [
                     Icon(Icons.info_outline_rounded, size: 16, color: AppTheme.warning),
-                    SizedBox(width: 8),
+                    SizedBox(width: AppUI.s8),
                     Expanded(
                       child: Text(
                         'Los clientes verán un reloj en tiempo real.',
@@ -1683,7 +1664,7 @@ class _PromoBuilderScreenState extends State<PromoBuilderScreen> {
             : null,
         ),
 
-        const SizedBox(height: 14),
+        const SizedBox(height: AppUI.s12),
 
         // FOMO 2: Stock
         _urgencyCard(
@@ -1692,48 +1673,51 @@ class _PromoBuilderScreenState extends State<PromoBuilderScreen> {
           subtitle: 'Vender solo una cantidad limitada',
           enabled: _isStockLimited,
           onChanged: (v) => setState(() => _isStockLimited = v),
-          child: _isStockLimited 
+          child: _isStockLimited
             ? Padding(
-                padding: const EdgeInsets.only(top: 12),
+                padding: const EdgeInsets.only(top: AppUI.s12),
                 child: TextFormField(
                   controller: _stockLimitCtrl,
                   keyboardType: TextInputType.number,
                   inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                  decoration: InputDecoration(
+                  decoration: const InputDecoration(
                     labelText: '¿Cuántos combos tienes disponibles?',
                     hintText: 'Ej: 10',
-                    prefixIcon: const Icon(Icons.numbers_rounded),
+                    prefixIcon: Icon(Icons.numbers_rounded),
                     filled: true,
-                    fillColor: Colors.grey.shade50,
+                    fillColor: AppUI.pageBg,
                   ),
                 ),
               )
             : null,
         ),
 
-        const SizedBox(height: 24),
-        
+        const SizedBox(height: AppUI.s24),
+
         // Custom Date (Legacy support but secondary)
-        TextButton.icon(
-          onPressed: () async {
-            final now = DateTime.now();
-            final picked = await showDatePicker(
-              context: context,
-              initialDate: _customEnd ?? now.add(const Duration(days: 7)),
-              firstDate: now,
-              lastDate: now.add(const Duration(days: 365)),
-            );
-            if (picked != null) {
-              setState(() {
-                _customEnd = picked;
-                _isTimeLimited = true;
-              });
-            }
-          },
-          icon: const Icon(Icons.event_note_rounded, size: 18),
-          label: Text(_customEnd == null 
-            ? 'Definir otra fecha de vencimiento' 
-            : 'Vence el: ${_customEnd!.day}/${_customEnd!.month}/${_customEnd!.year}'),
+        Align(
+          alignment: Alignment.centerLeft,
+          child: GhostButton(
+            icon: Icons.event_note_rounded,
+            label: _customEnd == null
+                ? 'Definir otra fecha de vencimiento'
+                : 'Vence el: ${_customEnd!.day}/${_customEnd!.month}/${_customEnd!.year}',
+            onPressed: () async {
+              final now = DateTime.now();
+              final picked = await showDatePicker(
+                context: context,
+                initialDate: _customEnd ?? now.add(const Duration(days: 7)),
+                firstDate: now,
+                lastDate: now.add(const Duration(days: 365)),
+              );
+              if (picked != null) {
+                setState(() {
+                  _customEnd = picked;
+                  _isTimeLimited = true;
+                });
+              }
+            },
+          ),
         ),
       ],
     );
@@ -1749,12 +1733,12 @@ class _PromoBuilderScreenState extends State<PromoBuilderScreen> {
   }) {
     return AnimatedContainer(
       duration: const Duration(milliseconds: 200),
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(AppUI.s16),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(18),
+        borderRadius: BorderRadius.circular(AppUI.radius),
         border: Border.all(
-          color: enabled ? AppTheme.primary : AppTheme.borderColor,
+          color: enabled ? AppTheme.primary : AppUI.border,
           width: enabled ? 2 : 1,
         ),
         boxShadow: enabled ? [
@@ -1774,18 +1758,18 @@ class _PromoBuilderScreenState extends State<PromoBuilderScreen> {
                 width: 48,
                 height: 48,
                 decoration: BoxDecoration(
-                  color: enabled ? AppTheme.primary.withValues(alpha: 0.1) : AppTheme.surfaceGrey,
-                  borderRadius: BorderRadius.circular(12),
+                  color: enabled ? AppTheme.primary.withValues(alpha: 0.1) : AppUI.hairline,
+                  borderRadius: BorderRadius.circular(AppUI.radius),
                 ),
-                child: Icon(icon, color: enabled ? AppTheme.primary : AppTheme.textSecondary),
+                child: Icon(icon, color: enabled ? AppTheme.primary : AppUI.inkSoft),
               ),
-              const SizedBox(width: 12),
+              const SizedBox(width: AppUI.s12),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(title, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-                    Text(subtitle, style: const TextStyle(fontSize: 13, color: AppTheme.textSecondary)),
+                    Text(subtitle, style: const TextStyle(fontSize: 13, color: AppUI.inkSoft)),
                   ],
                 ),
               ),
@@ -1828,7 +1812,7 @@ class _PromoBuilderScreenState extends State<PromoBuilderScreen> {
         const SizedBox(height: 4),
         const Text(
           'Elige un estilo y genera un banner publicitario con IA.',
-          style: TextStyle(fontSize: 13, color: AppTheme.textSecondary),
+          style: TextStyle(fontSize: 13, color: AppUI.inkSoft),
         ),
         const SizedBox(height: 12),
 
@@ -1836,22 +1820,30 @@ class _PromoBuilderScreenState extends State<PromoBuilderScreen> {
         //    que NUNCA empuje al CTA, y scrolleable para soportar más
         //    tonos sin rediseñar.
         _toneCarousel(),
-        const SizedBox(height: 14),
+        const SizedBox(height: AppUI.s12),
 
         // 2. Selector de fuente de imágenes. Decide si Gemini recibe
         //    las fotos reales del catálogo como ancla multimodal, o
         //    si genera las fotos desde cero en modo "foodie".
         _imageSourceSelector(),
-        const SizedBox(height: 14),
+        const SizedBox(height: AppUI.s12),
 
         // 3. Main focus: el banner preview cuadrado.
         _bannerPreview(),
-        const SizedBox(height: 14),
+        const SizedBox(height: AppUI.s12),
 
         // 3. CTA principal inmediatamente pegado al preview.
+        //
+        // Excepción documentada a "use siempre AppButton": este botón
+        // alterna entre el label y un CircularProgressIndicator como
+        // ÍCONO (spinner reemplazando el ícono mientras genera), algo
+        // que AppButton no soporta (su `icon` es solo `IconData`). Se
+        // mantiene un FilledButton crudo pero con los tokens del kit
+        // (AppTheme.primary en vez del morado 0xFF7C3AED fuera de
+        // paleta, y AppUI.radius) para no perder la regla de marca.
         SizedBox(
           height: 56,
-          child: ElevatedButton.icon(
+          child: FilledButton.icon(
             onPressed: _generatingBanner ? null : _generateBanner,
             icon: _generatingBanner
                 ? const SizedBox(
@@ -1866,32 +1858,23 @@ class _PromoBuilderScreenState extends State<PromoBuilderScreen> {
                   : '✨ Generar banner con IA',
               style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w700),
             ),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFF7C3AED),
+            style: FilledButton.styleFrom(
+              backgroundColor: AppTheme.primary,
               foregroundColor: Colors.white,
               shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(16)),
+                  borderRadius: BorderRadius.circular(AppUI.radius)),
             ),
           ),
         ),
-        const SizedBox(height: 10),
+        const SizedBox(height: AppUI.s8),
 
         // 4. CTA secundario. Siempre disponible como fallback si la
         //    IA no entrega un resultado a gusto del tendero.
-        SizedBox(
-          height: 52,
-          child: OutlinedButton.icon(
-            onPressed: _pickBannerFromGallery,
-            icon: const Icon(Icons.photo_library_rounded),
-            label: const Text('Subir foto desde galería',
-                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
-            style: OutlinedButton.styleFrom(
-              foregroundColor: AppTheme.textPrimary,
-              side: const BorderSide(color: AppTheme.borderColor),
-              shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(16)),
-            ),
-          ),
+        AppButton(
+          label: 'Subir foto desde galería',
+          icon: Icons.photo_library_rounded,
+          variant: AppButtonVariant.secondary,
+          onPressed: _pickBannerFromGallery,
         ),
       ],
     );
@@ -1931,9 +1914,9 @@ class _PromoBuilderScreenState extends State<PromoBuilderScreen> {
         setState(() => _tone = value);
       },
       selectedColor: AppTheme.primary.withValues(alpha: 0.15),
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      padding: const EdgeInsets.symmetric(horizontal: AppUI.s8, vertical: AppUI.s4),
       labelStyle: TextStyle(
-        color: selected ? AppTheme.primary : AppTheme.textPrimary,
+        color: selected ? AppTheme.primary : AppUI.ink,
         fontWeight: FontWeight.w600,
         fontSize: 14,
       ),
@@ -1952,13 +1935,8 @@ class _PromoBuilderScreenState extends State<PromoBuilderScreen> {
 
   Widget _imageSourceSelector() {
     final catalogEnabled = _hasCatalogPhotos;
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: AppTheme.surfaceGrey,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppTheme.borderColor),
-      ),
+    return SoftCard(
+      padding: const EdgeInsets.all(AppUI.s12),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -1966,7 +1944,7 @@ class _PromoBuilderScreenState extends State<PromoBuilderScreen> {
             '¿Qué imágenes usar en el banner?',
             style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700),
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: AppUI.s8),
           Row(
             children: [
               Expanded(
@@ -1985,7 +1963,7 @@ class _PromoBuilderScreenState extends State<PromoBuilderScreen> {
                   },
                 ),
               ),
-              const SizedBox(width: 10),
+              const SizedBox(width: AppUI.s8),
               Expanded(
                 child: _sourceCard(
                   emoji: '🪄',
@@ -2020,17 +1998,18 @@ class _PromoBuilderScreenState extends State<PromoBuilderScreen> {
       opacity: enabled ? 1 : 0.45,
       child: InkWell(
         onTap: enabled ? onTap : null,
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(AppUI.radius),
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 150),
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          padding: const EdgeInsets.symmetric(
+              horizontal: AppUI.s12, vertical: AppUI.s8),
           decoration: BoxDecoration(
             color: selected
                 ? AppTheme.primary.withValues(alpha: 0.10)
                 : Colors.white,
-            borderRadius: BorderRadius.circular(14),
+            borderRadius: BorderRadius.circular(AppUI.radius),
             border: Border.all(
-              color: selected ? AppTheme.primary : AppTheme.borderColor,
+              color: selected ? AppTheme.primary : AppUI.border,
               width: selected ? 2 : 1,
             ),
           ),
@@ -2046,7 +2025,7 @@ class _PromoBuilderScreenState extends State<PromoBuilderScreen> {
                   fontSize: 14,
                   fontWeight: FontWeight.w700,
                   color:
-                      selected ? AppTheme.primary : AppTheme.textPrimary,
+                      selected ? AppTheme.primary : AppUI.ink,
                 ),
               ),
               const SizedBox(height: 2),
@@ -2054,7 +2033,7 @@ class _PromoBuilderScreenState extends State<PromoBuilderScreen> {
                 subtitle,
                 style: const TextStyle(
                   fontSize: 12,
-                  color: AppTheme.textSecondary,
+                  color: AppUI.inkSoft,
                   height: 1.25,
                 ),
               ),
@@ -2077,22 +2056,22 @@ class _PromoBuilderScreenState extends State<PromoBuilderScreen> {
       child: Container(
         decoration: BoxDecoration(
           color: Colors.white,
-          borderRadius: BorderRadius.circular(18),
-          border: Border.all(color: AppTheme.borderColor),
+          borderRadius: BorderRadius.circular(AppUI.radius),
+          border: Border.all(color: AppUI.border),
         ),
         child: ClipRRect(
-          borderRadius: BorderRadius.circular(17),
+          borderRadius: BorderRadius.circular(AppUI.radius - 1),
           child: _bannerUrl == null
               ? const Center(
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       Icon(Icons.image_outlined,
-                          size: 56, color: AppTheme.textSecondary),
+                          size: 56, color: AppUI.inkSoft),
                       SizedBox(height: 8),
                       Text('Aquí aparecerá tu banner',
                           style: TextStyle(
-                              fontSize: 15, color: AppTheme.textSecondary)),
+                              fontSize: 15, color: AppUI.inkSoft)),
                     ],
                   ),
                 )
@@ -2120,49 +2099,29 @@ class _PromoBuilderScreenState extends State<PromoBuilderScreen> {
     };
 
     return Padding(
-      padding: const EdgeInsets.all(12),
+      padding: const EdgeInsets.all(AppUI.s12),
       child: Row(
         children: [
           if (_currentStep > 0)
             Expanded(
-              child: SizedBox(
-                height: 56,
-                child: OutlinedButton(
-                  onPressed: () => setState(() => _currentStep--),
-                  style: OutlinedButton.styleFrom(
-                    shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(14)),
-                  ),
-                  child: const Text('Atrás',
-                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
-                ),
+              child: AppButton(
+                label: 'Atrás',
+                variant: AppButtonVariant.secondary,
+                onPressed: () => setState(() => _currentStep--),
               ),
             ),
-          if (_currentStep > 0) const SizedBox(width: 10),
+          if (_currentStep > 0) const SizedBox(width: AppUI.s8),
           Expanded(
             flex: _currentStep == 3 ? 2 : 1,
-            child: SizedBox(
-              height: 56,
-              child: ElevatedButton(
-                onPressed: !canAdvance
-                    ? null
-                    : (_currentStep == 3
-                        ? (_saving ? null : _save)
-                        : _goNextStep),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: AppTheme.primary,
-                  foregroundColor: Colors.white,
-                  shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(14)),
-                ),
-                child: Text(
-                  _currentStep == 3
-                      ? (_saving ? 'Guardando…' : 'Guardar y compartir')
-                      : 'Siguiente',
-                  style: const TextStyle(
-                      fontSize: 17, fontWeight: FontWeight.w700),
-                ),
-              ),
+            child: AppButton(
+              label: _currentStep == 3
+                  ? (_saving ? 'Guardando…' : 'Guardar y compartir')
+                  : 'Siguiente',
+              onPressed: !canAdvance
+                  ? null
+                  : (_currentStep == 3
+                      ? (_saving ? null : _save)
+                      : _goNextStep),
             ),
           ),
         ],
@@ -2269,7 +2228,7 @@ List<ComboLineDistribution> distributeComboTotal({
 /// Separador punteado horizontal estilo recibo de caja — reproduce la
 /// sensación de "tirilla" para reforzar la metáfora financiera.
 class DashedDivider extends StatelessWidget {
-  const DashedDivider({super.key, this.color = const Color(0xFFBDBDBD)});
+  const DashedDivider({super.key, this.color = AppUI.border});
 
   final Color color;
 

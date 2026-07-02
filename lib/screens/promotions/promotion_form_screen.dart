@@ -1,4 +1,5 @@
 // Spec: specs/033-difusion-promociones/spec.md
+// UI: specs/062-ui-highend-kit/spec.md (estética moderna, AppUI)
 //
 // Pantalla "Crear / editar promoción" de difusión (F033 — spec §4,
 // AC-03).
@@ -17,7 +18,9 @@
 // Al guardar, llama a `createBroadcastPromotion` / `updateBroadcastPromotion`
 // y devuelve la BroadcastPromotion resultante al llamador.
 //
-// Gerontodiseño: inputs grandes, textos ≥17pt, táctil ≥48dp, 360dp.
+// UI normalizada al kit AppUI (glassAppBar + SoftCard + sectionLabel +
+// InsetGroupedList + AppButton). Refactor visual — solo presentación, misma
+// lógica/navegación/estados que antes.
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -29,6 +32,7 @@ import '../../services/api_service.dart';
 import '../../services/auth_service.dart';
 import '../../services/promotion_scheduler.dart';
 import '../../theme/app_theme.dart';
+import '../../theme/app_ui.dart';
 import '../../widgets/branch_selector_drawer.dart';
 import '../../widgets/picked_image_preview.dart';
 
@@ -275,114 +279,118 @@ class _PromotionFormScreenState extends State<PromotionFormScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppTheme.background,
-      appBar: AppBar(
-        backgroundColor: AppTheme.background,
-        elevation: 0,
-        title: Text(
-          _isEditing ? 'Editar anuncio' : 'Nuevo anuncio',
-          style: const TextStyle(
-            fontSize: 22,
-            fontWeight: FontWeight.bold,
-            color: AppTheme.textPrimary,
-          ),
-        ),
+      backgroundColor: AppUI.pageBg,
+      appBar: glassAppBar(
+        title: _isEditing ? 'Editar anuncio' : 'Nuevo anuncio',
+        onBack: () => Navigator.of(context).maybePop(),
         actions: const [
           Padding(
-            padding: EdgeInsets.only(right: 8),
+            padding: EdgeInsets.only(right: AppUI.s16),
             child: Center(child: BranchSelectorChip()),
           ),
         ],
       ),
       body: SafeArea(
+        top: false,
         child: Form(
           key: _formKey,
           child: ListView(
-            padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
+            padding: const EdgeInsets.fromLTRB(
+                AppUI.s16, AppUI.s16, AppUI.s16, AppUI.s24),
             children: [
-              _label('Título del anuncio'),
-              TextFormField(
-                key: const Key('promo_title'),
-                controller: _titleCtrl,
-                maxLength: 200,
-                style: const TextStyle(fontSize: 17),
-                decoration: _inputDecoration(
-                    'Ej: 20% en kits de baño hasta el viernes'),
-                validator: (v) => (v == null || v.trim().isEmpty)
-                    ? 'Escriba un título'
-                    : null,
-              ),
-              _label('Descripción'),
-              TextFormField(
-                key: const Key('promo_description'),
-                controller: _descCtrl,
-                maxLines: 3,
-                style: const TextStyle(fontSize: 17),
-                decoration:
-                    _inputDecoration('Cuente de qué se trata la promo'),
-              ),
-              const SizedBox(height: 16),
-              _label('Foto / banner'),
-              _buildImageSection(),
-              const SizedBox(height: 16),
-              _label('Vigencia'),
-              _buildDateRow(),
-              const SizedBox(height: 16),
+              _section('Anuncio', [
+                _fieldLabel('Título del anuncio'),
+                TextFormField(
+                  key: const Key('promo_title'),
+                  controller: _titleCtrl,
+                  maxLength: 200,
+                  style: const TextStyle(fontSize: 16),
+                  decoration: _inputDecoration(
+                      'Ej: 20% en kits de baño hasta el viernes'),
+                  validator: (v) => (v == null || v.trim().isEmpty)
+                      ? 'Escriba un título'
+                      : null,
+                ),
+                const SizedBox(height: AppUI.s12),
+                _fieldLabel('Descripción'),
+                TextFormField(
+                  key: const Key('promo_description'),
+                  controller: _descCtrl,
+                  maxLines: 3,
+                  style: const TextStyle(fontSize: 16),
+                  decoration:
+                      _inputDecoration('Cuente de qué se trata la promo'),
+                ),
+              ]),
+              const SizedBox(height: AppUI.s16),
+              _section('Foto / banner', [_buildImageSection()]),
+              const SizedBox(height: AppUI.s16),
+              _section('Vigencia', [_buildDateRow()]),
+              const SizedBox(height: AppUI.s16),
               _buildItemsSection(),
-              const SizedBox(height: 16),
-              _label('Cupón (opcional)'),
-              TextFormField(
-                key: const Key('promo_coupon'),
-                controller: _couponCtrl,
-                maxLength: 30,
-                textCapitalization: TextCapitalization.characters,
-                style: const TextStyle(fontSize: 17),
-                decoration: _inputDecoration('Ej: PROMO20'),
-              ),
-              _label('Mensaje de WhatsApp'),
-              const Text(
-                'Use {primer_nombre} o {nombre} y VendIA lo reemplaza '
-                'por el nombre de cada cliente.',
-                style: TextStyle(
-                    fontSize: 14, color: AppTheme.textSecondary),
-              ),
-              const SizedBox(height: 6),
-              TextFormField(
-                key: const Key('promo_message_template'),
-                controller: _messageCtrl,
-                maxLines: 4,
-                style: const TextStyle(fontSize: 17),
-                decoration: _inputDecoration(
-                    'Hola {primer_nombre} 👋 …'),
-                validator: (v) => (v == null || v.trim().isEmpty)
-                    ? 'Escriba el mensaje'
-                    : null,
-              ),
-              const SizedBox(height: 16),
-              _label('¿Cuándo enviar?'),
-              _buildScheduleSelector(),
+              const SizedBox(height: AppUI.s16),
+              _section('Cupón (opcional)', [
+                TextFormField(
+                  key: const Key('promo_coupon'),
+                  controller: _couponCtrl,
+                  maxLength: 30,
+                  textCapitalization: TextCapitalization.characters,
+                  style: const TextStyle(fontSize: 16),
+                  decoration: _inputDecoration('Ej: PROMO20'),
+                ),
+              ]),
+              const SizedBox(height: AppUI.s16),
+              _section('Mensaje de WhatsApp', [
+                const Text(
+                  'Use {primer_nombre} o {nombre} y VendIA lo reemplaza '
+                  'por el nombre de cada cliente.',
+                  style: AppUI.bodySoft,
+                ),
+                const SizedBox(height: AppUI.s8),
+                TextFormField(
+                  key: const Key('promo_message_template'),
+                  controller: _messageCtrl,
+                  maxLines: 4,
+                  style: const TextStyle(fontSize: 16),
+                  decoration:
+                      _inputDecoration('Hola {primer_nombre} 👋 …'),
+                  validator: (v) => (v == null || v.trim().isEmpty)
+                      ? 'Escriba el mensaje'
+                      : null,
+                ),
+              ]),
+              const SizedBox(height: AppUI.s16),
+              _section('¿Cuándo enviar?', [_buildScheduleSelector()]),
               if (_error != null) ...[
-                const SizedBox(height: 12),
+                const SizedBox(height: AppUI.s12),
                 Text(
                   _error!,
-                  style: const TextStyle(
-                      fontSize: 15, color: AppTheme.error),
+                  style: AppUI.bodySoft.copyWith(color: AppTheme.error),
                 ),
               ],
-              const SizedBox(height: 20),
+              const SizedBox(height: AppUI.s24),
+              // Excepción a AppButton (DESIGN_SYSTEM regla de oro): este
+              // botón alterna entre su label y un CircularProgressIndicator
+              // (estado "guardando") y AppButton.label solo acepta String.
+              // Se deja como FilledButton crudo pero con radio/color del kit
+              // (AppTheme.primary + AppUI.radius) en vez de un ElevatedButton
+              // con estilos sueltos.
               SizedBox(
-                height: 56,
-                child: ElevatedButton(
+                height: 50,
+                child: FilledButton(
                   key: const Key('promo_save_button'),
                   onPressed: _saving ? null : _save,
-                  style: ElevatedButton.styleFrom(
+                  style: FilledButton.styleFrom(
                     backgroundColor: AppTheme.primary,
                     foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(AppUI.radius),
+                    ),
                   ),
                   child: _saving
                       ? const SizedBox(
-                          width: 24,
-                          height: 24,
+                          width: 22,
+                          height: 22,
                           child: CircularProgressIndicator(
                               strokeWidth: 2.5, color: Colors.white),
                         )
@@ -391,8 +399,7 @@ class _PromotionFormScreenState extends State<PromotionFormScreen> {
                               ? 'Guardar cambios'
                               : 'Crear anuncio',
                           style: const TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.w800),
+                              fontSize: 16, fontWeight: FontWeight.w600),
                         ),
                 ),
               ),
@@ -412,8 +419,8 @@ class _PromotionFormScreenState extends State<PromotionFormScreen> {
           width: double.infinity,
           decoration: BoxDecoration(
             color: Colors.white,
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: AppTheme.borderColor),
+            borderRadius: BorderRadius.circular(AppUI.radius),
+            border: Border.all(color: AppUI.border),
           ),
           clipBehavior: Clip.antiAlias,
           child: busy
@@ -429,38 +436,26 @@ class _PromotionFormScreenState extends State<PromotionFormScreen> {
                         )
                       : _imagePlaceholder(),
         ),
-        const SizedBox(height: 8),
+        const SizedBox(height: AppUI.s8),
         Row(
           children: [
             Expanded(
-              child: OutlinedButton.icon(
+              child: AppButton(
                 key: const Key('promo_pick_image'),
+                label: 'Subir foto',
+                icon: Icons.photo_library_rounded,
+                variant: AppButtonVariant.secondary,
                 onPressed: busy ? null : _pickFromGallery,
-                icon: const Icon(Icons.photo_library_rounded, size: 20),
-                label: const Text('Subir foto',
-                    style: TextStyle(
-                        fontSize: 15, fontWeight: FontWeight.w700)),
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: AppTheme.primary,
-                  side: const BorderSide(color: AppTheme.borderColor),
-                  padding: const EdgeInsets.symmetric(vertical: 12),
-                ),
               ),
             ),
-            const SizedBox(width: 10),
+            const SizedBox(width: AppUI.s8),
             Expanded(
-              child: OutlinedButton.icon(
+              child: AppButton(
                 key: const Key('promo_generate_banner'),
+                label: 'Generar con IA',
+                icon: Icons.auto_awesome_rounded,
+                variant: AppButtonVariant.secondary,
                 onPressed: busy ? null : _generateBanner,
-                icon: const Icon(Icons.auto_awesome_rounded, size: 20),
-                label: const Text('Generar con IA',
-                    style: TextStyle(
-                        fontSize: 15, fontWeight: FontWeight.w700)),
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: AppTheme.primary,
-                  side: const BorderSide(color: AppTheme.borderColor),
-                  padding: const EdgeInsets.symmetric(vertical: 12),
-                ),
               ),
             ),
           ],
@@ -470,16 +465,13 @@ class _PromotionFormScreenState extends State<PromotionFormScreen> {
   }
 
   Widget _imagePlaceholder() {
-    return Center(
+    return const Center(
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(Icons.image_outlined, size: 40, color: Colors.grey.shade400),
-          const SizedBox(height: 4),
-          Text(
-            'Sin foto todavía',
-            style: TextStyle(fontSize: 15, color: Colors.grey.shade500),
-          ),
+          Icon(Icons.image_outlined, size: 40, color: AppUI.inkSoft),
+          SizedBox(height: AppUI.s4),
+          Text('Sin foto todavía', style: AppUI.bodySoft),
         ],
       ),
     );
@@ -496,7 +488,7 @@ class _PromotionFormScreenState extends State<PromotionFormScreen> {
             onTap: () => _pickDate(isFrom: true),
           ),
         ),
-        const SizedBox(width: 12),
+        const SizedBox(width: AppUI.s12),
         Expanded(
           child: _DateField(
             fieldKey: const Key('promo_valid_until'),
@@ -517,67 +509,45 @@ class _PromotionFormScreenState extends State<PromotionFormScreen> {
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
             const Text(
-              'Items en oferta (opcional)',
-              style: TextStyle(
-                fontSize: 17,
-                fontWeight: FontWeight.w800,
-                color: AppTheme.textPrimary,
-              ),
+              'ITEMS EN OFERTA (OPCIONAL)',
+              style: AppUI.sectionLabel,
             ),
-            TextButton.icon(
+            GhostButton(
               key: const Key('promo_add_item'),
+              icon: Icons.add_rounded,
+              label: 'Agregar',
               onPressed: _addItem,
-              icon: const Icon(Icons.add_rounded, size: 20),
-              label: const Text('Agregar',
-                  style: TextStyle(
-                      fontSize: 15, fontWeight: FontWeight.w700)),
             ),
           ],
         ),
+        const SizedBox(height: AppUI.s8),
         if (_items.isEmpty)
           const Padding(
-            padding: EdgeInsets.symmetric(vertical: 8),
+            padding: EdgeInsets.symmetric(vertical: AppUI.s8),
             child: Text(
               'No agregó productos en oferta.',
-              style: TextStyle(
-                  fontSize: 15, color: AppTheme.textSecondary),
+              style: AppUI.bodySoft,
             ),
           )
         else
-          ...List.generate(_items.length, (i) {
-            final item = _items[i];
-            return Padding(
-              padding: const EdgeInsets.only(bottom: 8),
-              child: Container(
+          InsetGroupedList(
+            children: List.generate(_items.length, (i) {
+              final item = _items[i];
+              return Padding(
                 padding: const EdgeInsets.symmetric(
-                    horizontal: 12, vertical: 10),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: AppTheme.borderColor),
-                ),
+                    horizontal: AppUI.s16, vertical: AppUI.s12),
                 child: Row(
                   children: [
                     Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text(
-                            item.productName,
-                            style: const TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.w700,
-                              color: AppTheme.textPrimary,
-                            ),
-                          ),
+                          Text(item.productName, style: AppUI.bodyStrong),
                           Text(
                             item.mode == PromotionDiscountMode.percentage
                                 ? '${item.discountPct?.toStringAsFixed(0)}% de descuento'
                                 : 'Precio promo: \$${item.promoPrice?.toStringAsFixed(0)}',
-                            style: const TextStyle(
-                              fontSize: 14,
-                              color: AppTheme.textSecondary,
-                            ),
+                            style: AppUI.bodySoft,
                           ),
                         ],
                       ),
@@ -590,16 +560,16 @@ class _PromotionFormScreenState extends State<PromotionFormScreen> {
                     ),
                   ],
                 ),
-              ),
-            );
-          }),
+              );
+            }),
+          ),
       ],
     );
   }
 
   Widget _buildScheduleSelector() {
     return Wrap(
-      spacing: 8,
+      spacing: AppUI.s8,
       children: PromotionSchedule.values.map((s) {
         final selected = _schedule == s;
         return ChoiceChip(
@@ -609,7 +579,7 @@ class _PromotionFormScreenState extends State<PromotionFormScreen> {
             style: TextStyle(
               fontSize: 15,
               fontWeight: FontWeight.w700,
-              color: selected ? Colors.white : AppTheme.textPrimary,
+              color: selected ? Colors.white : AppUI.ink,
             ),
           ),
           selected: selected,
@@ -617,8 +587,8 @@ class _PromotionFormScreenState extends State<PromotionFormScreen> {
           backgroundColor: Colors.white,
           selectedColor: AppTheme.primary,
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
-            side: const BorderSide(color: AppTheme.borderColor),
+            borderRadius: BorderRadius.circular(AppUI.radius),
+            side: const BorderSide(color: AppUI.border),
           ),
           onSelected: (_) {
             HapticFeedback.selectionClick();
@@ -629,26 +599,34 @@ class _PromotionFormScreenState extends State<PromotionFormScreen> {
     );
   }
 
-  Widget _label(String text) => Padding(
-        padding: const EdgeInsets.only(top: 14, bottom: 6),
-        child: Text(
-          text,
-          style: const TextStyle(
-            fontSize: 17,
-            fontWeight: FontWeight.w800,
-            color: AppTheme.textPrimary,
-          ),
-        ),
+  /// Tarjeta blanca de sección con label sobrio arriba (kit AppUI).
+  Widget _section(String title, List<Widget> children) {
+    return SoftCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(title.toUpperCase(), style: AppUI.sectionLabel),
+          const SizedBox(height: AppUI.s12),
+          ...children,
+        ],
+      ),
+    );
+  }
+
+  /// Label de un campo puntual dentro de una sección.
+  Widget _fieldLabel(String text) => Padding(
+        padding: const EdgeInsets.only(bottom: AppUI.s8),
+        child: Text(text, style: AppUI.bodyStrong.copyWith(fontSize: 14)),
       );
 
   InputDecoration _inputDecoration(String hint) => InputDecoration(
         hintText: hint,
         counterText: '',
         isDense: true,
-        contentPadding:
-            const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+        contentPadding: const EdgeInsets.symmetric(
+            horizontal: AppUI.s12, vertical: AppUI.s12),
         border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(AppUI.radius),
         ),
       );
 }
@@ -672,40 +650,26 @@ class _DateField extends StatelessWidget {
     return InkWell(
       key: fieldKey,
       onTap: onTap,
-      borderRadius: BorderRadius.circular(12),
+      borderRadius: BorderRadius.circular(AppUI.radius),
       child: Container(
-        padding:
-            const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+        padding: const EdgeInsets.symmetric(
+            horizontal: AppUI.s12, vertical: AppUI.s12),
         decoration: BoxDecoration(
           color: Colors.white,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: AppTheme.borderColor),
+          borderRadius: BorderRadius.circular(AppUI.radius),
+          border: Border.all(color: AppUI.border),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
-              label,
-              style: const TextStyle(
-                fontSize: 13,
-                fontWeight: FontWeight.w600,
-                color: AppTheme.textSecondary,
-              ),
-            ),
-            const SizedBox(height: 2),
+            Text(label, style: AppUI.sectionLabel),
+            const SizedBox(height: AppUI.s4),
             Row(
               children: [
                 const Icon(Icons.calendar_today_rounded,
                     size: 16, color: AppTheme.primary),
-                const SizedBox(width: 6),
-                Text(
-                  value,
-                  style: const TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w700,
-                    color: AppTheme.textPrimary,
-                  ),
-                ),
+                const SizedBox(width: AppUI.s8),
+                Text(value, style: AppUI.bodyStrong),
               ],
             ),
           ],
@@ -788,19 +752,27 @@ class _ItemPickerSheetState extends State<_ItemPickerSheet> {
       child: Container(
         decoration: const BoxDecoration(
           color: Colors.white,
-          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
         ),
-        padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
+        padding: const EdgeInsets.fromLTRB(
+            AppUI.s16, AppUI.s12, AppUI.s16, AppUI.s16),
         height: MediaQuery.of(context).size.height * 0.7,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(
-              'Agregar item en oferta',
-              style: TextStyle(
-                  fontSize: 19, fontWeight: FontWeight.w800),
+            Center(
+              child: Container(
+                width: 40,
+                height: 4,
+                margin: const EdgeInsets.only(bottom: AppUI.s12),
+                decoration: BoxDecoration(
+                  color: AppUI.hairline,
+                  borderRadius: BorderRadius.circular(AppUI.radiusSm),
+                ),
+              ),
             ),
-            const SizedBox(height: 12),
+            const Text('Agregar item en oferta', style: AppUI.title),
+            const SizedBox(height: AppUI.s12),
             Expanded(
               child: _loading
                   ? const Center(child: CircularProgressIndicator())
@@ -826,18 +798,20 @@ class _ItemPickerSheetState extends State<_ItemPickerSheet> {
                                 : Icons.radio_button_off_rounded,
                             color: isSelected
                                 ? AppTheme.primary
-                                : AppTheme.textSecondary,
+                                : AppUI.inkSoft,
                           ),
                           title: Text(
                             (p['name'] as String?) ?? 'Producto',
-                            style: const TextStyle(fontSize: 16),
+                            style: const TextStyle(
+                                fontSize: 16, color: AppUI.ink),
                           ),
                         );
                       },
                     ),
             ),
             if (_selected != null) ...[
-              const Divider(),
+              const Divider(height: 1, color: AppUI.hairline),
+              const SizedBox(height: AppUI.s8),
               Row(
                 children: [
                   ChoiceChip(
@@ -847,7 +821,7 @@ class _ItemPickerSheetState extends State<_ItemPickerSheet> {
                     onSelected: (_) => setState(() =>
                         _mode = PromotionDiscountMode.percentage),
                   ),
-                  const SizedBox(width: 8),
+                  const SizedBox(width: AppUI.s8),
                   ChoiceChip(
                     label: const Text('Precio fijo'),
                     selected:
@@ -857,38 +831,27 @@ class _ItemPickerSheetState extends State<_ItemPickerSheet> {
                   ),
                 ],
               ),
-              const SizedBox(height: 8),
+              const SizedBox(height: AppUI.s8),
               TextField(
                 key: const Key('item_value_field'),
                 controller: _valueCtrl,
                 keyboardType: TextInputType.number,
-                style: const TextStyle(fontSize: 17),
+                style: const TextStyle(fontSize: 16),
                 decoration: InputDecoration(
                   hintText:
                       _mode == PromotionDiscountMode.percentage
                           ? 'Ej: 20'
                           : 'Ej: 4000',
                   border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
+                    borderRadius: BorderRadius.circular(AppUI.radius),
                   ),
                 ),
               ),
-              const SizedBox(height: 12),
-              SizedBox(
-                width: double.infinity,
-                height: 50,
-                child: ElevatedButton(
-                  key: const Key('item_confirm'),
-                  onPressed: _confirm,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: AppTheme.primary,
-                    foregroundColor: Colors.white,
-                  ),
-                  child: const Text('Agregar',
-                      style: TextStyle(
-                          fontSize: 17,
-                          fontWeight: FontWeight.w800)),
-                ),
+              const SizedBox(height: AppUI.s12),
+              AppButton(
+                key: const Key('item_confirm'),
+                label: 'Agregar',
+                onPressed: _confirm,
               ),
             ],
           ],
