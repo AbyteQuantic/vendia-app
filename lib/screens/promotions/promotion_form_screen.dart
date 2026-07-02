@@ -146,7 +146,7 @@ class _PromotionFormScreenState extends State<PromotionFormScreen> {
     HapticFeedback.lightImpact();
     final title = _titleCtrl.text.trim();
     if (title.isEmpty) {
-      _snack('Escriba primero el título de la promoción');
+      _snack('Escriba primero el título del anuncio');
       return;
     }
     setState(() => _generatingBanner = true);
@@ -254,7 +254,7 @@ class _PromotionFormScreenState extends State<PromotionFormScreen> {
       if (!mounted) return;
       setState(() {
         _saving = false;
-        _error = 'No se pudo guardar la promoción';
+        _error = 'No se pudo guardar el anuncio';
       });
     }
   }
@@ -280,7 +280,7 @@ class _PromotionFormScreenState extends State<PromotionFormScreen> {
         backgroundColor: AppTheme.background,
         elevation: 0,
         title: Text(
-          _isEditing ? 'Editar promoción' : 'Nueva promoción',
+          _isEditing ? 'Editar anuncio' : 'Nuevo anuncio',
           style: const TextStyle(
             fontSize: 22,
             fontWeight: FontWeight.bold,
@@ -300,7 +300,7 @@ class _PromotionFormScreenState extends State<PromotionFormScreen> {
           child: ListView(
             padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
             children: [
-              _label('Título de la promoción'),
+              _label('Título del anuncio'),
               TextFormField(
                 key: const Key('promo_title'),
                 controller: _titleCtrl,
@@ -389,7 +389,7 @@ class _PromotionFormScreenState extends State<PromotionFormScreen> {
                       : Text(
                           _isEditing
                               ? 'Guardar cambios'
-                              : 'Crear promoción',
+                              : 'Crear anuncio',
                           style: const TextStyle(
                               fontSize: 18,
                               fontWeight: FontWeight.w800),

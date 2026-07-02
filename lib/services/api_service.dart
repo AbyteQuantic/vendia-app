@@ -3688,19 +3688,37 @@ class ApiService {
   // 11. PROMOTIONS
   // ═══════════════════════════════════════════════════════════════════════════
 
-  Future<List<Map<String, dynamic>>> fetchPromotions() async {
+  /// Bug real reportado: el selector de sede en el creador de combos existía
+  /// en pantalla pero era decorativo — el backend nunca filtraba por sede.
+  /// Ahora, igual que fetchProducts, manda ?branch_id= (con default a
+  /// currentBranchId) y el backend (ResolveBranchScope) devuelve los combos
+  /// de esa sede MÁS los globales (branch_id NULL). Sin sede activa
+  /// (tenant mono-sede), el comportamiento no cambia: ve todos.
+  Future<List<Map<String, dynamic>>> fetchPromotions({String? branchId}) async {
     try {
-      final response = await _dio.get('/api/v1/promotions');
+      final bid = branchId ?? currentBranchId;
+      final params = <String, dynamic>{};
+      if (bid != null && bid.isNotEmpty) params['branch_id'] = bid;
+      final response =
+          await _dio.get('/api/v1/promotions', queryParameters: params);
       return _extractList(response);
     } on DioException catch (e) {
       throw AppError.fromDioException(e);
     }
   }
 
+  /// Igual que fetchPromotions: manda ?branch_id= para que el combo quede
+  /// scopeado a la sede activa. Sin sede (default currentBranchId vacío), el
+  /// combo queda GLOBAL (visible en todas las sedes) — mismo comportamiento
+  /// de siempre.
   Future<Map<String, dynamic>> createPromotion(
-      Map<String, dynamic> data) async {
+      Map<String, dynamic> data, {String? branchId}) async {
     try {
-      final response = await _dio.post('/api/v1/promotions', data: data);
+      final bid = branchId ?? currentBranchId;
+      final params = <String, dynamic>{};
+      if (bid != null && bid.isNotEmpty) params['branch_id'] = bid;
+      final response = await _dio.post('/api/v1/promotions',
+          data: data, queryParameters: params);
       return _extractData(response);
     } on DioException catch (e) {
       throw AppError.fromDioException(e);

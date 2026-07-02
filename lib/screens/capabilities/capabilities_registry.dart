@@ -137,11 +137,17 @@ final Map<OptionalCapability, CapabilityMetadata> capabilitiesRegistry = {
     primaryActionIcon: Icons.people_alt_rounded,
     primaryDestination: CustomersListScreen.new,
   ),
+  // Bug real reportado: esta pantalla y el módulo de combos
+  // (marketingHub, abajo) se llamaban casi igual ("Mis promociones" /
+  // "Mis Promociones") pese a ser features distintas — campañas de
+  // WhatsApp vs. combos con descuento. Concilio (Workflow): esta es
+  // "Anuncios", el módulo de combos se queda con la palabra "Combos"
+  // siempre visible.
   OptionalCapability.promotions: const CapabilityMetadata(
-    title: 'Promociones',
+    title: 'Anuncios por WhatsApp',
     tagline: 'Avise por WhatsApp cuando tenga ofertas',
     description:
-        'Cree promociones, banners y descuentos. Difúndalos por '
+        'Cree anuncios, banners y descuentos. Difúndalos por '
         'WhatsApp a sus clientes para llenar la tienda en días '
         'flojos.',
     heroPhotoUrl:
@@ -150,12 +156,12 @@ final Map<OptionalCapability, CapabilityMetadata> capabilitiesRegistry = {
     accentColor: Color(0xFFD97706),
     configKey: 'enable_promotions',
     profileKey: 'enable_promotions',
-    primaryActionLabel: 'Ver mis promociones',
+    primaryActionLabel: 'Ver mis anuncios',
     primaryActionIcon: Icons.campaign_rounded,
     primaryDestination: PromotionsListScreen.new,
   ),
   OptionalCapability.marketingHub: const CapabilityMetadata(
-    title: 'Marketing y Combos',
+    title: 'Combos y Promociones',
     tagline: 'Combos, banners con IA y catálogo en línea',
     description:
         'Arme combos a precio promocional, genere banners con IA y '
@@ -166,7 +172,7 @@ final Map<OptionalCapability, CapabilityMetadata> capabilitiesRegistry = {
     accentColor: Color(0xFF7C3AED),
     configKey: 'enable_marketing_hub',
     profileKey: 'enable_marketing_hub',
-    primaryActionLabel: 'Abrir Marketing y Combos',
+    primaryActionLabel: 'Abrir Combos y Promociones',
     primaryActionIcon: Icons.auto_awesome_rounded,
     primaryDestination: PromoManagementScreen.new,
   ),

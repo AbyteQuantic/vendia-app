@@ -43,7 +43,7 @@ void main() {
 
       expect(
           find.byKey(const Key('toggle_promotions')), findsOneWidget);
-      expect(find.text('Promociones'), findsOneWidget);
+      expect(find.text('Anuncios por WhatsApp'), findsOneWidget);
     });
 
     testWidgets('sin el ValueNotifier cableado el toggle NO se renderiza',
