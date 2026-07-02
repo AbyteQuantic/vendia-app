@@ -300,9 +300,14 @@ const List<DashboardModule> dashboardModules = [
     capability: OptionalCapability.customerManagement,
     destination: CustomersListScreen.new,
   ),
+  // Bug real reportado: este tile y "marketing_hub" (abajo) se llamaban
+  // casi igual ("Promociones" / "Marketing y Combos" → adentro ambos decían
+  // "Mis Promociones") pese a ser features distintas — campañas de
+  // WhatsApp vs. combos con descuento. Concilio (Workflow): este es
+  // "Anuncios", el otro se queda con "Combos" siempre visible.
   DashboardModule(
     id: 'promociones',
-    title: 'Promociones',
+    title: 'Anuncios por WhatsApp',
     subtitle: 'Avísele a sus clientes cuando tenga ofertas',
     icon: Icons.campaign_rounded,
     color: Color(0xFFD97706),
@@ -382,7 +387,7 @@ const List<DashboardModule> dashboardModules = [
   // que ya usaban combos/banners).
   DashboardModule(
     id: 'marketing_hub',
-    title: 'Marketing y Combos',
+    title: 'Combos y Promociones',
     subtitle: 'Combos, banners con IA y catálogo en línea',
     icon: Icons.auto_awesome_rounded,
     color: Color(0xFF7C3AED),

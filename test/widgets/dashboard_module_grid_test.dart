@@ -99,10 +99,10 @@ void main() {
       expect(find.text('Recetas y Platos'), findsNothing);
       expect(find.text('Trabajos de Muebles'), findsNothing);
       expect(find.text('Cotizaciones'), findsNothing);
-      expect(find.text('Promociones'), findsNothing);
+      expect(find.text('Anuncios por WhatsApp'), findsNothing);
       expect(find.text('Mis Clientes'), findsNothing);
       // F037: Marketing Hub ya no es core, queda oculto sin la cap.
-      expect(find.text('Marketing y Combos'), findsNothing);
+      expect(find.text('Combos y Promociones'), findsNothing);
       // Pero sí ve los módulos core.
       expect(find.text('Productos'), findsOneWidget);
       expect(find.text('Historial de ventas'), findsOneWidget);
@@ -158,7 +158,7 @@ void main() {
         ),
       ));
 
-      expect(find.text('Marketing y Combos'), findsOneWidget);
+      expect(find.text('Combos y Promociones'), findsOneWidget);
     });
 
     testWidgets('no hay overflow a 360dp', (tester) async {

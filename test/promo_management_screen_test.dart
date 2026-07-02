@@ -29,7 +29,7 @@ class _FakeApi extends ApiService {
       Map<String, dynamic>.from(slugResponse);
 
   @override
-  Future<List<Map<String, dynamic>>> fetchPromotions() async =>
+  Future<List<Map<String, dynamic>>> fetchPromotions({String? branchId}) async =>
       List<Map<String, dynamic>>.from(promotions);
 
   @override
@@ -127,7 +127,7 @@ void main() {
 
       // CTA principal (bottom-pinned) — debe existir y estar habilitado.
       expect(find.byKey(const Key('btn_create_promo')), findsOneWidget);
-      expect(find.text('✨ Crear Nueva Promoción'), findsOneWidget);
+      expect(find.text('✨ Crear Nuevo Combo'), findsOneWidget);
 
       // Con promos e inventario sano no mostramos ninguna sugerencia
       // — sería ruido innecesario.
@@ -158,7 +158,7 @@ void main() {
 
       // Empty state educativo — ya no es solo un ícono vacío.
       expect(find.byKey(const Key('promos_empty')), findsOneWidget);
-      expect(find.text('¿Qué es una promoción?'), findsOneWidget);
+      expect(find.text('¿Qué es un combo?'), findsOneWidget);
       expect(
         find.text('Atrae más clientes a tu catálogo agrupando productos.'),
         findsOneWidget,

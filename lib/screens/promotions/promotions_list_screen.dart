@@ -1,6 +1,9 @@
 // Spec: specs/033-difusion-promociones/spec.md
 //
-// Pantalla "Mis promociones" (F033 — spec §4 "Histórico", AC-09).
+// Pantalla "Mis anuncios" (F033 — spec §4 "Histórico", AC-09). Renombrada
+// (Concilio, veredicto naming) para dejar de compartir el sustantivo
+// "promoción" con el módulo de combos (PromoManagementScreen, "Mis
+// Combos") — eran features distintas con nombres casi idénticos.
 //
 // Lista histórica de las promociones de difusión del tenant con:
 //   - FilterChips por estado (todas / activas / programadas / vencidas).
@@ -86,7 +89,7 @@ class _PromotionsListScreenState extends State<PromotionsListScreen> {
       if (!mounted) return;
       setState(() {
         _loading = false;
-        _error = 'No se pudieron cargar las promociones';
+        _error = 'No se pudieron cargar los anuncios';
       });
     }
   }
@@ -135,7 +138,7 @@ class _PromotionsListScreenState extends State<PromotionsListScreen> {
           onPressed: () => Navigator.of(context).pop(),
         ),
         title: const Text(
-          'Mis promociones',
+          'Mis anuncios',
           style: TextStyle(
             fontSize: 24,
             fontWeight: FontWeight.bold,
@@ -255,9 +258,9 @@ class _PromotionsListScreenState extends State<PromotionsListScreen> {
               const SizedBox(height: 16),
               Text(
                 _filter == null
-                    ? 'Aún no tiene promociones.\n'
-                        'Toque "Nueva" para crear la primera.'
-                    : 'No hay promociones con ese filtro.',
+                    ? 'Aún no tiene anuncios.\n'
+                        'Toque "Nueva" para crear el primero.'
+                    : 'No hay anuncios con ese filtro.',
                 textAlign: TextAlign.center,
                 style: const TextStyle(
                     fontSize: 17, color: AppTheme.textSecondary),

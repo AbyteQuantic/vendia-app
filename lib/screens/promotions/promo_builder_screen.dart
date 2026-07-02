@@ -685,7 +685,7 @@ class _PromoBuilderScreenState extends State<PromoBuilderScreen> {
           onPressed: () => Navigator.of(context).pop(),
         ),
         title: Text(
-          'Crear promoción — Paso ${_currentStep + 1} de 4',
+          'Crear combo — Paso ${_currentStep + 1} de 4',
           style: const TextStyle(
             fontSize: 18,
             fontWeight: FontWeight.bold,
@@ -977,7 +977,7 @@ class _PromoBuilderScreenState extends State<PromoBuilderScreen> {
               ),
               const SizedBox(height: 6),
               const Text(
-                'Agrega productos primero para poder armar promociones.',
+                'Agrega productos primero para poder armar combos.',
                 textAlign: TextAlign.center,
                 style: TextStyle(
                     fontSize: 13, color: AppTheme.textSecondary),

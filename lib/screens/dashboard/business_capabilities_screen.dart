@@ -103,7 +103,7 @@ const List<_CapabilityInfo> _capabilities = [
   _CapabilityInfo(
     capability: OptionalCapability.promotions,
     toggleKey: 'cap_toggle_promotions',
-    title: 'Promociones',
+    title: 'Anuncios por WhatsApp',
     description: 'Avísele a sus clientes de ofertas por WhatsApp',
     icon: Icons.campaign_rounded,
     color: Color(0xFFD97706),
@@ -112,7 +112,7 @@ const List<_CapabilityInfo> _capabilities = [
   _CapabilityInfo(
     capability: OptionalCapability.marketingHub,
     toggleKey: 'cap_toggle_marketing_hub',
-    title: 'Marketing y Combos',
+    title: 'Combos y Promociones',
     description: 'Combos, banners con IA y catálogo en línea',
     icon: Icons.auto_awesome_rounded,
     color: Color(0xFF7C3AED),

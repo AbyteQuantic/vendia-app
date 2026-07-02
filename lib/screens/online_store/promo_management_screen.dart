@@ -8,6 +8,7 @@ import '../../services/api_service.dart';
 import '../../services/app_error.dart';
 import '../../services/auth_service.dart';
 import '../../theme/app_theme.dart';
+import '../../widgets/branch_selector_drawer.dart';
 import '../promotions/promo_builder_screen.dart';
 
 /// Marketing Hub — lista de promociones reales del tenant + link
@@ -103,7 +104,7 @@ class _PromoVM {
 
     final title = (json['name'] as String?)?.trim().isNotEmpty == true
         ? json['name'] as String
-        : (parts.isNotEmpty ? parts.first : 'Promoción');
+        : (parts.isNotEmpty ? parts.first : 'Combo');
 
     final subtitle = parts.isEmpty
         ? ((json['description'] as String?) ?? '')
@@ -431,7 +432,7 @@ class _PromoManagementScreenState extends State<PromoManagementScreen> {
           ),
           icon: const Icon(Icons.auto_awesome_rounded, size: 24),
           label: const Text(
-            '✨ Crear Nueva Promoción',
+            '✨ Crear Nuevo Combo',
             style: TextStyle(
               fontSize: 18,
               fontWeight: FontWeight.w700,
@@ -466,17 +467,39 @@ class _PromoManagementScreenState extends State<PromoManagementScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          IconButton(
-            icon: const Icon(Icons.arrow_back_rounded,
-                color: Colors.white, size: 28),
-            onPressed: () {
-              HapticFeedback.lightImpact();
-              Navigator.of(context).pop();
-            },
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              IconButton(
+                icon: const Icon(Icons.arrow_back_rounded,
+                    color: Colors.white, size: 28),
+                onPressed: () {
+                  HapticFeedback.lightImpact();
+                  Navigator.of(context).pop();
+                },
+              ),
+              // Bug real reportado: esta pantalla (el listado real de
+              // combos) no mostraba ninguna sucursal, a diferencia de
+              // PromotionsListScreen y PromoBuilderScreen, que sí traen
+              // BranchSelectorChip — inconsistente incluso visualmente.
+              // Envuelto en blanco porque el chip está pensado para fondo
+              // claro y este header es un degradado naranja/rojo. Cero
+              // impacto para tenants mono-sede (el chip no renderiza nada).
+              Padding(
+                padding: const EdgeInsets.only(top: 4),
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: const BranchSelectorChip(),
+                ),
+              ),
+            ],
           ),
           const SizedBox(height: 8),
           const Text(
-            'Mis Promociones',
+            'Mis Combos',
             style: TextStyle(
               fontSize: 28,
               fontWeight: FontWeight.bold,
@@ -723,8 +746,8 @@ class _PromoManagementScreenState extends State<PromoManagementScreen> {
       icon: Icons.lightbulb_outline_rounded,
       title: 'Sugerencia de IA',
       body:
-          'Revisa qué productos se venden menos y arma una promoción para moverlos rápido.',
-      actionLabel: 'Crear promoción',
+          'Revisa qué productos se venden menos y arma un combo para moverlos rápido.',
+      actionLabel: 'Crear combo',
       onAction: _openPromoBuilder,
     );
   }
@@ -1099,7 +1122,7 @@ class _EmptyPromosCard extends StatelessWidget {
               const SizedBox(width: 12),
               const Expanded(
                 child: Text(
-                  '¿Qué es una promoción?',
+                  '¿Qué es un combo?',
                   style: TextStyle(
                     fontSize: 18,
                     fontWeight: FontWeight.bold,
@@ -1152,7 +1175,7 @@ class _EmptyPromosCard extends StatelessWidget {
           ),
           const SizedBox(height: 12),
           Text(
-            'Usa el botón "Crear Nueva Promoción" de abajo para armar tu primer combo.',
+            'Usa el botón "Crear Nuevo Combo" de abajo para armar tu primer combo.',
             style: TextStyle(
               fontSize: 14,
               height: 1.35,

@@ -226,7 +226,7 @@ class OptionalCapabilitiesSection extends StatelessWidget {
         case OptionalCapability.promotions:
           tiles.add(_CapabilityTile(
             tileKey: const Key('toggle_promotions'),
-            title: 'Promociones',
+            title: 'Anuncios por WhatsApp',
             subtitle: 'Avísele a sus clientes por WhatsApp cuando '
                 'tenga ofertas o productos nuevos',
             notifier: enablePromotions!,
