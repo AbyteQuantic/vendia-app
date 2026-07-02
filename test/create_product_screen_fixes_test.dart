@@ -178,4 +178,25 @@ void main() {
       );
     });
   });
+
+  group('Aviso de encuadre antes de tomar la foto', () {
+    testWidgets(
+        'shows the framing tip banner while there is no photo yet',
+        (tester) async {
+      // Bug real reportado: fotos que cortan una correa/cadena producen
+      // resultados de IA "incompletos" para siempre — el pipeline es
+      // no-generativo y no puede inventar lo que la cámara no capturó. El
+      // aviso debe estar visible ANTES de que el tendero tome la foto.
+      await tester.pumpWidget(const MaterialApp(home: CreateProductScreen()));
+      await tester.pump();
+
+      expect(find.byKey(const Key('framing_tip_banner')), findsOneWidget,
+          reason: 'sin foto todavía, el aviso de encuadre debe verse');
+      expect(
+        find.text(CreateProductScreen.framingTip),
+        findsOneWidget,
+        reason: 'el texto exacto del aviso debe estar en pantalla',
+      );
+    });
+  });
 }
