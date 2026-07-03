@@ -509,8 +509,9 @@ class MockApiService extends ApiService {
 
   @override
   Future<Map<String, dynamic>> createProduct(
-    Map<String, dynamic> data,
-  ) async {
+    Map<String, dynamic> data, {
+    bool forceCreate = false,
+  }) async {
     _log('createProduct');
     return _handle('createProduct', data);
   }

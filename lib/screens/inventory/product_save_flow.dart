@@ -28,11 +28,22 @@ class ProductSaveOutcome {
 /// del socket antes de caer al guardado local; conociendo el estado de red lo
 /// saltamos y guardamos local al instante. Si es null, se asume online (intenta
 /// la red como antes — retrocompatible).
+///
+/// [isFatal] (opcional, auditoría 2026-07-03): distingue un error de RED
+/// (best-effort, cae a local+pendiente como siempre) de un error DEL
+/// SERVIDOR que el tendero debe resolver antes de guardar nada — el caso
+/// real: el backend rechaza con 409 "ya existe un producto con ese nombre"
+/// (ver ApiService.createProduct). Guardarlo local+pendiente en ese caso
+/// crearía OTRA copia del duplicado que el servidor ya rechazó. Cuando
+/// [isFatal] devuelve `true` para el error, éste se RE-LANZA sin tocar
+/// [saveLocal]/[markPending] — el caller decide qué hacer (ej. mostrar un
+/// diálogo). Por defecto null → comportamiento anterior sin cambios.
 Future<ProductSaveOutcome> persistProductOfflineFirst({
   required Future<void> Function() serverWrite,
   required Future<void> Function() saveLocal,
   required Future<void> Function() markPending,
   Future<bool> Function()? isOnline,
+  bool Function(Object error)? isFatal,
 }) async {
   bool serverOk = false;
 
@@ -41,7 +52,8 @@ Future<ProductSaveOutcome> persistProductOfflineFirst({
     try {
       await serverWrite();
       serverOk = true;
-    } catch (_) {
+    } catch (e) {
+      if (isFatal != null && isFatal(e)) rethrow;
       // Backend caído / red intermitente: NO abortamos, caemos a local.
     }
   }

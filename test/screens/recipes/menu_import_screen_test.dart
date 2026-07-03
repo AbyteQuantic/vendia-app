@@ -11,6 +11,7 @@ import 'package:image_picker_platform_interface/image_picker_platform_interface.
 import 'package:plugin_platform_interface/plugin_platform_interface.dart';
 import 'package:vendia_pos/screens/recipes/menu_import_screen.dart';
 import 'package:vendia_pos/services/api_service.dart';
+import 'package:vendia_pos/services/app_error.dart';
 import 'package:vendia_pos/services/auth_service.dart';
 
 /// Doble de ApiService — descripción + foto fijas para el plato.
@@ -318,5 +319,66 @@ void main() {
       // Y sí ofrece volver a mejorar.
       expect(find.byKey(const Key('menu_dish_enhance_0')), findsOneWidget);
     });
+
+    // Auditoría 2026-07-03: causa raíz real de duplicados — cuando la carta
+    // trae 2 precios para el mismo plato (media porción/porción completa),
+    // el OCR devolvía 2 EditableDish con el MISMO nombre y _saveAll los
+    // guardaba como 2 productos distintos. El backend ahora rechaza el
+    // segundo con 409 (duplicate_product); este flujo por lotes ya sabía
+    // manejar cualquier AppError como "no se pudo guardar" sin código
+    // nuevo — este test fija ese comportamiento para que no se rompa.
+    testWidgets(
+        '2 platos con el mismo nombre (media/porción completa): el '
+        'segundo lo rechaza el servidor como duplicado y NO se crea dos '
+        'veces', (tester) async {
+      final api = _DuplicateRejectingMenuApi();
+      await tester.pumpWidget(MaterialApp(
+        home: MenuImportScreen(
+          apiOverride: api,
+          scannedDishes: const [
+            {'name': 'Arroz con Pollo', 'price': 27000},
+            {'name': 'Arroz con Pollo', 'price': 38000},
+          ],
+        ),
+      ));
+      await tester.pump();
+
+      await tester.tap(find.byKey(const Key('menu_import_save')));
+      await tester.pumpAndSettle();
+
+      expect(api.createCallCount, 2,
+          reason: 'intenta guardar los 2, el segundo lo rechaza el servidor');
+      expect(api.createdNames, ['Arroz con Pollo'],
+          reason: 'solo 1 llegó a crearse de verdad — no hay copia');
+    });
   });
+}
+
+/// Simula el backend: la PRIMERA vez que se intenta crear un nombre, éxito;
+/// la segunda, 409 duplicate_product — igual que el chequeo real en
+/// internal/handlers/products.go (CreateProduct).
+class _DuplicateRejectingMenuApi extends ApiService {
+  _DuplicateRejectingMenuApi() : super(AuthService());
+
+  int createCallCount = 0;
+  final List<String> createdNames = [];
+
+  @override
+  Future<Map<String, dynamic>> createProduct(
+    Map<String, dynamic> data, {
+    bool forceCreate = false,
+  }) async {
+    createCallCount++;
+    final name = data['name'] as String;
+    if (!forceCreate && createdNames.contains(name)) {
+      throw const AppError(
+        type: AppErrorType.validation,
+        message: 'ya existe un producto con ese nombre',
+        statusCode: 409,
+        errorCode: 'duplicate_product',
+      );
+    }
+    createdNames.add(name);
+    return {'id': 'p-$createCallCount', 'name': name};
+  }
 }
