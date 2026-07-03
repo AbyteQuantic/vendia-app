@@ -65,6 +65,19 @@ void main() {
     expect(find.byKey(const Key('task_snooze_table_account:1')), findsNothing);
   });
 
+  testWidgets('reorder_out (agotados) también es posponible', (tester) async {
+    final api = _FakeApi();
+    api.next = [
+      {'id': 'reorder_out:t', 'kind': 'reorder_out', 'urgency': 'high', 'title': 'Productos agotados', 'action_label': 'Reordenar'},
+    ];
+    final c = TaskCenterController(api);
+    await c.refresh();
+    await pumpSheet(tester, c);
+
+    expect(find.text('Productos agotados'), findsOneWidget);
+    expect(find.byKey(const Key('task_snooze_reorder_out:t')), findsOneWidget);
+  });
+
   testWidgets('posponer una agregada llama al API', (tester) async {
     final api = _FakeApi();
     api.next = [

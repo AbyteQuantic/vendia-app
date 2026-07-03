@@ -53,5 +53,6 @@ class Task {
   bool get isActionable => isUrgent || urgency == 'normal';
 
   /// Tareas AGREGADAS (sin entidad propia) que se pueden posponer.
-  bool get isDismissable => kind == 'reorder' || kind == 'perishable';
+  bool get isDismissable =>
+      kind == 'reorder' || kind == 'reorder_out' || kind == 'perishable';
 }

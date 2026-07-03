@@ -19,9 +19,15 @@ class NotificationToastController extends ChangeNotifier {
   /// Recibe el feed más reciente (orden desc, como lo entrega el POS) y
   /// muestra la notificación NO leída más nueva que el usuario no haya
   /// cerrado. Idempotente: si ya está visible esa misma, no notifica.
+  /// stock_low ya se proyecta como Task agregada (reorder_out, Spec 078 F3) y
+  /// gana el toast cuando corresponde vía TaskCenterController — mostrarla
+  /// AQUÍ también duplicaría la alerta con una fuente de verdad distinta. Sigue
+  /// llegando en el feed para el badge y el historial de "Novedades".
+  static bool _isToastEligible(AppNotification n) => n.rawType != 'stock_low';
+
   void offer(List<AppNotification> items) {
     for (final n in items) {
-      if (n.isRead || _dismissed.contains(n.id)) continue;
+      if (n.isRead || _dismissed.contains(n.id) || !_isToastEligible(n)) continue;
       if (_current?.id == n.id) return; // ya visible, sin cambios
       _current = n;
       notifyListeners();

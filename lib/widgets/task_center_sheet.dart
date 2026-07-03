@@ -50,7 +50,9 @@ void navigateToTask(BuildContext context, Task t) {
       screen = const MandadosScreen();
       break;
     case 'reorder':
-      // 🏪 Productos de tienda bajo mínimo → lista para reordenar (crea mandado).
+    case 'reorder_out':
+      // 🏪 Productos de tienda bajo mínimo o agotados → lista para reordenar
+      // (crea mandado). Spec 078 F3 — reorder_out es la severidad "agotado".
       screen = const ProductReorderScreen();
       break;
     case 'menu_incomplete':

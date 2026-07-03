@@ -67,4 +67,16 @@ void main() {
     c.offer([_n('a', read: true)]);
     expect(c.hasToast, isFalse);
   });
+
+  test('stock_low no genera toast legacy (ya cubierto por Task reorder_out, Spec 078 F3)', () {
+    final c = NotificationToastController();
+    c.offer([_n('a', type: 'stock_low')]);
+    expect(c.hasToast, isFalse);
+  });
+
+  test('stock_low no bloquea que otra notificación sí muestre toast', () {
+    final c = NotificationToastController();
+    c.offer([_n('a', type: 'stock_low'), _n('b', type: 'fiado_accepted')]);
+    expect(c.current?.id, 'b');
+  });
 }
