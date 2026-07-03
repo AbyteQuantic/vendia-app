@@ -16,6 +16,7 @@ import '../../widgets/table_qr_sheet.dart';
 import '../../widgets/stock_badge.dart';
 import '../../utils/beep.dart';
 import '../../widgets/sync_status_banner.dart';
+import '../../widgets/branch_aware_reload.dart';
 import 'cart_controller.dart';
 import 'voice/voice_order_sheet.dart';
 import 'account_qr_screen.dart';
@@ -63,7 +64,29 @@ class _PosScreenBody extends StatefulWidget {
   State<_PosScreenBody> createState() => _PosScreenBodyState();
 }
 
-class _PosScreenBodyState extends State<_PosScreenBody> {
+class _PosScreenBodyState extends State<_PosScreenBody>
+    with BranchAwareReload<_PosScreenBody> {
+  // Auditoría 2026-07-02: CartController no escuchaba cambios de sede — si
+  // el tendero cambiaba de sede con "Vender" ya abierto, el grid seguía
+  // mostrando el catálogo de la sede anterior hasta la próxima venta o un
+  // pull-to-refresh manual. BranchAwareReload (mismo mixin que ya usa Mi
+  // Inventario) dispara refreshProducts() apenas cambia la sede.
+  @override
+  void onBranchChanged() {
+    context.read<CartController>().refreshProducts().then((_) {
+      if (!mounted) return;
+      if (context.read<CartController>().lastRefreshFailed) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text(
+            'No pudimos actualizar el catálogo de la nueva sede. '
+            'Desliza hacia abajo para reintentar.',
+          ),
+          backgroundColor: AppTheme.warning,
+        ));
+      }
+    });
+  }
+
   final _searchCtrl = TextEditingController();
   List<Map<String, dynamic>> _tables = [];
   // Label-indexed snapshot of tabs currently open on the server.

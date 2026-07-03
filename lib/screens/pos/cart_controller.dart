@@ -167,6 +167,13 @@ class CartController extends ChangeNotifier {
   String _search = '';
   List<Product> _products = [];
   bool _productsLoaded = false;
+  // Auditoría 2026-07-02: si el fetch en vivo posterior a un cambio de
+  // sede falla, antes se quedaba mostrando el catálogo de la sede
+  // anterior sin ningún aviso ("Keep local data if server fails" era
+  // silencioso). Expuesto para que la pantalla muestre un banner cuando
+  // corresponda — ver _PosScreenBodyState.onBranchChanged.
+  bool _lastRefreshFailed = false;
+  bool get lastRefreshFailed => _lastRefreshFailed;
 
   // F029 — tier de precios seleccionado para la venta entera. Default
   // 'retail' (cliente final / precio default) → comportamiento legacy
@@ -339,22 +346,14 @@ class CartController extends ChangeNotifier {
         //
         // Spec 088: TRAER TODAS LAS PÁGINAS. Antes pedía solo page:1/perPage:100,
         // así una tienda con 500+ SKUs solo veía 100 en la selección manual.
-        // Recorremos en bucle hasta total_pages (tope de seguridad 50 páginas =
-        // 5000 productos) y acumulamos.
-        final serverProducts = <LocalProduct>[];
-        var page = 1;
-        var totalPages = 1;
-        do {
-          final res = await api.fetchProducts(
-              page: page, perPage: 100, sellableOnly: true);
-          final data = res['data'] as List? ?? [];
-          serverProducts.addAll(
-              data.map((e) => LocalProduct.fromJson(e as Map<String, dynamic>)));
-          totalPages = (res['total_pages'] as num?)?.toInt() ?? 1;
-          page++;
-        } while (page <= totalPages && page <= 50);
+        // fetchAllProducts recorre hasta total_pages (tope de seguridad 50
+        // páginas = 5000 productos) — mismo helper que usa Mi Inventario.
+        final data = await api.fetchAllProducts(sellableOnly: true);
+        final serverProducts =
+            data.map((e) => LocalProduct.fromJson(e)).toList();
         await db.replaceAllProducts(serverProducts);
         _products = serverProducts.map(_localToProduct).toList();
+        _lastRefreshFailed = false;
         // Debug: log products with images
         for (final p in _products.where((p) => p.imageUrl != null && p.imageUrl!.isNotEmpty)) {
           debugPrint('[PRODUCTS] ${p.name} → ${p.imageUrl!.substring(0, p.imageUrl!.length.clamp(0, 60))}...');
@@ -363,7 +362,10 @@ class CartController extends ChangeNotifier {
         notifyListeners();
       } catch (e) {
         debugPrint('[PRODUCTS] Server fetch failed: $e');
-        // Keep local data if server fails
+        // Keep local data if server fails — pero avisamos (ver
+        // lastRefreshFailed) para que un cambio de sede fallido no deje
+        // el catálogo de la sede anterior sin ningún aviso.
+        _lastRefreshFailed = true;
       }
     } catch (_) {
       // Fallback to mock products

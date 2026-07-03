@@ -27,6 +27,44 @@ import 'negative_stock_screen.dart';
 import 'product_import_screen.dart';
 import 'organize_categories_screen.dart';
 
+const kSinCategoria = 'Sin categoría';
+
+/// Auditoría 2026-07-02: Mi Inventario era una lista plana sin ninguna ayuda
+/// de navegación — con decenas/cientos de referencias, encontrar un
+/// producto a simple vista (sin usar el buscador) exigía scroll a ciegas.
+/// Agrupar por categoría (el campo ya existe en cada producto) acota el
+/// barrido visual a una sección en vez de todo el catálogo.
+///
+/// Devuelve una lista mixta: `String` = encabezado de sección,
+/// `Map<String,dynamic>` = producto. 'Sin categoría' siempre al final;
+/// las demás categorías en orden alfabético. Dentro de cada categoría se
+/// preserva el orden de entrada (ya viene alfabético por nombre desde el
+/// backend, `Order("name ASC")`).
+///
+/// Función pura de nivel de archivo (no un método privado del State) para
+/// poder testearla sin montar el widget — esta pantalla no tenía ningún
+/// test hasta ahora.
+List<Object> groupProductsByCategory(List<Map<String, dynamic>> products) {
+  final byCategory = <String, List<Map<String, dynamic>>>{};
+  for (final p in products) {
+    final raw = (p['category'] as String? ?? '').trim();
+    final key = raw.isEmpty ? kSinCategoria : raw;
+    byCategory.putIfAbsent(key, () => []).add(p);
+  }
+  final categories = byCategory.keys.toList()
+    ..sort((a, b) {
+      if (a == kSinCategoria) return 1;
+      if (b == kSinCategoria) return -1;
+      return a.compareTo(b);
+    });
+  final result = <Object>[];
+  for (final cat in categories) {
+    result.add(cat);
+    result.addAll(byCategory[cat]!);
+  }
+  return result;
+}
+
 class ManageInventoryScreen extends StatefulWidget {
   const ManageInventoryScreen({super.key, this.focusProductId});
 
@@ -145,6 +183,8 @@ class _ManageInventoryScreenState extends State<ManageInventoryScreen>
       _filtered = list.toList();
     });
   }
+
+  List<Object> get _groupedFiltered => groupProductsByCategory(_filtered);
 
   int _noSkuCount = 0;
   int _noPriceCount = 0;
@@ -465,9 +505,16 @@ class _ManageInventoryScreenState extends State<ManageInventoryScreen>
                                 controller: _scrollCtrl,
                                 padding: const EdgeInsets.fromLTRB(
                                     20, 0, 20, 20),
-                                itemCount: _filtered.length,
+                                itemCount: _groupedFiltered.length,
                                 itemBuilder: (context, index) {
-                                  final p = _filtered[index];
+                                  final item = _groupedFiltered[index];
+                                  if (item is String) {
+                                    return _CategoryHeader(
+                                      label: item,
+                                      topPadding: index == 0 ? 0 : 20,
+                                    );
+                                  }
+                                  final p = item as Map<String, dynamic>;
                                   return _ProductTile(
                                     product: p,
                                     onEdit: () => _editProduct(p),
@@ -488,6 +535,26 @@ class _ManageInventoryScreenState extends State<ManageInventoryScreen>
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+/// Encabezado de sección por categoría — acota el barrido visual a un
+/// grupo en vez de todo el catálogo (auditoría 2026-07-02).
+class _CategoryHeader extends StatelessWidget {
+  final String label;
+  final double topPadding;
+
+  const _CategoryHeader({required this.label, required this.topPadding});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: EdgeInsets.fromLTRB(4, topPadding, 4, 8),
+      child: Text(
+        label.toUpperCase(),
+        style: AppUI.sectionLabel,
       ),
     );
   }
