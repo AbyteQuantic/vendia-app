@@ -1,6 +1,9 @@
 // Spec: specs/023-capacidades-opcionales-negocio/spec.md
 // Spec: specs/028-copy-fiar-credito-configurable/spec.md
 // Spec: specs/029-precios-multi-tier/spec.md
+import 'dart:async';
+
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:geolocator/geolocator.dart';
@@ -17,7 +20,10 @@ import '../../widgets/logo_ai_editor_sheet.dart';
 /// Perfil del Negocio — Gerontodiseño: textos grandes, alto contraste,
 /// cero fricción. Fetch real al backend, sin datos hardcodeados.
 class BusinessProfileScreen extends StatefulWidget {
-  const BusinessProfileScreen({super.key});
+  /// Inyectable para tests — evita construir un ApiService/AuthService real.
+  final ApiService? apiOverride;
+
+  const BusinessProfileScreen({super.key, this.apiOverride});
 
   @override
   State<BusinessProfileScreen> createState() => _BusinessProfileScreenState();
@@ -36,6 +42,31 @@ class _BusinessProfileScreenState extends State<BusinessProfileScreen> {
   bool _loading = true;
   bool _saving = false;
   bool _uploadingLogo = false;
+
+  // ── Guardado con feedback de espera (concilio 2026-07-02) ─────────────────
+  // Reporte real del fundador: en señal débil, "Guardando..." se quedaba
+  // estático hasta ~4.7 min (peor caso del interceptor de cold-start) sin
+  // ninguna señal de progreso ni forma de cancelar — un tendero 50+ lo
+  // interpreta como "se rompió" y fuerza el cierre de la app mucho antes,
+  // quedando sin saber si el cambio se guardó. Fix: mensaje que evoluciona
+  // con el tiempo real transcurrido + botón Cancelar (aborta el request vía
+  // CancelToken) + tope explícito con error accionable — nunca un spinner
+  // corriendo sin fin. Ver specs/012-cold-start-resiliencia/spec.md FR-05.
+  Timer? _saveProgressTimer;
+  int _saveElapsedSeconds = 0;
+  CancelToken? _saveCancelToken;
+  static const _saveHardCap = Duration(seconds: 85);
+
+  String get _saveStatusMessage {
+    if (_saveElapsedSeconds >= 20) {
+      return 'Esto está tardando más de lo normal...';
+    }
+    if (_saveElapsedSeconds >= 5) {
+      return 'Seguimos intentando, la señal está débil...';
+    }
+    return 'Guardando...';
+  }
+
   String? _logoUrl;
   // Selección ÚNICA — el backend acepta un array pero la UX enforce
   // una sola categoría para evitar combinaciones ambiguas de feature
@@ -76,12 +107,13 @@ class _BusinessProfileScreenState extends State<BusinessProfileScreen> {
   @override
   void initState() {
     super.initState();
-    _api = ApiService(AuthService());
+    _api = widget.apiOverride ?? ApiService(AuthService());
     _fetchProfile();
   }
 
   @override
   void dispose() {
+    _saveProgressTimer?.cancel();
     _nameCtrl.dispose();
     _nitCtrl.dispose();
     _addressCtrl.dispose();
@@ -309,8 +341,8 @@ class _BusinessProfileScreenState extends State<BusinessProfileScreen> {
       // Reverse geocode NATIVO (móvil) → dirección + ciudad (locality).
       String localCity = '';
       try {
-        final placemarks = await placemarkFromCoordinates(
-            pos.latitude, pos.longitude);
+        final placemarks =
+            await placemarkFromCoordinates(pos.latitude, pos.longitude);
         if (placemarks.isNotEmpty && mounted) {
           final p = placemarks.first;
           localCity = p.locality ?? '';
@@ -337,7 +369,9 @@ class _BusinessProfileScreenState extends State<BusinessProfileScreen> {
       } catch (_) {}
 
       if (mounted) {
-        _showSnack(city.isNotEmpty ? 'Ubicación guardada · $city' : 'Ubicación capturada');
+        _showSnack(city.isNotEmpty
+            ? 'Ubicación guardada · $city'
+            : 'Ubicación capturada');
       }
     } catch (e) {
       if (mounted) _showSnack('Error al obtener ubicacion: $e', isError: true);
@@ -349,13 +383,20 @@ class _BusinessProfileScreenState extends State<BusinessProfileScreen> {
   Future<void> _saveProfile() async {
     if (!_formKey.currentState!.validate()) return;
     if (_selectedTypes.isEmpty) {
-      _showSnack('Seleccione al menos una categoría de negocio',
-          isError: true);
+      _showSnack('Seleccione al menos una categoría de negocio', isError: true);
       return;
     }
 
-    setState(() => _saving = true);
+    setState(() {
+      _saving = true;
+      _saveElapsedSeconds = 0;
+    });
     HapticFeedback.mediumImpact();
+    _saveCancelToken = CancelToken();
+    _saveProgressTimer?.cancel();
+    _saveProgressTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (mounted) setState(() => _saveElapsedSeconds++);
+    });
 
     try {
       // F036: el perfil persiste SOLO los datos del negocio. Las
@@ -372,7 +413,17 @@ class _BusinessProfileScreenState extends State<BusinessProfileScreen> {
         if (_longitude != 0) 'longitude': _longitude,
       };
 
-      final response = await _api.updateBusinessProfile(updates);
+      // Tope explícito (specs/012 FR-05: la UI nunca queda colgada
+      // indefinidamente). Si se cumple, cancela el request en curso —
+      // sin esto, un estancamiento sin excepción de Dio (ver comentario
+      // en api_service.dart sobre sendTimeout) dejaría el botón
+      // "Guardando..." sin límite real.
+      final response = await _api
+          .updateBusinessProfile(updates, cancelToken: _saveCancelToken)
+          .timeout(_saveHardCap, onTimeout: () {
+        _saveCancelToken?.cancel('tope local de guardado agotado');
+        throw TimeoutException('save-profile-timeout');
+      });
       // Refrescar cache local de feature_flags + business_types — al
       // cambiar el tipo de negocio o toggles desde aquí, el Dashboard
       // (que lee de disco) tiene que ver el cambio al volver.
@@ -381,11 +432,31 @@ class _BusinessProfileScreenState extends State<BusinessProfileScreen> {
       if (!mounted) return;
       _showSnack('Perfil guardado correctamente');
       Navigator.of(context).pop();
+    } on DioException catch (e) {
+      if (!mounted) return;
+      if (e.type == DioExceptionType.cancel) {
+        _showSnack('Guardado cancelado.');
+      } else {
+        _showSnack('Error al guardar: $e', isError: true);
+      }
+    } on TimeoutException {
+      if (mounted) {
+        _showSnack(
+          'No pudimos guardar. Verifique su conexión e intente de nuevo.',
+          isError: true,
+        );
+      }
     } catch (e) {
       if (mounted) _showSnack('Error al guardar: $e', isError: true);
     } finally {
+      _saveProgressTimer?.cancel();
+      _saveCancelToken = null;
       if (mounted) setState(() => _saving = false);
     }
+  }
+
+  void _cancelSave() {
+    _saveCancelToken?.cancel('cancelado por el usuario');
   }
 
   void _showSnack(String msg, {bool isError = false}) {
@@ -500,7 +571,9 @@ class _BusinessProfileScreenState extends State<BusinessProfileScreen> {
               child: OutlinedButton.icon(
                 onPressed: _gettingLocation ? null : _captureLocation,
                 icon: _gettingLocation
-                    ? const SizedBox(width: 20, height: 20,
+                    ? const SizedBox(
+                        width: 20,
+                        height: 20,
                         child: CircularProgressIndicator(strokeWidth: 2))
                     : const Icon(Icons.my_location_rounded),
                 label: Text(
@@ -509,14 +582,15 @@ class _BusinessProfileScreenState extends State<BusinessProfileScreen> {
                       : _latitude != 0
                           ? 'Ubicacion capturada'
                           : 'Capturar mi ubicacion actual',
-                  style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w600),
+                  style: const TextStyle(
+                      fontSize: 17, fontWeight: FontWeight.w600),
                 ),
                 style: OutlinedButton.styleFrom(
-                  foregroundColor: _latitude != 0
-                      ? AppTheme.success : AppTheme.primary,
+                  foregroundColor:
+                      _latitude != 0 ? AppTheme.success : AppTheme.primary,
                   side: BorderSide(
-                    color: _latitude != 0
-                        ? AppTheme.success : AppTheme.primary),
+                      color:
+                          _latitude != 0 ? AppTheme.success : AppTheme.primary),
                   shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(16)),
                 ),
@@ -525,8 +599,7 @@ class _BusinessProfileScreenState extends State<BusinessProfileScreen> {
             const SizedBox(height: 24),
 
             // ── Categorías del negocio (MULTI-SELECT) ─────────────
-            _buildLabel(
-                'Seleccione una o varias categorías de su negocio'),
+            _buildLabel('Seleccione una o varias categorías de su negocio'),
             const SizedBox(height: 4),
             const Padding(
               padding: EdgeInsets.only(left: 4, bottom: 8),
@@ -596,9 +669,7 @@ class _BusinessProfileScreenState extends State<BusinessProfileScreen> {
                     : Colors.white,
                 borderRadius: BorderRadius.circular(16),
                 border: Border.all(
-                  color: selected
-                      ? AppTheme.primary
-                      : const Color(0xFFD6D0C8),
+                  color: selected ? AppTheme.primary : const Color(0xFFD6D0C8),
                   width: selected ? 2 : 1,
                 ),
               ),
@@ -633,7 +704,8 @@ class _BusinessProfileScreenState extends State<BusinessProfileScreen> {
                   Icon(
                     icon,
                     size: 20,
-                    color: selected ? AppTheme.primary : const Color(0xFF6B6B6B),
+                    color:
+                        selected ? AppTheme.primary : const Color(0xFF6B6B6B),
                   ),
                   const SizedBox(width: 6),
                   Expanded(
@@ -795,29 +867,73 @@ class _BusinessProfileScreenState extends State<BusinessProfileScreen> {
           ),
         ],
       ),
-      child: SizedBox(
-        width: double.infinity,
-        height: 64,
-        child: ElevatedButton.icon(
-          onPressed: _saving ? null : _saveProfile,
-          icon: _saving
-              ? const SizedBox(
-                  width: 24,
-                  height: 24,
-                  child: CircularProgressIndicator(
-                      color: Colors.white, strokeWidth: 2.5))
-              : const Text('\u{1F4BE}', style: TextStyle(fontSize: 24)),
-          label: Text(
-            _saving ? 'Guardando...' : 'Guardar Cambios',
-            style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (_saving) _buildSavingStatusRow(),
+          _buildSaveButton(),
+        ],
+      ),
+    );
+  }
+
+  /// Fila de estado mientras se guarda: mensaje que evoluciona con el
+  /// tiempo real transcurrido + botón Cancelar (visible tras 5s, para no
+  /// generar ruido en el caso normal de <2s). Ver comentario junto a
+  /// `_saveProgressTimer`.
+  Widget _buildSavingStatusRow() {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              _saveStatusMessage,
+              key: const Key('save_status_message'),
+              style: const TextStyle(
+                fontSize: 14,
+                color: AppTheme.textSecondary,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
           ),
-          style: ElevatedButton.styleFrom(
-            backgroundColor: AppTheme.success,
-            foregroundColor: Colors.white,
-            disabledBackgroundColor: AppTheme.success.withValues(alpha: 0.6),
-            shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(20)),
-          ),
+          if (_saveElapsedSeconds >= 5)
+            TextButton(
+              key: const Key('btn_cancel_save'),
+              onPressed: _cancelSave,
+              child: const Text(
+                'Cancelar',
+                style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSaveButton() {
+    return SizedBox(
+      width: double.infinity,
+      height: 64,
+      child: ElevatedButton.icon(
+        onPressed: _saving ? null : _saveProfile,
+        icon: _saving
+            ? const SizedBox(
+                width: 24,
+                height: 24,
+                child: CircularProgressIndicator(
+                    color: Colors.white, strokeWidth: 2.5))
+            : const Text('\u{1F4BE}', style: TextStyle(fontSize: 24)),
+        label: Text(
+          _saving ? 'Guardando...' : 'Guardar Cambios',
+          style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
+        ),
+        style: ElevatedButton.styleFrom(
+          backgroundColor: AppTheme.success,
+          foregroundColor: Colors.white,
+          disabledBackgroundColor: AppTheme.success.withValues(alpha: 0.6),
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         ),
       ),
     );

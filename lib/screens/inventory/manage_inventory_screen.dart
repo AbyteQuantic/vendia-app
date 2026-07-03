@@ -79,9 +79,16 @@ class _ManageInventoryScreenState extends State<ManageInventoryScreen>
       // (con receta y foto). Los platos incompletos (sin receta) no son productos
       // listos → se gestionan/completan en "Mis recetas" (badge Incompleto), no
       // aquí. Antes salían como "Plato de menú" sin foto y confundían. Spec 078.
-      final res = await _api.fetchProducts(page: 1, perPage: 100, sellableOnly: true);
-      final data = res['data'] as List? ?? [];
-      final products = data.cast<Map<String, dynamic>>();
+      //
+      // Auditoría 2026-07-02: esta pantalla pedía UNA sola página
+      // (page:1, perPage:100) sin loopear el resto — cualquier sede con
+      // más de 100 referencias (ya ocurre en prod, ej. 11.137 productos
+      // VTEX importados) quedaba con productos invisibles incluso
+      // buscándolos, porque el buscador filtra sobre lo ya cargado
+      // (`_applyFilter`), no vuelve a pedir al backend. `fetchAllProducts`
+      // recorre todas las páginas (mismo patrón que cart_controller.dart
+      // ya aplica para el POS, Spec 088).
+      final products = await _api.fetchAllProducts(sellableOnly: true);
       if (!mounted) return;
       setState(() {
         _products = products;

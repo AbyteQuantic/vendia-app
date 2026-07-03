@@ -9,6 +9,7 @@
 //   - Al llegar al último paso el botón muestra "Empezar" y al
 //     tocarlo dispara PATCH + onCompleted.
 
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
@@ -25,7 +26,8 @@ class _FakeApi extends ApiService {
 
   @override
   Future<Map<String, dynamic>> updateBusinessProfile(
-      Map<String, dynamic> data) async {
+      Map<String, dynamic> data,
+      {CancelToken? cancelToken}) async {
     lastPatch = data;
     return data;
   }

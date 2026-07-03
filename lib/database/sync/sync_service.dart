@@ -55,6 +55,10 @@ class SyncService extends ChangeNotifier {
     ));
   }
 
+  @visibleForTesting
+  set httpClientAdapterForTesting(HttpClientAdapter adapter) =>
+      _dio.httpClientAdapter = adapter;
+
   Future<void> startBackgroundSync() async {
     _connectivity.addListener(_onConnectivityChange);
     await _refreshPendingCount();
@@ -194,37 +198,66 @@ class SyncService extends ChangeNotifier {
     }
   }
 
-  Future<void> _pullFromServer() async {
-    try {
-      final token = await _auth.getToken();
-      if (token == null) return;
+  /// Trae TODAS las páginas de `/api/v1/products` (no solo la primera) para
+  /// alimentar la caché Isar que usa el POS offline. Devuelve `null` si no
+  /// hay token (nada que sincronizar aún).
+  ///
+  /// Auditoría 2026-07-02: esta llamada corre cada 30s (`Timer.periodic`) y
+  /// antes hacía UNA sola petición sin `page`/`per_page` — el backend cae a
+  /// su default `per_page=20` (`pagination.go`) y `replaceAllProducts`
+  /// REEMPLAZA toda la caché Isar por esos 20 productos. En un tenant con
+  /// más de 20 SKU esto truncaba silenciosamente el catálogo offline del
+  /// POS cada medio minuto, en móvil real (Art. II). Mismo patrón de
+  /// paginación completa que Spec 088 ya aplicó en cart_controller.dart —
+  /// tope de seguridad 50 páginas (5000 productos).
+  ///
+  /// Extraído como método público (`@visibleForTesting`) porque la
+  /// escritura a Isar (`_db.replaceAllProducts`) no es testeable sin un
+  /// Isar real inicializado (ver `integration_test/isar_persistence_test.dart`)
+  /// — este método sí lo es, con un `HttpClientAdapter` de prueba.
+  @visibleForTesting
+  Future<List<LocalProduct>?> fetchAllProductPagesForSync() async {
+    final token = await _auth.getToken();
+    if (token == null) return null;
 
-      // Spec 014: the POS reads products from Isar, populated here.
-      // Inventario and Dashboard fetch with `?branch_id=` via
-      // ApiService.fetchProducts. This pull must use the SAME sede
-      // scope so all three screens see one consistent set — otherwise
-      // the POS shows products the other screens never load.
-      final params = <String, dynamic>{
-        // Caché Isar = fuente del POS: NO guardar platos de menú incompletos
-        // (sin receta con ingredientes). Así no aparecen en ventas y, al leer
-        // de Isar, el filtro se mantiene aun offline. Spec 078.
-        'sellable_only': 'true',
-      };
-      final branchId = ApiService.currentBranchId;
-      if (branchId != null && branchId.isNotEmpty) {
-        params['branch_id'] = branchId;
-      }
+    // Spec 014: el POS lee productos de Isar, poblada aquí. Inventario y
+    // Dashboard hacen fetch con `?branch_id=` vía ApiService.fetchProducts.
+    // Este pull debe usar el MISMO scope de sede para que las tres
+    // pantallas vean el mismo set — de lo contrario el POS muestra
+    // productos que las otras nunca cargan.
+    final params = <String, dynamic>{
+      // Caché Isar = fuente del POS: NO guardar platos de menú incompletos
+      // (sin receta con ingredientes). Así no aparecen en ventas y, al leer
+      // de Isar, el filtro se mantiene aun offline. Spec 078.
+      'sellable_only': 'true',
+    };
+    final branchId = ApiService.currentBranchId;
+    if (branchId != null && branchId.isNotEmpty) {
+      params['branch_id'] = branchId;
+    }
 
+    final products = <LocalProduct>[];
+    var page = 1;
+    var totalPages = 1;
+    do {
       final response = await _dio.get(
         '/api/v1/products',
-        queryParameters: params,
+        queryParameters: {...params, 'page': page, 'per_page': 100},
         options: Options(headers: {'Authorization': 'Bearer $token'}),
       );
-
       final list = (response.data['data'] as List?) ?? [];
-      final products = list
-          .map((e) => LocalProduct.fromJson(e as Map<String, dynamic>))
-          .toList();
+      products.addAll(
+          list.map((e) => LocalProduct.fromJson(e as Map<String, dynamic>)));
+      totalPages = (response.data['total_pages'] as num?)?.toInt() ?? 1;
+      page++;
+    } while (page <= totalPages && page <= 50);
+    return products;
+  }
+
+  Future<void> _pullFromServer() async {
+    try {
+      final products = await fetchAllProductPagesForSync();
+      if (products == null) return; // sin token — nada que sincronizar aún
       // Replace all local products with server data (removes deleted ones)
       await _db.replaceAllProducts(products);
     } catch (e) {
