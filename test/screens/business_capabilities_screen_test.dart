@@ -9,6 +9,7 @@
 //   - al venir con `highlightCapability`, el tile correspondiente
 //     pulsa (escala 1.0→1.1→1.0 + tinte de color) durante ~2s.
 
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -32,7 +33,8 @@ class _FakeApi extends ApiService {
 
   @override
   Future<Map<String, dynamic>> updateBusinessProfile(
-      Map<String, dynamic> data) async {
+      Map<String, dynamic> data,
+      {CancelToken? cancelToken}) async {
     lastPatch = data;
     return data;
   }

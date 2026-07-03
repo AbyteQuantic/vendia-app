@@ -57,8 +57,31 @@ class ApiService {
             ] {
     _dio = Dio(BaseOptions(
       baseUrl: ApiConfig.baseUrl,
-      connectTimeout: const Duration(seconds: 60),
+      // Spec 012 D2 promete una ventana total de reintentos de ~60-90s para
+      // absorber un cold-start de Render (FR-01/FR-05: "la UI nunca queda
+      // colgada indefinidamente"). connectTimeout solo acota el handshake
+      // TCP+TLS (la transferencia sigue cubierta por receiveTimeout, sin
+      // tocar). Con el viejo valor de 60s, ColdStartRetryInterceptor's 4
+      // intentos (connectionError/connectionTimeout, ver
+      // cold_start_retry_interceptor.dart) daban un peor caso real de
+      // 4×60s + 42s ≈ 282s — casi 5 minutos sintiéndose "colgado" para el
+      // tendero, muy por encima de lo que el propio spec 012 promete.
+      // Concilio 2026-07-02: bajar a 10s da 4×10s+42s=82s, dentro de la
+      // ventana prometida, sin reducir el número de reintentos (un
+      // handshake típico tarda 1-3s incluso en 3G).
+      connectTimeout: const Duration(seconds: 10),
       receiveTimeout: const Duration(seconds: 60),
+      // sendTimeout se deja SIN fijar a propósito (igual que antes): más de
+      // 25 endpoints de este archivo suben fotos/audio/video por multipart
+      // sin override propio, y un cold-start + señal débil puede hacer que
+      // el envío de un archivo real tarde perfectamente más de 30-60s. El
+      // gap que esto deja (un estancamiento post-handshake nunca lanza
+      // DioException, así que ni el interceptor de cold-start ni
+      // AppError.fromDioException lo ven) se cubre a nivel de pantalla con
+      // un `.timeout()` explícito + CancelToken donde el flujo lo necesita
+      // (ver business_profile_screen.dart), no con un default global que
+      // rompería uploads legítimamente lentos en la misma red mala que
+      // queremos proteger.
       headers: {'Content-Type': 'application/json'},
     ));
 
@@ -478,8 +501,9 @@ class ApiService {
     int perPage = 20,
     String? branchId,
     // sellableOnly: oculta los platos de menú INCOMPLETOS (sin receta con
-    // ingredientes, no costeables). Lo usa SOLO el POS / la caché Isar; el
-    // inventario lo deja en false para poder verlos y completarlos. Spec 078.
+    // ingredientes, no costeables). Lo usa el POS/la caché Isar Y, desde
+    // Spec 078, también Mi Inventario (para no mostrar platos a medio
+    // configurar como si fueran vendibles).
     bool sellableOnly = false,
   }) async {
     try {
@@ -493,6 +517,37 @@ class ApiService {
     } on DioException catch (e) {
       throw AppError.fromDioException(e);
     }
+  }
+
+  /// Trae TODAS las páginas del catálogo, no solo la primera — el backend
+  /// capa `per_page` a 100 por llamada (`pagination.go`), así que un tenant
+  /// con más de 100 SKU en el scope pedido queda truncado si el caller hace
+  /// una sola llamada. Recorre hasta `total_pages` con tope de seguridad 50
+  /// páginas (5000 productos). Mismo patrón que `cart_controller.dart` ya
+  /// aplica para el catálogo del POS (Spec 088); este helper existe para
+  /// que los demás call sites (Mi Inventario, selectores de producto,
+  /// constructores de combos/órdenes) no reimplementen el loop cada vez.
+  Future<List<Map<String, dynamic>>> fetchAllProducts({
+    String? branchId,
+    bool sellableOnly = false,
+  }) async {
+    final all = <Map<String, dynamic>>[];
+    var page = 1;
+    var totalPages = 1;
+    do {
+      final res = await fetchProducts(
+        page: page,
+        perPage: 100,
+        branchId: branchId,
+        sellableOnly: sellableOnly,
+      );
+      final data = (res['data'] as List? ?? const [])
+          .cast<Map<String, dynamic>>();
+      all.addAll(data);
+      totalPages = (res['total_pages'] as num?)?.toInt() ?? 1;
+      page++;
+    } while (page <= totalPages && page <= 50);
+    return all;
   }
 
   /// Lookup a product by barcode across the entire tenant (no branch filter).
@@ -583,7 +638,9 @@ class ApiService {
       final r = await _dio.post('/api/v1/products/suggest-categories',
           options: Options(receiveTimeout: const Duration(seconds: 35)));
       final data = (r.data is Map) ? r.data['data'] : null;
-      return (data is List) ? data.map((e) => Map<String, dynamic>.from(e as Map)).toList() : [];
+      return (data is List)
+          ? data.map((e) => Map<String, dynamic>.from(e as Map)).toList()
+          : [];
     } on DioException catch (e) {
       throw AppError.fromDioException(e);
     }
@@ -592,7 +649,8 @@ class ApiService {
   /// Spec 078 — aplica las categorías que el tenant confirmó/editó. items: [{id, category}].
   Future<int> bulkUpdateCategories(List<Map<String, dynamic>> items) async {
     try {
-      final r = await _dio.post('/api/v1/products/categories/bulk', data: {'items': items});
+      final r = await _dio
+          .post('/api/v1/products/categories/bulk', data: {'items': items});
       final data = (r.data is Map) ? r.data['data'] : null;
       return (data is Map) ? ((data['updated'] as num?)?.toInt() ?? 0) : 0;
     } on DioException catch (e) {
@@ -873,7 +931,8 @@ class ApiService {
   /// Spec 075 F3 — el proveedor cambia el estado de un pedido entrante.
   Future<void> updateSupplierOrderStatus(String orderId, String status) async {
     try {
-      await _dio.patch('/api/v1/supplier/orders/$orderId', data: {'status': status});
+      await _dio
+          .patch('/api/v1/supplier/orders/$orderId', data: {'status': status});
     } on DioException catch (e) {
       throw AppError.fromDioException(e);
     }
@@ -985,9 +1044,13 @@ class ApiService {
       final r = await _dio.post('/api/v1/errands/$errandId/receive',
           data: lines != null ? {'lines': lines} : null);
       final data = (r.data is Map) ? r.data['data'] : null;
-      final received = (data is Map) ? ((data['received'] as num?)?.toInt() ?? 0) : 0;
-      final skipped = (data is Map) ? ((data['skipped'] as num?)?.toInt() ?? 0) : 0;
-      final status = (data is Map) ? (data['status'] ?? 'comprado').toString() : 'comprado';
+      final received =
+          (data is Map) ? ((data['received'] as num?)?.toInt() ?? 0) : 0;
+      final skipped =
+          (data is Map) ? ((data['skipped'] as num?)?.toInt() ?? 0) : 0;
+      final status = (data is Map)
+          ? (data['status'] ?? 'comprado').toString()
+          : 'comprado';
       return (received: received, skipped: skipped, status: status);
     } on DioException catch (e) {
       throw AppError.fromDioException(e);
@@ -996,12 +1059,15 @@ class ApiService {
 
   /// Spec 078 B2 — productos de tienda en/bajo su mínimo (para reordenar al mismo
   /// flujo de mandado/ingreso). Devuelve {items, total_estimated}.
-  Future<({List<Map<String, dynamic>> items, double total})> fetchProductReorderList() async {
+  Future<({List<Map<String, dynamic>> items, double total})>
+      fetchProductReorderList() async {
     try {
       final r = await _dio.get('/api/v1/products/reorder-list');
       final data = (r.data is Map) ? r.data['data'] : null;
       final list = (data is Map) ? data['items'] : null;
-      final total = (data is Map) ? ((data['total_estimated'] as num?)?.toDouble() ?? 0) : 0.0;
+      final total = (data is Map)
+          ? ((data['total_estimated'] as num?)?.toDouble() ?? 0)
+          : 0.0;
       final items = (list is List)
           ? list.map((e) => Map<String, dynamic>.from(e as Map)).toList()
           : <Map<String, dynamic>>[];
@@ -1013,7 +1079,8 @@ class ApiService {
 
   /// Spec 078 — Centro de Tareas: trae las tareas pendientes agregadas (deriva
   /// de las entidades reales) con sus contadores por urgencia.
-  Future<({List<Map<String, dynamic>> tasks, Map<String, dynamic> counts})> fetchTasks({String branchId = ''}) async {
+  Future<({List<Map<String, dynamic>> tasks, Map<String, dynamic> counts})>
+      fetchTasks({String branchId = ''}) async {
     try {
       final r = await _dio.get('/api/v1/tasks',
           queryParameters: branchId.isEmpty ? null : {'branch_id': branchId});
@@ -1034,7 +1101,8 @@ class ApiService {
   /// Spec 078 — pospone ("snooze") una tarea agregada (reorder/perishable).
   Future<void> dismissTask(String taskId, {int hours = 24}) async {
     try {
-      await _dio.post('/api/v1/tasks/dismiss', data: {'task_id': taskId, 'hours': hours});
+      await _dio.post('/api/v1/tasks/dismiss',
+          data: {'task_id': taskId, 'hours': hours});
     } on DioException catch (e) {
       throw AppError.fromDioException(e);
     }
@@ -1115,7 +1183,8 @@ class ApiService {
 
   /// Spec 077 — "reenviar pedido del día": si hoy ya hay un mandado con los
   /// MISMOS insumos, lo devuelve (o null).
-  Future<Map<String, dynamic>?> matchTodayErrand(List<String> ingredientIds) async {
+  Future<Map<String, dynamic>?> matchTodayErrand(
+      List<String> ingredientIds) async {
     try {
       final r = await _dio.post('/api/v1/errands/match-today',
           data: {'ingredient_ids': ingredientIds});
@@ -1131,8 +1200,8 @@ class ApiService {
   Future<Map<String, dynamic>> fetchShoppingList(
       List<Map<String, dynamic>> needs) async {
     try {
-      final r = await _dio.post('/api/v1/supplies/shopping-list',
-          data: {'needs': needs});
+      final r = await _dio
+          .post('/api/v1/supplies/shopping-list', data: {'needs': needs});
       return _extractData(r);
     } on DioException catch (e) {
       throw AppError.fromDioException(e);
@@ -1164,10 +1233,11 @@ class ApiService {
 
   /// Spec 076 — alistar insumos del día: menú de la fecha → recetas → insumos
   /// por-porción. Devuelve {date, weekday, dishes:[...]}.
-  Future<Map<String, dynamic>> fetchSuppliesPrepList({required String date}) async {
+  Future<Map<String, dynamic>> fetchSuppliesPrepList(
+      {required String date}) async {
     try {
-      final r = await _dio.get('/api/v1/supplies/prep-list',
-          queryParameters: {'date': date});
+      final r = await _dio
+          .get('/api/v1/supplies/prep-list', queryParameters: {'date': date});
       return _extractData(r); // data es Map {date, weekday, dishes}
     } on DioException catch (e) {
       throw AppError.fromDioException(e);
@@ -1176,7 +1246,8 @@ class ApiService {
 
   /// Spec 075 — proveedores cercanos a la tienda (descubrimiento por cercanía).
   /// Lista ordenada por distancia. OJO: NO usar _extractData (devuelve LISTA).
-  Future<List<Map<String, dynamic>>> fetchNearbySuppliers({double radiusKm = 5}) async {
+  Future<List<Map<String, dynamic>>> fetchNearbySuppliers(
+      {double radiusKm = 5}) async {
     try {
       final response = await _dio.get('/api/v1/suppliers/nearby',
           queryParameters: {'radius_km': radiusKm});
@@ -1193,7 +1264,8 @@ class ApiService {
 
   /// Spec 075 — variante que además devuelve el `origin` {lat,lng} del negocio
   /// para centrar la vista de MAPA. Devuelve {data:[...], origin:{lat,lng}}.
-  Future<Map<String, dynamic>> fetchNearbySuppliersFull({double radiusKm = 5}) async {
+  Future<Map<String, dynamic>> fetchNearbySuppliersFull(
+      {double radiusKm = 5}) async {
     try {
       final response = await _dio.get('/api/v1/suppliers/nearby',
           queryParameters: {'radius_km': radiusKm});
@@ -1217,7 +1289,9 @@ class ApiService {
       final response = await _dio.get('/api/v1/market/nearby',
           queryParameters: {'radius_km': radiusKm});
       final body = response.data;
-      return body is Map ? Map<String, dynamic>.from(body) : <String, dynamic>{};
+      return body is Map
+          ? Map<String, dynamic>.from(body)
+          : <String, dynamic>{};
     } on DioException catch (e) {
       throw AppError.fromDioException(e);
     }
@@ -1360,7 +1434,8 @@ class ApiService {
     String? presentation,
     String? content,
     String? instruction,
-    String? mode, // Spec 094: 'studio' = foto de estudio generativa (otro ángulo)
+    String?
+        mode, // Spec 094: 'studio' = foto de estudio generativa (otro ángulo)
   }) async {
     final params = <String, String>{};
     if (name != null && name.isNotEmpty) params['name'] = name;
@@ -1505,7 +1580,8 @@ class ApiService {
     try {
       final bytes = await image.readAsBytes();
       final formData = FormData.fromMap({
-        'image': MultipartFile.fromBytes(bytes, filename: image.name.isNotEmpty ? image.name : 'factura.jpg'),
+        'image': MultipartFile.fromBytes(bytes,
+            filename: image.name.isNotEmpty ? image.name : 'factura.jpg'),
       });
       final response = await _dio.post('/api/v1/inventory/scan-invoice',
           data: formData,
@@ -1567,7 +1643,8 @@ class ApiService {
     try {
       final form = <String, dynamic>{
         if (text.isNotEmpty) 'text': text,
-        if (current != null && current.isNotEmpty) 'current': jsonEncode(current),
+        if (current != null && current.isNotEmpty)
+          'current': jsonEncode(current),
         if (audioBytes != null)
           'audio': MultipartFile.fromBytes(
             audioBytes,
@@ -1872,7 +1949,8 @@ class ApiService {
   // ── Spec 084 Fase 2 — agenda de citas/turnos ───────────────────────────
 
   /// Agenda del salón en un rango (default backend [ayer,+90d]).
-  Future<List<dynamic>> getAppointments({String? from, String? until, String? status}) async {
+  Future<List<dynamic>> getAppointments(
+      {String? from, String? until, String? status}) async {
     try {
       final params = <String, dynamic>{};
       if (from != null) params['from'] = from;
@@ -1891,8 +1969,7 @@ class ApiService {
   Future<Map<String, dynamic>> updateAppointment(
       String id, Map<String, dynamic> data) async {
     try {
-      final response =
-          await _dio.patch('/api/v1/appointments/$id', data: data);
+      final response = await _dio.patch('/api/v1/appointments/$id', data: data);
       return _extractData(response);
     } on DioException catch (e) {
       throw AppError.fromDioException(e);
@@ -1912,8 +1989,8 @@ class ApiService {
   }
 
   /// Convierte una cita atendida en venta (congela la comisión).
-  Future<Map<String, dynamic>> convertAppointment(
-      String id, {String paymentMethod = 'cash'}) async {
+  Future<Map<String, dynamic>> convertAppointment(String id,
+      {String paymentMethod = 'cash'}) async {
     try {
       final response = await _dio.post('/api/v1/appointments/$id/convert',
           data: {'payment_method': paymentMethod});
@@ -2393,7 +2470,8 @@ class ApiService {
 
   /// Genera el diseño del CERTIFICADO del evento con IA (F042 FR-12).
   /// [brief] es la indicación opcional del organizador para guiar a la IA.
-  Future<String> generateEventCertificate(String eventId, {String? brief}) async {
+  Future<String> generateEventCertificate(String eventId,
+      {String? brief}) async {
     try {
       final response = await _dio.post(
         '/api/v1/events/$eventId/certificate/ai-generate',
@@ -2455,13 +2533,14 @@ class ApiService {
   /// ([asset] = 'poster' | 'badge' | 'certificate') como alternativa a la IA
   /// (F042 FR-11/13). Devuelve la URL persistida en la plantilla del evento.
   /// La imagen se normaliza a PNG (HEIC/web) antes de enviarse.
-  Future<String> uploadEventAsset(String eventId, String asset, XFile image) async {
+  Future<String> uploadEventAsset(
+      String eventId, String asset, XFile image) async {
     try {
       final formData = FormData.fromMap({
         'image': await imageMultipart(image, prefix: asset),
       });
-      final response =
-          await _dio.post('/api/v1/events/$eventId/$asset/upload', data: formData);
+      final response = await _dio.post('/api/v1/events/$eventId/$asset/upload',
+          data: formData);
       final data = (response.data as Map<String, dynamic>)['data']
           as Map<String, dynamic>;
       return (data['image_url'] as String?) ?? '';
@@ -3233,12 +3312,19 @@ class ApiService {
 
   /// Spec 078 — dónde está activa la receta en los menús (días/fechas) y si está
   /// en el menú de HOY, para decidir si bloquear o confirmar la eliminación.
-  Future<({bool activeToday, bool inMenu, List<String> dayLabels, String summary})>
-      recipeMenuUsage(String uuid) async {
+  Future<
+      ({
+        bool activeToday,
+        bool inMenu,
+        List<String> dayLabels,
+        String summary
+      })> recipeMenuUsage(String uuid) async {
     try {
       final r = await _dio.get('/api/v1/recipes/$uuid/menu-usage');
       final d = (r.data is Map) ? (r.data['data'] as Map?) : null;
-      final labels = (d?['day_labels'] as List?)?.map((e) => e.toString()).toList() ?? <String>[];
+      final labels =
+          (d?['day_labels'] as List?)?.map((e) => e.toString()).toList() ??
+              <String>[];
       return (
         activeToday: d?['active_today'] == true,
         inMenu: d?['in_menu'] == true,
@@ -3711,8 +3797,8 @@ class ApiService {
   /// scopeado a la sede activa. Sin sede (default currentBranchId vacío), el
   /// combo queda GLOBAL (visible en todas las sedes) — mismo comportamiento
   /// de siempre.
-  Future<Map<String, dynamic>> createPromotion(
-      Map<String, dynamic> data, {String? branchId}) async {
+  Future<Map<String, dynamic>> createPromotion(Map<String, dynamic> data,
+      {String? branchId}) async {
     try {
       final bid = branchId ?? currentBranchId;
       final params = <String, dynamic>{};
@@ -4073,9 +4159,15 @@ class ApiService {
   }
 
   Future<Map<String, dynamic>> updateBusinessProfile(
-      Map<String, dynamic> data) async {
+    Map<String, dynamic> data, {
+    CancelToken? cancelToken,
+  }) async {
     try {
-      final response = await _dio.patch('/api/v1/store/profile', data: data);
+      final response = await _dio.patch(
+        '/api/v1/store/profile',
+        data: data,
+        cancelToken: cancelToken,
+      );
       return _extractData(response);
     } on DioException catch (e) {
       throw AppError.fromDioException(e);

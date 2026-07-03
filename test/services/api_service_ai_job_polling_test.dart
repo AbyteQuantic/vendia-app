@@ -53,6 +53,7 @@ class _ScriptedAdapter implements HttpClientAdapter {
   int postCount = 0;
   int getCount = 0;
   final List<String> requestedPaths = <String>[];
+  final List<Map<String, dynamic>> postQueryParameters = <Map<String, dynamic>>[];
 
   @override
   Future<ResponseBody> fetch(
@@ -64,6 +65,7 @@ class _ScriptedAdapter implements HttpClientAdapter {
 
     if (options.method == 'POST') {
       postCount++;
+      postQueryParameters.add(options.queryParameters);
       return _json(202, {
         'data': {'job_id': jobId, 'status': 'processing'},
       });
@@ -157,6 +159,44 @@ void main() {
           '/api/v1/products/$productId/enhance');
       expect(adapter.requestedPaths[1],
           '/api/v1/products/$productId/ai-job/$jobId');
+    });
+
+    test(
+        'serializa mode/instruction como query params — cada uno de los 4 '
+        'modos de Spec 094 debe llegar al backend con el nombre exacto que '
+        'lee c.Query("mode")/c.Query("instruction") en inventory.go',
+        () async {
+      final done = {
+        'status': 'done',
+        'photo_url': 'https://cdn.vendia.store/products/$productId.png',
+      };
+
+      // "Quitar fondo" (fiel, sin mode) — sin instruction ni mode.
+      var adapter = _ScriptedAdapter(jobId: jobId, pollResponses: [done]);
+      await buildApi(adapter).enhanceProductPhoto(productId);
+      expect(adapter.postQueryParameters.single, isEmpty);
+
+      // "Mejorar con IA" (fiel, mode=improve).
+      adapter = _ScriptedAdapter(jobId: jobId, pollResponses: [done]);
+      await buildApi(adapter).enhanceProductPhoto(productId, mode: 'improve');
+      expect(adapter.postQueryParameters.single, {'mode': 'improve'});
+
+      // "Foto de estudio" (generativo, mode=studio).
+      adapter = _ScriptedAdapter(jobId: jobId, pollResponses: [done]);
+      await buildApi(adapter).enhanceProductPhoto(productId, mode: 'studio');
+      expect(adapter.postQueryParameters.single, {'mode': 'studio'});
+
+      // FR-05 "Dar indicaciones" (generativo, instruction manda incluso si
+      // también llega un mode — el backend prioriza instruction primero en
+      // el switch de enhancePhotoWorker).
+      adapter = _ScriptedAdapter(jobId: jobId, pollResponses: [done]);
+      await buildApi(adapter).enhanceProductPhoto(
+        productId,
+        mode: 'improve',
+        instruction: '  el color se ve muy oscuro  ',
+      );
+      expect(adapter.postQueryParameters.single,
+          {'mode': 'improve', 'instruction': 'el color se ve muy oscuro'});
     });
 
     test(
