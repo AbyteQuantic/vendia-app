@@ -82,6 +82,10 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
   String? _originalPhotoUrl;
   String? _pendingUuid; // set after create, before enhance
   String? _pendingCatalogImageId; // set after enhance/generate, sent on save
+  // Auditoría 2026-07-03: true cuando el tendero ya confirmó "crear de
+  // todas formas" tras el aviso de posible duplicado — evita mostrar el
+  // mismo diálogo dos veces al reintentar _save().
+  bool _confirmedDuplicate = false;
   List<String> _catalogImages = []; // accepted images from catalog
   // Spec 018 / FR-04: the product name the catalog strip was captured for.
   // Once the typed name diverges from this, the strip is dropped so it can
@@ -1211,6 +1215,11 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
 
     final productName = _nameCtrl.text.trim();
     bool savedOk = false;
+    // Auditoría 2026-07-03: si createProduct falla como duplicado, el
+    // catch más abajo necesita saber si _pendingUuid lo puso ESTA llamada
+    // (creación nueva, hay que limpiarlo para reintentar) o ya venía de un
+    // borrador de "Mejorar foto con IA" (ahí sí hay que preservarlo).
+    final wasNewCreation = _pendingUuid == null;
 
     try {
       final id = _pendingUuid ?? const Uuid().v4();
@@ -1291,7 +1300,7 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
               if (_pendingCatalogImageId != null)
                 'catalog_image_id': _pendingCatalogImageId,
               ...tierExtras,
-            });
+            }, forceCreate: _confirmedDuplicate);
           }
 
           // Upload local photo if taken from camera/gallery.
@@ -1354,8 +1363,24 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
           final r = await Connectivity().checkConnectivity();
           return r.any((c) => c != ConnectivityResult.none);
         },
+        // Auditoría 2026-07-03: un duplicado rechazado por el servidor NO es
+        // un problema de red — guardarlo local+pendiente crearía OTRA copia
+        // del mismo producto. Se re-lanza para manejarlo abajo con un
+        // diálogo en vez de caer al camino offline normal.
+        isFatal: (e) => e is AppError && e.errorCode == 'duplicate_product',
       );
       savedOk = outcome.savedLocally;
+    } on AppError catch (e) {
+      if (e.errorCode == 'duplicate_product' && !_confirmedDuplicate) {
+        if (wasNewCreation) _pendingUuid = null; // nada se creó, id sigue libre
+        if (mounted) setState(() => _saving = false);
+        if (!mounted) return;
+        await _handleDuplicateProduct(e);
+        return;
+      }
+      // Cualquier otro AppError (validación, servidor caído, etc.) sigue el
+      // mismo camino que antes: no se guardó, se avisa y se puede reintentar.
+      savedOk = false;
     } catch (_) {
       // El guardado LOCAL falló de verdad → savedOk queda false; NO mostramos
       // falso éxito (ese era el bug original, una capa más arriba).
@@ -1399,6 +1424,71 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
         duration: const Duration(seconds: 3),
       ),
     );
+  }
+
+  // Auditoría 2026-07-03: un tenant real acumuló hasta 9 copias del mismo
+  // producto (mismo nombre+presentación, stocks contradictorios entre sí) —
+  // reintentar "Nuevo Producto" tras un guardado que pareció fallar genera
+  // un UUID cliente nuevo cada vez, así que la idempotencia por id no lo
+  // atrapa. El backend ahora avisa (409 duplicate_product); aquí se le da
+  // al tendero una elección clara en vez de crear la copia en silencio.
+  Future<void> _handleDuplicateProduct(AppError e) async {
+    final existing = e.payload?['existing_product'] as Map<String, dynamic>?;
+    final existingName = existing?['name'] as String? ?? _nameCtrl.text.trim();
+    final existingStock = existing?['stock'] as int? ?? 0;
+    final existingId = existing?['id'] as String?;
+
+    final choice = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Text('Ya existe un producto así',
+            style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
+        content: Text(
+          'Ya tiene "$existingName" con stock $existingStock. '
+          '¿Quiere editar ese producto en vez de crear uno nuevo?',
+          style: const TextStyle(fontSize: 17, height: 1.4),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop('cancel'),
+            child: const Text('Cancelar', style: TextStyle(fontSize: 18)),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop('force'),
+            child: const Text('Crear de todas formas',
+                style: TextStyle(fontSize: 16)),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop('edit'),
+            child: const Text('Editar el existente',
+                style:
+                    TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+          ),
+        ],
+      ),
+    );
+
+    if (!mounted) return;
+    switch (choice) {
+      case 'edit':
+        if (existingId != null && existingId.isNotEmpty) {
+          Navigator.of(context).pushReplacement(MaterialPageRoute(
+            builder: (_) => ManageInventoryScreen(focusProductId: existingId),
+          ));
+        } else {
+          Navigator.of(context).pop();
+        }
+        break;
+      case 'force':
+        setState(() => _confirmedDuplicate = true);
+        await _save();
+        break;
+      case 'cancel':
+      default:
+        // Se queda en el formulario para que el tendero ajuste el nombre.
+        break;
+    }
   }
 
   // ── Dirty check ────────────────────────────────────────────────────────────

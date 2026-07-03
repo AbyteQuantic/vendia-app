@@ -588,7 +588,19 @@ class ApiService {
   // Spec 029: createProduct / updateProduct aceptan opcionalmente
   // `price_tier_1`, `price_tier_2`, `price_tier_3` (números > 0). El
   // backend valida; este lado pasa el payload tal cual.
-  Future<Map<String, dynamic>> createProduct(Map<String, dynamic> data) async {
+  //
+  // Auditoría 2026-07-03: un tenant real acumuló hasta 9 copias del mismo
+  // producto — reintentar "Nuevo Producto" tras un guardado que pareció
+  // fallar genera un UUID cliente nuevo cada vez, así que la idempotencia
+  // por id no lo atrapa. El backend ahora responde 409 (`duplicate_product`,
+  // ver AppError.payload['existing_product']) si ya existe un producto con
+  // el mismo nombre+presentación en la misma sede; [forceCreate] deja pasar
+  // la creación cuando el tendero confirma explícitamente que sí quiere un
+  // producto nuevo.
+  Future<Map<String, dynamic>> createProduct(
+    Map<String, dynamic> data, {
+    bool forceCreate = false,
+  }) async {
     try {
       // Spec 014: defense-in-depth — inject the active sede into the
       // payload so a product is never created with branch_id NULL, the
@@ -603,6 +615,7 @@ class ApiService {
           (payload['branch_id'] == null || payload['branch_id'] == '')) {
         payload['branch_id'] = bid;
       }
+      if (forceCreate) payload['force_create'] = true;
       final response = await _dio.post('/api/v1/products', data: payload);
       return _extractData(response);
     } on DioException catch (e) {

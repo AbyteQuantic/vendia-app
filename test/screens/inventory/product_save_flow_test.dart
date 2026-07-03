@@ -105,6 +105,40 @@ void main() {
       expect(serverCalled, isTrue);
     });
 
+    test(
+        'isFatal=true → re-lanza el error SIN guardar local ni marcar '
+        'pendiente (evita duplicar un producto que el servidor ya rechazó)',
+        () async {
+      var localSaved = false, marked = false;
+      await expectLater(
+        persistProductOfflineFirst(
+          serverWrite: () async => throw Exception('duplicate_product'),
+          saveLocal: () async => localSaved = true,
+          markPending: () async => marked = true,
+          isFatal: (e) => e.toString().contains('duplicate_product'),
+        ),
+        throwsException,
+      );
+      expect(localSaved, isFalse,
+          reason: 'un rechazo fatal del servidor no debe crear otra copia local');
+      expect(marked, isFalse);
+    });
+
+    test(
+        'isFatal presente pero devuelve false para ESTE error → cae al '
+        'camino offline normal (local + pendiente)', () async {
+      var localSaved = false, marked = false;
+      final out = await persistProductOfflineFirst(
+        serverWrite: () async => throw Exception('timeout de red'),
+        saveLocal: () async => localSaved = true,
+        markPending: () async => marked = true,
+        isFatal: (e) => e.toString().contains('duplicate_product'),
+      );
+      expect(localSaved, isTrue);
+      expect(marked, isTrue);
+      expect(out.serverOk, isFalse);
+    });
+
     test('isOnline=false NO espera por serverWrite lento (responde rápido)',
         () async {
       // Si la red estuviera caída, serverWrite tardaría; con isOnline=false ni
