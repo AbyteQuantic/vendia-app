@@ -9,6 +9,7 @@ import '../collections/pending_operation.dart';
 import '../collections/local_payment_method.dart';
 import '../collections/local_product.dart';
 import 'connectivity_monitor.dart';
+import 'product_push_sync.dart';
 import 'sales_sync.dart';
 
 enum SyncStatus { synced, syncing, offline, error }
@@ -97,6 +98,12 @@ class SyncService extends ChangeNotifier {
     // arrancar la app, así que una venta hecha con la app ABIERTA nunca
     // sincronizaba hasta reiniciar. pushToServer ya traga sus errores por venta.
     await SalesSyncService.pushToServer();
+
+    // Bug real (auditoría 2026-07-03): un producto creado offline se
+    // marcaba pendiente pero nada volvía a intentar subirlo — quedaba
+    // protegido de borrarse local pero nunca llegaba al servidor. Mismo
+    // punto de entrada que las ventas: timer de 30 s + reconexión.
+    await ProductPushSync.pushToServer();
 
     await _refreshPendingCount();
     if (_pendingCount == 0) {
