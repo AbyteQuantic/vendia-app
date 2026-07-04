@@ -156,4 +156,44 @@ void main() {
           reason: 'no debe esperar el serverWrite lento');
     });
   });
+
+  group('persistProductUpdateOfflineFirst — editar producto NUNCA se pierde', () {
+    // Bug real: manage_inventory_screen.dart _save() perdía el cambio SIN
+    // RASTRO cuando el servidor fallaba Y el widget ya se había desmontado
+    // (usuario navegó rápido a otro producto) — el catch empezaba con
+    // `if (!mounted) return`, así que ni se guardaba local ni se reintentaba.
+    test('server OK → no encola reintento', () async {
+      var enqueued = false, serverCalled = false;
+      final out = await persistProductUpdateOfflineFirst(
+        serverWrite: () async => serverCalled = true,
+        enqueueRetry: () async => enqueued = true,
+      );
+      expect(serverCalled, isTrue);
+      expect(enqueued, isFalse);
+      expect(out.serverOk, isTrue);
+    });
+
+    test('serverWrite lanza → encola reintento y NO relanza (no se pierde)',
+        () async {
+      var enqueued = false;
+      final out = await persistProductUpdateOfflineFirst(
+        serverWrite: () async => throw Exception('sin conexión'),
+        enqueueRetry: () async => enqueued = true,
+      );
+      expect(enqueued, isTrue,
+          reason: 'el cambio debe quedar en cola para el motor de sync');
+      expect(out.serverOk, isFalse);
+    });
+
+    test('el fallo del servidor no se propaga (la UI decide el aviso, no una excepción)',
+        () async {
+      await expectLater(
+        persistProductUpdateOfflineFirst(
+          serverWrite: () async => throw Exception('500'),
+          enqueueRetry: () async {},
+        ),
+        completes,
+      );
+    });
+  });
 }
