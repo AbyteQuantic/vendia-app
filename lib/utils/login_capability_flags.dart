@@ -19,6 +19,7 @@ const kLoginCapabilityKeys = <String>[
   'enable_furniture_jobs',
   'enable_purchase_orders',
   'enable_price_tiers',
+  'enable_product_variants',
 ];
 
 /// Devuelve el sub-objeto `feature_flags` (7 flags viejos) mergeado con las

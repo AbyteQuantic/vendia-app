@@ -491,6 +491,9 @@ bool capabilityEnabled(OptionalCapability? cap, FeatureFlags flags) {
     OptionalCapability.purchaseOrders => flags.enablePurchaseOrders,
     OptionalCapability.events => flags.enableEvents,
     OptionalCapability.staffCommissions => flags.enableStaffCommissions,
+    // Spec 095 — no tiene card en el reel (se activa desde Capacidades del
+    // negocio), pero el switch debe ser exhaustivo.
+    OptionalCapability.productVariants => flags.enableProductVariants,
     null => false,
   };
 }

@@ -25,6 +25,7 @@ import '../../widgets/picked_image_preview.dart';
 import '../../widgets/stock_badge.dart';
 import '../../widgets/advanced_product_options.dart';
 import '../../widgets/product_media_editor.dart';
+import '../../widgets/variant_group_link_tile.dart';
 import '../pos/scan_screen.dart';
 import 'kardex_screen.dart';
 import 'negative_stock_screen.dart';
@@ -778,6 +779,9 @@ class _EditProductSheetState extends State<_EditProductSheet> {
   /// no cuadra (ver [BarcodeValidator.suggestCorrection]). Se ofrece bajo
   /// el campo; el tendero decide si aplicarlo. `null` = nada que sugerir.
   String? _skuSuggestion;
+  // Spec 095 — variantes de producto. Gatea el tile de "vincular a un
+  // grupo"; con la capacidad OFF, la pantalla queda idéntica a hoy (AC-01).
+  bool _enableProductVariants = false;
 
   final _presentations = [
     'Botella',
@@ -817,6 +821,18 @@ class _EditProductSheetState extends State<_EditProductSheet> {
     final photo = p['photo_url'] as String?;
     final image = p['image_url'] as String?;
     _photoUrl = (photo != null && photo.isNotEmpty) ? photo : image;
+    _loadProductVariantsFlag();
+  }
+
+  // Spec 095 — solo consulta la capacidad (round-trip extra) cuando hace
+  // falta; el 95% de tenders que no la usan no pagan este costo antes.
+  Future<void> _loadProductVariantsFlag() async {
+    try {
+      final flags = await AuthService().getFeatureFlags();
+      if (mounted && flags.enableProductVariants) {
+        setState(() => _enableProductVariants = true);
+      }
+    } catch (_) {/* queda oculto */}
   }
 
   @override
@@ -1721,6 +1737,17 @@ class _EditProductSheetState extends State<_EditProductSheet> {
                 characteristicsController: _characteristicsCtrl,
                 categorySuggestions: _categorySuggestions,
               ),
+              // Spec 095 — vincular este producto a un grupo de variantes
+              // (talla/color) ya existente, sin recrearlo.
+              if (_enableProductVariants &&
+                  (widget.product['id'] as String? ?? '').isNotEmpty) ...[
+                const SizedBox(height: 12),
+                VariantGroupLinkTile(
+                  productId: widget.product['id'] as String,
+                  currentGroupId: widget.product['variant_group_id'] as String?,
+                  onAdopted: () {},
+                ),
+              ],
               const SizedBox(height: 24),
               // Spec 070 — galería multimedia (fotos extra + video ≤25s + YouTube).
               if ((widget.product['id'] as String? ?? '').isNotEmpty)

@@ -42,6 +42,8 @@ String? _capKey(OptionalCapability? c) {
       return 'enable_events';
     case OptionalCapability.staffCommissions:
       return 'enable_staff_commissions';
+    case OptionalCapability.productVariants:
+      return 'enable_product_variants';
     case null:
       return null;
   }

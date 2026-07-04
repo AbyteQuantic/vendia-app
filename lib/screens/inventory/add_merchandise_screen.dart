@@ -10,6 +10,7 @@ import '../../widgets/catalog_link_card.dart';
 import 'ia_loading_screen.dart';
 import 'create_product_screen.dart';
 import 'create_service_screen.dart';
+import 'create_variant_group_screen.dart';
 import 'manage_inventory_screen.dart';
 import 'product_import_screen.dart';
 import 'voice_inventory_screen.dart';
@@ -296,6 +297,8 @@ class AddMerchandiseScreen extends StatelessWidget {
               ),
               // Spec 075 — Panel de proveedor (solo si EnableSupplierMode).
               const _SupplierPanelEntry(),
+              // Spec 095 — crear con variantes (solo si EnableProductVariants).
+              const _VariantGroupEntry(),
             ],
           ),
         ),
@@ -373,6 +376,57 @@ class _SupplierPanelEntryState extends State<_SupplierPanelEntry> {
               HapticFeedback.lightImpact();
               Navigator.of(context).push(MaterialPageRoute(
                   builder: (_) => const SupplierPanelScreen()));
+            },
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Spec 095 — "Crear con variantes" (talla/color), solo si
+/// EnableProductVariants. Mismo patrón que [_SupplierPanelEntry]:
+/// self-contained, lee las flags de disco y se oculta si no aplica.
+class _VariantGroupEntry extends StatefulWidget {
+  const _VariantGroupEntry();
+
+  @override
+  State<_VariantGroupEntry> createState() => _VariantGroupEntryState();
+}
+
+class _VariantGroupEntryState extends State<_VariantGroupEntry> {
+  bool _show = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _check();
+  }
+
+  Future<void> _check() async {
+    try {
+      final flags = await AuthService().getFeatureFlags();
+      if (mounted && flags.enableProductVariants) setState(() => _show = true);
+    } catch (_) {/* sin entrada */}
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (!_show) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.only(top: AppUI.s16),
+      child: InsetGroupedList(
+        children: [
+          _HubActionRow(
+            rowKey: const Key('btn_create_variant_group'),
+            icon: Icons.checkroom_rounded,
+            accent: true,
+            title: 'Producto con variantes',
+            subtitle: 'Talla y color: crea todas las combinaciones a la vez.',
+            onTap: () {
+              HapticFeedback.lightImpact();
+              Navigator.of(context).push(MaterialPageRoute(
+                  builder: (_) => const CreateVariantGroupScreen()));
             },
           ),
         ],

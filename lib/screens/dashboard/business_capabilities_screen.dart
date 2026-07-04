@@ -151,6 +151,15 @@ const List<_CapabilityInfo> _capabilities = [
     icon: Icons.shopping_cart_rounded,
     color: Color(0xFF0D9668),
   ),
+  // Spec 095 — variantes de producto (talla/color).
+  _CapabilityInfo(
+    capability: OptionalCapability.productVariants,
+    toggleKey: 'cap_toggle_product_variants',
+    title: 'Variantes de producto (talla, color)',
+    description: 'Ropa, calzado o accesorios con talla y color',
+    icon: Icons.checkroom_rounded,
+    color: Color(0xFFEC4899),
+  ),
 ];
 
 class BusinessCapabilitiesScreen extends StatefulWidget {
@@ -272,6 +281,10 @@ class _BusinessCapabilitiesScreenState
           _enabled[OptionalCapability.purchaseOrders] =
               data['enable_purchase_orders'] == true ||
                   flags.enablePurchaseOrders;
+          // Spec 095 — variantes de producto.
+          _enabled[OptionalCapability.productVariants] =
+              data['enable_product_variants'] == true ||
+                  flags.enableProductVariants;
           _loading = false;
         });
         _maybeStartPulse();
@@ -327,6 +340,9 @@ class _BusinessCapabilitiesScreenState
               _enabled[OptionalCapability.furnitureJobs],
           'enable_purchase_orders':
               _enabled[OptionalCapability.purchaseOrders],
+          // Spec 095 — variantes de producto.
+          'enable_product_variants':
+              _enabled[OptionalCapability.productVariants],
         },
       };
       final response = await _api.updateBusinessProfile(updates);

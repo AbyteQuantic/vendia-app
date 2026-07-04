@@ -75,6 +75,32 @@ void main() {
       expect(find.byKey(const Key('cap_toggle_promotions')), findsOneWidget);
       expect(find.byKey(const Key('cap_toggle_marketing_hub')),
           findsOneWidget);
+      // Spec 095 — variantes de producto.
+      expect(find.byKey(const Key('cap_toggle_product_variants')),
+          findsOneWidget);
+    });
+
+    testWidgets('activar variantes de producto guarda enable_product_variants (Spec 095)',
+        (tester) async {
+      tester.view.physicalSize = const Size(400, 2800);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+
+      final api = _FakeApi();
+      await tester.pumpWidget(
+          _wrap(BusinessCapabilitiesScreen(apiOverride: api)));
+      await tester.pumpAndSettle();
+
+      await tester.scrollUntilVisible(
+          find.byKey(const Key('cap_toggle_product_variants')), 200);
+      await tester.tap(find.byKey(const Key('cap_toggle_product_variants')));
+      await tester.pump();
+
+      await tester.tap(find.byKey(const Key('cap_save_button')));
+      await tester.pumpAndSettle();
+
+      final config = api.lastPatch?['config'] as Map<String, dynamic>?;
+      expect(config?['enable_product_variants'], isTrue);
     });
 
     testWidgets('una tienda_barrio también puede activar "Mesas" (AC-06)',
