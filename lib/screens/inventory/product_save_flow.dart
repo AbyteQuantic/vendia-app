@@ -70,3 +70,40 @@ Future<ProductSaveOutcome> persistProductOfflineFirst({
     markedPending: !serverOk,
   );
 }
+
+class ProductUpdateOutcome {
+  final bool serverOk;
+  const ProductUpdateOutcome({required this.serverOk});
+}
+
+/// Orquesta la EDICIÓN offline-first de un producto ya existente.
+///
+/// Bug previo (auditoría 2026-07-03): `_EditProductSheetState._save()` en
+/// manage_inventory_screen.dart llamaba a `serverWrite` directo; si fallaba
+/// Y el widget ya se había desmontado (el tendero navegó a otro producto
+/// antes de que la respuesta volviera — muy real editando cientos de
+/// referencias con señal intermitente), el `catch` empezaba con
+/// `if (!mounted) return` y el cambio se perdía SIN RASTRO: ni se guardaba
+/// local, ni quedaba en ninguna cola, ni el tendero se enteraba.
+///
+/// Aquí [serverWrite] es best-effort; si falla POR CUALQUIER MOTIVO, se
+/// llama a [enqueueRetry] (que el caller conecta a la cola genérica de sync,
+/// `SyncService.enqueue` — el mismo camino ya usado por fiado/cliente, y que
+/// el backend YA soporta para `entity: product, action: update` con
+/// Last-Write-Wins). El error nunca se relanza: el llamador decide cómo
+/// avisar (o no) sin arriesgar perder el dato — el motor de sync ya
+/// descarta un payload que el servidor rechaza por contrato tras
+/// `maxSyncOpRetries` intentos (sync_service.dart), así que no hace falta
+/// distinguir aquí error permanente de transitorio.
+Future<ProductUpdateOutcome> persistProductUpdateOfflineFirst({
+  required Future<void> Function() serverWrite,
+  required Future<void> Function() enqueueRetry,
+}) async {
+  try {
+    await serverWrite();
+    return const ProductUpdateOutcome(serverOk: true);
+  } catch (_) {
+    await enqueueRetry();
+    return const ProductUpdateOutcome(serverOk: false);
+  }
+}

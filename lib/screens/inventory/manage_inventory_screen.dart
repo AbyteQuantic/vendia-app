@@ -1,7 +1,11 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:provider/provider.dart';
+import '../../database/collections/pending_operation.dart';
 import '../../database/database_service.dart';
+import '../../database/sync/sync_service.dart';
 import '../../theme/app_theme.dart';
 import '../../utils/text_normalize.dart';
 import '../../theme/app_ui.dart';
@@ -26,6 +30,7 @@ import 'kardex_screen.dart';
 import 'negative_stock_screen.dart';
 import 'product_import_screen.dart';
 import 'organize_categories_screen.dart';
+import 'product_save_flow.dart';
 
 const kSinCategoria = 'Sin categoría';
 
@@ -1109,46 +1114,66 @@ class _EditProductSheetState extends State<_EditProductSheet> {
       return;
     }
 
+    final id = widget.product['id'] as String? ?? '';
+    final payload = <String, dynamic>{
+      'name': name,
+      'price': CurrencyUtils.parseToDouble(_priceCtrl.text),
+      'stock': int.tryParse(_stockCtrl.text.trim()) ?? 0,
+      // Spec 050 — punto de reorden. Vacío → 0 (apaga la alerta).
+      'min_stock': int.tryParse(_minStockCtrl.text.trim()) ?? 0,
+      'presentation': _presentation,
+      'content': _contentCtrl.text.trim(),
+      'barcode': _skuCtrl.text.trim(),
+      // Spec 068 — categoría (con autocomplete) + características.
+      'category': canonicalValue(_categoryCtrl.text, _categorySuggestions),
+      'characteristics': _characteristicsCtrl.text.trim(),
+      // Spec 063 — venta para mayores de 18 (licor, cigarrillos).
+      'is_age_restricted': _isAgeRestricted,
+    };
+    // Capturado ANTES de cualquier await: tras uno, el widget puede haberse
+    // desmontado y context.read ya no sería seguro.
+    final syncService = context.read<SyncService>();
+
     setState(() => _saving = true);
-    try {
-      final api = ApiService(AuthService());
-      final id = widget.product['id'] as String? ?? '';
-      await api.updateProduct(id, {
-        'name': name,
-        'price': CurrencyUtils.parseToDouble(_priceCtrl.text),
-        'stock': int.tryParse(_stockCtrl.text.trim()) ?? 0,
-        // Spec 050 — punto de reorden. Vacío → 0 (apaga la alerta).
-        'min_stock': int.tryParse(_minStockCtrl.text.trim()) ?? 0,
-        'presentation': _presentation,
-        'content': _contentCtrl.text.trim(),
-        'barcode': _skuCtrl.text.trim(),
-        // Spec 068 — categoría (con autocomplete) + características.
-        'category': canonicalValue(_categoryCtrl.text, _categorySuggestions),
-        'characteristics': _characteristicsCtrl.text.trim(),
-        // Spec 063 — venta para mayores de 18 (licor, cigarrillos).
-        'is_age_restricted': _isAgeRestricted,
-      });
-      HapticFeedback.mediumImpact();
-      if (!mounted) return;
-      Navigator.of(context).pop(true);
-    } catch (e) {
-      if (!mounted) return;
-      setState(() => _saving = false);
-      // Spec 068 — superficie el error REAL (mensaje del backend / red) en vez
-      // de un genérico, para que un guardado fallido nunca sea silencioso.
-      final detail = e is AppError ? e.message : 'Revise su conexión e intente de nuevo.';
+    final api = ApiService(AuthService());
+    // Auditoría 2026-07-03: antes, si el servidor fallaba Y el tendero ya
+    // había navegado a otro producto (muy real editando cientos de
+    // referencias con señal intermitente), el cambio se perdía SIN RASTRO
+    // — ni error visible, ni guardado, ni cola. Ahora, cualquier fallo
+    // encola la actualización en el motor de sync genérico (mismo camino ya
+    // usado por fiado/cliente; el backend soporta entity=product
+    // action=update con Last-Write-Wins), así que sobrevive a que la
+    // pantalla ya no exista.
+    final outcome = await persistProductUpdateOfflineFirst(
+      serverWrite: () => api.updateProduct(id, payload),
+      enqueueRetry: () => syncService.enqueue(PendingOperation()
+        ..uuid = id
+        ..entity = 'product'
+        ..action = 'update'
+        ..jsonData = jsonEncode(payload)
+        ..clientUpdatedAt = DateTime.now()
+        ..retryCount = 0
+        ..createdAt = DateTime.now()),
+    );
+
+    HapticFeedback.mediumImpact();
+    if (!mounted) return;
+    setState(() => _saving = false);
+    if (!outcome.serverOk) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('No se guardó: $detail',
-              style: const TextStyle(fontSize: 16)),
-          backgroundColor: AppTheme.error,
+          content: const Text(
+              'Sin conexión: se guardó y se sincronizará cuando haya señal.',
+              style: TextStyle(fontSize: 16)),
+          backgroundColor: AppTheme.warning,
           behavior: SnackBarBehavior.floating,
-          duration: const Duration(seconds: 5),
+          duration: const Duration(seconds: 4),
           shape:
               RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
         ),
       );
     }
+    Navigator.of(context).pop(true);
   }
 
   // (helper widgets below)
