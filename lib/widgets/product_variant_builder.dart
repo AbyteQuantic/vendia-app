@@ -98,7 +98,7 @@ class _ProductVariantBuilderState extends State<ProductVariantBuilder> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text('Variantes (talla, color, presentación)',
+        const Text('Variantes (talla, color, presentación)',
             style: TextStyle(
                 fontSize: 15, fontWeight: FontWeight.w700, color: AppTheme.textPrimary)),
         const SizedBox(height: AppUI.s8),
@@ -140,7 +140,7 @@ class _ProductVariantBuilderState extends State<ProductVariantBuilder> {
         const SizedBox(height: AppUI.s8),
         if (count > 0)
           Text('$count producto${count == 1 ? '' : 's'} se crearán con estas combinaciones',
-              style: TextStyle(fontSize: 13, color: AppTheme.textSecondary)),
+              style: const TextStyle(fontSize: 13, color: AppTheme.textSecondary)),
         const SizedBox(height: AppUI.s16),
         SizedBox(
           width: double.infinity,
