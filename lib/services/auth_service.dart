@@ -394,6 +394,12 @@ class FeatureFlags {
   /// "Tipo de precio" en Confirmar Venta.
   final bool enablePriceTiers;
 
+  /// Spec 095: variantes de producto (talla/color). Cuando es `true`,
+  /// Nuevo/Editar Producto muestra el generador de combinaciones y el POS
+  /// muestra el selector de variante. Default false — un tenant que no la
+  /// activa ve la app IDÉNTICA a hoy (AC-01).
+  final bool enableProductVariants;
+
   /// F030: gestión de clientes identificados.
   /// Cuando es `true` el checkout muestra un tile "Cliente", el menú
   /// principal muestra "Mis clientes" y toda venta puede asociarse a
@@ -465,6 +471,7 @@ class FeatureFlags {
     this.enableCustomBilling = false,
     this.enableFractionalUnits = false,
     this.enablePriceTiers = false,
+    this.enableProductVariants = false,
     this.enableCustomerManagement = false,
     this.enableQuotes = false,
     this.enablePromotions = false,
@@ -488,6 +495,8 @@ class FeatureFlags {
         // F029 — default false para tenants pre-migración: la UI fail-closed
         // (no aparecen inputs ni selector) hasta que el dueño lo prenda.
         enablePriceTiers: json['enable_price_tiers'] == true,
+        // Spec 095 — default false para tenants que nunca la activaron.
+        enableProductVariants: json['enable_product_variants'] == true,
         // F030 — default false: tenants pre-migración no ven la
         // funcionalidad de clientes hasta que el dueño la prenda (AC-07).
         enableCustomerManagement: json['enable_customer_management'] == true,

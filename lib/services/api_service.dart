@@ -644,6 +644,53 @@ class ApiService {
     }
   }
 
+  // ── Spec 095 — variantes de producto (talla/color) ────────────────────
+
+  Future<Map<String, dynamic>> createVariantGroup(
+      Map<String, dynamic> data) async {
+    try {
+      final response =
+          await _dio.post('/api/v1/product-variant-groups', data: data);
+      return _extractData(response);
+    } on DioException catch (e) {
+      throw AppError.fromDioException(e);
+    }
+  }
+
+  Future<List<Map<String, dynamic>>> listVariantGroups() async {
+    try {
+      final response = await _dio.get('/api/v1/product-variant-groups');
+      final data = response.data['data'] as List? ?? [];
+      return data.map((e) => Map<String, dynamic>.from(e as Map)).toList();
+    } on DioException catch (e) {
+      throw AppError.fromDioException(e);
+    }
+  }
+
+  Future<List<Map<String, dynamic>>> generateVariantCombinations(
+      String groupId, Map<String, dynamic> data) async {
+    try {
+      final response = await _dio.post(
+          '/api/v1/product-variant-groups/$groupId/generate-combinations',
+          data: data);
+      final list = response.data['data'] as List? ?? [];
+      return list.map((e) => Map<String, dynamic>.from(e as Map)).toList();
+    } on DioException catch (e) {
+      throw AppError.fromDioException(e);
+    }
+  }
+
+  Future<Map<String, dynamic>> adoptProductToVariantGroup(
+      String productId, Map<String, dynamic> data) async {
+    try {
+      final response = await _dio.post(
+          '/api/v1/products/$productId/adopt-variant-group', data: data);
+      return _extractData(response);
+    } on DioException catch (e) {
+      throw AppError.fromDioException(e);
+    }
+  }
+
   /// Spec 078 — IA sugiere categorías para los productos SIN categoría (no aplica).
   /// Devuelve [{id, name, suggested}] para que el tenant revise/edite.
   Future<List<Map<String, dynamic>>> suggestProductCategories() async {

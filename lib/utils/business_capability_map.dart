@@ -133,6 +133,17 @@ enum OptionalCapability {
   /// ON: el editor de empleado muestra "Cómo le paga", el cobro permite asignar
   /// el profesional, y el Dashboard muestra "Liquidaciones".
   staffCommissions,
+
+  /// "Vende ropa/calzado con talla y color" (Spec 095).
+  /// → enable_product_variants
+  ///
+  /// Default OFF; no implícita en ningún tipo de negocio — la decide el
+  /// dueño (una tienda de ropa la activa, una tienda de barrio o un
+  /// restaurante no la necesitan). El toggle siempre aparece como opción
+  /// manual. Cuando está ON: Nuevo/Editar Producto muestra el generador
+  /// de combinaciones talla×color y el POS/catálogo muestran el selector
+  /// de variante.
+  productVariants,
 }
 
 /// Retorna las [OptionalCapability] que el [businessType] YA concede

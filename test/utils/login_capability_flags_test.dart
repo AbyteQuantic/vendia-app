@@ -43,5 +43,13 @@ void main() {
       expect(merged.containsKey('enable_supplies'), isFalse);
       expect(merged['enable_recipes'], true);
     });
+
+    // Spec 095 — variantes de producto: mismo mecanismo top-level.
+    test('mergea enable_product_variants (Spec 095)', () {
+      final merged = foldLoginCapabilityFlags({
+        'enable_product_variants': true,
+      });
+      expect(merged['enable_product_variants'], true);
+    });
   });
 }
