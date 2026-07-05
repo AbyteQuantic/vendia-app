@@ -100,12 +100,15 @@ class _QuoteCapabilityScreenState extends State<QuoteCapabilityScreen> {
     HapticFeedback.mediumImpact();
     setState(() => _toggling = true);
     try {
-      final updated = await _api.updateBusinessProfile({
+      await _api.updateBusinessProfile({
         'config': {'enable_quotes': next},
       });
       // Refrescar el cache local de feature_flags para que el
       // Dashboard vea la capacidad activada al volver (lee de disco,
-      // no del backend).
+      // no del backend). El PATCH solo responde {"message": ...} (sin
+      // flags), así que releemos el perfil (GET) antes de persistir —
+      // mismo patrón que capability_scaffold.dart.
+      final updated = await _api.fetchBusinessProfile();
       await AuthService().saveFeatureFlagsFromProfile(updated);
       if (!mounted) return;
       setState(() => _enabled = next);
