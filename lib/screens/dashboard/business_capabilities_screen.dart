@@ -345,11 +345,16 @@ class _BusinessCapabilitiesScreenState
               _enabled[OptionalCapability.productVariants],
         },
       };
-      final response = await _api.updateBusinessProfile(updates);
-      // Refrescar el cache local de feature_flags para que el
-      // Dashboard vea las capacidades activadas/desactivadas al
-      // volver (lee de disco, no del backend).
-      await AuthService().saveFeatureFlagsFromProfile(response);
+      await _api.updateBusinessProfile(updates);
+      // El PATCH responde solo {"message": ...} (sin flags — Spec 051,
+      // guarda no-destructiva en AuthService). Si le pasáramos esa
+      // respuesta a saveFeatureFlagsFromProfile no escribiría nada y el
+      // cache quedaría viejo hasta el próximo login: el Dashboard NO
+      // vería la capacidad recién activada al volver. Por eso se pide
+      // el perfil fresco (GET, que sí trae los flags) antes de refrescar
+      // el cache local.
+      final freshProfile = await _api.fetchBusinessProfile();
+      await AuthService().saveFeatureFlagsFromProfile(freshProfile);
       if (!mounted) return;
       _showSnack('Capacidades guardadas');
       Navigator.of(context).pop(true);

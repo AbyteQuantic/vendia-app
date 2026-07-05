@@ -11,6 +11,7 @@
 
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -20,14 +21,23 @@ import 'package:vendia_pos/services/auth_service.dart';
 import 'package:vendia_pos/utils/business_capability_map.dart';
 
 /// Fake ApiService — controla el GET del perfil y captura el PATCH.
+///
+/// El PATCH real (`/store/profile`) responde solo `{"message": ...}` (sin
+/// flags — Spec 051). Este fake reproduce eso a propósito: `updateBusinessProfile`
+/// NUNCA devuelve flags, así que si `_save()` volviera a pasarle esa
+/// respuesta directa a `saveFeatureFlagsFromProfile` el cache quedaría
+/// viejo (regresión que motivó este archivo). `fetchBusinessProfile` sí
+/// trae los flags reales — simula el GET posterior.
 class _FakeApi extends ApiService {
   _FakeApi({this.profile}) : super(AuthService());
 
   final Map<String, dynamic>? profile;
   Map<String, dynamic>? lastPatch;
+  int fetchCount = 0;
 
   @override
   Future<Map<String, dynamic>> fetchBusinessProfile() async {
+    fetchCount++;
     return profile ?? <String, dynamic>{'business_types': ['tienda_barrio']};
   }
 
@@ -36,11 +46,50 @@ class _FakeApi extends ApiService {
       Map<String, dynamic> data,
       {CancelToken? cancelToken}) async {
     lastPatch = data;
-    return data;
+    return {'message': 'perfil actualizado correctamente'};
   }
 }
 
 Widget _wrap(Widget child) => MaterialApp(home: child);
+
+const _secureStorageChannel =
+    MethodChannel('plugins.it_nomads.com/flutter_secure_storage');
+
+/// Mock mínimo de flutter_secure_storage — mismo patrón que
+/// auth_service_flag_preserve_test.dart.
+class _MapStorage {
+  final Map<String, String?> store = {};
+  void install() {
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(_secureStorageChannel, (call) async {
+      final args = (call.arguments as Map?)?.cast<String, Object?>() ?? {};
+      switch (call.method) {
+        case 'write':
+          store[args['key'] as String] = args['value'] as String?;
+          return null;
+        case 'read':
+          return store[args['key']];
+        case 'readAll':
+          return store;
+        case 'containsKey':
+          return store.containsKey(args['key']);
+        case 'delete':
+          store.remove(args['key']);
+          return null;
+        case 'deleteAll':
+          store.clear();
+          return null;
+        default:
+          return null;
+      }
+    });
+  }
+
+  void uninstall() {
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(_secureStorageChannel, null);
+  }
+}
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -48,6 +97,17 @@ void main() {
   setUpAll(() {
     dotenv.testLoad(fileInput: 'API_BASE_URL=http://localhost:8080');
   });
+
+  // _save() ahora persiste de verdad tras el PATCH (fetchBusinessProfile +
+  // saveFeatureFlagsFromProfile), así que TODA prueba que llegue a guardar
+  // toca flutter_secure_storage — sin este mock global, el MethodChannel
+  // sin handler cuelga pumpAndSettle().
+  late _MapStorage storage;
+  setUp(() {
+    storage = _MapStorage();
+    storage.install();
+  });
+  tearDown(() => storage.uninstall());
 
   group('BusinessCapabilitiesScreen', () {
     testWidgets('lista todas las capacidades opcionales con toggle',
@@ -212,6 +272,49 @@ void main() {
       expect(api.lastPatch, isNotNull);
       final config = api.lastPatch!['config'] as Map<String, dynamic>;
       expect(config['enable_marketing_hub'], isTrue);
+    });
+
+    testWidgets(
+        'guardar refresca el cache local con GET (el PATCH real no trae flags)',
+        (tester) async {
+      // Regresión: el PATCH /store/profile responde solo {"message": ...}
+      // (Spec 051). Antes, _save() le pasaba esa respuesta directo a
+      // saveFeatureFlagsFromProfile, que por la guarda no-destructiva NO
+      // escribía nada — el Dashboard veía el cache viejo hasta el próximo
+      // login. Ahora _save() debe pedir el perfil fresco (GET) tras el
+      // PATCH y persistir ESE.
+      tester.view.physicalSize = const Size(400, 2800);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+
+      storage.store['vendia_feature_flags'] =
+          '{"enable_product_variants":false}';
+
+      final api = _FakeApi(profile: {
+        'business_types': ['tienda_barrio'],
+        'enable_product_variants': true,
+      });
+      await tester.pumpWidget(
+          _wrap(BusinessCapabilitiesScreen(apiOverride: api)));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 500));
+
+      await tester.scrollUntilVisible(
+          find.byKey(const Key('cap_toggle_product_variants')), 200);
+      await tester.tap(find.byKey(const Key('cap_toggle_product_variants')));
+      await tester.pump(const Duration(milliseconds: 300));
+
+      await tester.tap(find.byKey(const Key('cap_save_button')));
+      await tester.pump(const Duration(milliseconds: 500));
+
+      // fetchBusinessProfile se llamó de nuevo tras el PATCH (una vez en
+      // _load() + una vez en _save()).
+      expect(api.fetchCount, 2);
+      // El cache en disco ahora refleja el perfil fresco (GET), no el
+      // {"message": ...} del PATCH.
+      final raw = storage.store['vendia_feature_flags'];
+      expect(raw, isNotNull);
+      expect(raw!.contains('"enable_product_variants":true'), isTrue);
     });
 
     testWidgets('F037: con highlightCapability el tile pulsa visiblemente',

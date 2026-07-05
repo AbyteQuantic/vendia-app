@@ -418,7 +418,7 @@ class _BusinessProfileScreenState extends State<BusinessProfileScreen> {
       // sin esto, un estancamiento sin excepción de Dio (ver comentario
       // en api_service.dart sobre sendTimeout) dejaría el botón
       // "Guardando..." sin límite real.
-      final response = await _api
+      await _api
           .updateBusinessProfile(updates, cancelToken: _saveCancelToken)
           .timeout(_saveHardCap, onTimeout: () {
         _saveCancelToken?.cancel('tope local de guardado agotado');
@@ -426,8 +426,12 @@ class _BusinessProfileScreenState extends State<BusinessProfileScreen> {
       });
       // Refrescar cache local de feature_flags + business_types — al
       // cambiar el tipo de negocio o toggles desde aquí, el Dashboard
-      // (que lee de disco) tiene que ver el cambio al volver.
-      await AuthService().saveFeatureFlagsFromProfile(response);
+      // (que lee de disco) tiene que ver el cambio al volver. El PATCH
+      // solo responde {"message": ...} (sin business_types ni flags),
+      // así que releemos el perfil (GET, fuente de verdad) antes de
+      // refrescar el cache — mismo patrón que capability_scaffold.dart.
+      final freshProfile = await _api.fetchBusinessProfile();
+      await AuthService().saveFeatureFlagsFromProfile(freshProfile);
 
       if (!mounted) return;
       _showSnack('Perfil guardado correctamente');
