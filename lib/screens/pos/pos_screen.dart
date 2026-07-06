@@ -11,6 +11,7 @@ import '../../services/notification_toast_controller.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/product_image.dart';
 import '../../widgets/task_center_sheet.dart';
+import '../../services/task_center_controller.dart';
 import '../../widgets/panic_button.dart';
 import '../../widgets/table_qr_sheet.dart';
 import '../../widgets/stock_badge.dart';
@@ -98,7 +99,6 @@ class _PosScreenBodyState extends State<_PosScreenBody>
   Map<String, double> _openTabTotalsByLabel = const {};
   List<Map<String, dynamic>> _openTabRows = const [];
   int _pendingFiados = 0;
-  int _unreadNotifications = 0;
   Timer? _notificationsTimer;
   // Cached per-session. The feature flag is resolved once on mount because
   // it can only change across a login and we don't want to rebuild the POS
@@ -117,7 +117,14 @@ class _PosScreenBodyState extends State<_PosScreenBody>
     // is already wired up via Provider — addPostFrameCallback avoids the
     // "context.read in initState" foot-gun.
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) _reconcilePendingCredits();
+      if (!mounted) return;
+      _reconcilePendingCredits();
+      // El badge de la campana lee las TAREAS pendientes (openCount) del
+      // Centro unificado — igual que la campana del Tablero. start() es
+      // idempotente (un solo poller app-wide, Spec 078).
+      try {
+        context.read<TaskCenterController>().start();
+      } catch (_) {}
     });
     _notificationsTimer =
         Timer.periodic(const Duration(seconds: 20), (_) {
@@ -295,19 +302,18 @@ class _PosScreenBodyState extends State<_PosScreenBody>
     } catch (_) {}
   }
 
-  /// Poll the backend notifications feed. The bell badge shows unread
-  /// count. When the cashier taps the bell they see the list and the
-  /// whole batch is marked as read.
+  /// Poll the backend notifications feed SOLO para alimentar el toast
+  /// persistente (Spec 056). El badge de la campana ya NO usa este conteo:
+  /// muestra las TAREAS pendientes del Centro (openCount), para que el número
+  /// coincida con lo que el tendero ve al abrir ("Por hacer"). Los avisos
+  /// (Novedades) viven en su pestaña.
   Future<void> _loadNotifications() async {
     try {
       final api = ApiService(AuthService());
       final res = await api.fetchNotifications();
       final list = ((res['data'] as List?) ?? const [])
           .cast<Map<String, dynamic>>();
-      final unread =
-          list.where((n) => n['is_read'] != true).length;
       if (mounted) {
-        setState(() => _unreadNotifications = unread);
         // Alimenta el toast persistente con la última notificación no
         // leída (Spec 056 slice 2). read() — no queremos rebuilds del POS.
         final parsed = list
@@ -319,10 +325,21 @@ class _PosScreenBodyState extends State<_PosScreenBody>
     } catch (_) {}
   }
 
+  /// Conteo del badge de la campana = tareas pendientes del Centro (openCount).
+  /// Lectura defensiva: en tests sin Provider devuelve 0 (campana sin badge).
+  int _taskBadgeCount(BuildContext context) {
+    try {
+      // select (no watch): reconstruye el POS SOLO cuando openCount cambia,
+      // no en cada poll de 15 s. El POS es pesado; evitamos rebuilds inútiles.
+      return context.select<TaskCenterController, int>((c) => c.openCount);
+    } catch (_) {
+      return 0;
+    }
+  }
+
   Future<void> _showNotificationsSheet() async {
     // Unificado (Spec 078): el POS abre el MISMO Centro de Tareas que el
     // Dashboard (pestañas "Por hacer" + "Novedades"), en vez de su propio sheet.
-    if (mounted) setState(() => _unreadNotifications = 0); // el Centro marca leídas
     await openTaskCenter(context);
   }
 
@@ -2262,7 +2279,9 @@ class _PosScreenBodyState extends State<_PosScreenBody>
                       const SizedBox(width: 6),
                       _HeaderBadgeIcon(
                         icon: Icons.notifications_rounded,
-                        badgeCount: _unreadNotifications,
+                        // Badge = TAREAS pendientes (openCount), igual que el
+                        // Tablero, para que el número coincida con "Por hacer".
+                        badgeCount: _taskBadgeCount(context),
                         badgeColor: const Color(0xFFFF6B6B),
                         onPressed: () {
                           HapticFeedback.lightImpact();
