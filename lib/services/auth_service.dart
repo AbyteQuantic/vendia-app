@@ -18,6 +18,12 @@ class AuthService {
   static const _keyUserId = 'vendia_user_id';
   static const _keyBranchId = 'vendia_branch_id';
   static const _keyRole = 'vendia_role';
+  // Teléfono con el que inició sesión el usuario ACTUAL (no el dueño). Enlaza
+  // la sesión con su fila Employee (backend liga User↔Employee por phone+tenant)
+  // para que el Dashboard muestre la foto/nombre del usuario logueado y no
+  // siempre los del dueño. Se guarda en el login (cubre login directo y el
+  // selector de workspace) y se borra en logout (deleteAll).
+  static const _keyPhone = 'vendia_phone';
   // Feature flags + business types arrive on login/register (migration 021)
   // and drive conditional rendering (hide Tables/KDS for tiendas, show
   // "Cobrar Servicio" for reparación/manufactura, etc.). Persisted as
@@ -343,6 +349,15 @@ class AuthService {
       );
 
   Future<String?> getUserId() => _storage.read(key: _keyUserId);
+
+  /// Persiste el teléfono del usuario que inició sesión. Se llama en el login,
+  /// antes de ramificar a selector/dashboard, así que cubre todos los caminos.
+  Future<void> savePhone(String phone) =>
+      _storage.write(key: _keyPhone, value: phone);
+
+  /// Teléfono del usuario logueado (para resolver su fila Employee → foto/nombre).
+  Future<String?> getPhone() => _storage.read(key: _keyPhone);
+
   Future<String?> getBranchId() => _storage.read(key: _keyBranchId);
   Future<void> saveBranchId(String id) => _storage.write(key: _keyBranchId, value: id);
   Future<String?> getRole() => _storage.read(key: _keyRole);
