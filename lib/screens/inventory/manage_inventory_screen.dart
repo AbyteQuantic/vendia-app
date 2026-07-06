@@ -17,6 +17,7 @@ import '../../utils/barcode_validator.dart';
 import '../../utils/currency_input.dart';
 import '../../widgets/ai_instruction_dialog.dart';
 import '../../widgets/branch_selector_drawer.dart';
+import '../../widgets/catalog_photo_suggestion.dart';
 import '../../widgets/full_image_viewer.dart';
 import '../../widgets/product_image.dart';
 import '../../widgets/branch_aware_reload.dart';
@@ -989,6 +990,17 @@ class _EditProductSheetState extends State<_EditProductSheet> {
               style: const TextStyle(fontSize: 14, color: AppTheme.textSecondary),
             ),
             const SizedBox(height: 20),
+            // Spec 096 — sugerencia OPCIONAL de foto verificada de catálogo
+            // (Open Food Facts) para el barcode del producto. Nunca
+            // reemplaza ni se aplica sola; NO toca las opciones de abajo.
+            if (_skuCtrl.text.trim().isNotEmpty)
+              CatalogPhotoSuggestion(
+                barcode: _skuCtrl.text.trim(),
+                onAccept: (url) {
+                  Navigator.of(ctx).pop();
+                  setState(() => _photoUrl = url);
+                },
+              ),
             // Spec 094: el tendero elige — quitar fondo (deja el producto igual) o
             // mejorar con IA (limpia/mejora, puede cambiar detalles).
             _AiOptionTile(

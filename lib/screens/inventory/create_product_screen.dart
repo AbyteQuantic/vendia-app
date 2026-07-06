@@ -23,6 +23,7 @@ import '../../theme/app_theme.dart';
 import '../../utils/barcode_validator.dart';
 import '../../utils/currency_input.dart';
 import '../../widgets/ai_instruction_dialog.dart';
+import '../../widgets/catalog_photo_suggestion.dart';
 import '../../widgets/dashboard_ui_kit.dart';
 import '../../theme/app_ui.dart';
 import '../../widgets/advanced_product_options.dart';
@@ -1811,6 +1812,20 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
                               ),
                               const SizedBox(height: 8),
                             ],
+                            // Spec 096 — sugerencia OPCIONAL de foto verificada de
+                            // catálogo (Open Food Facts) para el barcode escaneado.
+                            // Nunca reemplaza ni se aplica sola; NO toca las
+                            // opciones de abajo (Specs 017/094 intactas).
+                            if (_skuCtrl.text.trim().isNotEmpty)
+                              CatalogPhotoSuggestion(
+                                key: ValueKey(_skuCtrl.text.trim()),
+                                barcode: _skuCtrl.text.trim(),
+                                onAccept: (url) => setState(() {
+                                  _photoFile = null;
+                                  _photoUrl = url;
+                                  _imageIsSuggested = false;
+                                }),
+                              ),
                             // Spec 094 — el tendero elige: QUITAR FONDO (deja el
                             // producto igual) o MEJORAR con IA (limpia/mejora). Sin
                             // foto → solo CREAR.
@@ -2057,6 +2072,7 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
                   _fieldLabel('Codigo SKU / Barras'),
                   const SizedBox(height: 6),
                   TextFormField(
+                    key: const Key('field_sku_barcode'),
                     controller: _skuCtrl,
                     keyboardType: TextInputType.number,
                     style: const TextStyle(fontSize: 18),
