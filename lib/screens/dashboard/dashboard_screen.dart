@@ -10,6 +10,7 @@ import '../../services/api_service.dart';
 import '../../services/app_error.dart';
 import '../../services/auth_service.dart';
 import '../../services/branch_provider.dart';
+import '../../models/branch.dart';
 import '../../models/subscription.dart';
 import '../../models/catalog/catalog_models.dart';
 import '../../services/catalog_service.dart';
@@ -163,7 +164,37 @@ class _DashboardScreenState extends State<DashboardScreen> {
       final bp = context.read<BranchProvider>();
       _prevBranchId = bp.currentBranchId;
       bp.addListener(_onBranchChanged);
+      // Sincroniza la sede ACTIVA con el usuario que inició sesión. Sin esto,
+      // en un equipo compartido un empleado heredaba la sede de la sesión
+      // anterior (o la sede "por defecto" del tenant, que puede estar vacía) y
+      // veía "inventario vacío" aunque su sede sí tenga productos.
+      _refreshActiveBranch();
     });
+  }
+
+  /// Deja la sede activa = la sede ASIGNADA al usuario logueado (no la default
+  /// del tenant ni la que quedó de la sesión anterior). Corrige el inventario
+  /// vacío de un empleado en un equipo compartido. Cubre todos los caminos de
+  /// login (directo, selector de workspace, arranque en frío) porque el
+  /// Dashboard es el destino común de todos.
+  Future<void> _refreshActiveBranch() async {
+    final auth = AuthService();
+    final bp = context.read<BranchProvider>();
+    final saved = (await auth.getBranchId())?.trim() ?? '';
+    // 1) Corrección inmediata si la sede ya está en memoria (sin esperar red).
+    if (saved.isNotEmpty && bp.branches.any((b) => b.id == saved)) {
+      bp.selectBranchById(saved);
+    }
+    // 2) Refresco completo desde el backend (cubre cambio de tenant / 1ra vez).
+    try {
+      final raw = await ApiService(auth).fetchBranches();
+      final branches = raw.map((j) => Branch.fromJson(j)).toList();
+      if (!mounted) return;
+      bp.setBranches(branches);
+      if (saved.isNotEmpty) bp.selectBranchById(saved);
+    } catch (_) {
+      // Sin red: se queda con la corrección en memoria (o lo del arranque).
+    }
   }
 
   /// Rescata el nombre del dueño/negocio del storage cuando el constructor los
@@ -801,6 +832,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
       ),
     );
     if (confirm != true || !mounted) return;
+    // Limpia la sede activa para que el PRÓXIMO usuario no herede la de esta
+    // sesión (mirror estático ApiService.currentBranchId). Ver _refreshActiveBranch.
+    context.read<BranchProvider>().reset();
     await AuthService().logout();
     if (!mounted) return;
     Navigator.of(context).pushAndRemoveUntil(
@@ -1650,25 +1684,42 @@ class _AccountMenuButton extends StatefulWidget {
 class _AccountMenuButtonState extends State<_AccountMenuButton> {
   late final ApiService _api;
   String? _photoUrl;
+  String? _displayName; // nombre del usuario logueado (para las iniciales)
 
   @override
   void initState() {
     super.initState();
     _api = ApiService(AuthService());
-    _loadOwnerPhoto();
+    _loadMyProfile();
   }
 
-  Future<void> _loadOwnerPhoto() async {
+  /// Carga la foto+nombre del EMPLEADO LOGUEADO (no siempre el dueño). El
+  /// backend liga sesión↔Employee por teléfono, así que resolvemos por el
+  /// teléfono guardado en el login. Si no hay match (p. ej. sesión por token
+  /// sin teléfono, o dato viejo), cae al dueño — el comportamiento anterior.
+  Future<void> _loadMyProfile() async {
     try {
       final employees = await _api.fetchEmployees();
-      final owner = employees.firstWhere(
-        (e) => (e['is_owner'] as bool? ?? false) == true,
-        orElse: () => <String, dynamic>{},
-      );
-      final rawPhoto = (owner['photo_url'] as String?)?.trim();
+      final myPhone = (await AuthService().getPhone())?.trim() ?? '';
+      Map<String, dynamic> me = const <String, dynamic>{};
+      if (myPhone.isNotEmpty) {
+        me = employees.firstWhere(
+          (e) => (e['phone'] as String? ?? '').trim() == myPhone,
+          orElse: () => <String, dynamic>{},
+        );
+      }
+      if (me.isEmpty) {
+        me = employees.firstWhere(
+          (e) => (e['is_owner'] as bool? ?? false) == true,
+          orElse: () => <String, dynamic>{},
+        );
+      }
+      final rawPhoto = (me['photo_url'] as String?)?.trim();
+      final rawName = (me['name'] as String?)?.trim();
       if (!mounted) return;
       setState(() {
         _photoUrl = (rawPhoto == null || rawPhoto.isEmpty) ? null : rawPhoto;
+        _displayName = (rawName == null || rawName.isEmpty) ? null : rawName;
       });
     } catch (_) {
       // Silencio adrede: si la red falla, mantenemos el placeholder de
@@ -1685,7 +1736,7 @@ class _AccountMenuButtonState extends State<_AccountMenuButton> {
       tooltip: 'Mi cuenta',
       icon: hasPhoto
           ? ProfilePhotoAvatar(
-              name: widget.ownerName,
+              name: _displayName ?? widget.ownerName,
               photoUrl: _photoUrl,
               diameter: 40,
               backgroundColor: widget.iconColor,
@@ -1719,7 +1770,7 @@ class _AccountMenuButtonState extends State<_AccountMenuButton> {
         // Al cerrar el sheet, releemos por si subió/cambió la foto.
         // No depende del result del sheet — la lectura es barata y el
         // sheet no expone callback de cambio.
-        if (mounted) await _loadOwnerPhoto();
+        if (mounted) await _loadMyProfile();
       },
     );
   }

@@ -78,6 +78,29 @@ void main() {
           reason: 'default branch wins on first load even when it is not first');
     });
 
+    // Regresión (Amy): la sede ASIGNADA al empleado debe ganarle a la sede
+    // "por defecto" del tenant. Aquí la default es "Secundaria" (vacía) y el
+    // empleado está en "Principal" (con productos). Tras seleccionar la
+    // asignada, el mirror debe apuntar a Principal, no a la default vacía —
+    // exactamente lo que hace _refreshActiveBranch en el Dashboard.
+    test('la sede asignada del empleado vence a la default del tenant', () {
+      final provider = BranchProvider();
+      final secundaria = _branch(
+          '6bc2667a-260a-4451-bb86-a148820f1ea8', 'Secundaria',
+          isDefault: true); // default pero vacía
+      final principal = _branch(
+          'bcd3e478-21ea-4278-8313-3f33810ee100', 'Principal'); // asignada
+
+      provider.setBranches([secundaria, principal]);
+      // setBranches auto-elige la default (Secundaria) → sería inventario vacío.
+      expect(ApiService.currentBranchId, secundaria.id);
+
+      // El Dashboard corrige a la sede asignada del usuario logueado.
+      provider.selectBranchById(principal.id);
+      expect(ApiService.currentBranchId, principal.id,
+          reason: 'el empleado debe operar en SU sede, no en la default vacía');
+    });
+
     test('reset() clears the static so a new session starts clean', () {
       final provider = BranchProvider();
       provider.setBranches([

@@ -103,6 +103,12 @@ class _LoginScreenState extends State<LoginScreen> {
         captchaToken: _captchaToken,
       );
 
+      // Guarda el teléfono del usuario ANTES de ramificar (directo vs selector
+      // de workspace): identifica a QUIÉN inició sesión, para que el Dashboard
+      // muestre SU foto/nombre y no siempre los del dueño. Identidad ya validada
+      // por /login. Se borra en logout (deleteAll).
+      await _auth.savePhone(_phoneCtrl.text.trim());
+
       // ── Selector response: backend returns `workspaces` whenever
       // a per-workspace password prompt is required — multi-workspace
       // OR single-workspace where the typed password matches identity
