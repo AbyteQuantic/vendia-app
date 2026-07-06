@@ -58,6 +58,71 @@ void main() {
       expect(r.status, ResolveStatus.notFound);
       expect(r.product, isNull);
     });
+
+    // ── Plurales / verbos: "vendo 3 empanadas" debe encontrar "Empanada" ──
+    group('plurales y verbos', () {
+      final tienda = [
+        p('Empanada', uuid: 'emp'),
+        p('Empanada de carne', uuid: 'emp-carne'),
+        p('Gaseosa Cola 350', uuid: 'gas'),
+      ];
+
+      test('plural de una palabra: "empanadas" → Empanada', () {
+        final r = resolver.resolve('empanadas', [p('Empanada', uuid: 'emp')]);
+        expect(r.status, ResolveStatus.matched);
+        expect(r.product!.uuid, 'emp');
+      });
+
+      test('plural multi-palabra: "empanadas" → Empanada de carne (única)', () {
+        final r = resolver.resolve('empanadas', [p('Empanada de carne', uuid: 'x')]);
+        expect(r.status, ResolveStatus.matched);
+        expect(r.product!.uuid, 'x');
+      });
+
+      test('verbo colado: "vendo empanadas" → Empanada', () {
+        final r = resolver.resolve('vendo empanadas', [p('Empanada', uuid: 'emp')]);
+        expect(r.status, ResolveStatus.matched);
+        expect(r.product!.uuid, 'emp');
+      });
+
+      test('reverso: producto plural "Empanadas", hablado "empanada"', () {
+        final r = resolver.resolve('empanada', [p('Empanadas', uuid: 'emp')]);
+        expect(r.status, ResolveStatus.matched);
+        expect(r.product!.uuid, 'emp');
+      });
+
+      test('plural con "-es": "panes" → Pan tajado', () {
+        final r = resolver.resolve('panes', [p('Pan tajado', uuid: 'pan')]);
+        expect(r.status, ResolveStatus.matched);
+        expect(r.product!.uuid, 'pan');
+      });
+
+      test('artículos/muletillas se ignoran: "para la gaseosa"', () {
+        final r = resolver.resolve('para la gaseosa', [p('Gaseosa Cola 350', uuid: 'gas')]);
+        expect(r.status, ResolveStatus.matched);
+        expect(r.product!.uuid, 'gas');
+      });
+
+      // Seguridad: "con gas"/"sin gas" NO se deben colapsar (son productos
+      // distintos). El deplural/strip nunca debe borrar palabras de contenido.
+      test('"con gas" y "sin gas" siguen siendo distintos', () {
+        final aguas = [
+          p('Agua con gas', uuid: 'con'),
+          p('Agua sin gas', uuid: 'sin'),
+        ];
+        final r = resolver.resolve('agua con gas', aguas);
+        expect(r.status, ResolveStatus.matched);
+        expect(r.product!.uuid, 'con');
+      });
+
+      test('exacto gana: "empanadas" con Empanada + Empanada de carne → Empanada', () {
+        final r = resolver.resolve('empanadas', tienda);
+        // "empanadas" → base "empanada" hace match EXACTO con el producto
+        // llamado literalmente "Empanada"; no lo vuelve ambiguo el multi-palabra.
+        expect(r.status, ResolveStatus.matched);
+        expect(r.product!.uuid, 'emp');
+      });
+    });
   });
 
   group('VoiceOrderResult.fromJson (defensivo)', () {

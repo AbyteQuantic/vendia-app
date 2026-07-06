@@ -3,6 +3,8 @@
 // Hoja "Vender por voz": push-to-talk → entendiendo → PREVIEW editable → aplicar.
 // Nada toca el carrito hasta "Agregar al pedido". Estética kit AppUI, copy USTED.
 
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -91,14 +93,16 @@ class _VoiceOrderSheetState extends State<_VoiceOrderSheet> {
         const SizedBox(height: AppUI.s8),
         Text(
           recording
-              ? 'Toque el micrófono cuando termine.'
+              ? 'Hable normal. Cuando termine, sigo solo.\n(o toque para parar)'
               : 'Toque el micrófono y diga qué lleva.\nEjemplo: «dos Águila y una agua para la mesa 3».',
           textAlign: TextAlign.center,
           style: AppUI.bodySoft,
         ),
         const SizedBox(height: AppUI.s24),
-        GestureDetector(
+        _ListeningOrb(
           key: const Key('voice_mic_button'),
+          recording: recording,
+          amplitude: c.amplitude,
           onTap: () {
             HapticFeedback.mediumImpact();
             if (recording) {
@@ -107,18 +111,6 @@ class _VoiceOrderSheetState extends State<_VoiceOrderSheet> {
               c.startRecording();
             }
           },
-          child: Container(
-            width: 104, height: 104,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: recording ? AppTheme.primary : AppTheme.primary.withValues(alpha: 0.12),
-              boxShadow: recording
-                  ? [BoxShadow(color: AppTheme.primary.withValues(alpha: 0.3), blurRadius: 24, spreadRadius: 4)]
-                  : null,
-            ),
-            child: Icon(recording ? Icons.stop_rounded : Icons.mic_rounded,
-                size: 48, color: recording ? Colors.white : AppTheme.primary),
-          ),
         ),
         const SizedBox(height: AppUI.s24),
       ],
@@ -130,7 +122,7 @@ class _VoiceOrderSheetState extends State<_VoiceOrderSheet> {
       padding: EdgeInsets.symmetric(vertical: AppUI.s24),
       child: Column(
         children: [
-          CircularProgressIndicator(),
+          _ThinkingDots(),
           SizedBox(height: AppUI.s16),
           Text('Entendiendo lo que dijo…', style: AppUI.bodySoft),
         ],
@@ -388,4 +380,170 @@ class _VoiceOrderSheetState extends State<_VoiceOrderSheet> {
         ),
         child: child,
       );
+}
+
+/// Botón-micrófono VIVO. En reposo respira suave; grabando, unos anillos
+/// concéntricos crecen con la amplitud REAL de la voz ([amplitude] 0..1), para
+/// que el tendero vea que el sistema lo está escuchando. Un solo
+/// AnimationController (barato para gama baja); la amplitud se suaviza entre
+/// lecturas para que no titile.
+class _ListeningOrb extends StatefulWidget {
+  const _ListeningOrb({
+    super.key,
+    required this.recording,
+    required this.amplitude,
+    required this.onTap,
+  });
+
+  final bool recording;
+  final double amplitude; // 0..1
+  final VoidCallback onTap;
+
+  @override
+  State<_ListeningOrb> createState() => _ListeningOrbState();
+}
+
+class _ListeningOrbState extends State<_ListeningOrb>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _pulse;
+  double _smooth = 0.0; // amplitud suavizada
+
+  @override
+  void initState() {
+    super.initState();
+    _pulse = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1600),
+    )..repeat();
+  }
+
+  @override
+  void dispose() {
+    _pulse.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    const primary = AppTheme.primary;
+    return GestureDetector(
+      onTap: widget.onTap,
+      behavior: HitTestBehavior.opaque,
+      child: SizedBox(
+        width: 168,
+        height: 168,
+        child: AnimatedBuilder(
+          animation: _pulse,
+          builder: (context, _) {
+            // Suaviza la amplitud hacia el último valor leído (evita saltos a
+            // ~6 fps que da el stream de amplitud).
+            _smooth += (widget.amplitude - _smooth) * 0.25;
+            // Respiración base con una onda seno; en reposo mantiene el orbe vivo.
+            final breath = 0.5 + 0.5 * math.sin(_pulse.value * 2 * math.pi);
+            final energy = widget.recording ? _smooth : 0.0;
+
+            // Anillos externos: escalan con respiración + energía de la voz.
+            final outer = 96.0 + breath * 10 + energy * 64;
+            final mid = 96.0 + energy * 34;
+
+            return Stack(
+              alignment: Alignment.center,
+              children: [
+                _ring(outer, primary.withValues(alpha: 0.10 + energy * 0.10)),
+                _ring(mid, primary.withValues(alpha: 0.16)),
+                // Núcleo tocable.
+                Container(
+                  width: 96,
+                  height: 96,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: widget.recording
+                        ? primary
+                        : primary.withValues(alpha: 0.12),
+                    boxShadow: widget.recording
+                        ? [
+                            BoxShadow(
+                              color: primary.withValues(alpha: 0.25 + energy * 0.25),
+                              blurRadius: 20 + energy * 24,
+                              spreadRadius: 2 + energy * 6,
+                            )
+                          ]
+                        : null,
+                  ),
+                  child: Icon(
+                    widget.recording ? Icons.stop_rounded : Icons.mic_rounded,
+                    size: 44,
+                    color: widget.recording ? Colors.white : primary,
+                  ),
+                ),
+              ],
+            );
+          },
+        ),
+      ),
+    );
+  }
+
+  Widget _ring(double size, Color color) => Container(
+        width: size.clamp(96.0, 168.0),
+        height: size.clamp(96.0, 168.0),
+        decoration: BoxDecoration(shape: BoxShape.circle, color: color),
+      );
+}
+
+/// Tres puntos que laten en secuencia mientras la IA "entiende" el audio —
+/// reemplaza al spinner pelado para que la espera se sienta activa.
+class _ThinkingDots extends StatefulWidget {
+  const _ThinkingDots();
+
+  @override
+  State<_ThinkingDots> createState() => _ThinkingDotsState();
+}
+
+class _ThinkingDotsState extends State<_ThinkingDots>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _c;
+
+  @override
+  void initState() {
+    super.initState();
+    _c = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1100),
+    )..repeat();
+  }
+
+  @override
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: _c,
+      builder: (context, _) {
+        return Row(
+          mainAxisSize: MainAxisSize.min,
+          children: List.generate(3, (i) {
+            // Cada punto desfasado 1/3 de ciclo.
+            final phase = (_c.value + i / 3) % 1.0;
+            final wave = 0.5 + 0.5 * math.sin(phase * 2 * math.pi);
+            return Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 4),
+              child: Container(
+                width: 10,
+                height: 10,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: AppTheme.primary.withValues(alpha: 0.35 + wave * 0.55),
+                ),
+              ),
+            );
+          }),
+        );
+      },
+    );
+  }
 }

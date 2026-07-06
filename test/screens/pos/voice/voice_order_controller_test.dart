@@ -1,6 +1,8 @@
 // Spec: specs/085-vender-por-voz/spec.md
+import 'dart:async';
 import 'dart:typed_data';
 
+import 'package:fake_async/fake_async.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:record/record.dart';
@@ -18,6 +20,25 @@ class _FakeRecorder implements AudioRecorder {
   Future<void> start(RecordConfig config, {required String path}) async {}
   @override
   Future<String?> stop() async => 'fake-clip';
+  @override
+  Future<void> dispose() async {}
+  @override
+  noSuchMethod(Invocation i) => throw UnimplementedError('${i.memberName}');
+}
+
+/// Grabador que SÍ emite amplitud (para probar la animación viva y el
+/// auto-stop en silencio). El resto de miembros no se usan en estas pruebas.
+class _AmpRecorder implements AudioRecorder {
+  _AmpRecorder(this._amps);
+  final Stream<Amplitude> _amps;
+  @override
+  Future<bool> hasPermission({bool request = true}) async => true;
+  @override
+  Future<void> start(RecordConfig config, {required String path}) async {}
+  @override
+  Future<String?> stop() async => 'fake-clip';
+  @override
+  Stream<Amplitude> onAmplitudeChanged(Duration interval) => _amps;
   @override
   Future<void> dispose() async {}
   @override
@@ -118,6 +139,88 @@ void main() {
     await c.startRecording();
     expect(c.phase, VoicePhase.error);
     expect(c.error, contains('micrófono'));
+  });
+
+  test('amplitud viva: el orbe reacciona a la voz', () {
+    fakeAsync((async) {
+      final amps = StreamController<Amplitude>.broadcast();
+      final c = VoiceOrderController(
+        cart: cart,
+        recorder: _AmpRecorder(amps.stream),
+        apiCall: _api({'commands': []}),
+        resolvePath: _fakePath,
+        readAudio: _fakeAudio,
+      );
+      c.startRecording();
+      async.flushMicrotasks();
+      expect(c.phase, VoicePhase.recording);
+      expect(c.amplitude, 0.0);
+
+      amps.add(Amplitude(current: -10, max: -5)); // voz fuerte
+      async.flushMicrotasks();
+      expect(c.amplitude, greaterThan(0.3));
+
+      amps.close();
+      c.dispose();
+    });
+  });
+
+  test('auto-stop: tras hablar y callar ~2s procesa solo', () {
+    fakeAsync((async) {
+      final amps = StreamController<Amplitude>.broadcast();
+      final c = VoiceOrderController(
+        cart: cart,
+        recorder: _AmpRecorder(amps.stream),
+        apiCall: _api({
+          'commands': [
+            {'action': 'agregar', 'item': 'agua cristal', 'quantity': 1, 'raw': ''}
+          ],
+        }),
+        resolvePath: _fakePath,
+        readAudio: _fakeAudio,
+        silenceWindow: const Duration(seconds: 2),
+      );
+      c.startRecording();
+      async.flushMicrotasks();
+      expect(c.phase, VoicePhase.recording);
+
+      // El tendero habla…
+      amps.add(Amplitude(current: -12, max: -6));
+      async.flushMicrotasks();
+
+      // …y calla: al pasar la ventana de silencio, procesa SIN tocar el botón.
+      async.elapse(const Duration(seconds: 2, milliseconds: 200));
+      async.flushMicrotasks();
+
+      expect(c.phase, VoicePhase.review);
+      expect(c.preview.lines.length, 1);
+      amps.close();
+    });
+  });
+
+  test('auto-stop NO dispara si nunca hubo voz (evita cortar en seco)', () {
+    fakeAsync((async) {
+      final amps = StreamController<Amplitude>.broadcast();
+      final c = VoiceOrderController(
+        cart: cart,
+        recorder: _AmpRecorder(amps.stream),
+        apiCall: _api({'commands': []}),
+        resolvePath: _fakePath,
+        readAudio: _fakeAudio,
+        silenceWindow: const Duration(seconds: 2),
+      );
+      c.startRecording();
+      async.flushMicrotasks();
+
+      // Sólo silencio (amplitud baja): no arma el timer de auto-stop.
+      amps.add(Amplitude(current: -80, max: -70));
+      async.elapse(const Duration(seconds: 3));
+      async.flushMicrotasks();
+
+      expect(c.phase, VoicePhase.recording); // sigue esperando el toque manual
+      amps.close();
+      c.dispose();
+    });
   });
 
   test('fijar_cantidad fija el total absoluto (no suma)', () async {
