@@ -751,6 +751,20 @@ class ApiService {
     }
   }
 
+  /// Spec 096 Adenda A: comparte EXPLÍCITAMENTE la foto de un producto
+  /// propio al catálogo compartido — el llamador siempre debe preguntarle
+  /// al tendero antes de invocar esto, nunca automático. Errores se
+  /// swallow: es una acción de "ayudar a otros", nunca debe bloquear ni
+  /// mostrar un error al tendero si falla.
+  Future<bool> shareProductPhotoToCatalog(String productId) async {
+    try {
+      await _dio.post('/api/v1/products/$productId/share-to-catalog');
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
   Future<Map<String, dynamic>> searchCatalog(String query) async {
     try {
       final response = await _dio
