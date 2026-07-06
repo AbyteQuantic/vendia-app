@@ -426,35 +426,68 @@ class _ListeningOrbState extends State<_ListeningOrb>
   @override
   Widget build(BuildContext context) {
     const primary = AppTheme.primary;
+    const coreD = 96.0;
+    const maxD = 216.0; // hasta dónde llegan las ondas
     return GestureDetector(
       onTap: widget.onTap,
       behavior: HitTestBehavior.opaque,
       child: SizedBox(
-        width: 168,
-        height: 168,
+        width: 232,
+        height: 232,
         child: AnimatedBuilder(
           animation: _pulse,
           builder: (context, _) {
-            // Suaviza la amplitud hacia el último valor leído (evita saltos a
-            // ~6 fps que da el stream de amplitud).
-            _smooth += (widget.amplitude - _smooth) * 0.25;
-            // Respiración base con una onda seno; en reposo mantiene el orbe vivo.
-            final breath = 0.5 + 0.5 * math.sin(_pulse.value * 2 * math.pi);
-            final energy = widget.recording ? _smooth : 0.0;
+            // Suaviza la amplitud hacia el último valor leído (el stream llega
+            // a ~6 fps; el AnimationController rebota a 60 fps y lerpéa).
+            _smooth += (widget.amplitude - _smooth) * 0.3;
+            final energy = widget.recording ? _smooth.clamp(0.0, 1.0) : 0.0;
+            final t = _pulse.value; // 0..1 en bucle
 
-            // Anillos externos: escalan con respiración + energía de la voz.
-            final outer = 96.0 + breath * 10 + energy * 64;
-            final mid = 96.0 + energy * 34;
+            // Ondas tipo "sonar": SIEMPRE emanan hacia afuera mientras graba —
+            // así se ve VIVO aun en silencio — y ganan tamaño/opacidad con la
+            // voz. Tres ondas desfasadas 1/3 de ciclo (una nace cada ~0.6 s).
+            final ripples = <Widget>[];
+            if (widget.recording) {
+              const n = 3;
+              for (var i = 0; i < n; i++) {
+                final phase = (t + i / n) % 1.0;
+                final d = coreD + (maxD - coreD) * phase;
+                final op = (1 - phase) * (0.30 + energy * 0.45);
+                ripples.add(Container(
+                  width: d,
+                  height: d,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    border: Border.all(
+                      color: primary.withValues(alpha: op.clamp(0.0, 0.9)),
+                      width: 3,
+                    ),
+                  ),
+                ));
+              }
+            }
+
+            // Halo relleno detrás del núcleo: respira y crece con la voz.
+            final breath = 0.5 + 0.5 * math.sin(t * 2 * math.pi);
+            final haloD = coreD + 14 + breath * 6 + energy * 46;
 
             return Stack(
               alignment: Alignment.center,
               children: [
-                _ring(outer, primary.withValues(alpha: 0.10 + energy * 0.10)),
-                _ring(mid, primary.withValues(alpha: 0.16)),
+                ...ripples,
+                Container(
+                  width: haloD,
+                  height: haloD,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: primary.withValues(
+                        alpha: widget.recording ? 0.14 + energy * 0.16 : 0.07),
+                  ),
+                ),
                 // Núcleo tocable.
                 Container(
-                  width: 96,
-                  height: 96,
+                  width: coreD,
+                  height: coreD,
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
                     color: widget.recording
@@ -463,9 +496,9 @@ class _ListeningOrbState extends State<_ListeningOrb>
                     boxShadow: widget.recording
                         ? [
                             BoxShadow(
-                              color: primary.withValues(alpha: 0.25 + energy * 0.25),
-                              blurRadius: 20 + energy * 24,
-                              spreadRadius: 2 + energy * 6,
+                              color: primary.withValues(alpha: 0.3 + energy * 0.3),
+                              blurRadius: 18 + energy * 26,
+                              spreadRadius: 1 + energy * 6,
                             )
                           ]
                         : null,
@@ -483,12 +516,6 @@ class _ListeningOrbState extends State<_ListeningOrb>
       ),
     );
   }
-
-  Widget _ring(double size, Color color) => Container(
-        width: size.clamp(96.0, 168.0),
-        height: size.clamp(96.0, 168.0),
-        decoration: BoxDecoration(shape: BoxShape.circle, color: color),
-      );
 }
 
 /// Tres puntos que laten en secuencia mientras la IA "entiende" el audio —
