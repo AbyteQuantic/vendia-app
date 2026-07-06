@@ -155,7 +155,7 @@ class AddMerchandiseScreen extends StatelessWidget {
     if (!context.mounted) return;
     Navigator.of(context).push(
       MaterialPageRoute(
-        builder: (_) => IaLoadingScreen(imagePath: photo.path),
+        builder: (_) => IaLoadingScreen(image: photo),
       ),
     );
   }

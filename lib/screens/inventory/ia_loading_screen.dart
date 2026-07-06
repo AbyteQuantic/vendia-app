@@ -1,8 +1,8 @@
 import 'dart:async';
-import 'dart:io';
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:image_picker/image_picker.dart'; // XFile (web-safe)
 import '../../services/api_service.dart';
 import '../../services/auth_service.dart';
 import '../../theme/app_theme.dart';
@@ -11,9 +11,12 @@ import 'ia_result_screen.dart';
 /// IA Loading Screen — shows a breathing logo + animated dots
 /// while the AI "processes" the supplier invoice.
 class IaLoadingScreen extends StatefulWidget {
-  final String imagePath;
+  /// La foto de la factura como [XFile] — se suben sus BYTES, nunca la ruta.
+  /// En web no hay filesystem y `XFile.path` es un blob URL: usar `dart:io
+  /// File(path)` reventaba con "Unsupported operation: _Namespace".
+  final XFile image;
 
-  const IaLoadingScreen({super.key, required this.imagePath});
+  const IaLoadingScreen({super.key, required this.image});
 
   @override
   State<IaLoadingScreen> createState() => _IaLoadingScreenState();
@@ -51,10 +54,8 @@ class _IaLoadingScreenState extends State<IaLoadingScreen>
 
   Future<void> _scanInvoice() async {
     try {
-      final file = File(widget.imagePath);
-
-      // Safety net: verify file size before sending
-      final fileSize = await file.length();
+      // Safety net: verify size (XFile.length es web-safe, sin dart:io).
+      final fileSize = await widget.image.length();
       if (fileSize > 5 * 1024 * 1024) {
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
@@ -71,7 +72,8 @@ class _IaLoadingScreenState extends State<IaLoadingScreen>
       }
 
       final api = ApiService(AuthService());
-      final result = await api.scanInvoice(file);
+      // scanInvoiceXFile sube los BYTES (funciona en móvil Y web).
+      final result = await api.scanInvoiceXFile(widget.image);
       if (!mounted) return;
       HapticFeedback.mediumImpact();
 
