@@ -3,6 +3,8 @@
 // Orquestador de "vender por voz". NO toca el carrito hasta applyConfirmed().
 // buildPreview() es PURO (testeable). La grabación reusa voice_recorder.dart.
 
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:record/record.dart';
 
@@ -228,6 +230,13 @@ class VoiceOrderController extends ChangeNotifier {
   final Future<String> Function() _resolvePath;
   final Future<RecordedAudio> Function(String) _readAudio;
 
+  /// Cuánto silencio (sin voz) espera antes de procesar solo. El tendero
+  /// también puede tocar para parar en cualquier momento.
+  final Duration silenceWindow;
+
+  /// Amplitud normalizada (0..1) a partir de la cual consideramos que hay voz.
+  final double speechThreshold;
+
   VoiceOrderController({
     required this.cart,
     ApiService? api,
@@ -236,11 +245,15 @@ class VoiceOrderController extends ChangeNotifier {
     VoiceOrderApi? apiCall,
     Future<String> Function()? resolvePath,
     Future<RecordedAudio> Function(String)? readAudio,
+    Duration? silenceWindow,
+    double? speechThreshold,
   })  : resolver = resolver ?? const ProductResolver(),
         _recorder = recorder ?? AudioRecorder(),
         _api = apiCall ?? (api ?? ApiService(AuthService())).voiceOrder,
         _resolvePath = resolvePath ?? recordingPath,
-        _readAudio = readAudio ?? readRecordedAudio;
+        _readAudio = readAudio ?? readRecordedAudio,
+        silenceWindow = silenceWindow ?? const Duration(seconds: 2),
+        speechThreshold = speechThreshold ?? 0.16;
 
   VoicePhase _phase = VoicePhase.idle;
   VoicePhase get phase => _phase;
@@ -253,6 +266,15 @@ class VoiceOrderController extends ChangeNotifier {
   bool _correcting = false; // segunda grabación que MERGEA sobre la preview
 
   String? _stopPath;
+
+  // ── Animación viva + auto-stop en silencio ────────────────────────────────
+  StreamSubscription<Amplitude>? _ampSub;
+  Timer? _silenceTimer;
+  double _amplitude = 0.0; // 0..1, alimenta el orbe de escucha del sheet
+  bool _heardSpeech = false; // ya escuchamos voz al menos una vez
+
+  /// Amplitud actual del micrófono normalizada a 0..1 (para la animación).
+  double get amplitude => _amplitude;
 
   /// Inicia una corrección por voz SOBRE la preview actual ("agregue dos panes
   /// más", "quite la gaseosa", "que el agua sean tres"). Mergea, no reemplaza.
@@ -278,15 +300,73 @@ class VoiceOrderController extends ChangeNotifier {
       final cfg = await resolveRecordConfig(_recorder);
       final path = await _resolvePath();
       await _recorder.start(cfg, path: path);
+      _amplitude = 0;
+      _heardSpeech = false;
+      _listenAmplitude();
       _set(VoicePhase.recording);
     } catch (_) {
+      _stopAmplitude();
       _set(VoicePhase.error,
           error: 'No se pudo iniciar la grabación. Intente de nuevo.');
     }
   }
 
+  /// Suscribe la amplitud del micrófono para animar el orbe y auto-parar en
+  /// silencio. Envuelto en try/catch: un grabador sin soporte de amplitud (o
+  /// el mock de un test) simplemente no anima ni auto-para — el toque manual
+  /// para siempre funciona.
+  void _listenAmplitude() {
+    try {
+      _ampSub = _recorder
+          .onAmplitudeChanged(const Duration(milliseconds: 150))
+          .listen(_onAmplitude, onError: (_) {}, cancelOnError: false);
+    } catch (_) {
+      // Sin amplitud: sigue el flujo con toque-para-parar.
+    }
+  }
+
+  void _onAmplitude(Amplitude amp) {
+    if (_phase != VoicePhase.recording) return;
+    _amplitude = _normalizeAmplitude(amp.current);
+    if (_amplitude >= speechThreshold) {
+      _heardSpeech = true;
+      _armSilenceTimer();
+    }
+    notifyListeners();
+  }
+
+  /// Reinicia la cuenta de silencio en cada golpe de voz. Cuando pasa
+  /// [silenceWindow] sin voz (y ya hubo voz), procesa solo.
+  void _armSilenceTimer() {
+    _silenceTimer?.cancel();
+    _silenceTimer = Timer(silenceWindow, () {
+      if (_phase == VoicePhase.recording && _heardSpeech) {
+        stopAndProcess();
+      }
+    });
+  }
+
+  void _stopAmplitude() {
+    _silenceTimer?.cancel();
+    _silenceTimer = null;
+    _ampSub?.cancel();
+    _ampSub = null;
+    _amplitude = 0;
+  }
+
+  /// dBFS (−∞..0) → 0..1. La voz normal ronda −30..−10 dBFS; por debajo de
+  /// −45 lo tratamos como silencio.
+  static double _normalizeAmplitude(double dbfs) {
+    if (dbfs.isNaN || dbfs.isInfinite) return 0;
+    const floor = -45.0;
+    if (dbfs <= floor) return 0;
+    if (dbfs >= 0) return 1;
+    return (dbfs - floor) / -floor;
+  }
+
   Future<void> stopAndProcess() async {
     if (_phase != VoicePhase.recording) return;
+    _stopAmplitude(); // corta la escucha/auto-stop antes de subir
     _set(VoicePhase.uploading);
     try {
       _stopPath = await _recorder.stop();
@@ -444,10 +524,23 @@ class VoiceOrderController extends ChangeNotifier {
   }
 
   void reset() {
+    _stopAmplitude();
+    _heardSpeech = false;
     _preview = const PreviewModel();
     _consumed = false;
     _correcting = false;
     _activeIndexAtPreview = null;
     _set(VoicePhase.idle);
+  }
+
+  @override
+  void dispose() {
+    _stopAmplitude();
+    try {
+      _recorder.dispose();
+    } catch (_) {
+      // Liberar el grabador es best-effort; nunca debe romper el cierre.
+    }
+    super.dispose();
   }
 }
