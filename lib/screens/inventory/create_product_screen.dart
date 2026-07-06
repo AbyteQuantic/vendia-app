@@ -23,6 +23,7 @@ import '../../theme/app_theme.dart';
 import '../../utils/barcode_validator.dart';
 import '../../utils/currency_input.dart';
 import '../../widgets/ai_instruction_dialog.dart';
+import '../../widgets/catalog_photo_suggestion.dart';
 import '../../widgets/dashboard_ui_kit.dart';
 import '../../theme/app_ui.dart';
 import '../../widgets/advanced_product_options.dart';
@@ -86,6 +87,10 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
   // todas formas" tras el aviso de posible duplicado — evita mostrar el
   // mismo diálogo dos veces al reintentar _save().
   bool _confirmedDuplicate = false;
+  // Spec 096 Adenda A: true una vez que ya se le preguntó al tendero si
+  // quiere compartir su foto al catálogo compartido en ESTA sesión de
+  // edición — evita repetir la misma pregunta tras cada acción de IA.
+  bool _sharePromptShown = false;
   List<String> _catalogImages = []; // accepted images from catalog
   // Spec 018 / FR-04: the product name the catalog strip was captured for.
   // Once the typed name diverges from this, the strip is dropped so it can
@@ -998,6 +1003,9 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
             _pendingCatalogImageId = catalogImgId;
           }
         });
+        // Spec 096 Adenda A: preguntar EXPLÍCITAMENTE si quiere compartir
+        // esta foto al catálogo compartido — nunca automático/silencioso.
+        _maybePromptShareToCatalog();
       }
     } catch (e) {
       if (mounted) {
@@ -1018,6 +1026,43 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
       }
     } finally {
       if (mounted) setState(() => _enhancing = false);
+    }
+  }
+
+  /// Spec 096 Adenda A: tras una foto de IA exitosa en un producto CON
+  /// código de barras, pregunta UNA vez por sesión de edición si el
+  /// tendero quiere compartirla para ayudar a otros tenderos con el mismo
+  /// producto. Nunca automático — sin esto, el mecanismo anterior
+  /// (registerCatalogImage) compartía en silencio sin consentimiento.
+  Future<void> _maybePromptShareToCatalog() async {
+    if (_sharePromptShown) return;
+    final barcode = _skuCtrl.text.trim();
+    if (barcode.isEmpty || _pendingUuid == null) return;
+    _sharePromptShown = true;
+
+    final accepted = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('¿Compartir esta foto?'),
+        content: const Text(
+          '¿Quiere compartir esta foto para ayudar a otros tenderos con el '
+          'mismo producto?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('No, gracias'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: const Text('Sí, compartir'),
+          ),
+        ],
+      ),
+    );
+    if (accepted == true && mounted) {
+      final api = ApiService(AuthService());
+      await api.shareProductPhotoToCatalog(_pendingUuid!);
     }
   }
 
@@ -1811,6 +1856,20 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
                               ),
                               const SizedBox(height: 8),
                             ],
+                            // Spec 096 — sugerencia OPCIONAL de foto verificada de
+                            // catálogo (Open Food Facts) para el barcode escaneado.
+                            // Nunca reemplaza ni se aplica sola; NO toca las
+                            // opciones de abajo (Specs 017/094 intactas).
+                            if (_skuCtrl.text.trim().isNotEmpty)
+                              CatalogPhotoSuggestion(
+                                key: ValueKey(_skuCtrl.text.trim()),
+                                barcode: _skuCtrl.text.trim(),
+                                onAccept: (url) => setState(() {
+                                  _photoFile = null;
+                                  _photoUrl = url;
+                                  _imageIsSuggested = false;
+                                }),
+                              ),
                             // Spec 094 — el tendero elige: QUITAR FONDO (deja el
                             // producto igual) o MEJORAR con IA (limpia/mejora). Sin
                             // foto → solo CREAR.
@@ -2057,6 +2116,7 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
                   _fieldLabel('Codigo SKU / Barras'),
                   const SizedBox(height: 6),
                   TextFormField(
+                    key: const Key('field_sku_barcode'),
                     controller: _skuCtrl,
                     keyboardType: TextInputType.number,
                     style: const TextStyle(fontSize: 18),

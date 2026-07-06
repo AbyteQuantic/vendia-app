@@ -736,6 +736,35 @@ class ApiService {
     }
   }
 
+  /// Foto de referencia verificada por código de barras (Spec 096).
+  /// Devuelve `null` en 404 (sin match) o cualquier otro error — nunca
+  /// lanza, para que la sugerencia simplemente no aparezca (AC-04) en
+  /// vez de mostrar un error al tendero.
+  Future<Map<String, dynamic>?> fetchCatalogReferencePhoto(
+      String barcode) async {
+    try {
+      final response = await _dio.get('/api/v1/catalog/reference-photo',
+          queryParameters: {'barcode': barcode});
+      return _extractData(response);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Spec 096 Adenda A: comparte EXPLÍCITAMENTE la foto de un producto
+  /// propio al catálogo compartido — el llamador siempre debe preguntarle
+  /// al tendero antes de invocar esto, nunca automático. Errores se
+  /// swallow: es una acción de "ayudar a otros", nunca debe bloquear ni
+  /// mostrar un error al tendero si falla.
+  Future<bool> shareProductPhotoToCatalog(String productId) async {
+    try {
+      await _dio.post('/api/v1/products/$productId/share-to-catalog');
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
   Future<Map<String, dynamic>> searchCatalog(String query) async {
     try {
       final response = await _dio
