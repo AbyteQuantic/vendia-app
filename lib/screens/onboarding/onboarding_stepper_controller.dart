@@ -135,6 +135,18 @@ class OnboardingStepperController extends ChangeNotifier {
   // ── Paso 6: Empleados ─────────────────────────────────────────────────────
   bool? hasEmployees; // null = sin respuesta, true = sí, false = no
 
+  // ── Términos y Servicios (Spec 098, Fase 1) ───────────────────────────────
+  // Aceptación OBLIGATORIA de los T&C (incluye la cláusula de uso colaborativo
+  // de imágenes). Se envía como `accept_terms` en el payload de registro; el
+  // backend rechaza con 400 si es false. El botón "Crear mi cuenta" del
+  // onboarding se deshabilita hasta que esto sea true.
+  bool acceptedTerms = false;
+
+  void setAcceptedTerms(bool value) {
+    acceptedTerms = value;
+    notifyListeners();
+  }
+
   // ── Navegación ────────────────────────────────────────────────────────────
 
   // Six visible steps. The LAST step (logo, index 5) is deliberately
@@ -245,6 +257,7 @@ class OnboardingStepperController extends ChangeNotifier {
     logoUrl = '';
     logoDescription = '';
     hasEmployees = null;
+    acceptedTerms = false;
     notifyListeners();
   }
 
@@ -501,6 +514,9 @@ class OnboardingStepperController extends ChangeNotifier {
       },
       // Fase 2: empleados se agrega en el módulo Administrar (Fase 4)
       'employees': [],
+      // Spec 098 (Fase 1): aceptación de T&C. OnboardingStepperScreen lo
+      // extrae del payload y lo pasa como acceptTerms a la llamada real.
+      'accept_terms': acceptedTerms,
     };
   }
 

@@ -7,6 +7,8 @@ import '../../services/auth_service.dart';
 import '../../services/role_manager.dart';
 import '../../theme/app_theme.dart';
 import '../onboarding/post_login_gate.dart';
+import '../legal/terms_reaccept_dialog.dart';
+import 'login_screen.dart';
 
 /// Workspace info passed from login response.
 class WorkspaceInfo {
@@ -116,6 +118,23 @@ class _WorkspaceSelectorScreenState extends State<WorkspaceSelectorScreen> {
       if (!mounted) return;
       await context.read<RoleManager>().refresh();
       if (!mounted) return;
+
+      // Spec 098 (Fase 1, AC-02): re-aceptación bloqueante de los T&C
+      // actualizados antes de entrar. Si no acepta, cerrar sesión y volver
+      // al login.
+      if (data['terms_acceptance_required'] == true) {
+        final accepted = await showTermsReacceptDialog(context, _api);
+        if (!mounted) return;
+        if (!accepted) {
+          await _auth.logout();
+          if (!mounted) return;
+          Navigator.of(context).pushAndRemoveUntil(
+            MaterialPageRoute(builder: (_) => const LoginScreen()),
+            (_) => false,
+          );
+          return;
+        }
+      }
 
       Navigator.of(context).pushReplacement(
         PageRouteBuilder(

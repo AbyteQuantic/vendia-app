@@ -289,16 +289,33 @@ class ApiService {
   Future<Map<String, dynamic>> registerTenantFullWithCaptcha(
     Map<String, dynamic> payload, {
     String? captchaToken,
+    // Spec 098 (Fase 1): aceptación de Términos y Servicios (incluye la
+    // cláusula de uso colaborativo de imágenes). El backend rechaza el
+    // registro con 400 si es false.
+    bool acceptTerms = false,
   }) async {
     try {
       final body = Map<String, dynamic>.from(payload);
       if (captchaToken != null && captchaToken.isNotEmpty) {
         body['captcha_token'] = captchaToken;
       }
+      body['accept_terms'] = acceptTerms;
       final response = await _dio.post('/api/v1/tenant/register', data: body);
       return response.data as Map<String, dynamic>;
     } on DioException catch (e) {
       _throwIfCaptchaFailure(e);
+      throw AppError.fromDioException(e);
+    }
+  }
+
+  // Spec: specs/098-aporte-automatico-fotos-colaborativo/spec.md (Fase 1)
+  /// Registra la aceptación de la versión vigente de los Términos y Servicios
+  /// para el tenant autenticado. Usado por el modal bloqueante de
+  /// re-aceptación en el login (AC-02).
+  Future<void> acceptTerms() async {
+    try {
+      await _dio.post('/api/v1/terms/accept');
+    } on DioException catch (e) {
       throw AppError.fromDioException(e);
     }
   }

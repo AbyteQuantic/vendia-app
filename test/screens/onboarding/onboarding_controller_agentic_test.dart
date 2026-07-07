@@ -186,4 +186,41 @@ void main() {
       expect((sent!['owner'] as Map)['password'], '1234');
     });
   });
+
+  // Spec 098 (Fase 1): aceptación obligatoria de T&C en el payload de registro.
+  group('aceptación de términos (Spec 098)', () {
+    test('acceptedTerms arranca en false y setAcceptedTerms lo actualiza', () {
+      final c = _make();
+      expect(c.acceptedTerms, isFalse);
+      c.setAcceptedTerms(true);
+      expect(c.acceptedTerms, isTrue);
+    });
+
+    test('el payload envía accept_terms según el estado del controller',
+        () async {
+      Map<String, dynamic>? sent;
+      final c = OnboardingStepperController(
+        apiCall: (p) async {
+          sent = p;
+          return {};
+        },
+        saveSession: (_) async {},
+      );
+      _fillAllValid(c);
+
+      await c.submit();
+      expect(sent!['accept_terms'], isFalse);
+
+      c.setAcceptedTerms(true);
+      await c.submit();
+      expect(sent!['accept_terms'], isTrue);
+    });
+
+    test('reset limpia la aceptación de términos', () {
+      final c = _make();
+      c.setAcceptedTerms(true);
+      c.reset();
+      expect(c.acceptedTerms, isFalse);
+    });
+  });
 }

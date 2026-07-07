@@ -23,6 +23,7 @@ import '../../../services/voice_recorder.dart';
 import '../../../theme/app_theme.dart';
 import '../onboarding_stepper_controller.dart';
 import '../post_login_gate.dart';
+import '../../legal/terms_screen.dart';
 import '../../../widgets/sprite_sheet_player.dart';
 import 'glass_chat_console_widget.dart';
 import 'onboarding_animation_controller.dart';
@@ -637,7 +638,11 @@ class _OnboardingAgenticAnimatedViewState
         color: Colors.white,
         padding: EdgeInsets.fromLTRB(
             24, 22, 24, MediaQuery.of(context).viewInsets.bottom + 24),
-        child: Column(
+        // Scrollable: al añadir el checkbox de T&C (Spec 098) el contenido
+        // puede exceder la altura acotada de la consola en pantallas cortas
+        // (360dp) — un SingleChildScrollView evita el overflow.
+        child: SingleChildScrollView(
+          child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
@@ -653,14 +658,54 @@ class _OnboardingAgenticAnimatedViewState
             const Text('Cree su cuenta para empezar a vender.',
                 textAlign: TextAlign.center,
                 style: TextStyle(fontSize: 15, color: AppTheme.textSecondary)),
-            const SizedBox(height: 18),
+            const SizedBox(height: 12),
+            // Spec 098 (Fase 1): aceptación OBLIGATORIA de los Términos y
+            // Servicios (incluye la cláusula de uso colaborativo de imágenes).
+            // El botón "Crear mi cuenta" queda deshabilitado hasta marcarlo.
+            CheckboxListTile(
+              key: const Key('accept_terms_checkbox'),
+              value: _ctrl.acceptedTerms,
+              onChanged: _ctrl.status == StepperStatus.loading
+                  ? null
+                  : (v) {
+                      _ctrl.setAcceptedTerms(v ?? false);
+                      setState(() {});
+                    },
+              controlAffinity: ListTileControlAffinity.leading,
+              contentPadding: EdgeInsets.zero,
+              activeColor: AppTheme.primary,
+              title: const Text(
+                'Acepto los Términos y Servicios, incluido el uso colaborativo de imágenes de producto',
+                style: TextStyle(fontSize: 14, height: 1.35),
+              ),
+            ),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: TextButton(
+                key: const Key('view_terms_link'),
+                onPressed: () => Navigator.of(context).push(
+                  MaterialPageRoute(builder: (_) => const TermsScreen()),
+                ),
+                style: TextButton.styleFrom(padding: EdgeInsets.zero),
+                child: const Text(
+                  'Ver términos',
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w700,
+                    decoration: TextDecoration.underline,
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(height: 12),
             SizedBox(
               height: 64,
               child: ElevatedButton(
                 key: const Key('agentic_create_account'),
-                onPressed: _ctrl.status == StepperStatus.loading
-                    ? null
-                    : () => _ctrl.submitWithCaptcha(null),
+                onPressed:
+                    (_ctrl.status == StepperStatus.loading || !_ctrl.acceptedTerms)
+                        ? null
+                        : () => _ctrl.submitWithCaptcha(null),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: AppTheme.primary,
                   shape: RoundedRectangleBorder(
@@ -687,6 +732,7 @@ class _OnboardingAgenticAnimatedViewState
                     style: const TextStyle(color: AppTheme.error, fontSize: 14)),
               ),
           ],
+          ),
         ),
       ),
     );
