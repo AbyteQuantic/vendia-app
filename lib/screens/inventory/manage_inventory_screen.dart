@@ -33,6 +33,7 @@ import 'negative_stock_screen.dart';
 import 'product_import_screen.dart';
 import 'organize_categories_screen.dart';
 import 'product_save_flow.dart';
+import 'photo_completion_screen.dart';
 
 const kSinCategoria = 'Sin categoría';
 
@@ -99,6 +100,7 @@ class _ManageInventoryScreenState extends State<ManageInventoryScreen>
   String? _error;
   bool _filterNoSku = false;
   bool _filterNoPrice = false;
+  bool _filterNoImage = false; // Spec 097 — referencias sin foto
 
   @override
   void initState() {
@@ -144,6 +146,7 @@ class _ManageInventoryScreenState extends State<ManageInventoryScreen>
         _noPriceCount = _products
             .where((p) => ((p['price'] as num?)?.toDouble() ?? 0) <= 0)
             .length;
+        _noImageCount = _products.where(_isNoImage).length;
         _loading = false;
       });
       _applyFilter();
@@ -185,6 +188,7 @@ class _ManageInventoryScreenState extends State<ManageInventoryScreen>
           final price = (p['price'] as num?)?.toDouble() ?? 0;
           if (price > 0) return false;
         }
+        if (_filterNoImage && !_isNoImage(p)) return false;
         return true;
       });
       _filtered = list.toList();
@@ -195,6 +199,27 @@ class _ManageInventoryScreenState extends State<ManageInventoryScreen>
 
   int _noSkuCount = 0;
   int _noPriceCount = 0;
+  int _noImageCount = 0;
+
+  /// Un producto está "sin imagen" si no tiene ni photo_url ni image_url —
+  /// misma lógica que `imgSrc` del tile de la lista (Spec 097).
+  bool _isNoImage(Map<String, dynamic> p) {
+    final photo = (p['photo_url'] as String? ?? '').trim();
+    final image = (p['image_url'] as String? ?? '').trim();
+    return photo.isEmpty && image.isEmpty;
+  }
+
+  /// Abre el flujo de "Completar fotos" con las referencias sin imagen de la
+  /// sede activa; al volver, recarga para reflejar las fotos asignadas.
+  Future<void> _openPhotoCompletion() async {
+    final pending = _products.where(_isNoImage).toList();
+    if (pending.isEmpty) return;
+    HapticFeedback.lightImpact();
+    await Navigator.of(context).push(MaterialPageRoute(
+      builder: (_) => PhotoCompletionScreen(products: pending),
+    ));
+    if (mounted) _loadProducts();
+  }
 
   Future<void> _deleteProduct(Map<String, dynamic> product) async {
     final name = product['name'] as String? ?? 'Producto';
@@ -457,6 +482,59 @@ class _ManageInventoryScreenState extends State<ManageInventoryScreen>
               ),
             ),
             const SizedBox(height: 8),
+            // Spec 097 — Sin imagen: filtro (paridad con Sin SKU) + acceso al
+            // flujo de "Completar fotos" (sugerencias del catálogo + IA/cargar).
+            if (_noImageCount > 0)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
+                child: Row(
+                  children: [
+                    FilterChip(
+                      selected: _filterNoImage,
+                      label: Text(
+                        'Sin imagen ($_noImageCount)',
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                          color:
+                              _filterNoImage ? Colors.white : AppTheme.primary,
+                        ),
+                      ),
+                      avatar: Icon(
+                        Icons.image_not_supported_outlined,
+                        size: 16,
+                        color: _filterNoImage ? Colors.white : AppTheme.primary,
+                      ),
+                      selectedColor: AppTheme.primary,
+                      backgroundColor: AppTheme.primary.withValues(alpha: 0.1),
+                      side: BorderSide(
+                          color: AppTheme.primary.withValues(alpha: 0.3)),
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(10)),
+                      onSelected: (v) {
+                        HapticFeedback.lightImpact();
+                        _filterNoImage = v;
+                        _applyFilter();
+                      },
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: FilledButton.icon(
+                        onPressed: _openPhotoCompletion,
+                        icon: const Icon(Icons.auto_awesome, size: 18),
+                        label: const Text('Completar fotos',
+                            maxLines: 1, overflow: TextOverflow.ellipsis),
+                        style: FilledButton.styleFrom(
+                          backgroundColor: AppTheme.primary,
+                          minimumSize: const Size(0, 40),
+                          shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(10)),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
 
             // Spec 071 — el acceso al catálogo en línea se movió al hub
             // "Agregar mercancía" (vista de entrada, más visible).
