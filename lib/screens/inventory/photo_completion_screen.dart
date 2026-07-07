@@ -441,18 +441,23 @@ class _PhotoCompletionScreenState extends State<PhotoCompletionScreen> {
   }
 
   Widget _actions(_Row row) {
+    // Las 4 opciones que pidió el fundador, SIEMPRE visibles en cada tarjeta.
     return Wrap(
       spacing: AppUI.s8,
       runSpacing: AppUI.s8,
       children: [
-        _actionBtn(Icons.auto_awesome, 'IA', () => _generateAi(row)),
+        _actionBtn(Icons.auto_awesome, 'Crear IA', () => _generateAi(row)),
         _actionBtn(Icons.upload_rounded, 'Cargar',
             () => _pickPhoto(row, ImageSource.gallery)),
         _actionBtn(Icons.photo_camera_rounded, 'Foto',
             () => _pickPhoto(row, ImageSource.camera)),
-        if (row.done)
-          _actionBtn(Icons.content_cut_rounded, 'Recortar fondo',
-              () => _removeBackground(row)),
+        _actionBtn(Icons.content_cut_rounded, 'Recortar fondo', () {
+          if (!row.done) {
+            _toast('Primero tome o cargue una foto para recortarle el fondo.');
+            return;
+          }
+          _removeBackground(row);
+        }),
       ],
     );
   }

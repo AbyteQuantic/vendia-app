@@ -100,7 +100,6 @@ class _ManageInventoryScreenState extends State<ManageInventoryScreen>
   String? _error;
   bool _filterNoSku = false;
   bool _filterNoPrice = false;
-  bool _filterNoImage = false; // Spec 097 — referencias sin foto
 
   @override
   void initState() {
@@ -188,7 +187,6 @@ class _ManageInventoryScreenState extends State<ManageInventoryScreen>
           final price = (p['price'] as num?)?.toDouble() ?? 0;
           if (price > 0) return false;
         }
-        if (_filterNoImage && !_isNoImage(p)) return false;
         return true;
       });
       _filtered = list.toList();
@@ -482,57 +480,28 @@ class _ManageInventoryScreenState extends State<ManageInventoryScreen>
               ),
             ),
             const SizedBox(height: 8),
-            // Spec 097 — Sin imagen: filtro (paridad con Sin SKU) + acceso al
-            // flujo de "Completar fotos" (sugerencias del catálogo + IA/cargar).
+            // Spec 097 — un único acceso al flujo dedicado "Completar fotos"
+            // (sugerencias del catálogo + IA/cargar/foto/recortar). Abre una
+            // VISTA APARTE que lista las referencias sin imagen; no filtra el
+            // inventario (eso confundía: "las filtra pero no abre la vista").
             if (_noImageCount > 0)
               Padding(
                 padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
-                child: Row(
-                  children: [
-                    FilterChip(
-                      selected: _filterNoImage,
-                      label: Text(
-                        'Sin imagen ($_noImageCount)',
-                        style: TextStyle(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w600,
-                          color:
-                              _filterNoImage ? Colors.white : AppTheme.primary,
-                        ),
-                      ),
-                      avatar: Icon(
-                        Icons.image_not_supported_outlined,
-                        size: 16,
-                        color: _filterNoImage ? Colors.white : AppTheme.primary,
-                      ),
-                      selectedColor: AppTheme.primary,
-                      backgroundColor: AppTheme.primary.withValues(alpha: 0.1),
-                      side: BorderSide(
-                          color: AppTheme.primary.withValues(alpha: 0.3)),
+                child: SizedBox(
+                  width: double.infinity,
+                  child: FilledButton.icon(
+                    onPressed: _openPhotoCompletion,
+                    icon: const Icon(Icons.add_photo_alternate_outlined,
+                        size: 20),
+                    label: Text('Completar fotos ($_noImageCount sin imagen)',
+                        maxLines: 1, overflow: TextOverflow.ellipsis),
+                    style: FilledButton.styleFrom(
+                      backgroundColor: AppTheme.primary,
+                      minimumSize: const Size(0, 46),
                       shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(10)),
-                      onSelected: (v) {
-                        HapticFeedback.lightImpact();
-                        _filterNoImage = v;
-                        _applyFilter();
-                      },
+                          borderRadius: BorderRadius.circular(12)),
                     ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: FilledButton.icon(
-                        onPressed: _openPhotoCompletion,
-                        icon: const Icon(Icons.auto_awesome, size: 18),
-                        label: const Text('Completar fotos',
-                            maxLines: 1, overflow: TextOverflow.ellipsis),
-                        style: FilledButton.styleFrom(
-                          backgroundColor: AppTheme.primary,
-                          minimumSize: const Size(0, 40),
-                          shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(10)),
-                        ),
-                      ),
-                    ),
-                  ],
+                  ),
                 ),
               ),
 

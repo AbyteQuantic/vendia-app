@@ -107,7 +107,7 @@ void main() {
     expect(api.patched, isEmpty);
     expect(find.text('Verificada'), findsNothing); // sugerencia oculta
     // Sigue ofreciendo acciones manuales.
-    expect(find.text('IA'), findsOneWidget);
+    expect(find.text('Crear IA'), findsOneWidget);
   });
 
   testWidgets('sin barcode → sin sugerencia, solo acciones manuales',
@@ -121,9 +121,11 @@ void main() {
     await tester.pump();
 
     expect(find.text('Usar'), findsNothing);
-    expect(find.text('IA'), findsOneWidget);
+    // Las 4 opciones pedidas SIEMPRE visibles por tarjeta.
+    expect(find.text('Crear IA'), findsOneWidget);
     expect(find.text('Cargar'), findsOneWidget);
     expect(find.text('Foto'), findsOneWidget);
+    expect(find.text('Recortar fondo'), findsOneWidget);
   });
 
   testWidgets('"Usar todas las sugeridas" aplica en lote', (tester) async {
