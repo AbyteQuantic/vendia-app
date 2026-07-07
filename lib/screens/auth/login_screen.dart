@@ -13,6 +13,7 @@ import '../../widgets/turnstile_captcha.dart';
 import '../../widgets/vendia_logo.dart';
 import '../onboarding/post_login_gate.dart';
 import '../onboarding/onboarding_stepper.dart';
+import '../legal/terms_reaccept_dialog.dart';
 import 'branch_selector_screen.dart'; // exports WorkspaceInfo + WorkspaceSelectorScreen
 
 class LoginScreen extends StatefulWidget {
@@ -213,6 +214,19 @@ class _LoginScreenState extends State<LoginScreen> {
       if (!mounted) return;
       await context.read<RoleManager>().refresh();
       if (!mounted) return;
+
+      // Spec 098 (Fase 1, AC-02): si el backend marca que el tenant debe
+      // re-aceptar los T&C actualizados (incluye la cláusula colaborativa de
+      // imágenes), mostrar un modal BLOQUEANTE antes de entrar al dashboard.
+      // Si no acepta, cerrar sesión y quedarse en el login.
+      if (data['terms_acceptance_required'] == true) {
+        final accepted = await showTermsReacceptDialog(context, _api);
+        if (!mounted) return;
+        if (!accepted) {
+          await _auth.logout();
+          return; // el finally resetea el estado de carga
+        }
+      }
 
       Navigator.of(context).pushReplacement(
         PageRouteBuilder(

@@ -32,9 +32,13 @@ class OnboardingStepperScreen extends StatelessWidget {
       create: (_) => OnboardingStepperController(
         apiCall: (payload) {
           final captchaToken = payload.remove('captcha_token') as String?;
+          // Spec 098 (Fase 1): la aceptación de T&C viaja en el payload
+          // (buildPayload) y se pasa como acceptTerms a la llamada real.
+          final acceptTerms = payload.remove('accept_terms') as bool? ?? false;
           return api.registerTenantFullWithCaptcha(
             payload,
             captchaToken: captchaToken,
+            acceptTerms: acceptTerms,
           );
         },
         saveSession: (data) async {
