@@ -10,6 +10,7 @@ import '../config/api_config.dart';
 import '../config/supabase_config.dart';
 import '../models/import_report.dart';
 import '../models/subscription.dart';
+import '../models/catalog_suggestion.dart';
 import '../theme/app_theme.dart';
 import '../widgets/premium_upsell_sheet.dart';
 import 'app_error.dart';
@@ -748,6 +749,33 @@ class ApiService {
       return _extractData(response);
     } catch (_) {
       return null;
+    }
+  }
+
+  /// Spec 097: sugerencias de foto en LOTE por código de barras. Devuelve un
+  /// mapa `barcode → CatalogSuggestion` (solo las que tienen foto). Defensivo:
+  /// ante cualquier error devuelve `{}` para que el flujo siga con las acciones
+  /// manuales (nunca rompe la pantalla de completar fotos).
+  Future<Map<String, CatalogSuggestion>> fetchCatalogReferencePhotos(
+      List<String> barcodes) async {
+    final codes = barcodes
+        .map((b) => b.trim())
+        .where((b) => b.isNotEmpty)
+        .toSet()
+        .toList();
+    if (codes.isEmpty) return const {};
+    try {
+      final response = await _dio.post('/api/v1/catalog/reference-photos',
+          data: {'barcodes': codes});
+      final data = (response.data?['data'] as Map?) ?? const {};
+      final out = <String, CatalogSuggestion>{};
+      data.forEach((k, v) {
+        final s = CatalogSuggestion.fromJson(v);
+        if (s != null) out[k.toString()] = s;
+      });
+      return out;
+    } catch (_) {
+      return const {};
     }
   }
 
