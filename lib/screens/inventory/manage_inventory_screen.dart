@@ -817,10 +817,6 @@ class _EditProductSheetState extends State<_EditProductSheet> {
   bool _isAgeRestricted = false;
   bool _saving = false;
   bool _enhancing = false;
-  // Spec 096 Adenda A: true una vez que ya se le preguntó al tendero si
-  // quiere compartir su foto al catálogo compartido en ESTA sesión de
-  // edición — evita repetir la misma pregunta tras cada acción de IA.
-  bool _sharePromptShown = false;
   String? _photoUrl;
   // Spec 013: store the picked XFile (not just its path string) so the
   // preview and upload both work cross-platform — on web `XFile.path` is
@@ -1157,9 +1153,6 @@ class _EditProductSheetState extends State<_EditProductSheet> {
           _photoUrl = url;
           _photoFile = null;
         });
-        // Spec 096 Adenda A: preguntar EXPLÍCITAMENTE si quiere compartir
-        // esta foto al catálogo compartido — nunca automático/silencioso.
-        _maybePromptShareToCatalog(id);
       }
     } catch (e) {
       if (mounted) {
@@ -1177,43 +1170,6 @@ class _EditProductSheetState extends State<_EditProductSheet> {
       }
     } finally {
       if (mounted) setState(() => _enhancing = false);
-    }
-  }
-
-  /// Spec 096 Adenda A: tras una foto de IA exitosa en un producto CON
-  /// código de barras, pregunta UNA vez por sesión de edición si el
-  /// tendero quiere compartirla para ayudar a otros tenderos con el mismo
-  /// producto. Nunca automático — sin esto, el mecanismo anterior
-  /// (registerCatalogImage) compartía en silencio sin consentimiento.
-  Future<void> _maybePromptShareToCatalog(String productId) async {
-    if (_sharePromptShown) return;
-    final barcode = _skuCtrl.text.trim();
-    if (barcode.isEmpty || productId.isEmpty) return;
-    _sharePromptShown = true;
-
-    final accepted = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('¿Compartir esta foto?'),
-        content: const Text(
-          '¿Quiere compartir esta foto para ayudar a otros tenderos con el '
-          'mismo producto?',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(false),
-            child: const Text('No, gracias'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.of(ctx).pop(true),
-            child: const Text('Sí, compartir'),
-          ),
-        ],
-      ),
-    );
-    if (accepted == true && mounted) {
-      final api = ApiService(AuthService());
-      await api.shareProductPhotoToCatalog(productId);
     }
   }
 
