@@ -35,6 +35,7 @@ import 'product_import_screen.dart';
 import 'organize_categories_screen.dart';
 import 'product_save_flow.dart';
 import 'photo_completion_screen.dart';
+import 'sku_completion_screen.dart';
 import '../legal/photo_rights_notice.dart';
 
 const kSinCategoria = 'Sin categoría';
@@ -89,12 +90,20 @@ bool isMissingSkuPhysical(Map<String, dynamic> p) {
 }
 
 class ManageInventoryScreen extends StatefulWidget {
-  const ManageInventoryScreen({super.key, this.focusProductId});
+  const ManageInventoryScreen({
+    super.key,
+    this.focusProductId,
+    @visibleForTesting this.apiOverride,
+  });
 
   /// Producto a destacar al abrir (desde una alerta de stock bajo). Hoy
   /// abre el inventario en el módulo correcto; el resaltado por-ítem es
   /// el siguiente paso (Spec 056 slice 1).
   final String? focusProductId;
+
+  /// Solo para pruebas de widget (mismo patrón que PhotoCompletionScreen).
+  @visibleForTesting
+  final ApiService? apiOverride;
 
   @override
   State<ManageInventoryScreen> createState() => _ManageInventoryScreenState();
@@ -106,21 +115,33 @@ class _ManageInventoryScreenState extends State<ManageInventoryScreen>
   void onBranchChanged() => _loadProducts(); // recarga al cambiar de sede
 
   final _searchCtrl = TextEditingController();
-  final _api = ApiService(AuthService());
+  late final ApiService _api;
   final _scrollCtrl = ScrollController();
 
   List<Map<String, dynamic>> _products = [];
   List<Map<String, dynamic>> _filtered = [];
   bool _loading = true;
   String? _error;
-  bool _filterNoSku = false;
   bool _filterNoPrice = false;
 
   @override
   void initState() {
     super.initState();
+    _api = widget.apiOverride ?? ApiService(AuthService());
     _loadProducts();
     _searchCtrl.addListener(_applyFilter);
+  }
+
+  /// El banner de stock negativo depende de Isar; en entornos donde la BD
+  /// local no está inicializada (web ya usa un stub; pruebas de widget)
+  /// [DatabaseService.instance] lanza StateError. El banner es informativo:
+  /// degradar a "sin alertas" es mejor que romper la pantalla.
+  Stream<int> _negativeStockStream() {
+    try {
+      return DatabaseService.instance.watchNegativeStockCount();
+    } catch (_) {
+      return const Stream<int>.empty();
+    }
   }
 
   @override
@@ -193,10 +214,6 @@ class _ManageInventoryScreenState extends State<ManageInventoryScreen>
           final barcode = (p['barcode'] as String? ?? '').toLowerCase();
           if (!name.contains(query) && !barcode.contains(query)) return false;
         }
-        if (_filterNoSku) {
-          final barcode = (p['barcode'] as String? ?? '').trim();
-          if (barcode.isNotEmpty) return false;
-        }
         if (_filterNoPrice) {
           final price = (p['price'] as num?)?.toDouble() ?? 0;
           if (price > 0) return false;
@@ -219,6 +236,19 @@ class _ManageInventoryScreenState extends State<ManageInventoryScreen>
     final photo = (p['photo_url'] as String? ?? '').trim();
     final image = (p['image_url'] as String? ?? '').trim();
     return photo.isEmpty && image.isEmpty;
+  }
+
+  /// Spec 100 (FR-01): abre la vista dedicada "Completar SKUs" con las
+  /// referencias físicas sin código de la sede activa; al volver, recarga
+  /// para que el contador del chip refleje el avance (FR-08).
+  Future<void> _openSkuCompletion() async {
+    final pending = _products.where(isMissingSkuPhysical).toList();
+    if (pending.isEmpty) return;
+    HapticFeedback.lightImpact();
+    await Navigator.of(context).push(MaterialPageRoute(
+      builder: (_) => SkuCompletionScreen(products: pending),
+    ));
+    if (mounted) _loadProducts();
   }
 
   /// Abre el flujo de "Completar fotos" con las referencias sin imagen de la
@@ -367,7 +397,7 @@ class _ManageInventoryScreenState extends State<ManageInventoryScreen>
             NegativeStockBanner(
               key: const Key('manage_inventory_negative_stock_banner'),
               count: 0,
-              countStream: DatabaseService.instance.watchNegativeStockCount(),
+              countStream: _negativeStockStream(),
               onTap: () {
                 Navigator.of(context).push(
                   MaterialPageRoute(
@@ -460,23 +490,23 @@ class _ManageInventoryScreenState extends State<ManageInventoryScreen>
                         },
                       ),
                     ),
+                  // Spec 100 (FR-01/FR-14): el chip ya no filtra in-place —
+                  // navega a la vista dedicada "Completar SKUs".
                   if (_noSkuCount > 0)
-                    FilterChip(
-                      selected: _filterNoSku,
+                    ActionChip(
                       label: Text(
                         'Sin SKU ($_noSkuCount)',
-                        style: TextStyle(
+                        style: const TextStyle(
                           fontSize: 13,
                           fontWeight: FontWeight.w600,
-                          color: _filterNoSku ? Colors.white : AppTheme.warning,
+                          color: AppTheme.warning,
                         ),
                       ),
-                      avatar: Icon(
-                        Icons.warning_amber_rounded,
+                      avatar: const Icon(
+                        Icons.qr_code_scanner_rounded,
                         size: 16,
-                        color: _filterNoSku ? Colors.white : AppTheme.warning,
+                        color: AppTheme.warning,
                       ),
-                      selectedColor: AppTheme.warning,
                       backgroundColor: AppTheme.warning.withValues(alpha: 0.1),
                       side: BorderSide(
                         color: AppTheme.warning.withValues(alpha: 0.3),
@@ -484,11 +514,7 @@ class _ManageInventoryScreenState extends State<ManageInventoryScreen>
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(10),
                       ),
-                      onSelected: (v) {
-                        HapticFeedback.lightImpact();
-                        _filterNoSku = v;
-                        _applyFilter();
-                      },
+                      onPressed: _openSkuCompletion,
                     ),
                 ],
               ),
