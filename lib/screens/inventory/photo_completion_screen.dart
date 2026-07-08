@@ -15,6 +15,7 @@ import '../../services/api_service.dart';
 import '../../services/auth_service.dart';
 import '../../theme/app_theme.dart';
 import '../../theme/app_ui.dart';
+import '../legal/photo_rights_notice.dart';
 
 class PhotoCompletionScreen extends StatefulWidget {
   const PhotoCompletionScreen({
@@ -164,6 +165,9 @@ class _PhotoCompletionScreenState extends State<PhotoCompletionScreen> {
   }
 
   Future<void> _pickPhoto(_Row row, ImageSource source) async {
+    // Adenda A (Spec 098): aviso único de derechos antes de subir foto MANUAL.
+    await maybeShowPhotoRightsNotice(context);
+    if (!mounted) return;
     final XFile? photo = await _picker.pickImage(
       source: source,
       imageQuality: 85,
