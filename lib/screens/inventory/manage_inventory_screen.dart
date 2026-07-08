@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:developer' as developer;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
@@ -135,11 +136,16 @@ class _ManageInventoryScreenState extends State<ManageInventoryScreen>
   /// El banner de stock negativo depende de Isar; en entornos donde la BD
   /// local no está inicializada (web ya usa un stub; pruebas de widget)
   /// [DatabaseService.instance] lanza StateError. El banner es informativo:
-  /// degradar a "sin alertas" es mejor que romper la pantalla.
+  /// degradar a "sin alertas" es mejor que romper la pantalla. Cualquier
+  /// OTRO error de Isar se registra antes de degradar (no se silencia).
   Stream<int> _negativeStockStream() {
     try {
       return DatabaseService.instance.watchNegativeStockCount();
-    } catch (_) {
+    } on StateError catch (_) {
+      return const Stream<int>.empty(); // BD local sin init: degradación
+    } catch (e, st) {
+      developer.log('watchNegativeStockCount falló',
+          name: 'inventory', error: e, stackTrace: st);
       return const Stream<int>.empty();
     }
   }
@@ -514,6 +520,9 @@ class _ManageInventoryScreenState extends State<ManageInventoryScreen>
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(10),
                       ),
+                      // Audiencia 50+: garantiza ≥48dp de objetivo táctil
+                      // aunque el theme cambie (no depender del default).
+                      materialTapTargetSize: MaterialTapTargetSize.padded,
                       onPressed: _openSkuCompletion,
                     ),
                 ],

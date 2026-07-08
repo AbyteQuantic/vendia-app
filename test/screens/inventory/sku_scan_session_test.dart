@@ -8,6 +8,8 @@
 // teclado), que además es la degradación sin cámara (AC-07): las pruebas
 // no dependen de cámara.
 
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -34,6 +36,12 @@ class _FakeApi extends ApiService {
     final err = updateError;
     if (err != null) throw err;
     patched.add(MapEntry(id, data));
+    // Como el backend real: el código asignado ahora tiene dueño — una
+    // relectura del mismo código contra OTRO producto daría conflicto.
+    final code = (data['barcode'] ?? '').toString();
+    if (code.isNotEmpty) {
+      ownersByCode[code] = {'id': id, 'name': 'dueño-$id'};
+    }
     return {'id': id, ...data};
   }
 }
@@ -155,6 +163,50 @@ void main() {
     await tester.tap(find.text('Volver'));
     await tester.pumpAndSettle();
     expect(find.byType(SkuScanSessionScreen), findsNothing);
+  });
+
+  testWidgets('cámara: relectura del MISMO código recién asignado se ignora '
+      '(no conflicto falso, no doble asignación)', (tester) async {
+    // Con cámara NATIVA el MobileScanner sigue detectando durante el flash
+    // (~cada 250 ms). Si el tendero no retira la cámara, el mismo código
+    // redispara contra el producto SIGUIENTE: sin el guard de _lastCode se
+    // pintaba una tarjeta de conflicto falsa que rompía la ráfaga (FR-12).
+    final api = _FakeApi();
+    final detections = StreamController<String>();
+    addTearDown(detections.close);
+    await tester.pumpWidget(wrap(SkuScanSessionScreen(
+      products: queue,
+      apiOverride: api,
+      keyboardOnly: true,
+      detectionStream: detections.stream,
+    )));
+    await tester.pump();
+
+    detections.add('7702004003508');
+    await tester.pump();
+    await tester.pump();
+    await tester.pumpAndSettle();
+    expect(api.patched.length, 1);
+    expect(find.textContaining('2 de 3'), findsOneWidget);
+
+    // Relectura inmediata del mismo encuadre: debe ignorarse por completo.
+    detections.add('7702004003508');
+    await tester.pump();
+    await tester.pump();
+    await tester.pumpAndSettle();
+
+    expect(api.patched.length, 1); // sin doble asignación
+    expect(find.text('Omitir'), findsNothing); // sin conflicto falso
+    expect(find.textContaining('2 de 3'), findsOneWidget); // sigue en turno
+
+    // Un código DISTINTO sí avanza la sesión con normalidad.
+    detections.add('7702011223344');
+    await tester.pump();
+    await tester.pump();
+    await tester.pumpAndSettle();
+    expect(api.patched.length, 2);
+    expect(api.patched.last.key, '2');
+    expect(find.textContaining('3 de 3'), findsOneWidget);
   });
 
   testWidgets('error de red NO marca el producto y ofrece Reintentar',

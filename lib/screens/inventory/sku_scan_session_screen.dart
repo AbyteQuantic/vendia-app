@@ -10,6 +10,8 @@
 // La confirmación de éxito NUNCA depende del audio (iOS Safari bloquea
 // AudioContext sin interacción): haptic + flash verde 1 s siempre.
 
+import 'dart:async';
+
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -52,6 +54,7 @@ class SkuScanSessionScreen extends StatefulWidget {
     this.onAssigned,
     this.apiOverride,
     this.keyboardOnly = false,
+    @visibleForTesting this.detectionStream,
   });
 
   /// Cola de productos SIN código, en orden (mapas crudos del backend).
@@ -66,6 +69,12 @@ class SkuScanSessionScreen extends StatefulWidget {
 
   /// true = sin cámara: solo el campo de teclado (pruebas y degradación).
   final bool keyboardOnly;
+
+  /// Solo pruebas: inyecta "detecciones de cámara" por el MISMO camino que
+  /// `_onDetect` (incluido el guard anti-relectura de `_lastCode`), sin
+  /// necesitar una cámara real.
+  @visibleForTesting
+  final Stream<String>? detectionStream;
 
   @override
   State<SkuScanSessionScreen> createState() => _SkuScanSessionScreenState();
@@ -97,6 +106,8 @@ class _SkuScanSessionScreenState extends State<SkuScanSessionScreen> {
   String get _currentId => (_current['id'] ?? '').toString();
   String get _currentName => (_current['name'] ?? '').toString();
 
+  StreamSubscription<String>? _detectionSub;
+
   @override
   void initState() {
     super.initState();
@@ -104,6 +115,7 @@ class _SkuScanSessionScreenState extends State<SkuScanSessionScreen> {
     _queue = List.of(widget.products);
     _useKeyboard = widget.keyboardOnly;
     if (_queue.isEmpty) _finished = true;
+    _detectionSub = widget.detectionStream?.listen(_onCameraCode);
     if (!widget.keyboardOnly && !kIsWeb) {
       // Un solo controller para TODA la sesión (D3: cámara persistente).
       _scannerCtrl = MobileScannerController(
@@ -117,6 +129,7 @@ class _SkuScanSessionScreenState extends State<SkuScanSessionScreen> {
 
   @override
   void dispose() {
+    _detectionSub?.cancel();
     _scannerCtrl?.dispose();
     _kbCtrl.dispose();
     _kbFocus.dispose();
@@ -128,7 +141,16 @@ class _SkuScanSessionScreenState extends State<SkuScanSessionScreen> {
 
   void _onDetect(BarcodeCapture capture) {
     final code = capture.barcodes.firstOrNull?.rawValue;
-    if (code == null || code.isEmpty || code == _lastCode) return;
+    if (code == null) return;
+    _onCameraCode(code);
+  }
+
+  /// Camino común de las detecciones de CÁMARA (nativa, web o inyectada en
+  /// pruebas). El guard de [_lastCode] filtra las relecturas del mismo
+  /// encuadre: el escáner sigue emitiendo ~cada 250 ms mientras el tendero
+  /// no retira la cámara del paquete.
+  void _onCameraCode(String code) {
+    if (code.isEmpty || code == _lastCode) return;
     _handleCode(code);
   }
 
@@ -178,7 +200,11 @@ class _SkuScanSessionScreenState extends State<SkuScanSessionScreen> {
     setState(() {
       _assignedCount++;
       _busy = false;
-      _lastCode = null;
+      // OJO: _lastCode NO se resetea aquí. La cámara nativa sigue
+      // detectando durante el flash (~cada 250 ms): si el tendero no
+      // retira la cámara, el MISMO código redispararía contra el producto
+      // SIGUIENTE y pintaría un conflicto falso (rompe FR-12). El guard
+      // de _onCameraCode lo ignora; un código distinto lo sobreescribe.
       _flash = _Flash(code: code, productName: name, seq: ++_flashSeq);
       _advance();
     });
@@ -196,10 +222,11 @@ class _SkuScanSessionScreenState extends State<SkuScanSessionScreen> {
     if (e.statusCode == 404) {
       // Producto eliminado mientras la sesión estaba abierta: se informa
       // y la tarjeta se retira sin romper el flujo (caso borde del spec).
+      // _lastCode se conserva por la misma razón que en _onAssignedOk: la
+      // relectura del mismo encuadre no debe disparar contra el siguiente.
       _toast('Ese producto ya no existe. Se pasa al siguiente.');
       setState(() {
         _busy = false;
-        _lastCode = null;
         _advance();
       });
       return;

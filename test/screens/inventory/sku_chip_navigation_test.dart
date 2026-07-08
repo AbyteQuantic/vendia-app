@@ -66,6 +66,9 @@ void main() {
     expect(find.text('Sin SKU (2)'), findsOneWidget);
     // FR-14: el filtro in-place desapareció; el chip solo navega.
     expect(find.byType(FilterChip), findsNothing);
+    // Audiencia 50+: objetivo táctil del chip ≥ 44dp de alto.
+    expect(tester.getSize(find.byType(ActionChip)).height,
+        greaterThanOrEqualTo(44));
   });
 
   testWidgets('tocar el chip navega a SkuCompletionScreen con la lista '
