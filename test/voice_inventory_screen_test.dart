@@ -359,4 +359,55 @@ void main() {
     expect(find.textContaining('No pudimos iniciar la grabación'),
         findsOneWidget);
   });
+
+  // ── Spec 099 — mapVoiceItemsForReview (pure function, no widget) ───────
+  //
+  // Pumping VoiceInventoryScreen all the way to a real IaResultScreen
+  // isn't feasible here: IaResultScreen.initState() calls
+  // DatabaseService.getAllProducts(), which needs a live Isar instance
+  // with no test double in this codebase — a pre-existing gap, not
+  // something this spec introduces. mapVoiceItemsForReview is extracted
+  // as a top-level pure function specifically so the mapping logic
+  // itself stays fully testable without that dependency.
+
+  test(
+      'maps every separated field through — not just name/unit_price/'
+      'total_price (the crammed-name bug)', () {
+    final mapped = mapVoiceItemsForReview([
+      {
+        'name': 'Coca-Cola',
+        'presentation': 'botella',
+        'content': '350ml',
+        'quantity': 20,
+        'purchase_price': 3000,
+        'sell_price': 3500,
+        'barcode': '',
+        'status': 'match_encontrado',
+        'match_product_id': 'existing-uuid',
+        'match_method': 'normalized',
+      }
+    ]);
+
+    expect(mapped, hasLength(1));
+    final item = mapped.first;
+    expect(item['name'], 'Coca-Cola');
+    expect(item['presentation'], 'botella');
+    expect(item['content'], '350ml');
+    expect(item['quantity'], 20);
+    expect(item['unit_price'], 3000);
+    expect(item['sell_price'], 3500);
+    expect(item['status'], 'match_encontrado');
+    expect(item['match_product_id'], 'existing-uuid');
+    expect(item['match_method'], 'normalized');
+  });
+
+  test('a parse with only purchase_price never fabricates a sell_price', () {
+    final mapped = mapVoiceItemsForReview([
+      {'name': 'Arroz', 'quantity': 5, 'purchase_price': 2500, 'sell_price': 0}
+    ]);
+
+    expect(mapped.first['unit_price'], 2500);
+    expect(mapped.first['sell_price'], 0,
+        reason: 'no sell_price was dictated — must stay 0, never invented');
+  });
 }

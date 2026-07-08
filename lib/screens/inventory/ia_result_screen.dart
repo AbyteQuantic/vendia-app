@@ -21,6 +21,19 @@ int roundCOP(double amount) {
   return ((amount / 50).ceil() * 50);
 }
 
+/// Resolves the sell price for a freshly extracted product row: an
+/// explicitly dictated/read price always wins over the margin-based
+/// suggestion (Spec 099 FR-02/AC-01 — a tendero's dictated "la voy a
+/// vender a 3500" must never be silently discarded). When nothing was
+/// dictated (dictatedSellPrice <= 0 — always true for invoice-sourced
+/// items, which never carry a sell price), falls back to [suggestPrice]
+/// exactly as before this spec (FR-07/AC-07).
+double resolveInitialSellPrice(
+    double dictatedSellPrice, double purchasePrice, double marginPercent) {
+  if (dictatedSellPrice > 0) return dictatedSellPrice;
+  return suggestPrice(purchasePrice, marginPercent).toDouble();
+}
+
 /// Suggest a sale price based on purchase price + margin, rounded to $50 COP
 int suggestPrice(double purchasePrice, double marginPercent) {
   final base = purchasePrice * (1 + marginPercent / 100);
@@ -62,6 +75,9 @@ class _IaResultScreenState extends State<IaResultScreen> {
       final matchId = p['match_product_id'] as String? ?? '';
       final matchMethod = p['match_method'] as String? ?? '';
       final status = p['status'] as String? ?? '';
+      // Spec 099: voice-dictated items may carry an explicit sell_price
+      // ("la voy a vender a 3500") — invoice-sourced items never do.
+      final dictatedSellPrice = (p['sell_price'] as num?)?.toDouble() ?? 0;
       return _EditableProduct(
         name: p['name'] as String? ?? '',
         presentation: p['presentation'] as String? ?? '',
@@ -69,7 +85,9 @@ class _IaResultScreenState extends State<IaResultScreen> {
         barcode: p['barcode'] as String? ?? '',
         quantity: (p['quantity'] as num?)?.toInt() ?? 1,
         purchasePrice: purchasePrice,
-        sellPrice: suggestPrice(purchasePrice, _marginPercent).toDouble(),
+        sellPrice:
+            resolveInitialSellPrice(dictatedSellPrice, purchasePrice, _marginPercent),
+        hasDictatedSellPrice: dictatedSellPrice > 0,
         confidence: (p['confidence'] as num?)?.toDouble() ?? 0.9,
         expiryDate: parsedExpiry,
         photoUrl: p['image_url'] as String?,
@@ -135,6 +153,9 @@ class _IaResultScreenState extends State<IaResultScreen> {
 
   void _recalculateAllPrices() {
     for (final p in _products) {
+      // Spec 099: never overwrite a price the tendero explicitly
+      // dictated — only re-suggest for rows that started without one.
+      if (p.hasDictatedSellPrice) continue;
       p.sellPrice = suggestPrice(p.purchasePrice, _marginPercent).toDouble();
     }
     setState(() {});
@@ -1546,6 +1567,10 @@ class _EditableProduct {
   int quantity;
   double purchasePrice;
   double sellPrice;
+  // Spec 099: true when sellPrice came from an explicit dictation
+  // ("la voy a vender a 3500") rather than the margin-based suggestion —
+  // _recalculateAllPrices must never overwrite it when the margin loads.
+  bool hasDictatedSellPrice;
   double confidence;
   DateTime? expiryDate;
   // Spec 013: the picked image as an XFile (not a path string) so the
@@ -1571,6 +1596,7 @@ class _EditableProduct {
     required this.purchasePrice,
     required this.sellPrice,
     required this.confidence,
+    this.hasDictatedSellPrice = false,
     this.barcode = '',
     this.content = '',
     this.expiryDate,
