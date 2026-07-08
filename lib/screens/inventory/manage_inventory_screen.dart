@@ -34,6 +34,7 @@ import 'product_import_screen.dart';
 import 'organize_categories_screen.dart';
 import 'product_save_flow.dart';
 import 'photo_completion_screen.dart';
+import '../legal/photo_rights_notice.dart';
 
 const kSinCategoria = 'Sin categoría';
 
@@ -908,6 +909,9 @@ class _EditProductSheetState extends State<_EditProductSheet> {
 
   Future<void> _pickPhoto(ImageSource source) async {
     HapticFeedback.lightImpact();
+    // Adenda A (Spec 098): aviso único de derechos antes de subir foto MANUAL.
+    await maybeShowPhotoRightsNotice(context);
+    if (!mounted) return;
     final picker = ImagePicker();
     final photo = await picker.pickImage(
       source: source,

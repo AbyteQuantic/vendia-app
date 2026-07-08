@@ -30,6 +30,7 @@ import '../../widgets/advanced_product_options.dart';
 import '../../widgets/branch_selector_drawer.dart';
 import '../../widgets/full_image_viewer.dart';
 import '../../widgets/picked_image_preview.dart';
+import '../legal/photo_rights_notice.dart';
 import '../pos/scan_screen.dart';
 
 /// Manual product creation form — single-screen, no scroll.
@@ -798,6 +799,9 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
   /// upload work on web too — the cross-platform pattern of Spec 013.
   Future<void> _pickPhoto(ImageSource source) async {
     HapticFeedback.lightImpact();
+    // Adenda A (Spec 098): aviso único de derechos antes de subir foto MANUAL.
+    await maybeShowPhotoRightsNotice(context);
+    if (!mounted) return;
     final picker = ImagePicker();
     final photo = await picker.pickImage(
       source: source,
