@@ -10,6 +10,7 @@ import '../../services/auth_service.dart';
 import '../../services/image_normalizer.dart' show ImageNormalizationException;
 import '../../services/margin_service.dart';
 import '../../theme/app_theme.dart';
+import '../../widgets/ai_photo_options_sheet.dart';
 import '../../utils/product_matcher.dart';
 import '../../utils/currency_input.dart';
 import '../../widgets/picked_image_preview.dart';
@@ -395,13 +396,44 @@ class _IaResultScreenState extends State<IaResultScreen> {
       return;
     }
 
+    // Spec 094: si el producto del lote YA tiene foto (tomada o resultado
+    // previo de IA), el tendero elige en la hoja unificada; sin foto, se
+    // genera directo. Mismo orden/hoja que crear/editar.
+    final hasPhoto = p.photoFile != null ||
+        (p.photoUrl != null && p.photoUrl!.isNotEmpty);
+    if (!hasPhoto) {
+      await _runAiPhoto(index, forceGenerate: true);
+      return;
+    }
+    await showAiPhotoOptions(
+      context,
+      name: p.name,
+      presentation: p.presentation,
+      content: p.content,
+      hasPhoto: true,
+      onRemoveBg: () => _runAiPhoto(index),
+      onImprove: () => _runAiPhoto(index, mode: 'improve'),
+      onGenerate: () => _runAiPhoto(index, forceGenerate: true),
+    );
+  }
+
+  /// Ejecuta la acción de IA sobre el producto [index] del lote.
+  /// - [forceGenerate] `true` → genera imagen nueva desde el nombre.
+  /// - con foto y sin forceGenerate → mejora (`mode: 'improve'`) o quita fondo
+  ///   (`mode` null) sobre la foto real / resultado previo.
+  Future<void> _runAiPhoto(int index,
+      {String? mode, bool forceGenerate = false}) async {
+    final p = _products[index];
+    final usePhoto = !forceGenerate &&
+        (p.photoFile != null || (p.photoUrl != null && p.photoUrl!.isNotEmpty));
+
     setState(() => p.enhancing = true);
     // Spec 016 / FR-03: the AI photo job runs asynchronously on the
     // backend; ApiService polls its status under the hood. Tell the
     // tendero it is processing so the wait never reads as a failure.
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
       content: Text(
-        p.photoFile != null
+        usePhoto
             ? 'Procesando tu foto con IA…'
             : 'Generando la imagen con IA…',
         style: const TextStyle(fontSize: 14),
@@ -416,6 +448,7 @@ class _IaResultScreenState extends State<IaResultScreen> {
       // a UUID to work with. We delete it immediately after — the real
       // product is only created in _saveAll() when the user confirms.
       final tempUuid = const Uuid().v4();
+      final picked = p.photoFile;
       await api.createProduct({
         'id': tempUuid,
         'name': p.name,
@@ -423,16 +456,28 @@ class _IaResultScreenState extends State<IaResultScreen> {
         'stock': 0, // zero stock so kardex/inventory stay clean
         'presentation': p.presentation,
         'content': p.content,
+        // Si la foto es un resultado previo (URL, sin XFile), pásala al temp
+        // para que enhance opere sobre ella (como en "Editar Producto").
+        if (usePhoto && picked == null && p.photoUrl != null &&
+            p.photoUrl!.isNotEmpty)
+          'image_url': p.photoUrl,
       });
 
       Map<String, dynamic> result;
       try {
         // Spec 013: pass the picked XFile — `uploadProductPhoto` reads
         // its bytes and normalizes to PNG, so this works on web.
-        final picked = p.photoFile;
-        if (picked != null) {
-          await api.uploadProductPhoto(tempUuid, picked);
-          result = await api.enhanceProductPhoto(tempUuid);
+        if (usePhoto) {
+          if (picked != null) {
+            await api.uploadProductPhoto(tempUuid, picked);
+          }
+          result = await api.enhanceProductPhoto(
+            tempUuid,
+            name: p.name,
+            presentation: p.presentation,
+            content: p.content,
+            mode: mode,
+          );
         } else {
           result = await api.generateProductImage(
             tempUuid,

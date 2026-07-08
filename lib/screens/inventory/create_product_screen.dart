@@ -23,6 +23,7 @@ import '../../theme/app_theme.dart';
 import '../../utils/barcode_validator.dart';
 import '../../utils/currency_input.dart';
 import '../../widgets/ai_instruction_dialog.dart';
+import '../../widgets/ai_photo_options_sheet.dart';
 import '../../widgets/catalog_photo_suggestion.dart';
 import '../../widgets/dashboard_ui_kit.dart';
 import '../../theme/app_ui.dart';
@@ -828,6 +829,37 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
 
   // forceGenerate=true ignora la foto del tendero y crea una desde cero (opción
   // "Crear con IA"); por defecto, si hay foto, la MEJORA ("Mejorar con IA").
+  /// Botón "IA": sin foto → genera directo; con foto → abre la hoja unificada
+  /// (Quitar fondo / Mejorar / Generar / Corregir con indicaciones).
+  void _onAiPhotoTap() {
+    final hasPhoto =
+        _photoFile != null || (_photoUrl != null && _photoUrl!.isNotEmpty);
+    if (!hasPhoto) {
+      _enhanceOrGeneratePhoto(forceGenerate: true);
+      return;
+    }
+    showAiPhotoOptions(
+      context,
+      name: _nameCtrl.text.trim(),
+      presentation: _presentation,
+      content: _contentCtrl.text.trim(),
+      hasPhoto: true,
+      barcode: _skuCtrl.text.trim(),
+      onRemoveBg: () => _enhanceOrGeneratePhoto(),
+      onImprove: () => _enhanceOrGeneratePhoto(mode: 'improve'),
+      onGenerate: () => _enhanceOrGeneratePhoto(forceGenerate: true),
+      // Spec 017 FR-05: corregir un resultado alterado con indicaciones.
+      onInstructions: () async {
+        final hint = await showAiInstructionDialog(context);
+        if (hint != null) {
+          await _enhanceOrGeneratePhoto(instruction: hint);
+        }
+      },
+      // Spec 096 — la sugerencia de catálogo es proactiva e inline (arriba),
+      // no dentro de esta hoja, así que aquí no se pasa onAcceptCatalog.
+    );
+  }
+
   Future<void> _enhanceOrGeneratePhoto(
       {String? instruction, bool forceGenerate = false, String? mode}) async {
     // Validate required fields for a good AI result. El precio es obligatorio
@@ -1763,15 +1795,17 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.stretch,
                           children: [
-                            // Spec 018 / FR-01: camera + gallery side by side,
-                            // matching "Editar Producto". Two compact buttons
-                            // keep the card short on a 360dp screen.
+                            // Spec 018 / FR-01 + Spec 094 — Foto / Galería / IA
+                            // en una sola fila, igual que "Editar Producto". El
+                            // botón IA abre la hoja unificada de opciones
+                            // (widgets/ai_photo_options_sheet.dart); con un solo
+                            // botón desaparece el bug de "los 3 cargan a la vez".
                             Row(
                               children: [
                                 Expanded(
                                   child: _actionButton(
                                     key: const Key('btn_take_photo'),
-                                    label: 'Tomar foto',
+                                    label: 'Foto',
                                     icon: Icons.camera_alt_rounded,
                                     color: AppTheme.primary,
                                     onTap: _takePhoto,
@@ -1787,6 +1821,17 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
                                     onTap: _pickFromGallery,
                                   ),
                                 ),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: _actionButton(
+                                    key: const Key('btn_ai_photo'),
+                                    label: _enhancing ? 'Generando…' : 'IA',
+                                    icon: Icons.auto_awesome_rounded,
+                                    color: const Color(0xFF7C3AED),
+                                    loading: _enhancing,
+                                    onTap: _enhancing ? null : _onAiPhotoTap,
+                                  ),
+                                ),
                               ],
                             ),
                             const SizedBox(height: 8),
@@ -1794,7 +1839,7 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
                             // vez elegida/tomada, ya no aplica). No bloquea
                             // nada: es una franja informativa siempre visible
                             // mientras la card está en ese estado.
-                            if (!hasPhoto) ...[
+                            if (!hasPhoto)
                               Container(
                                 key: const Key('framing_tip_banner'),
                                 padding: const EdgeInsets.symmetric(
@@ -1824,12 +1869,10 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
                                   ],
                                 ),
                               ),
-                              const SizedBox(height: 8),
-                            ],
                             // Spec 096 — sugerencia OPCIONAL de foto verificada de
                             // catálogo (Open Food Facts) para el barcode escaneado.
-                            // Nunca reemplaza ni se aplica sola; NO toca las
-                            // opciones de abajo (Specs 017/094 intactas).
+                            // Proactiva (visible con solo escribir el SKU); nunca
+                            // reemplaza ni se aplica sola. El botón IA no la afecta.
                             if (_skuCtrl.text.trim().isNotEmpty)
                               CatalogPhotoSuggestion(
                                 key: ValueKey(_skuCtrl.text.trim()),
@@ -1840,92 +1883,6 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
                                   _imageIsSuggested = false;
                                 }),
                               ),
-                            // Spec 094 — el tendero elige: QUITAR FONDO (deja el
-                            // producto igual) o MEJORAR con IA (limpia/mejora). Sin
-                            // foto → solo CREAR.
-                            if (hasPhoto) ...[
-                              _actionButton(
-                                label: _activeAiAction == 'removebg'
-                                    ? 'Procesando…'
-                                    : 'Quitar fondo',
-                                icon: Icons.auto_fix_high_rounded,
-                                color: const Color(0xFF7C3AED),
-                                loading: _activeAiAction == 'removebg',
-                                // Deshabilitado si CUALQUIER acción corre, pero
-                                // solo ESTE muestra el spinner.
-                                onTap: _enhancing
-                                    ? null
-                                    : () => _enhanceOrGeneratePhoto(),
-                              ),
-                              const SizedBox(height: 8),
-                              _actionButton(
-                                label: _activeAiAction == 'improve'
-                                    ? 'Procesando…'
-                                    : 'Mejorar con IA',
-                                icon: Icons.auto_awesome_rounded,
-                                color: const Color(0xFF0E7490),
-                                loading: _activeAiAction == 'improve',
-                                onTap: _enhancing
-                                    ? null
-                                    : () => _enhanceOrGeneratePhoto(mode: 'improve'),
-                              ),
-                              const SizedBox(height: 8),
-                              _actionButton(
-                                label: _activeAiAction == 'generate'
-                                    ? 'Procesando…'
-                                    : 'Crear foto con IA',
-                                icon: Icons.add_photo_alternate_rounded,
-                                color: const Color(0xFF0E6BA8),
-                                loading: _activeAiAction == 'generate',
-                                onTap: _enhancing
-                                    ? null
-                                    : () => _enhanceOrGeneratePhoto(
-                                        forceGenerate: true),
-                              ),
-                            ] else
-                              _actionButton(
-                                label: _activeAiAction == 'generate'
-                                    ? 'Generando…'
-                                    : 'Crear foto con IA',
-                                icon: Icons.auto_awesome_rounded,
-                                color: const Color(0xFF7C3AED),
-                                loading: _activeAiAction == 'generate',
-                                onTap: _enhancing
-                                    ? null
-                                    : () => _enhanceOrGeneratePhoto(
-                                        forceGenerate: true),
-                              ),
-                            // Spec 017 FR-05: si la IA alteró el resultado, el
-                            // tendero escribe indicaciones y reintenta.
-                            if (hasPhoto && _imageIsSuggested && !_enhancing)
-                              TextButton.icon(
-                                onPressed: () async {
-                                  final hint =
-                                      await showAiInstructionDialog(context);
-                                  if (hint != null) {
-                                    await _enhanceOrGeneratePhoto(
-                                        instruction: hint);
-                                  }
-                                },
-                                icon: const Icon(Icons.edit_note_rounded,
-                                    size: 18),
-                                label: const Text('¿No quedó bien? Dar indicaciones'),
-                              ),
-                            // Spec 017 — aclarar qué hace cada opción: el caso de
-                            // confusión fue usar "Crear" (genera desde el nombre,
-                            // NO usa la foto) esperando que respetara el producto.
-                            const SizedBox(height: 6),
-                            Text(
-                              hasPhoto
-                                  ? '«Quitar fondo» deja su producto igual sobre fondo blanco de estudio. '
-                                      '«Mejorar con IA» limpia y mejora el producto (puede cambiar detalles). '
-                                      '«Crear» hace una imagen nueva (no usa su foto).'
-                                  : 'Crea una imagen con IA a partir del nombre (no es una foto real del producto).',
-                              style: const TextStyle(
-                                  fontSize: 12.5,
-                                  height: 1.3,
-                                  color: AppTheme.textSecondary),
-                            ),
                           ],
                         ),
                       ),
