@@ -75,6 +75,19 @@ List<Object> groupProductsByCategory(List<Map<String, dynamic>> products) {
   return result;
 }
 
+/// Spec 100 (FR-11, AC-09): un producto está "sin SKU" solo si es una
+/// referencia FÍSICA escaneable con código vacío (o de puros espacios).
+/// Platos de menú y servicios no se escanean en el POS → no cuentan en el
+/// chip ni aparecen en la vista "Completar SKUs".
+///
+/// Función pura de nivel de archivo (no un método privado del State) para
+/// poder testearla sin montar el widget — mismo criterio que
+/// [groupProductsByCategory].
+bool isMissingSkuPhysical(Map<String, dynamic> p) {
+  if (p['is_menu_item'] == true || p['is_service'] == true) return false;
+  return (p['barcode'] as String? ?? '').trim().isEmpty;
+}
+
 class ManageInventoryScreen extends StatefulWidget {
   const ManageInventoryScreen({super.key, this.focusProductId});
 
@@ -141,9 +154,8 @@ class _ManageInventoryScreenState extends State<ManageInventoryScreen>
       setState(() {
         _products = products;
         // PERF: contar SKU/precio faltantes una vez al cargar (no por build).
-        _noSkuCount = _products
-            .where((p) => (p['barcode'] as String? ?? '').trim().isEmpty)
-            .length;
+        // Spec 100: el conteo excluye platos/servicios (FR-11).
+        _noSkuCount = _products.where(isMissingSkuPhysical).length;
         _noPriceCount = _products
             .where((p) => ((p['price'] as num?)?.toDouble() ?? 0) <= 0)
             .length;
