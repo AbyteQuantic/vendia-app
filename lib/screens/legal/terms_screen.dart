@@ -17,23 +17,39 @@ class TermsScreen extends StatelessWidget {
       backgroundColor: AppTheme.background,
       appBar: AppBar(
         title: const Text(
-          'Términos y Servicios',
+          'Términos y Privacidad',
           style: TextStyle(fontWeight: FontWeight.w700),
         ),
         backgroundColor: AppTheme.primary,
         foregroundColor: Colors.white,
       ),
-      body: SafeArea(
+      body: const SafeArea(
         child: Scrollbar(
           child: SingleChildScrollView(
-            padding: const EdgeInsets.fromLTRB(24, 24, 24, 40),
-            child: Text(
-              kVendiaTermsText.trim(),
-              style: const TextStyle(
-                fontSize: 17,
-                height: 1.5,
-                color: AppTheme.textPrimary,
-              ),
+            padding: EdgeInsets.fromLTRB(24, 24, 24, 40),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  kVendiaTermsText,
+                  style: TextStyle(
+                    fontSize: 16,
+                    height: 1.5,
+                    color: AppTheme.textPrimary,
+                  ),
+                ),
+                SizedBox(height: 24),
+                Divider(),
+                SizedBox(height: 24),
+                Text(
+                  kVendiaPrivacyText,
+                  style: TextStyle(
+                    fontSize: 16,
+                    height: 1.5,
+                    color: AppTheme.textPrimary,
+                  ),
+                ),
+              ],
             ),
           ),
         ),
