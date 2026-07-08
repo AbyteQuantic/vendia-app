@@ -36,6 +36,7 @@ import 'product_import_screen.dart';
 import 'organize_categories_screen.dart';
 import 'product_save_flow.dart';
 import 'photo_completion_screen.dart';
+import 'retouch_completion_screen.dart';
 import 'sku_completion_screen.dart';
 import '../legal/photo_rights_notice.dart';
 
@@ -90,11 +91,38 @@ bool isMissingSkuPhysical(Map<String, dynamic> p) {
   return (p['barcode'] as String? ?? '').trim().isEmpty;
 }
 
+/// Spec 101 (FR-01/FR-02, AC-01): un producto tiene la "foto sin retocar" si
+/// su foto ACTUAL es una subida propia del tenant que no pasó por Mejorar
+/// con IA ni fue generada. El patrón de la URL decide (mismo criterio que el
+/// backend): la foto propia vive en `products/<tenantId>/…`; el sufijo
+/// `-enhanced` la marca como mejorada y `-generated` como creada con IA.
+/// Exclusiones: sin foto (eso es "Sin imagen"), foto del catálogo compartido
+/// (otra ruta), `is_ai_enhanced` y `photo_is_sample` (muestra IA de platos).
+///
+/// Función pura de nivel de archivo para testearla sin montar el widget —
+/// mismo criterio que [isMissingSkuPhysical]. Sin [tenantId] conocido no se
+/// puede distinguir la foto propia → conservador: no cuenta (el chip calla
+/// antes que mentir).
+bool isPhotoUnretouched(Map<String, dynamic> p, {required String tenantId}) {
+  final t = tenantId.trim();
+  if (t.isEmpty) return false;
+  if (p['is_ai_enhanced'] == true) return false;
+  if (p['photo_is_sample'] == true) return false;
+  final photo = (p['photo_url'] as String? ?? '').trim();
+  final image = (p['image_url'] as String? ?? '').trim();
+  final url = photo.isNotEmpty ? photo : image;
+  if (url.isEmpty) return false;
+  if (!url.contains('products/$t/')) return false;
+  if (url.contains('-enhanced') || url.contains('-generated')) return false;
+  return true;
+}
+
 class ManageInventoryScreen extends StatefulWidget {
   const ManageInventoryScreen({
     super.key,
     this.focusProductId,
     @visibleForTesting this.apiOverride,
+    @visibleForTesting this.tenantIdOverride,
   });
 
   /// Producto a destacar al abrir (desde una alerta de stock bajo). Hoy
@@ -105,6 +133,11 @@ class ManageInventoryScreen extends StatefulWidget {
   /// Solo para pruebas de widget (mismo patrón que PhotoCompletionScreen).
   @visibleForTesting
   final ApiService? apiOverride;
+
+  /// Solo pruebas: tenant conocido para el predicado [isPhotoUnretouched]
+  /// sin depender del secure storage (Spec 101).
+  @visibleForTesting
+  final String? tenantIdOverride;
 
   @override
   State<ManageInventoryScreen> createState() => _ManageInventoryScreenState();
@@ -129,8 +162,45 @@ class _ManageInventoryScreenState extends State<ManageInventoryScreen>
   void initState() {
     super.initState();
     _api = widget.apiOverride ?? ApiService(AuthService());
+    _tenantId = widget.tenantIdOverride ?? '';
+    if (_tenantId.isEmpty) _loadTenantId();
     _loadProducts();
     _searchCtrl.addListener(_applyFilter);
+  }
+
+  /// Spec 101: el predicado "foto sin retocar" necesita el tenant para
+  /// reconocer la foto PROPIA (`products/<tenantId>/…`). Si el storage no
+  /// está disponible (web stub, pruebas), el chip simplemente no aparece —
+  /// conservador antes que un conteo equivocado.
+  Future<void> _loadTenantId() async {
+    try {
+      final t = (await AuthService().getTenantId() ?? '').trim();
+      if (!mounted || t.isEmpty) return;
+      setState(() {
+        _tenantId = t;
+        _noRetouchCount = _products
+            .where((p) => isPhotoUnretouched(p, tenantId: t))
+            .length;
+      });
+      _refreshRetouchSummary();
+    } catch (_) {/* sin tenant conocido: sin chip */}
+  }
+
+  /// Spec 101 (FR-02): con revisión pendiente en el servidor el chip cambia
+  /// a "Fotos por revisar (N)". El summary es informativo: si falla, el chip
+  /// se queda con el conteo local (nunca rompe la pantalla).
+  Future<void> _refreshRetouchSummary() async {
+    try {
+      final s = await _api.fetchRetouchSummary();
+      if (!mounted) return;
+      final batch = s['active_batch'];
+      final ready = batch is Map
+          ? ((batch['ready_for_review'] as num?)?.toInt() ?? 0)
+          : 0;
+      final items = (s['review_items'] as List?) ?? const [];
+      setState(
+          () => _retouchReviewCount = ready > 0 ? ready : items.length);
+    } catch (_) {/* informativo; el conteo local manda */}
   }
 
   /// El banner de stock negativo depende de Isar; en entornos donde la BD
@@ -187,9 +257,16 @@ class _ManageInventoryScreenState extends State<ManageInventoryScreen>
             .where((p) => ((p['price'] as num?)?.toDouble() ?? 0) <= 0)
             .length;
         _noImageCount = _products.where(_isNoImage).length;
+        // Spec 101: fotos propias crudas (sin Mejorar con IA ni recorte).
+        _noRetouchCount = _products
+            .where((p) => isPhotoUnretouched(p, tenantId: _tenantId))
+            .length;
         _loading = false;
       });
       _applyFilter();
+      // Sin tenant conocido no hay chip de retoque que actualizar (y las
+      // pruebas de otras vistas no deben disparar red real).
+      if (_tenantId.isNotEmpty) _refreshRetouchSummary();
       // #9 — si venimos de "Agregar referencia" con un producto existente,
       // abrir su edición directamente.
       if (widget.focusProductId != null && widget.focusProductId!.isNotEmpty) {
@@ -235,6 +312,10 @@ class _ManageInventoryScreenState extends State<ManageInventoryScreen>
   int _noSkuCount = 0;
   int _noPriceCount = 0;
   int _noImageCount = 0;
+  // Spec 101 — tercer contador de curaduría + revisión pendiente del lote.
+  String _tenantId = '';
+  int _noRetouchCount = 0;
+  int _retouchReviewCount = 0;
 
   /// Un producto está "sin imagen" si no tiene ni photo_url ni image_url —
   /// misma lógica que `imgSrc` del tile de la lista (Spec 097).
@@ -253,6 +334,23 @@ class _ManageInventoryScreenState extends State<ManageInventoryScreen>
     HapticFeedback.lightImpact();
     await Navigator.of(context).push(MaterialPageRoute(
       builder: (_) => SkuCompletionScreen(products: pending),
+    ));
+    if (mounted) _loadProducts();
+  }
+
+  /// Spec 101 (FR-03): abre la vista dedicada "Retocar fotos" con las
+  /// referencias de foto cruda de la sede activa; también entra con la
+  /// lista vacía cuando hay revisión pendiente en el servidor (los
+  /// review_items viven allá). Al volver, recarga para que el contador
+  /// refleje el avance (FR-07).
+  Future<void> _openRetouchCompletion() async {
+    final pending = _products
+        .where((p) => isPhotoUnretouched(p, tenantId: _tenantId))
+        .toList();
+    if (pending.isEmpty && _retouchReviewCount == 0) return;
+    HapticFeedback.lightImpact();
+    await Navigator.of(context).push(MaterialPageRoute(
+      builder: (_) => RetouchCompletionScreen(products: pending),
     ));
     if (mounted) _loadProducts();
   }
@@ -335,6 +433,38 @@ class _ManageInventoryScreenState extends State<ManageInventoryScreen>
         ),
       );
     }
+  }
+
+  /// Spec 101 (FR-02): chip dual de retoque. "Fotos por revisar (N)" con
+  /// acento de acción (primario) cuando el lote dejó resultados pendientes
+  /// de confirmar; "Fotos sin retocar (N)" (acento IA) para el trabajo
+  /// pendiente. Mismo patrón táctil del chip de SKU (≥48dp).
+  Widget _retouchChip() {
+    final review = _retouchReviewCount > 0;
+    final color = review ? AppTheme.primary : const Color(0xFF7C3AED);
+    final label = review
+        ? 'Fotos por revisar ($_retouchReviewCount)'
+        : 'Fotos sin retocar ($_noRetouchCount)';
+    return ActionChip(
+      label: Text(
+        label,
+        style: TextStyle(
+          fontSize: 13,
+          fontWeight: FontWeight.w600,
+          color: color,
+        ),
+      ),
+      avatar: Icon(
+        review ? Icons.fact_check_outlined : Icons.auto_awesome,
+        size: 16,
+        color: color,
+      ),
+      backgroundColor: color.withValues(alpha: 0.1),
+      side: BorderSide(color: color.withValues(alpha: 0.3)),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+      materialTapTargetSize: MaterialTapTargetSize.padded,
+      onPressed: _openRetouchCompletion,
+    );
   }
 
   Future<void> _editProduct(Map<String, dynamic> product) async {
@@ -449,10 +579,15 @@ class _ManageInventoryScreenState extends State<ManageInventoryScreen>
               ),
             ),
 
-            // Count + Filter chips
+            // Count + Filter chips. Spec 101: con TRES contadores posibles
+            // (Sin precio / Sin SKU / Fotos sin retocar) la fila fija
+            // desbordaba a 360dp → Wrap: los chips fluyen a otra línea.
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 20),
-              child: Row(
+              child: Wrap(
+                spacing: 6,
+                runSpacing: 4,
+                crossAxisAlignment: WrapCrossAlignment.center,
                 children: [
                   Text(
                     '${_filtered.length} producto${_filtered.length != 1 ? 's' : ''}',
@@ -462,39 +597,35 @@ class _ManageInventoryScreenState extends State<ManageInventoryScreen>
                       fontWeight: FontWeight.w500,
                     ),
                   ),
-                  const Spacer(),
                   if (_noPriceCount > 0)
-                    Padding(
-                      padding: const EdgeInsets.only(right: 6),
-                      child: FilterChip(
-                        selected: _filterNoPrice,
-                        label: Text(
-                          'Sin precio ($_noPriceCount)',
-                          style: TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w600,
-                            color: _filterNoPrice ? Colors.white : AppTheme.error,
-                          ),
-                        ),
-                        avatar: Icon(
-                          Icons.money_off_rounded,
-                          size: 16,
+                    FilterChip(
+                      selected: _filterNoPrice,
+                      label: Text(
+                        'Sin precio ($_noPriceCount)',
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
                           color: _filterNoPrice ? Colors.white : AppTheme.error,
                         ),
-                        selectedColor: AppTheme.error,
-                        backgroundColor: AppTheme.error.withValues(alpha: 0.1),
-                        side: BorderSide(
-                          color: AppTheme.error.withValues(alpha: 0.3),
-                        ),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                        onSelected: (v) {
-                          HapticFeedback.lightImpact();
-                          _filterNoPrice = v;
-                          _applyFilter();
-                        },
                       ),
+                      avatar: Icon(
+                        Icons.money_off_rounded,
+                        size: 16,
+                        color: _filterNoPrice ? Colors.white : AppTheme.error,
+                      ),
+                      selectedColor: AppTheme.error,
+                      backgroundColor: AppTheme.error.withValues(alpha: 0.1),
+                      side: BorderSide(
+                        color: AppTheme.error.withValues(alpha: 0.3),
+                      ),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      onSelected: (v) {
+                        HapticFeedback.lightImpact();
+                        _filterNoPrice = v;
+                        _applyFilter();
+                      },
                     ),
                   // Spec 100 (FR-01/FR-14): el chip ya no filtra in-place —
                   // navega a la vista dedicada "Completar SKUs".
@@ -525,6 +656,11 @@ class _ManageInventoryScreenState extends State<ManageInventoryScreen>
                       materialTapTargetSize: MaterialTapTargetSize.padded,
                       onPressed: _openSkuCompletion,
                     ),
+                  // Spec 101 (FR-02): chip DUAL — con revisión pendiente en
+                  // el servidor toma acento de acción y prioriza revisar;
+                  // si no, cuenta las fotos crudas. Navega, no filtra.
+                  if (_retouchReviewCount > 0 || _noRetouchCount > 0)
+                    _retouchChip(),
                 ],
               ),
             ),
@@ -766,19 +902,35 @@ class _ProductTile extends StatelessWidget {
                       Text(subtitle, style: AppUI.bodySoft),
                     ],
                     const SizedBox(height: 4),
+                    // Spec 101 (auditoría 360dp): esta fila desbordaba en
+                    // pantallas estrechas — precio con ellipsis y badge en
+                    // FittedBox para que se reduzca en vez de romper.
                     Row(
                       children: [
-                        Text(
-                          _formatPrice(price),
-                          style: const TextStyle(
-                            fontSize: 15,
-                            fontWeight: FontWeight.w700,
-                            color: AppTheme.primary,
-                            fontFeatures: [FontFeature.tabularFigures()],
+                        Flexible(
+                          child: Text(
+                            _formatPrice(price),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              fontSize: 15,
+                              fontWeight: FontWeight.w700,
+                              color: AppTheme.primary,
+                              fontFeatures: [FontFeature.tabularFigures()],
+                            ),
                           ),
                         ),
                         const SizedBox(width: 12),
-                        StockBadge(stock: stock, size: StockBadgeSize.medium, isMenuItem: isMenuItem, byPortions: byPortions),
+                        Flexible(
+                          child: FittedBox(
+                            fit: BoxFit.scaleDown,
+                            child: StockBadge(
+                                stock: stock,
+                                size: StockBadgeSize.medium,
+                                isMenuItem: isMenuItem,
+                                byPortions: byPortions),
+                          ),
+                        ),
                       ],
                     ),
                   ],
