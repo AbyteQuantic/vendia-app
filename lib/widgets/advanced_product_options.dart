@@ -10,6 +10,7 @@
 import 'package:flutter/material.dart';
 
 import '../theme/app_theme.dart';
+import '../theme/app_ui.dart';
 import '../utils/text_normalize.dart';
 
 class AdvancedProductOptions extends StatefulWidget {
@@ -59,40 +60,40 @@ class _AdvancedProductOptionsState extends State<AdvancedProductOptions> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text('Categoría',
-            style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
-        const SizedBox(height: 4),
+        const Text('Categoría', style: AppUI.sectionLabel),
+        const SizedBox(height: AppUI.s4),
         const Text(
           'Organiza su catálogo y deja que sus clientes filtren en línea.',
-          style: TextStyle(fontSize: 13, color: Colors.black54),
+          style: AppUI.bodySoft,
         ),
-        const SizedBox(height: 6),
+        const SizedBox(height: AppUI.s8),
         TextField(
           key: const Key('product_category_field'),
           controller: widget.categoryController,
           style: const TextStyle(fontSize: 18),
           textCapitalization: TextCapitalization.sentences,
           onChanged: (_) => setState(() {}),
-          decoration: InputDecoration(
-            hintText: 'Ej: Gaseosas, Aseo, Granos',
-            prefixIcon:
-                const Icon(Icons.category_rounded, color: AppTheme.textSecondary),
-            border:
-                OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-            isDense: true,
-          ),
+          decoration:
+              _fieldDecoration('Ej: Gaseosas, Aseo, Granos',
+                  icon: Icons.category_rounded),
         ),
         if (filtered.isNotEmpty) ...[
-          const SizedBox(height: 8),
+          const SizedBox(height: AppUI.s8),
           Wrap(
-            spacing: 8,
-            runSpacing: 8,
+            spacing: AppUI.s8,
+            runSpacing: AppUI.s8,
             children: [
               for (var i = 0; i < filtered.length; i++)
                 ActionChip(
                   key: Key('category_suggestion_$i'),
                   label: Text(filtered[i]),
-                  avatar: const Icon(Icons.add_rounded, size: 16),
+                  labelStyle: AppUI.bodyStrong,
+                  avatar: const Icon(Icons.add_rounded,
+                      size: 16, color: AppTheme.primary),
+                  backgroundColor: AppTheme.primary.withValues(alpha: 0.06),
+                  side: const BorderSide(color: AppUI.border),
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(AppUI.radiusSm)),
                   visualDensity: VisualDensity.compact,
                   onPressed: () {
                     widget.categoryController.text = filtered[i];
@@ -104,15 +105,14 @@ class _AdvancedProductOptionsState extends State<AdvancedProductOptions> {
             ],
           ),
         ],
-        const SizedBox(height: 18),
-        const Text('Características (opcional)',
-            style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
-        const SizedBox(height: 4),
+        const SizedBox(height: AppUI.s16),
+        const Text('Características (opcional)', style: AppUI.sectionLabel),
+        const SizedBox(height: AppUI.s4),
         const Text(
           'Detalles que el cliente verá en el detalle del producto en línea.',
-          style: TextStyle(fontSize: 13, color: Colors.black54),
+          style: AppUI.bodySoft,
         ),
-        const SizedBox(height: 6),
+        const SizedBox(height: AppUI.s8),
         TextField(
           key: const Key('product_characteristics_field'),
           controller: widget.characteristicsController,
@@ -120,14 +120,37 @@ class _AdvancedProductOptionsState extends State<AdvancedProductOptions> {
           minLines: 2,
           maxLines: 5,
           textCapitalization: TextCapitalization.sentences,
-          decoration: InputDecoration(
-            hintText: 'Ej: Sin azúcar · Marca Nacional · Picante medio',
-            alignLabelWithHint: true,
-            border:
-                OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-          ),
+          decoration: _fieldDecoration(
+              'Ej: Sin azúcar · Marca Nacional · Picante medio'),
         ),
       ],
+    );
+  }
+
+  /// Campo de texto del design system — mismo lenguaje que el form de
+  /// edición (_EditProductSheet) y el de crear: relleno blanco, borde
+  /// AppUI.border, radio pequeño, foco en azul de marca. Ícono opcional.
+  InputDecoration _fieldDecoration(String hint, {IconData? icon}) {
+    OutlineInputBorder border(Color c, double w) => OutlineInputBorder(
+          borderRadius: BorderRadius.circular(AppUI.radiusSm),
+          borderSide: BorderSide(color: c, width: w),
+        );
+    return InputDecoration(
+      hintText: hint,
+      hintStyle: const TextStyle(
+        fontSize: 16,
+        color: AppUI.inkSoft,
+        fontStyle: FontStyle.italic,
+      ),
+      filled: true,
+      fillColor: Colors.white,
+      alignLabelWithHint: true,
+      prefixIcon:
+          icon == null ? null : Icon(icon, color: AppUI.inkSoft, size: 22),
+      border: border(AppUI.border, 1),
+      enabledBorder: border(AppUI.border, 1),
+      focusedBorder: border(AppTheme.primary, 1.5),
+      contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
     );
   }
 }

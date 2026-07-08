@@ -25,7 +25,6 @@ import '../../utils/currency_input.dart';
 import '../../widgets/ai_instruction_dialog.dart';
 import '../../widgets/ai_photo_options_sheet.dart';
 import '../../widgets/catalog_photo_suggestion.dart';
-import '../../widgets/dashboard_ui_kit.dart';
 import '../../theme/app_ui.dart';
 import '../../widgets/advanced_product_options.dart';
 import '../../widgets/branch_selector_drawer.dart';
@@ -297,17 +296,18 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
     final tiles = <Widget>[];
     for (var i = 0; i < _suggestions.length; i++) {
       if (i > 0) {
-        tiles.add(const Divider(height: 1, thickness: 1, color: DashUI.divider));
+        tiles.add(const Divider(
+            height: 1, thickness: 1, color: AppUI.hairline));
       }
       tiles.add(_suggestionTile(_suggestions[i]));
     }
     return Container(
-      margin: const EdgeInsets.only(top: 8),
+      margin: const EdgeInsets.only(top: AppUI.s8),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: const Color(0x0D000000), width: 1),
-        boxShadow: DashUI.softShadow,
+        borderRadius: BorderRadius.circular(AppUI.radius),
+        border: Border.all(color: AppUI.border, width: 1),
+        boxShadow: AppUI.shadow,
       ),
       clipBehavior: Clip.antiAlias,
       child: Column(mainAxisSize: MainAxisSize.min, children: tiles),
@@ -334,7 +334,7 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
               child: Container(
                 width: 48,
                 height: 48,
-                color: Colors.grey.shade100,
+                color: AppUI.hairline,
                 child: s.imageUrl != null && s.imageUrl!.isNotEmpty
                     ? Image.network(s.imageUrl!,
                         width: 48,
@@ -351,17 +351,13 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
                 children: [
                   Text(
                     s.brand.isNotEmpty ? '${s.name} (${s.brand})' : s.name,
-                    style: const TextStyle(
-                        fontSize: 15,
-                        fontWeight: FontWeight.w600,
-                        color: DashUI.ink),
+                    style: AppUI.bodyStrong,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                   ),
                   const SizedBox(height: 2),
                   Text(subtitleText,
-                      style: const TextStyle(
-                          fontSize: 14, color: DashUI.inkSoft),
+                      style: AppUI.bodySoft,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis),
                 ],
@@ -371,7 +367,7 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
             if (s.source == 'user')
               _sourcePill('VendIA', const Color(0xFF7C3AED))
             else if (s.isLocal)
-              _sourcePill('Mi tienda', const Color(0xFF0D8B5E)),
+              _sourcePill('Mi tienda', AppTheme.success),
           ],
         ),
       ),
@@ -394,11 +390,11 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
       width: 40,
       height: 40,
       decoration: BoxDecoration(
-        color: AppTheme.surfaceGrey,
-        borderRadius: BorderRadius.circular(8),
+        color: AppUI.hairline,
+        borderRadius: BorderRadius.circular(AppUI.s8),
       ),
       child: const Icon(Icons.fastfood_rounded,
-          size: 20, color: AppTheme.textSecondary),
+          size: 20, color: AppUI.inkSoft),
     );
   }
 
@@ -1849,16 +1845,9 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
 
                   // ── Catalog image options ─────────────────────────────────
                   if (_catalogImages.length > 1) ...[
-                    const SizedBox(height: 12),
-                    const Text(
-                      'Fotos del catálogo',
-                      style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w600,
-                        color: AppTheme.textSecondary,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
+                    const SizedBox(height: AppUI.s12),
+                    const Text('Fotos del catálogo', style: AppUI.sectionLabel),
+                    const SizedBox(height: AppUI.s8),
                     SizedBox(
                       height: 72,
                       child: ListView.separated(
