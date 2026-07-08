@@ -1604,31 +1604,24 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
         if (shouldPop && context.mounted) Navigator.of(context).pop();
       },
       child: Scaffold(
-        // Página gris súper claro (estilo iOS): las tarjetas blancas flotan
-        // nítidas encima.
-        backgroundColor: DashUI.groupBg,
+        // Página gris súper claro (design system): las tarjetas blancas
+        // flotan nítidas encima.
+        backgroundColor: AppUI.pageBg,
         appBar: AppBar(
-          backgroundColor: DashUI.groupBg,
-          surfaceTintColor: DashUI.groupBg,
+          backgroundColor: AppUI.pageBg,
+          surfaceTintColor: Colors.transparent,
           elevation: 0,
           scrolledUnderElevation: 0,
           leading: IconButton(
             icon: const Icon(Icons.arrow_back_rounded,
-                color: DashUI.ink, size: 28),
+                color: AppUI.ink, size: 26),
             tooltip: 'Volver',
             onPressed: () async {
               final shouldPop = await _confirmDiscard();
               if (shouldPop && context.mounted) Navigator.of(context).pop();
             },
           ),
-          title: const Text(
-            'Nuevo Producto',
-            style: TextStyle(
-              fontSize: 20,
-              fontWeight: FontWeight.w700,
-              color: DashUI.ink,
-            ),
-          ),
+          title: const Text('Nuevo Producto', style: AppUI.title),
           actions: const [
             Padding(
               padding: EdgeInsets.only(right: 8),
@@ -1639,67 +1632,32 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
         // Fixed Cancel + Save buttons at the bottom
         bottomNavigationBar: SafeArea(
           child: Padding(
-            padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+            padding: const EdgeInsets.fromLTRB(
+                AppUI.s16, AppUI.s8, AppUI.s16, AppUI.s16),
             child: Row(
               children: [
-                // Cancel button
+                // Cancelar — botón secundario del kit (GhostButton/secondary).
                 Expanded(
                   flex: 2,
-                  child: SizedBox(
-                    height: 56,
-                    child: OutlinedButton(
-                      onPressed: () async {
-                        final shouldPop = await _confirmDiscard();
-                        if (shouldPop && context.mounted) {
-                          Navigator.of(context).pop();
-                        }
-                      },
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: DashUI.inkSoft,
-                        side: const BorderSide(color: Color(0x14000000)),
-                        shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(14)),
-                      ),
-                      child: const Text('Cancelar',
-                          style: TextStyle(
-                              fontSize: 17, fontWeight: FontWeight.w600)),
-                    ),
+                  child: AppButton(
+                    label: 'Cancelar',
+                    variant: AppButtonVariant.secondary,
+                    onPressed: () async {
+                      final shouldPop = await _confirmDiscard();
+                      if (shouldPop && context.mounted) {
+                        Navigator.of(context).pop();
+                      }
+                    },
                   ),
                 ),
-                const SizedBox(width: 10),
-                // Save button
+                const SizedBox(width: AppUI.s12),
+                // Guardar — acción primaria del kit (azul de marca, una línea).
                 Expanded(
                   flex: 3,
-                  child: SizedBox(
-                    height: 56,
-                    // Acción primaria: azul sólido de alto contraste, sin
-                    // bordes ni el degradado morado anterior.
-                    child: ElevatedButton.icon(
-                      onPressed: _saving ? null : _save,
-                      icon: _saving
-                          ? const SizedBox(
-                              width: 20,
-                              height: 20,
-                              child: CircularProgressIndicator(
-                                  color: Colors.white, strokeWidth: 2.5))
-                          : const Icon(Icons.save_rounded,
-                              size: 20, color: Colors.white),
-                      label: Text(
-                        _saving ? 'Guardando...' : 'Guardar',
-                        style: const TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.w700,
-                            color: Colors.white),
-                      ),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: AppTheme.primary,
-                        foregroundColor: Colors.white,
-                        elevation: 0,
-                        minimumSize: const Size(0, 56),
-                        shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(14)),
-                      ),
-                    ),
+                  child: AppButton(
+                    label: _saving ? 'Guardando...' : 'Guardar',
+                    icon: Icons.save_rounded,
+                    onPressed: _saving ? null : _save,
                   ),
                 ),
               ],
@@ -1932,7 +1890,7 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
                                 border: Border.all(
                                   color: isSelected
                                       ? AppTheme.primary
-                                      : AppTheme.borderColor,
+                                      : AppUI.border,
                                   width: isSelected ? 2.5 : 1,
                                 ),
                               ),
@@ -1969,11 +1927,13 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
                       onFieldSubmitted: (_) => _confirmNameField(),
                       decoration: InputDecoration(
                         hintText: 'Buscar o escribir nombre...',
-                        hintStyle: TextStyle(
-                          color: Colors.grey.shade400,
-                          fontWeight: FontWeight.w400,
+                        hintStyle: const TextStyle(
+                          fontSize: 16,
+                          color: AppUI.inkSoft,
                           fontStyle: FontStyle.italic,
                         ),
+                        filled: true,
+                        fillColor: Colors.white,
                         prefixIcon: const Icon(Icons.search_rounded,
                             color: AppTheme.primary, size: 22),
                         suffixIcon: _searching
@@ -1987,8 +1947,21 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
                                 ),
                               )
                             : null,
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(AppUI.radiusSm),
+                          borderSide: const BorderSide(color: AppUI.border),
+                        ),
+                        enabledBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(AppUI.radiusSm),
+                          borderSide: const BorderSide(color: AppUI.border),
+                        ),
+                        focusedBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(AppUI.radiusSm),
+                          borderSide: const BorderSide(
+                              color: AppTheme.primary, width: 1.5),
+                        ),
                         contentPadding: const EdgeInsets.symmetric(
-                            vertical: 12, horizontal: 12),
+                            vertical: 14, horizontal: 14),
                       ),
                       validator: (v) {
                         if (v == null || v.trim().isEmpty) {
@@ -2064,13 +2037,15 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
                     },
                     decoration: InputDecoration(
                       hintText: 'Ej: 7702535011119',
-                      hintStyle: TextStyle(
-                        color: Colors.grey.shade400,
-                        fontWeight: FontWeight.w400,
+                      hintStyle: const TextStyle(
+                        fontSize: 16,
+                        color: AppUI.inkSoft,
                         fontStyle: FontStyle.italic,
                       ),
+                      filled: true,
+                      fillColor: Colors.white,
                       prefixIcon: const Icon(Icons.qr_code_rounded,
-                          color: AppTheme.textSecondary, size: 22),
+                          color: AppUI.inkSoft, size: 22),
                       errorText: _skuError,
                       suffixIcon: Row(
                         mainAxisSize: MainAxisSize.min,
@@ -2089,8 +2064,21 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
                           ),
                         ],
                       ),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(AppUI.radiusSm),
+                        borderSide: const BorderSide(color: AppUI.border),
+                      ),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(AppUI.radiusSm),
+                        borderSide: const BorderSide(color: AppUI.border),
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(AppUI.radiusSm),
+                        borderSide: const BorderSide(
+                            color: AppTheme.primary, width: 1.5),
+                      ),
                       contentPadding: const EdgeInsets.symmetric(
-                          vertical: 12, horizontal: 12),
+                          vertical: 14, horizontal: 14),
                     ),
                   ),
                   if (_skuSuggestion != null) _skuSuggestionHint(),
@@ -2113,16 +2101,18 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
                               setState(() => _presentation = opt['value']!),
                           child: AnimatedContainer(
                             duration: const Duration(milliseconds: 200),
-                            padding: const EdgeInsets.symmetric(horizontal: 12),
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: AppUI.s12),
                             decoration: BoxDecoration(
                               color: selected
                                   ? AppTheme.primary.withValues(alpha: 0.12)
                                   : Colors.white,
-                              borderRadius: BorderRadius.circular(12),
+                              borderRadius:
+                                  BorderRadius.circular(AppUI.radiusSm),
                               border: Border.all(
                                 color: selected
                                     ? AppTheme.primary
-                                    : AppTheme.borderColor,
+                                    : AppUI.border,
                                 width: selected ? 2 : 1,
                               ),
                             ),
@@ -2235,7 +2225,7 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
                               keyboardType: TextInputType.number,
                               style: const TextStyle(
                                 fontSize: 18,
-                                color: Color(0xFF10B981),
+                                color: AppTheme.success,
                                 fontWeight: FontWeight.bold,
                               ),
                               textInputAction: TextInputAction.next,
@@ -2243,7 +2233,7 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
                               decoration: _inputDecoration(
                                 hint: '\$0',
                                 icon: Icons.attach_money_rounded,
-                                iconColor: const Color(0xFF10B981),
+                                iconColor: AppTheme.success,
                               ),
                               validator: (v) {
                                 if (v == null || v.isEmpty) return 'Requerido';
@@ -2262,90 +2252,86 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
                   _fieldLabel('Cantidad'),
                   const SizedBox(height: 8),
                   Container(
-                    height: 60,
+                    height: 56,
                     decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(16),
-                      border: Border.all(color: AppTheme.borderColor),
+                      borderRadius: BorderRadius.circular(AppUI.radius),
+                      border: Border.all(color: AppUI.border),
                     ),
-                    child: Row(
-                      children: [
-                        // Minus button
-                        GestureDetector(
-                          onTap: () {
-                            final c = int.tryParse(_quantityCtrl.text) ?? 1;
-                            if (c > 1) {
-                              HapticFeedback.lightImpact();
-                              _quantityCtrl.text = '${c - 1}';
-                              setState(() {});
-                            }
-                          },
-                          child: Container(
-                            width: 64,
-                            height: double.infinity,
-                            decoration: const BoxDecoration(
-                              color: Color(0xFFF5F7FA),
-                              borderRadius: BorderRadius.horizontal(
-                                  left: Radius.circular(15)),
-                            ),
-                            child: const Icon(Icons.remove_rounded,
-                                color: AppTheme.textPrimary, size: 26),
-                          ),
-                        ),
-                        // Center value
-                        Expanded(
-                          child: Container(
-                            decoration: const BoxDecoration(
-                              border: Border.symmetric(
-                                vertical: BorderSide(
-                                    color: AppTheme.borderColor, width: 1),
-                              ),
-                            ),
-                            child: TextField(
-                              controller: _quantityCtrl,
-                              keyboardType: TextInputType.number,
-                              textAlign: TextAlign.center,
-                              style: const TextStyle(
-                                fontSize: 26,
-                                fontWeight: FontWeight.bold,
-                                color: AppTheme.textPrimary,
-                              ),
-                              inputFormatters: [
-                                FilteringTextInputFormatter.digitsOnly,
-                              ],
-                              decoration: const InputDecoration(
-                                contentPadding: EdgeInsets.zero,
-                                border: InputBorder.none,
-                              ),
-                              onChanged: (v) {
-                                if (v.isEmpty || int.tryParse(v) == null) {
-                                  return;
-                                }
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(AppUI.radius),
+                      child: Row(
+                        children: [
+                          // Botón menos — tinte azul de marca.
+                          GestureDetector(
+                            onTap: () {
+                              final c = int.tryParse(_quantityCtrl.text) ?? 1;
+                              if (c > 1) {
+                                HapticFeedback.lightImpact();
+                                _quantityCtrl.text = '${c - 1}';
                                 setState(() {});
-                              },
+                              }
+                            },
+                            child: Container(
+                              width: 64,
+                              height: double.infinity,
+                              color: AppTheme.primary.withValues(alpha: 0.08),
+                              child: const Icon(Icons.remove_rounded,
+                                  color: AppTheme.primary, size: 26),
                             ),
                           ),
-                        ),
-                        // Plus button
-                        GestureDetector(
-                          onTap: () {
-                            HapticFeedback.lightImpact();
-                            final c = int.tryParse(_quantityCtrl.text) ?? 1;
-                            _quantityCtrl.text = '${c + 1}';
-                            setState(() {});
-                          },
-                          child: Container(
-                            width: 64,
-                            height: double.infinity,
-                            decoration: const BoxDecoration(
+                          // Valor central
+                          Expanded(
+                            child: Container(
+                              decoration: const BoxDecoration(
+                                border: Border.symmetric(
+                                  vertical: BorderSide(
+                                      color: AppUI.border, width: 1),
+                                ),
+                              ),
+                              child: TextField(
+                                controller: _quantityCtrl,
+                                keyboardType: TextInputType.number,
+                                textAlign: TextAlign.center,
+                                style: const TextStyle(
+                                  fontSize: 26,
+                                  fontWeight: FontWeight.bold,
+                                  color: AppUI.ink,
+                                ),
+                                inputFormatters: [
+                                  FilteringTextInputFormatter.digitsOnly,
+                                ],
+                                decoration: const InputDecoration(
+                                  contentPadding: EdgeInsets.zero,
+                                  border: InputBorder.none,
+                                  filled: false,
+                                ),
+                                onChanged: (v) {
+                                  if (v.isEmpty || int.tryParse(v) == null) {
+                                    return;
+                                  }
+                                  setState(() {});
+                                },
+                              ),
+                            ),
+                          ),
+                          // Botón más — azul de marca sólido.
+                          GestureDetector(
+                            onTap: () {
+                              HapticFeedback.lightImpact();
+                              final c = int.tryParse(_quantityCtrl.text) ?? 1;
+                              _quantityCtrl.text = '${c + 1}';
+                              setState(() {});
+                            },
+                            child: Container(
+                              width: 64,
+                              height: double.infinity,
                               color: AppTheme.primary,
-                              borderRadius: BorderRadius.horizontal(
-                                  right: Radius.circular(15)),
+                              child: const Icon(Icons.add_rounded,
+                                  color: Colors.white, size: 26),
                             ),
-                            child: const Icon(Icons.add_rounded,
-                                color: Colors.white, size: 26),
                           ),
-                        ),
-                      ],
+                        ],
+                      ),
                     ),
                   ),
 
@@ -2359,26 +2345,10 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
                     inputFormatters: [
                       FilteringTextInputFormatter.digitsOnly,
                     ],
-                    style: const TextStyle(
-                      fontSize: 18, color: AppTheme.textPrimary),
-                    decoration: InputDecoration(
-                      hintText: 'Ej: 5 — le avisamos para pedir al proveedor',
-                      hintStyle: const TextStyle(
-                          fontSize: 14, color: AppTheme.textSecondary),
-                      prefixIcon: const Icon(Icons.notifications_active_outlined,
-                          color: AppTheme.textSecondary),
-                      contentPadding: const EdgeInsets.symmetric(
-                          horizontal: 16, vertical: 14),
-                      enabledBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(16),
-                        borderSide:
-                            const BorderSide(color: AppTheme.borderColor),
-                      ),
-                      focusedBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(16),
-                        borderSide:
-                            const BorderSide(color: AppTheme.primary, width: 2),
-                      ),
+                    style: const TextStyle(fontSize: 18, color: AppUI.ink),
+                    decoration: _inputDecoration(
+                      hint: 'Ej: 5 — le avisamos para pedir al proveedor',
+                      icon: Icons.notifications_active_outlined,
                     ),
                   ),
                 ]),
@@ -2430,24 +2400,23 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
                         // Spec 070 — la galería (más fotos, video o YouTube) se
                         // agrega al EDITAR (el producto debe existir primero).
                         Container(
-                          padding: const EdgeInsets.all(12),
+                          padding: const EdgeInsets.all(AppUI.s12),
                           decoration: BoxDecoration(
                             color: AppTheme.primary.withValues(alpha: 0.06),
-                            borderRadius: BorderRadius.circular(12),
+                            borderRadius: BorderRadius.circular(AppUI.radius),
                           ),
                           child: const Row(
                             children: [
                               Icon(Icons.video_library_rounded,
                                   color: AppTheme.primary, size: 20),
-                              SizedBox(width: 10),
+                              SizedBox(width: AppUI.s12),
                               Expanded(
                                 child: Text(
                                   'Guarde el producto y luego ábralo en Editar '
                                   'para agregar más fotos, un video corto o un '
                                   'link de YouTube que sus clientes verán en el '
                                   'catálogo.',
-                                  style: TextStyle(
-                                      fontSize: 13, color: Colors.black87, height: 1.3),
+                                  style: AppUI.bodySoft,
                                 ),
                               ),
                             ],
@@ -2470,17 +2439,11 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
   // ── Helpers ────────────────────────────────────────────────────────────────
 
   Widget _card({required List<Widget> children}) {
-    // Tarjeta limpia: blanca sobre la página gris claro, borde hairline
-    // (rgba 0,0,0,.05) y sombra amplia casi invisible — mismo lenguaje que
-    // el dashboard/eventos, sin sombras pesadas.
+    // Tarjeta del design system: blanca pura, radio 12, sombra difusa ~4%
+    // (AppUI.card). Mismo lenguaje que las pantallas ya normalizadas.
     return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: const Color(0x0D000000), width: 1),
-        boxShadow: DashUI.softShadow,
-      ),
+      padding: const EdgeInsets.all(AppUI.s16),
+      decoration: AppUI.card(),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: children,
@@ -2581,13 +2544,15 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
     );
   }
 
+  // Etiqueta de sección — mismo estilo que el form de edición
+  // (_EditProductSheet): 16 · w600 · secundario. Design system.
   Widget _fieldLabel(String text) {
     return Text(
       text,
       style: const TextStyle(
-        fontSize: 17,
+        fontSize: 16,
         fontWeight: FontWeight.w600,
-        color: AppTheme.textPrimary,
+        color: AppTheme.textSecondary,
       ),
     );
   }
@@ -2679,14 +2644,14 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
     // the purpose obvious without requiring the user to tap to discover it.
     return InkWell(
       onTap: _pickExpiryDate,
-      borderRadius: BorderRadius.circular(12),
+      borderRadius: BorderRadius.circular(AppUI.radius),
       child: Container(
         height: 56,
-        padding: const EdgeInsets.symmetric(horizontal: 12),
+        padding: const EdgeInsets.symmetric(horizontal: AppUI.s12),
         decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(AppUI.radius),
           border: Border.all(
-            color: hasDate ? AppTheme.primary : AppTheme.borderColor,
+            color: hasDate ? AppTheme.primary : AppUI.border,
             width: hasDate ? 1.5 : 1,
           ),
           color:
@@ -2754,20 +2719,33 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
     });
   }
 
+  // Campo de texto del design system — mismo InputDecoration que el form de
+  // edición (_EditProductSheet): relleno BLANCO, borde AppUI.border, radio
+  // pequeño, foco en azul de marca. El ícono es opcional.
   InputDecoration _inputDecoration({
     required String hint,
-    required IconData icon,
-    required Color iconColor,
+    IconData? icon,
+    Color? iconColor,
   }) {
+    OutlineInputBorder border(Color c, double w) => OutlineInputBorder(
+          borderRadius: BorderRadius.circular(AppUI.radiusSm),
+          borderSide: BorderSide(color: c, width: w),
+        );
     return InputDecoration(
       hintText: hint,
-      hintStyle: TextStyle(
-        color: Colors.grey.shade400,
-        fontWeight: FontWeight.w400,
+      hintStyle: const TextStyle(
+        fontSize: 16,
+        color: AppUI.inkSoft,
         fontStyle: FontStyle.italic,
       ),
-      prefixIcon: Icon(icon, color: iconColor, size: 22),
-      contentPadding: const EdgeInsets.symmetric(vertical: 12, horizontal: 12),
+      filled: true,
+      fillColor: Colors.white,
+      prefixIcon:
+          icon == null ? null : Icon(icon, color: iconColor ?? AppUI.inkSoft, size: 22),
+      border: border(AppUI.border, 1),
+      enabledBorder: border(AppUI.border, 1),
+      focusedBorder: border(AppTheme.primary, 1.5),
+      contentPadding: const EdgeInsets.symmetric(vertical: 14, horizontal: 14),
     );
   }
 }
