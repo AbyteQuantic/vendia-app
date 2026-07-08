@@ -102,7 +102,11 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
   // name no longer overlaps this, the suggested image is stale and dropped.
   String _suggestedImageSourceName = '';
   bool _saving = false;
-  bool _enhancing = false;
+  // Cuál acción de IA de foto está corriendo (o null): 'removebg' (Quitar fondo),
+  // 'improve' (Mejorar con IA), 'generate' (Crear foto), 'indicaciones'. Así SOLO
+  // el botón que el tendero tocó muestra "Procesando…", no los tres a la vez.
+  String? _activeAiAction;
+  bool get _enhancing => _activeAiAction != null;
   bool _lookingUp = false;
   bool _dataFromCatalog = false; // shows "datos cargados" indicator
   String _presentation = ''; // botella, lata, bolsa, etc.
@@ -873,7 +877,13 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
         (_photoFile != null || (_photoUrl != null && _photoUrl!.isNotEmpty));
 
     HapticFeedback.lightImpact();
-    setState(() => _enhancing = true);
+    // Marca SOLO la acción tocada como activa → solo ese botón carga.
+    final aiAction = (instruction != null && instruction.isNotEmpty)
+        ? 'indicaciones'
+        : forceGenerate
+            ? 'generate'
+            : (mode == 'improve' ? 'improve' : 'removebg');
+    setState(() => _activeAiAction = aiAction);
     // Spec 016 / FR-03: the AI photo job runs asynchronously on the
     // backend; ApiService polls its status under the hood. Tell the
     // tendero it is processing so the wait never reads as a failure.
@@ -1022,7 +1032,7 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
         );
       }
     } finally {
-      if (mounted) setState(() => _enhancing = false);
+      if (mounted) setState(() => _activeAiAction = null);
     }
   }
 
@@ -1835,36 +1845,38 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
                             // foto → solo CREAR.
                             if (hasPhoto) ...[
                               _actionButton(
-                                label: _enhancing
+                                label: _activeAiAction == 'removebg'
                                     ? 'Procesando…'
                                     : 'Quitar fondo',
                                 icon: Icons.auto_fix_high_rounded,
                                 color: const Color(0xFF7C3AED),
-                                loading: _enhancing,
+                                loading: _activeAiAction == 'removebg',
+                                // Deshabilitado si CUALQUIER acción corre, pero
+                                // solo ESTE muestra el spinner.
                                 onTap: _enhancing
                                     ? null
                                     : () => _enhanceOrGeneratePhoto(),
                               ),
                               const SizedBox(height: 8),
                               _actionButton(
-                                label: _enhancing
+                                label: _activeAiAction == 'improve'
                                     ? 'Procesando…'
                                     : 'Mejorar con IA',
                                 icon: Icons.auto_awesome_rounded,
                                 color: const Color(0xFF0E7490),
-                                loading: _enhancing,
+                                loading: _activeAiAction == 'improve',
                                 onTap: _enhancing
                                     ? null
                                     : () => _enhanceOrGeneratePhoto(mode: 'improve'),
                               ),
                               const SizedBox(height: 8),
                               _actionButton(
-                                label: _enhancing
+                                label: _activeAiAction == 'generate'
                                     ? 'Procesando…'
                                     : 'Crear foto con IA',
                                 icon: Icons.add_photo_alternate_rounded,
                                 color: const Color(0xFF0E6BA8),
-                                loading: _enhancing,
+                                loading: _activeAiAction == 'generate',
                                 onTap: _enhancing
                                     ? null
                                     : () => _enhanceOrGeneratePhoto(
@@ -1872,11 +1884,12 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
                               ),
                             ] else
                               _actionButton(
-                                label:
-                                    _enhancing ? 'Generando…' : 'Crear foto con IA',
+                                label: _activeAiAction == 'generate'
+                                    ? 'Generando…'
+                                    : 'Crear foto con IA',
                                 icon: Icons.auto_awesome_rounded,
                                 color: const Color(0xFF7C3AED),
-                                loading: _enhancing,
+                                loading: _activeAiAction == 'generate',
                                 onTap: _enhancing
                                     ? null
                                     : () => _enhanceOrGeneratePhoto(
