@@ -16,8 +16,8 @@ import '../../services/image_normalizer.dart' show ImageNormalizationException;
 import '../../utils/barcode_validator.dart';
 import '../../utils/currency_input.dart';
 import '../../widgets/ai_instruction_dialog.dart';
+import '../../widgets/ai_photo_options_sheet.dart';
 import '../../widgets/branch_selector_drawer.dart';
-import '../../widgets/catalog_photo_suggestion.dart';
 import '../../widgets/full_image_viewer.dart';
 import '../../widgets/product_image.dart';
 import '../../widgets/branch_aware_reload.dart';
@@ -1010,103 +1010,30 @@ class _EditProductSheetState extends State<_EditProductSheet> {
     }
 
     if (!mounted) return;
-    // Has photo — ask user what they want
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: Colors.transparent,
-      builder: (ctx) => Container(
-        decoration: const BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
-        ),
-        padding: const EdgeInsets.fromLTRB(24, 16, 24, 32),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              width: 40, height: 4,
-              margin: const EdgeInsets.only(bottom: 20),
-              decoration: BoxDecoration(
-                color: const Color(0xFFD6D0C8),
-                borderRadius: BorderRadius.circular(2),
-              ),
-            ),
-            const Text('¿Qué desea hacer?',
-                style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800,
-                    color: Colors.black87)),
-            const SizedBox(height: 6),
-            Text(
-              'Nombre: ${_nameCtrl.text.trim()}\nPresentación: $_presentation · ${_contentCtrl.text.trim()}',
-              textAlign: TextAlign.center,
-              style: const TextStyle(fontSize: 14, color: AppTheme.textSecondary),
-            ),
-            const SizedBox(height: 20),
-            // Spec 096 — sugerencia OPCIONAL de foto verificada de catálogo
-            // (Open Food Facts) para el barcode del producto. Nunca
-            // reemplaza ni se aplica sola; NO toca las opciones de abajo.
-            if (_skuCtrl.text.trim().isNotEmpty)
-              CatalogPhotoSuggestion(
-                barcode: _skuCtrl.text.trim(),
-                onAccept: (url) {
-                  Navigator.of(ctx).pop();
-                  setState(() => _photoUrl = url);
-                },
-              ),
-            // Spec 094: el tendero elige — quitar fondo (deja el producto igual) o
-            // mejorar con IA (limpia/mejora, puede cambiar detalles).
-            _AiOptionTile(
-              icon: Icons.auto_fix_high_rounded,
-              color: const Color(0xFF3B82F6),
-              title: 'Quitar fondo',
-              subtitle: 'Deja su producto igual sobre fondo blanco de estudio',
-              onTap: () {
-                Navigator.of(ctx).pop();
-                _executeAiPhoto(useExisting: true);
-              },
-            ),
-            const SizedBox(height: 12),
-            _AiOptionTile(
-              icon: Icons.auto_awesome_rounded,
-              color: const Color(0xFF0E7490),
-              title: 'Mejorar con IA',
-              subtitle: 'Limpia y mejora el producto (puede cambiar detalles)',
-              onTap: () {
-                Navigator.of(ctx).pop();
-                _executeAiPhoto(useExisting: true, mode: 'improve');
-              },
-            ),
-            const SizedBox(height: 12),
-            _AiOptionTile(
-              icon: Icons.add_photo_alternate_rounded,
-              color: const Color(0xFF7C3AED),
-              title: 'Generar imagen nueva',
-              subtitle: 'Crea una imagen desde cero basada en el nombre y presentación',
-              onTap: () {
-                Navigator.of(ctx).pop();
-                _executeAiPhoto(useExisting: false);
-              },
-            ),
-            // Spec 017 FR-05: corregir un resultado alterado con indicaciones
-            // escritas. Solo si ya hay una foto que mejorar.
-            if (_photoUrl != null && _photoUrl!.isNotEmpty) ...[
-              const SizedBox(height: 12),
-              _AiOptionTile(
-                icon: Icons.edit_note_rounded,
-                color: const Color(0xFF0E6BA8),
-                title: 'Corregir con indicaciones',
-                subtitle: 'Dígale a la IA qué ajustar (respeta su producto)',
-                onTap: () async {
-                  Navigator.of(ctx).pop();
-                  final hint = await showAiInstructionDialog(context);
-                  if (hint != null) {
-                    _executeAiPhoto(useExisting: true, instruction: hint);
-                  }
-                },
-              ),
-            ],
-          ],
-        ),
-      ),
+    // Has photo — ask user what they want. La hoja unificada vive en
+    // widgets/ai_photo_options_sheet.dart (mismo sheet en crear/editar/review).
+    final hasPhoto = _photoUrl != null && _photoUrl!.isNotEmpty;
+    await showAiPhotoOptions(
+      context,
+      name: _nameCtrl.text.trim(),
+      presentation: _presentation,
+      content: _contentCtrl.text.trim(),
+      hasPhoto: hasPhoto,
+      barcode: _skuCtrl.text.trim(),
+      onRemoveBg: () => _executeAiPhoto(useExisting: true),
+      onImprove: () => _executeAiPhoto(useExisting: true, mode: 'improve'),
+      onGenerate: () => _executeAiPhoto(useExisting: false),
+      // Spec 017 FR-05: corregir un resultado alterado con indicaciones.
+      onInstructions: hasPhoto
+          ? () async {
+              final hint = await showAiInstructionDialog(context);
+              if (hint != null) {
+                _executeAiPhoto(useExisting: true, instruction: hint);
+              }
+            }
+          : null,
+      // Spec 096 — sugerencia OPCIONAL de foto verificada de catálogo.
+      onAcceptCatalog: (url) => setState(() => _photoUrl = url),
     );
   }
 
@@ -1874,68 +1801,4 @@ class _EditProductSheetState extends State<_EditProductSheet> {
         contentPadding:
             const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
       );
-}
-
-class _AiOptionTile extends StatelessWidget {
-  final IconData icon;
-  final Color color;
-  final String title;
-  final String subtitle;
-  final VoidCallback onTap;
-
-  const _AiOptionTile({
-    required this.icon,
-    required this.color,
-    required this.title,
-    required this.subtitle,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: () {
-        HapticFeedback.lightImpact();
-        onTap();
-      },
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-        decoration: BoxDecoration(
-          color: color.withValues(alpha: 0.06),
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: color.withValues(alpha: 0.2)),
-        ),
-        child: Row(
-          children: [
-            Container(
-              width: 52,
-              height: 52,
-              decoration: BoxDecoration(
-                color: color.withValues(alpha: 0.12),
-                borderRadius: BorderRadius.circular(16),
-              ),
-              child: Icon(icon, color: color, size: 26),
-            ),
-            const SizedBox(width: 14),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(title,
-                      style: TextStyle(
-                          fontSize: 18, fontWeight: FontWeight.w700,
-                          color: color)),
-                  const SizedBox(height: 2),
-                  Text(subtitle,
-                      style: const TextStyle(
-                          fontSize: 14, color: AppTheme.textSecondary)),
-                ],
-              ),
-            ),
-            Icon(Icons.chevron_right_rounded, color: color, size: 26),
-          ],
-        ),
-      ),
-    );
-  }
 }
