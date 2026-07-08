@@ -1,5 +1,6 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
+  "trailingSlash": false,
   "headers": [
     {
       "source": "/(index.html|flutter_bootstrap.js|flutter_service_worker.js|main.dart.js|flutter.js|manifest.json)",
