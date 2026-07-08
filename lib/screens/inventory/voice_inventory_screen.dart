@@ -35,6 +35,37 @@ import 'ia_result_screen.dart';
 /// The screen accepts injectable [recorder], [apiCall], [resolvePath]
 /// and [readAudio] so widget tests can exercise press/release behavior
 /// without touching the microphone, `path_provider` or the network.
+/// Maps the raw backend voice-inventory response into the shape
+/// IaResultScreen already expects from ScanInvoice (Spec 099): every
+/// separated field (presentation, content, purchase/sell price, match
+/// info) passes through instead of collapsing into unit_price/
+/// total_price only — the bug this spec fixes is exactly that
+/// collapse, which left quantity/size/price with nowhere to go but the
+/// name string. Extracted as a top-level pure function (no widget, no
+/// BuildContext) so it's directly unit-testable without needing a live
+/// Isar DB — IaResultScreen.initState() touches DatabaseService, which
+/// has no test double, so a full navigation test isn't feasible here.
+List<Map<String, dynamic>> mapVoiceItemsForReview(
+    List<Map<String, dynamic>> items) {
+  return items
+      .map((raw) => {
+            'name': raw['name'] ?? '',
+            'presentation': raw['presentation'] ?? '',
+            'content': raw['content'] ?? '',
+            'barcode': raw['barcode'] ?? '',
+            'quantity': raw['quantity'] ?? 0,
+            'unit_price': (raw['purchase_price'] as num?)?.toDouble() ?? 0,
+            'sell_price': (raw['sell_price'] as num?)?.toDouble() ?? 0,
+            'total_price': ((raw['purchase_price'] as num?)?.toDouble() ?? 0) *
+                ((raw['quantity'] as num?)?.toInt() ?? 0),
+            'status': raw['status'] ?? '',
+            'match_product_id': raw['match_product_id'] ?? '',
+            'match_method': raw['match_method'] ?? '',
+            'confidence': 0.85,
+          })
+      .toList();
+}
+
 typedef VoiceApiCall = Future<List<Map<String, dynamic>>> Function({
   required Uint8List audioBytes,
   required String mimeType,
@@ -377,19 +408,7 @@ class _VoiceInventoryScreenState extends State<VoiceInventoryScreen>
   }
 
   void _navigateToReview(List<Map<String, dynamic>> items) {
-    // IaResultScreen reads `unit_price` whereas the voice payload
-    // carries `price`. Mapping here keeps the OCR contract intact —
-    // the review UI doesn't have to know a new source exists.
-    final mapped = items
-        .map((raw) => {
-              'name': raw['name'] ?? '',
-              'quantity': raw['quantity'] ?? 0,
-              'unit_price': (raw['price'] as num?)?.toDouble() ?? 0,
-              'total_price': ((raw['price'] as num?)?.toDouble() ?? 0) *
-                  ((raw['quantity'] as num?)?.toInt() ?? 0),
-              'confidence': 0.85,
-            })
-        .toList();
+    final mapped = mapVoiceItemsForReview(items);
     Navigator.of(context).pushReplacement(
       MaterialPageRoute(
         builder: (_) => IaResultScreen(

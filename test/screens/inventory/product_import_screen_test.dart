@@ -286,6 +286,57 @@ void main() {
       expect(find.text('Error al importar'), findsOneWidget);
       expect(find.textContaining('Error de conexión'), findsOneWidget);
     });
+
+    // Spec 099 — AC-09: fuzzy-match heads-up, informational only.
+    testWidgets(
+        'muestra aviso de filas parecidas cuando fuzzy_matches no está vacío',
+        (tester) async {
+      await tester.pumpWidget(const MaterialApp(
+        home: Scaffold(
+          body: SingleChildScrollView(
+            child: ProductImportStep4ResultContent(
+              importing: false,
+              sent: 1,
+              total: 1,
+              report: ImportReport(
+                created: 1,
+                updated: 0,
+                skipped: 0,
+                failed: [],
+                fuzzyMatches: [
+                  FuzzyMatchInfo(
+                    rowIndex: 0,
+                    rowName: 'Coca Cola 350 ml',
+                    candidateId: 'p-1',
+                    candidateName: 'Coca-Cola 350ml',
+                    similarity: 0.82,
+                  ),
+                ],
+              ),
+              error: null,
+            ),
+          ),
+        ),
+      ));
+      await tester.pump();
+
+      expect(find.textContaining('se parece'), findsOneWidget);
+      expect(find.textContaining('Mi Inventario'), findsOneWidget);
+    });
+
+    testWidgets('no muestra ningún aviso cuando fuzzy_matches está vacío',
+        (tester) async {
+      await tester.pumpWidget(const MaterialApp(
+        home: Scaffold(
+          body: SingleChildScrollView(
+            child: _TestStep4Done(created: 1, updated: 0, failed: 0),
+          ),
+        ),
+      ));
+      await tester.pump();
+
+      expect(find.textContaining('se parece'), findsNothing);
+    });
   });
 }
 

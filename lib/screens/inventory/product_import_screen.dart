@@ -1167,6 +1167,34 @@ class ProductImportStep4ResultContent extends StatelessWidget {
               label: 'Omitidos',
               value: report!.skipped,
               color: AppTheme.textSecondary),
+          if (report!.fuzzyMatches.isNotEmpty) ...[
+            const SizedBox(height: 16),
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: AppTheme.warning.withValues(alpha: 0.08),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Icon(Icons.info_outline_rounded,
+                      color: AppTheme.warning, size: 20),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      '${report!.fuzzyMatches.length} '
+                      '${report!.fuzzyMatches.length == 1 ? "fila se parece" : "filas se parecen"} '
+                      'a productos que ya tiene — revíselas en Mi Inventario '
+                      'para evitar duplicados.',
+                      style: const TextStyle(
+                          fontSize: 14, color: AppTheme.textPrimary),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
           if (report!.failed.isNotEmpty) ...[
             _ReportCard(
                 label: 'Fallidos',
