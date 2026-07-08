@@ -7,6 +7,7 @@ import '../../services/api_service.dart';
 import '../../services/app_error.dart';
 import '../../services/auth_service.dart';
 import '../../theme/app_theme.dart';
+import '../../utils/retail_barcode_formats.dart';
 import '../../widgets/html5_qrcode_scanner.dart';
 import '../inventory/create_product_screen.dart';
 
@@ -19,21 +20,9 @@ class ScanScreen extends StatefulWidget {
 
 class _ScanScreenState extends State<ScanScreen> {
   // Formatos típicos de productos retail Colombia.
-  // ⚠️ EN WEB es obligatorio especificarlos — el motor wasm de
-  // `mobile_scanner` no detecta nada si la lista queda vacía.
-  //
-  // Lista deliberadamente corta y enfocada: muchos formatos confunden
-  // al ZXing WASM en web, que parsea cada frame contra cada formato
-  // y a veces salta al "menos probable" en condiciones de baja luz /
-  // baja resolución, sin emitir el match al callback. Con la lista
-  // mínima retail-CO el detector se enfoca y emite consistentemente.
-  static const _retailFormats = <BarcodeFormat>[
-    BarcodeFormat.ean13, // tiendas / minimercados — el más común
-    BarcodeFormat.ean8,
-    BarcodeFormat.upcA,
-    BarcodeFormat.code128, // ferreterías / distribuidoras
-    BarcodeFormat.qrCode, // SKUs propios en QR
-  ];
+  // Spec 100: la lista (y su gotcha web) vive ahora en
+  // utils/retail_barcode_formats.dart, compartida con la ráfaga de SKUs.
+  static const _retailFormats = kRetailBarcodeFormats;
 
   // `back` apunta al producto en móvil. En web el navegador lo traduce
   // a la cámara disponible.
