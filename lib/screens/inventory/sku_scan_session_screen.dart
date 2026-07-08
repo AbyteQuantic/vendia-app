@@ -50,8 +50,8 @@ class SkuScanSessionScreen extends StatefulWidget {
     super.key,
     required this.products,
     this.onAssigned,
-    @visibleForTesting this.apiOverride,
-    @visibleForTesting this.keyboardOnly = false,
+    this.apiOverride,
+    this.keyboardOnly = false,
   });
 
   /// Cola de productos SIN código, en orden (mapas crudos del backend).
@@ -61,11 +61,10 @@ class SkuScanSessionScreen extends StatefulWidget {
   /// sincronice su lista/contador sin esperar al pop).
   final void Function(String productId, String code)? onAssigned;
 
-  @visibleForTesting
+  /// Inyección para pruebas (la pantalla que abre la sesión lo propaga).
   final ApiService? apiOverride;
 
   /// true = sin cámara: solo el campo de teclado (pruebas y degradación).
-  @visibleForTesting
   final bool keyboardOnly;
 
   @override
