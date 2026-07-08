@@ -15,6 +15,7 @@ import '../../services/auth_service.dart';
 import '../../services/image_normalizer.dart' show ImageNormalizationException;
 import '../../utils/barcode_validator.dart';
 import '../../utils/currency_input.dart';
+import '../../utils/sku_generator.dart';
 import '../../widgets/ai_instruction_dialog.dart';
 import '../../widgets/ai_photo_options_sheet.dart';
 import '../../widgets/branch_selector_drawer.dart';
@@ -1250,32 +1251,14 @@ class _EditProductSheetState extends State<_EditProductSheet> {
   }
 
   /// Generates an internal SKU based on the product name and presentation.
-  /// Format: VND-{PRES}{3-letter-name}-{random4digits}
+  /// Format: VND-{PRES}-{3-letter-name}-{random4digits}
   /// e.g. VND-UNI-EMP-4821
+  /// Spec 100 (T-11): delega en la utilidad compartida `generateSku`.
   void _generateSku() {
     HapticFeedback.lightImpact();
-    final name = _nameCtrl.text.trim().toUpperCase();
-    // Presentation prefix (3 chars)
-    final presMap = {
-      'Botella': 'BOT',
-      'Lata': 'LAT',
-      'Bolsa': 'BLS',
-      'Caja': 'CAJ',
-      'Frasco': 'FRA',
-      'Paquete': 'PAQ',
-      'Unidad': 'UNI',
-      'Otro': 'OTR',
-    };
-    final pres = presMap[_presentation] ?? 'GEN';
-    // First 3 consonants/letters of name (skip spaces)
-    final letters = name.replaceAll(RegExp(r'[^A-Z]'), '');
-    final nameCode = letters.length >= 3 ? letters.substring(0, 3) : letters.padRight(3, 'X');
-    // Random 4 digits
-    final rng = DateTime.now().millisecondsSinceEpoch % 10000;
-    final digits = rng.toString().padLeft(4, '0');
-
     setState(() {
-      _skuCtrl.text = 'VND-$pres-$nameCode-$digits';
+      _skuCtrl.text =
+          generateSku(name: _nameCtrl.text, presentation: _presentation);
       _skuError = null;
     });
   }
