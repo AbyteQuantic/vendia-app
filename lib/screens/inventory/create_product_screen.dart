@@ -22,6 +22,7 @@ import '../../services/image_normalizer.dart' show ImageNormalizationException;
 import '../../theme/app_theme.dart';
 import '../../utils/barcode_validator.dart';
 import '../../utils/currency_input.dart';
+import '../../utils/sku_generator.dart';
 import '../../widgets/ai_instruction_dialog.dart';
 import '../../widgets/ai_photo_options_sheet.dart';
 import '../../widgets/catalog_photo_suggestion.dart';
@@ -2682,29 +2683,12 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
 
   /// Generates an internal SKU based on the product name and presentation.
   /// Format: VND-{PRES}-{3-letter-name}-{random4digits}
+  /// Spec 100 (T-11): delega en la utilidad compartida `generateSku`.
   void _generateSku() {
     HapticFeedback.lightImpact();
-    final name = _nameCtrl.text.trim().toUpperCase();
-    final presMap = {
-      'botella': 'BOT',
-      'lata': 'LAT',
-      'bolsa': 'BLS',
-      'caja': 'CAJ',
-      'frasco': 'FRA',
-      'paquete': 'PAQ',
-      'unidad': 'UNI',
-      'sobre': 'SOB',
-    };
-    final pres = presMap[_presentation.toLowerCase()] ?? 'GEN';
-    final letters = name.replaceAll(RegExp(r'[^A-Z]'), '');
-    final nameCode = letters.length >= 3
-        ? letters.substring(0, 3)
-        : letters.padRight(3, 'X');
-    final digits = (DateTime.now().millisecondsSinceEpoch % 10000)
-        .toString()
-        .padLeft(4, '0');
     setState(() {
-      _skuCtrl.text = 'VND-$pres-$nameCode-$digits';
+      _skuCtrl.text =
+          generateSku(name: _nameCtrl.text, presentation: _presentation);
     });
   }
 

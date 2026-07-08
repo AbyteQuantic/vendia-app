@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:developer' as developer;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
@@ -15,6 +16,7 @@ import '../../services/auth_service.dart';
 import '../../services/image_normalizer.dart' show ImageNormalizationException;
 import '../../utils/barcode_validator.dart';
 import '../../utils/currency_input.dart';
+import '../../utils/sku_generator.dart';
 import '../../widgets/ai_instruction_dialog.dart';
 import '../../widgets/ai_photo_options_sheet.dart';
 import '../../widgets/branch_selector_drawer.dart';
@@ -34,6 +36,7 @@ import 'product_import_screen.dart';
 import 'organize_categories_screen.dart';
 import 'product_save_flow.dart';
 import 'photo_completion_screen.dart';
+import 'sku_completion_screen.dart';
 import '../legal/photo_rights_notice.dart';
 
 const kSinCategoria = 'Sin categoría';
@@ -74,13 +77,34 @@ List<Object> groupProductsByCategory(List<Map<String, dynamic>> products) {
   return result;
 }
 
+/// Spec 100 (FR-11, AC-09): un producto está "sin SKU" solo si es una
+/// referencia FÍSICA escaneable con código vacío (o de puros espacios).
+/// Platos de menú y servicios no se escanean en el POS → no cuentan en el
+/// chip ni aparecen en la vista "Completar SKUs".
+///
+/// Función pura de nivel de archivo (no un método privado del State) para
+/// poder testearla sin montar el widget — mismo criterio que
+/// [groupProductsByCategory].
+bool isMissingSkuPhysical(Map<String, dynamic> p) {
+  if (p['is_menu_item'] == true || p['is_service'] == true) return false;
+  return (p['barcode'] as String? ?? '').trim().isEmpty;
+}
+
 class ManageInventoryScreen extends StatefulWidget {
-  const ManageInventoryScreen({super.key, this.focusProductId});
+  const ManageInventoryScreen({
+    super.key,
+    this.focusProductId,
+    @visibleForTesting this.apiOverride,
+  });
 
   /// Producto a destacar al abrir (desde una alerta de stock bajo). Hoy
   /// abre el inventario en el módulo correcto; el resaltado por-ítem es
   /// el siguiente paso (Spec 056 slice 1).
   final String? focusProductId;
+
+  /// Solo para pruebas de widget (mismo patrón que PhotoCompletionScreen).
+  @visibleForTesting
+  final ApiService? apiOverride;
 
   @override
   State<ManageInventoryScreen> createState() => _ManageInventoryScreenState();
@@ -92,21 +116,38 @@ class _ManageInventoryScreenState extends State<ManageInventoryScreen>
   void onBranchChanged() => _loadProducts(); // recarga al cambiar de sede
 
   final _searchCtrl = TextEditingController();
-  final _api = ApiService(AuthService());
+  late final ApiService _api;
   final _scrollCtrl = ScrollController();
 
   List<Map<String, dynamic>> _products = [];
   List<Map<String, dynamic>> _filtered = [];
   bool _loading = true;
   String? _error;
-  bool _filterNoSku = false;
   bool _filterNoPrice = false;
 
   @override
   void initState() {
     super.initState();
+    _api = widget.apiOverride ?? ApiService(AuthService());
     _loadProducts();
     _searchCtrl.addListener(_applyFilter);
+  }
+
+  /// El banner de stock negativo depende de Isar; en entornos donde la BD
+  /// local no está inicializada (web ya usa un stub; pruebas de widget)
+  /// [DatabaseService.instance] lanza StateError. El banner es informativo:
+  /// degradar a "sin alertas" es mejor que romper la pantalla. Cualquier
+  /// OTRO error de Isar se registra antes de degradar (no se silencia).
+  Stream<int> _negativeStockStream() {
+    try {
+      return DatabaseService.instance.watchNegativeStockCount();
+    } on StateError catch (_) {
+      return const Stream<int>.empty(); // BD local sin init: degradación
+    } catch (e, st) {
+      developer.log('watchNegativeStockCount falló',
+          name: 'inventory', error: e, stackTrace: st);
+      return const Stream<int>.empty();
+    }
   }
 
   @override
@@ -140,9 +181,8 @@ class _ManageInventoryScreenState extends State<ManageInventoryScreen>
       setState(() {
         _products = products;
         // PERF: contar SKU/precio faltantes una vez al cargar (no por build).
-        _noSkuCount = _products
-            .where((p) => (p['barcode'] as String? ?? '').trim().isEmpty)
-            .length;
+        // Spec 100: el conteo excluye platos/servicios (FR-11).
+        _noSkuCount = _products.where(isMissingSkuPhysical).length;
         _noPriceCount = _products
             .where((p) => ((p['price'] as num?)?.toDouble() ?? 0) <= 0)
             .length;
@@ -180,10 +220,6 @@ class _ManageInventoryScreenState extends State<ManageInventoryScreen>
           final barcode = (p['barcode'] as String? ?? '').toLowerCase();
           if (!name.contains(query) && !barcode.contains(query)) return false;
         }
-        if (_filterNoSku) {
-          final barcode = (p['barcode'] as String? ?? '').trim();
-          if (barcode.isNotEmpty) return false;
-        }
         if (_filterNoPrice) {
           final price = (p['price'] as num?)?.toDouble() ?? 0;
           if (price > 0) return false;
@@ -206,6 +242,19 @@ class _ManageInventoryScreenState extends State<ManageInventoryScreen>
     final photo = (p['photo_url'] as String? ?? '').trim();
     final image = (p['image_url'] as String? ?? '').trim();
     return photo.isEmpty && image.isEmpty;
+  }
+
+  /// Spec 100 (FR-01): abre la vista dedicada "Completar SKUs" con las
+  /// referencias físicas sin código de la sede activa; al volver, recarga
+  /// para que el contador del chip refleje el avance (FR-08).
+  Future<void> _openSkuCompletion() async {
+    final pending = _products.where(isMissingSkuPhysical).toList();
+    if (pending.isEmpty) return;
+    HapticFeedback.lightImpact();
+    await Navigator.of(context).push(MaterialPageRoute(
+      builder: (_) => SkuCompletionScreen(products: pending),
+    ));
+    if (mounted) _loadProducts();
   }
 
   /// Abre el flujo de "Completar fotos" con las referencias sin imagen de la
@@ -354,7 +403,7 @@ class _ManageInventoryScreenState extends State<ManageInventoryScreen>
             NegativeStockBanner(
               key: const Key('manage_inventory_negative_stock_banner'),
               count: 0,
-              countStream: DatabaseService.instance.watchNegativeStockCount(),
+              countStream: _negativeStockStream(),
               onTap: () {
                 Navigator.of(context).push(
                   MaterialPageRoute(
@@ -447,23 +496,23 @@ class _ManageInventoryScreenState extends State<ManageInventoryScreen>
                         },
                       ),
                     ),
+                  // Spec 100 (FR-01/FR-14): el chip ya no filtra in-place —
+                  // navega a la vista dedicada "Completar SKUs".
                   if (_noSkuCount > 0)
-                    FilterChip(
-                      selected: _filterNoSku,
+                    ActionChip(
                       label: Text(
                         'Sin SKU ($_noSkuCount)',
-                        style: TextStyle(
+                        style: const TextStyle(
                           fontSize: 13,
                           fontWeight: FontWeight.w600,
-                          color: _filterNoSku ? Colors.white : AppTheme.warning,
+                          color: AppTheme.warning,
                         ),
                       ),
-                      avatar: Icon(
-                        Icons.warning_amber_rounded,
+                      avatar: const Icon(
+                        Icons.qr_code_scanner_rounded,
                         size: 16,
-                        color: _filterNoSku ? Colors.white : AppTheme.warning,
+                        color: AppTheme.warning,
                       ),
-                      selectedColor: AppTheme.warning,
                       backgroundColor: AppTheme.warning.withValues(alpha: 0.1),
                       side: BorderSide(
                         color: AppTheme.warning.withValues(alpha: 0.3),
@@ -471,11 +520,10 @@ class _ManageInventoryScreenState extends State<ManageInventoryScreen>
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(10),
                       ),
-                      onSelected: (v) {
-                        HapticFeedback.lightImpact();
-                        _filterNoSku = v;
-                        _applyFilter();
-                      },
+                      // Audiencia 50+: garantiza ≥48dp de objetivo táctil
+                      // aunque el theme cambie (no depender del default).
+                      materialTapTargetSize: MaterialTapTargetSize.padded,
+                      onPressed: _openSkuCompletion,
                     ),
                 ],
               ),
@@ -1250,32 +1298,14 @@ class _EditProductSheetState extends State<_EditProductSheet> {
   }
 
   /// Generates an internal SKU based on the product name and presentation.
-  /// Format: VND-{PRES}{3-letter-name}-{random4digits}
+  /// Format: VND-{PRES}-{3-letter-name}-{random4digits}
   /// e.g. VND-UNI-EMP-4821
+  /// Spec 100 (T-11): delega en la utilidad compartida `generateSku`.
   void _generateSku() {
     HapticFeedback.lightImpact();
-    final name = _nameCtrl.text.trim().toUpperCase();
-    // Presentation prefix (3 chars)
-    final presMap = {
-      'Botella': 'BOT',
-      'Lata': 'LAT',
-      'Bolsa': 'BLS',
-      'Caja': 'CAJ',
-      'Frasco': 'FRA',
-      'Paquete': 'PAQ',
-      'Unidad': 'UNI',
-      'Otro': 'OTR',
-    };
-    final pres = presMap[_presentation] ?? 'GEN';
-    // First 3 consonants/letters of name (skip spaces)
-    final letters = name.replaceAll(RegExp(r'[^A-Z]'), '');
-    final nameCode = letters.length >= 3 ? letters.substring(0, 3) : letters.padRight(3, 'X');
-    // Random 4 digits
-    final rng = DateTime.now().millisecondsSinceEpoch % 10000;
-    final digits = rng.toString().padLeft(4, '0');
-
     setState(() {
-      _skuCtrl.text = 'VND-$pres-$nameCode-$digits';
+      _skuCtrl.text =
+          generateSku(name: _nameCtrl.text, presentation: _presentation);
       _skuError = null;
     });
   }
