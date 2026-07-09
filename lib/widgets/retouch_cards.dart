@@ -9,6 +9,7 @@ import 'package:flutter/material.dart';
 
 import '../theme/app_theme.dart';
 import '../theme/app_ui.dart';
+import 'compact_action_button.dart';
 import 'product_image.dart';
 
 /// Revisión antes/después de un ítem del lote (FR-05): el tendero ve que la
@@ -67,24 +68,19 @@ class RetouchReviewCard extends StatelessWidget {
                   child: CircularProgressIndicator(strokeWidth: 2)),
             )
           else
+            // AppButton del kit: estilo explícito, sin el theme legacy de
+            // OutlinedButton (texto 22px) que inflaba Descartar/Confirmar.
             Row(children: [
               Expanded(
-                child: OutlinedButton(
+                child: AppButton(
+                  label: 'Descartar',
+                  variant: AppButtonVariant.secondary,
                   onPressed: onDiscard,
-                  style:
-                      OutlinedButton.styleFrom(minimumSize: const Size(0, 44)),
-                  child: const Text('Descartar'),
                 ),
               ),
               const SizedBox(width: AppUI.s8),
               Expanded(
-                child: FilledButton(
-                  onPressed: onConfirm,
-                  style: FilledButton.styleFrom(
-                      backgroundColor: AppTheme.primary,
-                      minimumSize: const Size(0, 44)),
-                  child: const Text('Confirmar'),
-                ),
+                child: AppButton(label: 'Confirmar', onPressed: onConfirm),
               ),
             ]),
         ],
@@ -197,18 +193,10 @@ class RetouchPendingCard extends StatelessWidget {
               ),
             ])
           else if (!busy)
-            OutlinedButton.icon(
+            CompactActionButton(
+              icon: Icons.auto_awesome,
+              label: 'Mejorar foto',
               onPressed: onRetouch,
-              icon: const Icon(Icons.auto_awesome, size: 18),
-              label: const Text('Mejorar foto'),
-              style: OutlinedButton.styleFrom(
-                foregroundColor: AppTheme.primary,
-                minimumSize: const Size(0, 44),
-                side:
-                    BorderSide(color: AppTheme.primary.withValues(alpha: 0.4)),
-                shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(10)),
-              ),
             ),
         ],
       ),

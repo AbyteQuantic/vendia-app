@@ -7,6 +7,7 @@ import 'package:vendia_pos/models/catalog_suggestion.dart';
 import 'package:vendia_pos/services/api_service.dart';
 import 'package:vendia_pos/services/auth_service.dart';
 import 'package:vendia_pos/screens/inventory/photo_completion_screen.dart';
+import 'package:vendia_pos/theme/app_theme.dart';
 
 class _FakeApi extends ApiService {
   _FakeApi(this._suggestions) : super(AuthService());
@@ -41,7 +42,9 @@ Map<String, dynamic> _p(String id, String name, {String barcode = ''}) => {
 void main() {
   setUpAll(() => dotenv.testLoad(fileInput: 'API_BASE_URL=http://localhost:8080'));
 
-  Widget wrap(Widget child) => MaterialApp(home: child);
+  // Theme REAL de la app: el theme legacy de botones (64dp/22px) queda bajo
+  // prueba y las acciones compactas no pueden regresar a botones gigantes.
+  Widget wrap(Widget child) => MaterialApp(theme: AppTheme.light, home: child);
 
   testWidgets('muestra sugerencia verificada y sin confirmar', (tester) async {
     final api = _FakeApi({
@@ -146,5 +149,39 @@ void main() {
 
     expect(api.patched.length, 2);
     expect(find.text('2 de 2 con foto'), findsOneWidget);
+  });
+
+  testWidgets('UI normalizada: a 360dp cero overflow y acciones compactas '
+      'con tap target ≥ 44dp (nombre largo)', (tester) async {
+    tester.view.physicalSize = const Size(360, 740);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+
+    final api = _FakeApi({});
+    await tester.pumpWidget(wrap(PhotoCompletionScreen(
+      apiOverride: api,
+      products: [
+        _p('1', 'Chocolatina de maní con leche entera edición especial 500 g'),
+      ],
+    )));
+    await tester.pump();
+    await tester.pump();
+
+    expect(tester.takeException(), isNull); // cero overflow a 360dp
+
+    // Acciones compactas que COMPARTEN renglón (antes: apiladas full-width,
+    // una por línea). El Wrap fluye según el ancho real; con la fuente de
+    // prueba (Ahem, más ancha) al menos las 2 primeras van juntas.
+    final dyIa = tester.getCenter(find.text('Crear IA')).dy;
+    final dyCargar = tester.getCenter(find.text('Cargar')).dy;
+    expect(dyCargar, moreOrLessEquals(dyIa, epsilon: 1.0));
+
+    // Tap target ≥ 44dp y nada de botones full-width del theme legacy.
+    final btn = find
+        .ancestor(
+            of: find.text('Crear IA'), matching: find.byType(OutlinedButton))
+        .first;
+    expect(tester.getSize(btn).height, greaterThanOrEqualTo(44));
+    expect(tester.getSize(btn).width, lessThan(200));
   });
 }
