@@ -8,6 +8,13 @@ import '../../widgets/vendia_logo.dart';
 import '../auth/login_screen.dart';
 import '../onboarding/post_login_gate.dart';
 
+/// Datos de sesión que el splash necesita para decidir la ruta de entrada.
+typedef SplashSession = ({
+  bool hasSession,
+  String ownerName,
+  String businessName,
+});
+
 /// Splash de arranque (Spec 087): el logo se "dibuja" siguiendo el trazo y se
 /// revela completo. VendIA es la constante + 1 logo al azar cada apertura.
 ///
@@ -15,7 +22,12 @@ import '../onboarding/post_login_gate.dart';
 ///   - Verifica JWT en secure storage mientras corre la animación.
 ///   - Token válido → PostLoginGate · Sin sesión → LoginScreen
 class AnimatedSplashScreen extends StatefulWidget {
-  const AnimatedSplashScreen({super.key});
+  const AnimatedSplashScreen({super.key, this.sessionResolver});
+
+  /// Solo pruebas: reemplaza la lectura real de sesión (AuthService/secure
+  /// storage) para simular auth resuelta, tardía o colgada.
+  @visibleForTesting
+  final Future<SplashSession> Function()? sessionResolver;
 
   @override
   State<AnimatedSplashScreen> createState() => _AnimatedSplashScreenState();
@@ -27,6 +39,20 @@ class _AnimatedSplashScreenState extends State<AnimatedSplashScreen> {
   // Tope de seguridad: si la animación no termina (assets que no cargan), entrar.
   static const _maxSplashDuration = Duration(seconds: 7);
 
+  /// Bug prod 2026-07-08 (web): el splash quedaba EN BLANCO indefinidamente.
+  /// El safeguard exigía `_authResolved` — si la auth no resolvía, NUNCA se
+  /// entraba. Ahora el safeguard espera la auth máximo esta gracia y, si no
+  /// resuelve, entra a Login (fail-safe: mejor pedir login que pantalla muerta).
+  static const _authGrace = Duration(seconds: 2);
+
+  /// Bug prod 2026-07-08 (web): el engine de Flutter web puede dejar de emitir
+  /// frames cuando la app queda ociosa (animación terminada/atascada) — los
+  /// timers y la navegación SÍ corrían, pero nada se pintaba hasta que un
+  /// click forzaba un frame (por eso "un toque y entra al instante"). Un
+  /// frame forzado periódico garantiza que todo cambio pendiente (incluida la
+  /// navegación del safeguard) llegue a pantalla sin interacción del usuario.
+  static const _framePumpInterval = Duration(seconds: 1);
+
   late final List<String> _logos;
   bool _animDone = false;
   bool _authResolved = false;
@@ -35,6 +61,8 @@ class _AnimatedSplashScreenState extends State<AnimatedSplashScreen> {
   String _ownerName = '';
   String _businessName = '';
   Timer? _safeguard;
+  Timer? _framePump;
+  final Completer<void> _authDone = Completer<void>();
 
   @override
   void initState() {
@@ -44,33 +72,70 @@ class _AnimatedSplashScreenState extends State<AnimatedSplashScreen> {
     _logos = [SplashAssets.vendia, other];
     _resolveAuth();
     // Salvaguarda: si los assets no cargan (web lento/roto), entrar igual.
-    _safeguard = Timer(_maxSplashDuration, () {
-      _animDone = true;
-      _maybeGo();
+    _safeguard = Timer(_maxSplashDuration, _forceEnter);
+    // Bomba de frames (ver _framePumpInterval): mantiene al engine pintando
+    // mientras el splash viva; se cancela en dispose (al salir de la ruta).
+    _framePump = Timer.periodic(_framePumpInterval, (_) {
+      if (mounted) WidgetsBinding.instance.scheduleForcedFrame();
     });
   }
 
   @override
   void dispose() {
     _safeguard?.cancel();
+    _framePump?.cancel();
     super.dispose();
   }
 
   Future<void> _resolveAuth() async {
+    try {
+      final resolve = widget.sessionResolver ?? _resolveRealSession;
+      final session = await resolve();
+      _hasSession = session.hasSession;
+      _ownerName = session.ownerName;
+      _businessName = session.businessName;
+    } catch (_) {
+      // Fail-safe: storage roto ≠ splash eterno — se entra sin sesión.
+      _hasSession = false;
+    }
+    _authResolved = true;
+    if (!_authDone.isCompleted) _authDone.complete();
+    _maybeGo();
+  }
+
+  Future<SplashSession> _resolveRealSession() async {
     final auth = AuthService();
     final has = await auth.hasSession();
-    if (has) {
-      _ownerName = await auth.getOwnerName() ?? '';
-      _businessName = await auth.getBusinessName() ?? '';
-    }
-    _hasSession = has;
-    _authResolved = true;
-    _maybeGo();
+    return (
+      hasSession: has,
+      ownerName: has ? (await auth.getOwnerName() ?? '') : '',
+      businessName: has ? (await auth.getBusinessName() ?? '') : '',
+    );
   }
 
   // Navega cuando la animación TERMINÓ (esperó la carga) y la auth está lista.
   void _onAnimDone() {
     _animDone = true;
+    _maybeGo();
+  }
+
+  /// Safeguard de los 7s: entra SIEMPRE. Si la auth aún no resolvió, le da
+  /// una gracia corta ([_authGrace]) y por defecto entra a Login.
+  Future<void> _forceEnter() async {
+    _animDone = true;
+    if (!_authResolved) {
+      await Future.any(<Future<void>>[
+        _authDone.future,
+        Future<void>.delayed(_authGrace),
+      ]);
+    }
+    if (!mounted || _navigated) return;
+    if (!_authResolved) {
+      // La auth sigue colgada: default sin sesión (Login pide credenciales;
+      // nunca expone datos de otra cuenta).
+      _authResolved = true;
+      _hasSession = false;
+    }
     _maybeGo();
   }
 
@@ -103,6 +168,9 @@ class _AnimatedSplashScreenState extends State<AnimatedSplashScreen> {
           )
         : MaterialPageRoute(builder: (_) => const LoginScreen());
     Navigator.of(context).pushReplacement(route);
+    // Web: si el engine estaba ocioso sin pintar, fuerza el frame de la
+    // navegación (ver _framePumpInterval — misma causa raíz).
+    WidgetsBinding.instance.scheduleForcedFrame();
   }
 
   @override

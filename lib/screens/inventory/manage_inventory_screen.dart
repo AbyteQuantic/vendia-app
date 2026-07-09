@@ -606,19 +606,22 @@ class _ManageInventoryScreenState extends State<ManageInventoryScreen>
 
             // Count + Filter chips. Spec 101: con TRES contadores posibles
             // (Sin precio / Sin SKU / Fotos sin retocar) la fila fija
-            // desbordaba a 360dp → Wrap: los chips fluyen a otra línea.
-            // Rediseño 2026-07-08: UNA sola Wrap alineada a la izquierda con
-            // el conteo como pill neutro de la MISMA altura/estilo que los
-            // chips de curaduría — antes el conteo era texto suelto y la
-            // segunda línea se veía rota/flotando.
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 20),
-              child: Wrap(
-                alignment: WrapAlignment.start,
-                spacing: AppUI.s8,
-                runSpacing: AppUI.s4,
-                crossAxisAlignment: WrapCrossAlignment.center,
-                children: [
+            // desbordaba a 360dp → Wrap: los chips fluían a otra línea.
+            // Rediseño 2026-07-09 (pedido del fundador): carrusel HORIZONTAL
+            // de UNA sola línea — el Wrap partía en 2-3 líneas a 360dp y se
+            // comía el espacio vertical de la lista en móvil. Los chips que
+            // no caben se descubren deslizando; cada chip conserva su
+            // estilo/altura/lógica.
+            SizedBox(
+              width: double.infinity,
+              child: SingleChildScrollView(
+                key: const Key('inventory_filter_carousel'),
+                scrollDirection: Axis.horizontal,
+                padding: const EdgeInsets.symmetric(horizontal: 20),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  spacing: AppUI.s8,
+                  children: [
                   Chip(
                     label: Text(
                       '${_filtered.length} producto${_filtered.length != 1 ? 's' : ''}',
@@ -728,7 +731,8 @@ class _ManageInventoryScreenState extends State<ManageInventoryScreen>
                       materialTapTargetSize: MaterialTapTargetSize.padded,
                       onPressed: _openCategoryCompletion,
                     ),
-                ],
+                  ],
+                ),
               ),
             ),
             const SizedBox(height: 8),
