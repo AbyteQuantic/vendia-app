@@ -102,6 +102,21 @@ void main() {
   });
 
   group('fetchRetouchSummary', () {
+    test('pagina review_items: manda page y per_page=100 por defecto',
+        () async {
+      final adapter = _RecordingAdapter(200,
+          '{"data":{"eligible_count":0,"active_batch":null,"review_items":[]}}');
+      final api = apiWith(adapter);
+
+      await api.fetchRetouchSummary();
+      expect(adapter.lastRequest!.uri.queryParameters['page'], '1');
+      expect(adapter.lastRequest!.uri.queryParameters['per_page'], '100');
+
+      await api.fetchRetouchSummary(page: 3, perPage: 50);
+      expect(adapter.lastRequest!.uri.queryParameters['page'], '3');
+      expect(adapter.lastRequest!.uri.queryParameters['per_page'], '50');
+    });
+
     test('parsea eligible_count, active_batch y review_items', () async {
       final payload = jsonEncode({
         'data': {

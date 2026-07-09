@@ -9,6 +9,8 @@
 // completo usa el mismo camino con confirmación previa, banner de progreso
 // sin ansiedad y "Aplicar las N".
 
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -47,8 +49,12 @@ class _FakeApi extends ApiService {
   final List<List<String>> confirmCalls = [];
   final List<List<String>> discardCalls = [];
   final List<String> cancelCalls = [];
+  int summaryCalls = 0;
   AppError? createError;
   AppError? confirmError;
+
+  /// Simula el summary caído (para probar el backoff del polling).
+  bool summaryFails = false;
 
   /// Qué summary devolver DESPUÉS de crear un lote (simula al worker).
   Map<String, dynamic>? summaryAfterCreate;
@@ -68,7 +74,15 @@ class _FakeApi extends ApiService {
   }
 
   @override
-  Future<Map<String, dynamic>> fetchRetouchSummary() async => summary;
+  Future<Map<String, dynamic>> fetchRetouchSummary(
+      {int page = 1, int perPage = 100}) async {
+    summaryCalls++;
+    if (summaryFails) {
+      throw const AppError(
+          type: AppErrorType.network, message: 'Sin conexión.');
+    }
+    return summary;
+  }
 
   @override
   Future<void> confirmRetouchItems(List<String> itemIds) async {
@@ -348,13 +362,184 @@ void main() {
         'ready_for_review': 12,
       },
       'review_items': [
+        for (var i = 1; i <= 12; i++)
+          _reviewItem('i$i', '$i', 'Producto $i', _raw1, _cand1),
+      ],
+    };
+    await _pumpScreen(tester, api, _twoProducts());
+
+    // Banner y "Aplicar las N" salen de la MISMA fuente: los ítems cargados
+    // (el ListView construye tarjetas bajo demanda; el número visible fiable
+    // es el del encabezado).
+    expect(find.textContaining('12 listas'), findsOneWidget);
+    expect(find.textContaining('La IA sigue con las demás'), findsOneWidget);
+    expect(find.text('Aplicar las 12'), findsOneWidget);
+    expect(find.text('Confirmar'), findsWidgets);
+  });
+
+  testWidgets('review_items paginados: encadena páginas hasta tener todos y '
+      'el banner + "Aplicar las N" cuentan lo CARGADO (misma fuente)',
+      (tester) async {
+    final api = _PagedApi({
+      1: {
+        'eligible_count': 3,
+        'active_batch': {
+          'id': 'b1',
+          'status': 'running',
+          'queued': 0,
+          'processed': 3,
+          'failed': 0,
+          'ready_for_review': 3, // COUNT total; la página 1 solo trae 2
+        },
+        'review_items': [
+          _reviewItem('i1', '1', 'Arroz Diana', _raw1, _cand1),
+          _reviewItem('i2', '2', 'Panela Real', _raw2, _cand2),
+        ],
+      },
+      2: {
+        'eligible_count': 3,
+        'active_batch': {
+          'id': 'b1',
+          'status': 'running',
+          'queued': 0,
+          'processed': 3,
+          'failed': 0,
+          'ready_for_review': 3,
+        },
+        'review_items': [
+          _reviewItem('i3', '3', 'Lenteja', _raw1, _cand2),
+        ],
+      },
+    });
+    await _pumpScreen(tester, api, _twoProducts());
+    await tester.pump();
+
+    expect(api.requestedPages, containsAllInOrder([1, 2]));
+    expect(find.textContaining('3 listas'), findsOneWidget);
+    expect(find.text('Aplicar las 3'), findsOneWidget);
+    expect(find.text('Confirmar'), findsWidgets);
+  });
+
+  testWidgets('un poll viejo que llega tarde NO pisa el estado nuevo '
+      '(guard de secuencia)', (tester) async {
+    final api = _SequencedApi();
+    await tester.pumpWidget(MaterialApp(
+      home: RetouchCompletionScreen(
+        products: _twoProducts(),
+        apiOverride: api,
+        pollInterval: const Duration(minutes: 5),
+      ),
+    ));
+    await tester.pump();
+    expect(api.pending.length, 1); // fetch #1 (initState) sigue en vuelo
+
+    // El tendero encola una foto → fetch #2 (más nuevo).
+    await tester.tap(find.text('Mejorar foto').first);
+    await tester.pump();
+    expect(api.pending.length, 2);
+
+    // #2 resuelve PRIMERO con el ítem listo para revisar.
+    api.pending[1].complete({
+      'eligible_count': 1,
+      'active_batch': null,
+      'review_items': [
+        _reviewItem('i1', '1', 'Arroz Diana', _raw1, _cand1),
+      ],
+    });
+    await tester.pump();
+    await tester.pump();
+    expect(find.text('Confirmar'), findsOneWidget);
+
+    // #1 (viejo, vacío) llega tarde: debe IGNORARSE, no borrar la tarjeta.
+    api.pending[0].complete(_emptySummary());
+    await tester.pump();
+    await tester.pump();
+    expect(find.text('Confirmar'), findsOneWidget);
+  });
+
+  testWidgets('doble toque en Confirmar manda UNA sola petición (busy guard)',
+      (tester) async {
+    final api = _FakeApi();
+    api.summary = {
+      'eligible_count': 2,
+      'active_batch': null,
+      'review_items': [
         _reviewItem('i1', '1', 'Arroz Diana', _raw1, _cand1),
       ],
     };
     await _pumpScreen(tester, api, _twoProducts());
 
-    expect(find.textContaining('12 listas'), findsOneWidget);
-    expect(find.textContaining('La IA sigue con las demás'), findsOneWidget);
-    expect(find.text('Confirmar'), findsOneWidget);
+    final confirmBtn = find.text('Confirmar');
+    await tester.tap(confirmBtn);
+    await tester.tap(confirmBtn); // segundo toque en el mismo frame
+    await tester.pump();
+    await tester.pumpAndSettle();
+
+    expect(api.confirmCalls.length, 1);
   });
+
+  testWidgets('el polling hace backoff cuando el summary falla '
+      '(no martilla al servidor caído)', (tester) async {
+    final api = _FakeApi();
+    api.summary = {
+      'eligible_count': 2,
+      'active_batch': {
+        'id': 'b1',
+        'status': 'running',
+        'queued': 2,
+        'processed': 0,
+        'failed': 0,
+        'ready_for_review': 0,
+      },
+      'review_items': <Map<String, dynamic>>[],
+    };
+    await tester.pumpWidget(MaterialApp(
+      home: RetouchCompletionScreen(
+        products: _twoProducts(),
+        apiOverride: api,
+        pollInterval: const Duration(seconds: 10),
+      ),
+    ));
+    await tester.pump();
+    await tester.pump();
+    expect(api.summaryCalls, 1); // carga inicial OK, lote corriendo
+
+    api.summaryFails = true;
+    await tester.pump(const Duration(seconds: 10));
+    expect(api.summaryCalls, 2); // primer tick al intervalo base
+
+    // Tras el fallo, el siguiente tick espera 2x el intervalo.
+    await tester.pump(const Duration(seconds: 10));
+    expect(api.summaryCalls, 2); // aún no (backoff)
+    await tester.pump(const Duration(seconds: 10));
+    expect(api.summaryCalls, 3); // 20 s después del fallo
+  });
+}
+
+/// Summary por página (HIGH-1: review_items paginados en el backend).
+class _PagedApi extends _FakeApi {
+  _PagedApi(this.pages);
+  final Map<int, Map<String, dynamic>> pages;
+  final List<int> requestedPages = [];
+
+  @override
+  Future<Map<String, dynamic>> fetchRetouchSummary(
+      {int page = 1, int perPage = 100}) async {
+    requestedPages.add(page);
+    return pages[page] ?? _emptySummary();
+  }
+}
+
+/// Cada fetch devuelve un Future controlado a mano (HIGH-2: respuestas
+/// fuera de orden).
+class _SequencedApi extends _FakeApi {
+  final List<Completer<Map<String, dynamic>>> pending = [];
+
+  @override
+  Future<Map<String, dynamic>> fetchRetouchSummary(
+      {int page = 1, int perPage = 100}) {
+    final c = Completer<Map<String, dynamic>>();
+    pending.add(c);
+    return c.future;
+  }
 }

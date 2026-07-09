@@ -15,13 +15,14 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:vendia_pos/screens/inventory/manage_inventory_screen.dart';
 import 'package:vendia_pos/screens/inventory/retouch_completion_screen.dart';
 import 'package:vendia_pos/services/api_service.dart';
+import 'package:vendia_pos/services/app_error.dart';
 import 'package:vendia_pos/services/auth_service.dart';
 
 class _FakeApi extends ApiService {
-  _FakeApi(this._products, {Map<String, dynamic>? summary})
+  _FakeApi(this._products, {Map<String, dynamic>? summary, this.summaryFails = false})
       : _summary = summary ??
             const {
-              'eligible_count': 0,
+              'eligible_count': 2,
               'active_batch': null,
               'review_items': <Map<String, dynamic>>[],
             },
@@ -29,6 +30,7 @@ class _FakeApi extends ApiService {
 
   final List<Map<String, dynamic>> _products;
   final Map<String, dynamic> _summary;
+  final bool summaryFails;
   int fetchCalls = 0;
 
   @override
@@ -39,7 +41,14 @@ class _FakeApi extends ApiService {
   }
 
   @override
-  Future<Map<String, dynamic>> fetchRetouchSummary() async => _summary;
+  Future<Map<String, dynamic>> fetchRetouchSummary(
+      {int page = 1, int perPage = 100}) async {
+    if (summaryFails) {
+      throw const AppError(
+          type: AppErrorType.network, message: 'Sin conexión.');
+    }
+    return _summary;
+  }
 }
 
 Map<String, dynamic> _p(
@@ -179,7 +188,12 @@ void main() {
 
     testWidgets('AC-07: sin fotos crudas el chip no aparece', (tester) async {
       final api = _FakeApi(
-          [_p('3', 'Coca', photoUrl: _enhanced, aiEnhanced: true)]);
+          [_p('3', 'Coca', photoUrl: _enhanced, aiEnhanced: true)],
+          summary: const {
+            'eligible_count': 0,
+            'active_batch': null,
+            'review_items': <Map<String, dynamic>>[],
+          });
       await tester.pumpWidget(MaterialApp(
           home: ManageInventoryScreen(apiOverride: api, tenantIdOverride: _t)));
       await tester.pump();
@@ -187,6 +201,32 @@ void main() {
 
       expect(find.textContaining('Fotos sin retocar'), findsNothing);
       expect(find.textContaining('Fotos por revisar'), findsNothing);
+    });
+
+    testWidgets('el eligible_count del summary MANDA sobre la heurística '
+        'local cuando llega bien', (tester) async {
+      final api = _FakeApi(products, summary: const {
+        'eligible_count': 5, // el server ve 5 (p. ej. otra sede/dispositivo)
+        'active_batch': null,
+        'review_items': <Map<String, dynamic>>[],
+      });
+      await tester.pumpWidget(MaterialApp(
+          home: ManageInventoryScreen(apiOverride: api, tenantIdOverride: _t)));
+      await tester.pump();
+      await tester.pump();
+
+      expect(find.text('Fotos sin retocar (5)'), findsOneWidget);
+    });
+
+    testWidgets('si el summary FALLA, la heurística local es el fallback '
+        '(offline honesto)', (tester) async {
+      final api = _FakeApi(products, summaryFails: true);
+      await tester.pumpWidget(MaterialApp(
+          home: ManageInventoryScreen(apiOverride: api, tenantIdOverride: _t)));
+      await tester.pump();
+      await tester.pump();
+
+      expect(find.text('Fotos sin retocar (2)'), findsOneWidget);
     });
 
     testWidgets(
@@ -257,6 +297,14 @@ void main() {
         _p('2', 'Panela', photoUrl: _raw2),
         {..._p('7', 'Sin precio', photoUrl: _raw3), 'price': 0},
         {..._p('8', 'Sin sku'), 'barcode': ''},
+        // Peor caso del tile: precio largo + badge AGOTADO (la fila
+        // precio+StockBadge desbordaba a 360dp antes del fix).
+        {
+          ..._p('9', 'Whisky Old Parr 18 años botella grande 750ml',
+              photoUrl: _raw1),
+          'price': 12345678,
+          'stock': 0,
+        },
       ]);
       await tester.pumpWidget(MaterialApp(
           home: ManageInventoryScreen(apiOverride: api, tenantIdOverride: _t)));

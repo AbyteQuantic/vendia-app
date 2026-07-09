@@ -187,8 +187,11 @@ class _ManageInventoryScreenState extends State<ManageInventoryScreen>
   }
 
   /// Spec 101 (FR-02): con revisión pendiente en el servidor el chip cambia
-  /// a "Fotos por revisar (N)". El summary es informativo: si falla, el chip
-  /// se queda con el conteo local (nunca rompe la pantalla).
+  /// a "Fotos por revisar (N)". Cuando el summary llega bien, su
+  /// `eligible_count` MANDA sobre la heurística local de URL (el server
+  /// recalcula la elegibilidad; cubre otras sedes/dispositivos). Si falla
+  /// (offline, 404), el chip se queda con el conteo local — informativo,
+  /// nunca rompe la pantalla.
   Future<void> _refreshRetouchSummary() async {
     try {
       final s = await _api.fetchRetouchSummary();
@@ -198,8 +201,11 @@ class _ManageInventoryScreenState extends State<ManageInventoryScreen>
           ? ((batch['ready_for_review'] as num?)?.toInt() ?? 0)
           : 0;
       final items = (s['review_items'] as List?) ?? const [];
-      setState(
-          () => _retouchReviewCount = ready > 0 ? ready : items.length);
+      final eligible = (s['eligible_count'] as num?)?.toInt();
+      setState(() {
+        _retouchReviewCount = ready > 0 ? ready : items.length;
+        if (eligible != null) _noRetouchCount = eligible;
+      });
     } catch (_) {/* informativo; el conteo local manda */}
   }
 

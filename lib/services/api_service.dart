@@ -1719,9 +1719,16 @@ class ApiService {
 
   /// Spec 101 (FR-14): un solo endpoint de lectura para chip + progreso +
   /// revisión: `{eligible_count, active_batch|null, review_items:[]}`.
-  Future<Map<String, dynamic>> fetchRetouchSummary() async {
+  /// Los review_items vienen PAGINADOS (el plan §5: "review_items
+  /// paginados"); `active_batch.ready_for_review` es el COUNT total, así
+  /// que el llamador encadena páginas cuando recibió menos que el total.
+  Future<Map<String, dynamic>> fetchRetouchSummary(
+      {int page = 1, int perPage = 100}) async {
     try {
-      final response = await _dio.get('/api/v1/inventory/retouch/summary');
+      final response = await _dio.get(
+        '/api/v1/inventory/retouch/summary',
+        queryParameters: {'page': page, 'per_page': perPage},
+      );
       return _extractData(response);
     } on DioException catch (e) {
       throw AppError.fromDioException(e);

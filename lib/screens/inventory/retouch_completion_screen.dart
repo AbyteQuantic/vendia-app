@@ -120,6 +120,16 @@ class _RetouchCompletionScreenState extends State<RetouchCompletionScreen> {
   Timer? _pollTimer;
   int _pollFailures = 0;
 
+  /// Guard de secuencia del polling: cada fetch toma un token creciente y
+  /// un resultado que llega TARDE (ya hay una request más nueva en vuelo o
+  /// aplicada) se descarta — sin esto, una respuesta vieja pisaba el estado
+  /// y "desaparecía" tarjetas recién llegadas (review HIGH-2).
+  int _pollSeq = 0;
+
+  /// Tope de seguridad al encadenar páginas de review_items (5 × 100 = 500).
+  static const _kMaxReviewPages = 5;
+  static const _kReviewPerPage = 100;
+
   @override
   void initState() {
     super.initState();
@@ -159,29 +169,63 @@ class _RetouchCompletionScreenState extends State<RetouchCompletionScreen> {
   // ── Summary + polling (FR-14, patrón Spec 016) ─────────────────────────────
 
   Future<void> _refreshSummary() async {
+    final seq = ++_pollSeq;
     Map<String, dynamic> summary;
+    final items = <_ReviewItem>[];
     try {
-      summary = await _api.fetchRetouchSummary();
+      summary = await _api.fetchRetouchSummary(perPage: _kReviewPerPage);
+      items.addAll(_parseItems(summary));
+      // HIGH-1: el backend PAGINA review_items pero ready_for_review es el
+      // COUNT total → con 50 listas la página 1 solo trae una parte. Se
+      // encadenan páginas hasta tenerlas todas (tope de seguridad ~500);
+      // banner y "Aplicar las N" cuentan SIEMPRE lo realmente cargado.
+      final rawBatch = summary['active_batch'];
+      final ready = rawBatch is Map
+          ? ((rawBatch['ready_for_review'] as num?)?.toInt() ?? 0)
+          : 0;
+      var page = 1;
+      while (items.length < ready && page < _kMaxReviewPages) {
+        page++;
+        final next = await _api.fetchRetouchSummary(
+            page: page, perPage: _kReviewPerPage);
+        final seen = items.map((i) => i.itemId).toSet();
+        final more = _parseItems(next)
+            .where((i) => !seen.contains(i.itemId))
+            .toList();
+        if (more.isEmpty) break; // el server no da más: no insistir
+        items.addAll(more);
+      }
     } on AppError {
       // El progreso es informativo: un poll fallido no interrumpe al tendero
       // con un banner; el siguiente intento llega con backoff.
-      if (!mounted) return;
+      if (!mounted || seq != _pollSeq) return;
       _pollFailures++;
       _scheduleNextPoll();
       return;
     } catch (_) {
-      if (!mounted) return;
+      if (!mounted || seq != _pollSeq) return;
       _pollFailures++;
       _scheduleNextPoll();
       return;
     }
-    if (!mounted) return;
+    // HIGH-2: si mientras esperábamos se despachó una request más nueva,
+    // este resultado es viejo → se descarta sin tocar el estado.
+    if (!mounted || seq != _pollSeq) return;
     _pollFailures = 0;
-    setState(() => _applySummary(summary));
+    setState(() => _applySummary(summary, items));
     _scheduleNextPoll();
   }
 
-  void _applySummary(Map<String, dynamic> summary) {
+  List<_ReviewItem> _parseItems(Map<String, dynamic> summary) {
+    final rawItems = (summary['review_items'] as List?) ?? const [];
+    return rawItems
+        .whereType<Map>()
+        .map((m) => _ReviewItem.fromJson(m.cast<String, dynamic>()))
+        .where((i) => i.itemId.isNotEmpty)
+        .toList();
+  }
+
+  void _applySummary(Map<String, dynamic> summary, List<_ReviewItem> items) {
     final rawBatch = summary['active_batch'];
     final batch = rawBatch is Map ? rawBatch.cast<String, dynamic>() : null;
     final status = (batch?['status'] as String?)?.trim() ?? '';
@@ -194,13 +238,8 @@ class _RetouchCompletionScreenState extends State<RetouchCompletionScreen> {
       }
     }
 
-    final rawItems = (summary['review_items'] as List?) ?? const [];
-    final serverItems = rawItems
-        .whereType<Map>()
-        .map((m) => _ReviewItem.fromJson(m.cast<String, dynamic>()))
-        .where((i) => i.itemId.isNotEmpty)
-        .where((i) => !_handledItemIds.contains(i.itemId))
-        .toList();
+    final serverItems =
+        items.where((i) => !_handledItemIds.contains(i.itemId)).toList();
     // Conserva el estado local (busy/leaving) de los ya pintados; los nuevos
     // aparecen arriba a medida que el worker los deja listos.
     final existingIds = _review.map((i) => i.itemId).toSet();
@@ -304,7 +343,11 @@ class _RetouchCompletionScreenState extends State<RetouchCompletionScreen> {
   // ── Revisión: confirmar / descartar (FR-05, FR-06, AC-06) ─────────────────
 
   Future<void> _confirmItems(List<_ReviewItem> items) async {
-    if (items.isEmpty) return;
+    // Busy-guard (espejo de _discardItem): un doble toque no debe duplicar
+    // la petición — confirm es idempotente en el server, pero no hay razón
+    // para gastar el viaje ni parpadear la UI. `leaving` cubre el toque que
+    // cae después de resolver, mientras la tarjeta sale con animación.
+    if (items.isEmpty || items.any((i) => i.busy || i.leaving)) return;
     setState(() {
       for (final i in items) {
         i.busy = true;
@@ -339,11 +382,21 @@ class _RetouchCompletionScreenState extends State<RetouchCompletionScreen> {
         }
       });
       if (e.type != AppErrorType.network) _toast(e.message, error: true);
+    } catch (_) {
+      // Fallback genérico (espejo de _enqueue): jamás dejar busy colgado
+      // ni tragar el fallo en silencio.
+      if (!mounted) return;
+      setState(() {
+        for (final i in items) {
+          i.busy = false;
+        }
+      });
+      _toast('Algo salió mal. Intente de nuevo.', error: true);
     }
   }
 
   Future<void> _discardItem(_ReviewItem item) async {
-    if (item.busy) return;
+    if (item.busy || item.leaving) return;
     HapticFeedback.selectionClick();
     setState(() => item.busy = true);
     try {
@@ -363,6 +416,10 @@ class _RetouchCompletionScreenState extends State<RetouchCompletionScreen> {
       if (!mounted) return;
       setState(() => item.busy = false);
       _toast(e.message, error: true);
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => item.busy = false);
+      _toast('Algo salió mal. Intente de nuevo.', error: true);
     }
   }
 
@@ -400,6 +457,9 @@ class _RetouchCompletionScreenState extends State<RetouchCompletionScreen> {
     } on AppError catch (e) {
       if (!mounted) return;
       _toast(e.message, error: true);
+    } catch (_) {
+      if (!mounted) return;
+      _toast('Algo salió mal. Intente de nuevo.', error: true);
     }
   }
 
@@ -586,7 +646,10 @@ class _RetouchCompletionScreenState extends State<RetouchCompletionScreen> {
   /// una pausa por cupo de IA se cuenta en calma — jamás como error (AC-10).
   Widget _progressBanner() {
     final paused = _batchStatus == 'paused_error';
-    final ready = (_batch?['ready_for_review'] as num?)?.toInt() ?? 0;
+    // MISMA fuente que las tarjetas y "Aplicar las N": los ítems realmente
+    // CARGADOS (no el count del server, que puede ir adelante mientras se
+    // encadenan páginas) — el banner nunca promete más de lo que se ve.
+    final ready = _review.where((i) => !i.leaving).length;
     final String text;
     if (paused) {
       text = 'La IA está ocupada un momento. Seguirá sola.';
