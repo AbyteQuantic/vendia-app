@@ -5,6 +5,7 @@
 // samplers en shaders). Usa PathMetrics (recorrido del trazo) + recorte de imagen
 // (BlendMode.srcIn). VendIA es la constante; el resto entra al azar. Fail-safe total.
 
+import 'dart:async';
 import 'dart:convert';
 import 'dart:math';
 import 'dart:ui' as ui;
@@ -163,11 +164,23 @@ class LogoSequenceReveal extends StatefulWidget {
 
 class _LogoSequenceRevealState extends State<LogoSequenceReveal>
     with SingleTickerProviderStateMixin {
+  /// Tope de carga de assets (bug prod 2026-07-08, web): si el fetch del
+  /// json/PNG se cuelga, la animación jamás arrancaba y el splash quedaba en
+  /// blanco. Pasado este tope se arranca con lo que haya cargado o se degrada
+  /// al logo ESTÁTICO (fail-safe Spec 087) y `onDone` igual se dispara para
+  /// que el flujo continúe. Timer cancelable (no `.timeout`) para no dejar
+  /// timers huérfanos al desmontar.
+  static const _bootTimeout = Duration(seconds: 3);
+
   final Map<String, LogoData> _data = {};
   late final AnimationController _ctrl;
   late final List<double> _starts;
   late final double _total;
   bool _ready = false;
+  bool _started = false;
+  bool _fallback = false;
+  Timer? _bootGuard;
+  Timer? _fallbackDone;
 
   double get _d => widget.draw.inMilliseconds / 1000;
   double get _h => widget.hold.inMilliseconds / 1000;
@@ -195,14 +208,51 @@ class _LogoSequenceRevealState extends State<LogoSequenceReveal>
   }
 
   Future<void> _boot() async {
+    _bootGuard = Timer(_bootTimeout, _bootFailSafe);
     for (final name in widget.logos.toSet()) {
       try {
         _data[name] = await SplashAssets.load(name);
       } catch (_) {/* fail-safe: ese logo no se pinta */}
     }
-    if (!mounted) return;
+    _bootGuard?.cancel();
+    if (!mounted || _started) return;
+    if (_data.isEmpty) {
+      _showStaticFallback();
+      return;
+    }
+    _start();
+  }
+
+  /// Venció [_bootTimeout] con la carga colgada: arranca con lo que haya
+  /// cargado, o degrada al logo estático si no cargó nada.
+  void _bootFailSafe() {
+    if (!mounted || _started) return;
+    if (_data.isNotEmpty) {
+      _start();
+      return;
+    }
+    _showStaticFallback();
+  }
+
+  void _start() {
+    _started = true;
     setState(() => _ready = true);
     _ctrl.forward(from: 0);
+  }
+
+  /// Fail-safe total (Spec 087): sin trazos no hay animación — logo estático
+  /// y el flujo (onDone) continúa para no atascar el splash.
+  void _showStaticFallback() {
+    _started = true;
+    setState(() {
+      _ready = true;
+      _fallback = true;
+    });
+    if (!widget.loop) {
+      _fallbackDone = Timer(widget.hold, () {
+        if (mounted) widget.onDone?.call();
+      });
+    }
   }
 
   double _ease(double t) {
@@ -230,6 +280,8 @@ class _LogoSequenceRevealState extends State<LogoSequenceReveal>
 
   @override
   void dispose() {
+    _bootGuard?.cancel();
+    _fallbackDone?.cancel();
     _ctrl.dispose();
     super.dispose();
   }
@@ -238,6 +290,15 @@ class _LogoSequenceRevealState extends State<LogoSequenceReveal>
   Widget build(BuildContext context) {
     // Mientras carga: nada (blanco). NO mostramos el ícono estático oscuro.
     if (!_ready) return const SizedBox.shrink();
+    if (_fallback) {
+      // Logo estático (mismo asset del primer logo de la secuencia). Si ni
+      // siquiera la imagen carga, se queda en blanco pero el flujo ya sigue.
+      return Image.asset(
+        'assets/splash/${widget.logos.first}.png',
+        fit: BoxFit.contain,
+        errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+      );
+    }
     return AnimatedBuilder(
       animation: _ctrl,
       builder: (_, __) => CustomPaint(
