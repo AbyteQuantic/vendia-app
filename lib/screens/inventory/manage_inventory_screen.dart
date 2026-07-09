@@ -29,6 +29,7 @@ import '../../widgets/advanced_product_options.dart';
 import '../../widgets/product_media_editor.dart';
 import '../../widgets/variant_group_link_tile.dart';
 import '../pos/scan_screen.dart';
+import 'category_completion_screen.dart';
 import 'kardex_screen.dart';
 import 'negative_stock_screen.dart';
 import 'product_import_screen.dart';
@@ -114,6 +115,17 @@ bool isPhotoUnretouched(Map<String, dynamic> p, {required String tenantId}) {
   if (!url.contains('products/$t/')) return false;
   if (url.contains('-enhanced') || url.contains('-generated')) return false;
   return true;
+}
+
+/// Spec 102 (FR-01, AC-01): un producto está "sin categoría" si su categoría
+/// está vacía (o es de puros espacios) Y no tiene `category_id`, excluyendo
+/// borradores (`is_draft` — productos técnicos de los flujos de foto IA que
+/// el tendero nunca guardó). Cuarto contador de curaduría, mismo criterio de
+/// función pura de nivel de archivo que [isMissingSkuPhysical].
+bool isMissingCategory(Map<String, dynamic> p) {
+  if (p['is_draft'] == true) return false;
+  if ((p['category'] as String? ?? '').trim().isNotEmpty) return false;
+  return (p['category_id']?.toString() ?? '').trim().isEmpty;
 }
 
 class ManageInventoryScreen extends StatefulWidget {
@@ -262,6 +274,8 @@ class _ManageInventoryScreenState extends State<ManageInventoryScreen>
             .where((p) => ((p['price'] as num?)?.toDouble() ?? 0) <= 0)
             .length;
         _noImageCount = _products.where(_isNoImage).length;
+        // Spec 102: productos sin categoría (excluye borradores).
+        _noCategoryCount = _products.where(isMissingCategory).length;
         // Spec 101: fotos propias crudas (sin Mejorar con IA ni recorte).
         _noRetouchCount = _products
             .where((p) => isPhotoUnretouched(p, tenantId: _tenantId))
@@ -321,6 +335,8 @@ class _ManageInventoryScreenState extends State<ManageInventoryScreen>
   String _tenantId = '';
   int _noRetouchCount = 0;
   int _retouchReviewCount = 0;
+  // Spec 102 — cuarto contador de curaduría: productos sin categoría.
+  int _noCategoryCount = 0;
 
   /// Un producto está "sin imagen" si no tiene ni photo_url ni image_url —
   /// misma lógica que `imgSrc` del tile de la lista (Spec 097).
@@ -368,6 +384,22 @@ class _ManageInventoryScreenState extends State<ManageInventoryScreen>
     HapticFeedback.lightImpact();
     await Navigator.of(context).push(MaterialPageRoute(
       builder: (_) => PhotoCompletionScreen(products: pending),
+    ));
+    if (mounted) _loadProducts();
+  }
+
+  /// Spec 102 (FR-02): abre la vista dedicada "Organizar categorías" con los
+  /// productos sin categoría ya prefiltrados; al volver, recarga para que el
+  /// contador del chip refleje el avance (FR-05).
+  Future<void> _openCategoryCompletion() async {
+    final pending = _products.where(isMissingCategory).toList();
+    if (pending.isEmpty) return;
+    HapticFeedback.lightImpact();
+    await Navigator.of(context).push(MaterialPageRoute(
+      builder: (_) => CategoryCompletionScreen(
+        products: pending,
+        apiOverride: widget.apiOverride,
+      ),
     ));
     if (mounted) _loadProducts();
   }
@@ -679,6 +711,35 @@ class _ManageInventoryScreenState extends State<ManageInventoryScreen>
                   // si no, cuenta las fotos crudas. Navega, no filtra.
                   if (_retouchReviewCount > 0 || _noRetouchCount > 0)
                     _retouchChip(),
+                  // Spec 102 (FR-02): cuarto contador de curaduría — navega
+                  // a la vista dedicada "Organizar categorías", no filtra.
+                  if (_noCategoryCount > 0)
+                    ActionChip(
+                      label: Text(
+                        'Sin categoría ($_noCategoryCount)',
+                        style: const TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                          color: Color(0xFF0D9488),
+                        ),
+                      ),
+                      avatar: const Icon(
+                        Icons.sell_outlined,
+                        size: 16,
+                        color: Color(0xFF0D9488),
+                      ),
+                      backgroundColor:
+                          const Color(0xFF0D9488).withValues(alpha: 0.1),
+                      side: BorderSide(
+                        color: const Color(0xFF0D9488).withValues(alpha: 0.3),
+                      ),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      // Objetivo táctil ≥44dp aunque el theme cambie.
+                      materialTapTargetSize: MaterialTapTargetSize.padded,
+                      onPressed: _openCategoryCompletion,
+                    ),
                 ],
               ),
             ),
