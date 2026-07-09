@@ -27,7 +27,6 @@ import '../../utils/text_normalize.dart';
 import '../../widgets/category_picker_sheet.dart';
 import '../../widgets/compact_action_button.dart';
 import '../../widgets/product_image.dart';
-import '../../widgets/sku_manual_code_sheet.dart' show sheetHandle;
 
 /// Acento IA (mismo morado del chip de retoque, Spec 101): la sugerencia
 /// se marca visualmente como "de la IA" hasta que el tendero la corrige.
@@ -313,61 +312,17 @@ class _CategoryCompletionScreenState extends State<CategoryCompletionScreen> {
   Future<void> _applyGroup(_Group g) async {
     HapticFeedback.lightImpact();
     final n = g.activeCount;
-    final confirmed = await _confirmApply(
-        '¿Asignar "${g.name}" a $n producto${n == 1 ? '' : 's'}?');
+    final confirmed = await showConfirmApplySheet(context,
+        title: '¿Asignar "${g.name}" a $n producto${n == 1 ? '' : 's'}?');
     if (confirmed && mounted) await _applyRows(g.rows);
   }
 
   Future<void> _applyAll() async {
     HapticFeedback.lightImpact();
     final rows = _applicableRows;
-    final confirmed = await _confirmApply(
-        '¿Aplicar las ${rows.length} categorías revisadas?');
+    final confirmed = await showConfirmApplySheet(context,
+        title: '¿Aplicar las ${rows.length} categorías revisadas?');
     if (confirmed && mounted) await _applyRows(rows);
-  }
-
-  /// Confirmación única de las acciones masivas (FR-04): 1 toque.
-  Future<bool> _confirmApply(String title) async {
-    final ok = await showModalBottomSheet<bool>(
-      context: context,
-      backgroundColor: Colors.white,
-      shape: const RoundedRectangleBorder(
-          borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
-      builder: (ctx) => Padding(
-        padding: const EdgeInsets.fromLTRB(
-            AppUI.s16, AppUI.s12, AppUI.s16, AppUI.s24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            sheetHandle(),
-            Text(title,
-                maxLines: 3, overflow: TextOverflow.ellipsis, style: AppUI.title),
-            const SizedBox(height: AppUI.s4),
-            const Text('Solo cambia la categoría; precio, stock y fotos no se tocan.',
-                style: AppUI.bodySoft),
-            const SizedBox(height: AppUI.s16),
-            Row(children: [
-              Expanded(
-                child: AppButton(
-                  label: 'Cancelar',
-                  variant: AppButtonVariant.secondary,
-                  onPressed: () => Navigator.of(ctx).pop(false),
-                ),
-              ),
-              const SizedBox(width: AppUI.s8),
-              Expanded(
-                child: AppButton(
-                  label: 'Sí, aplicar',
-                  onPressed: () => Navigator.of(ctx).pop(true),
-                ),
-              ),
-            ]),
-          ],
-        ),
-      ),
-    );
-    return ok == true;
   }
 
   // ── Edición y selección múltiple ─────────────────────────────────────────

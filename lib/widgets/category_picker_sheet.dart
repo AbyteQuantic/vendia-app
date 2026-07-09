@@ -29,6 +29,53 @@ Future<String?> showCategoryPickerSheet(
   );
 }
 
+/// Confirmación única de las acciones masivas (FR-04): 1 toque. Devuelve
+/// true solo si el tendero tocó "Sí, aplicar".
+Future<bool> showConfirmApplySheet(BuildContext context,
+    {required String title}) async {
+  final ok = await showModalBottomSheet<bool>(
+    context: context,
+    backgroundColor: Colors.white,
+    shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+    builder: (ctx) => Padding(
+      padding:
+          const EdgeInsets.fromLTRB(AppUI.s16, AppUI.s12, AppUI.s16, AppUI.s24),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          sheetHandle(),
+          Text(title,
+              maxLines: 3, overflow: TextOverflow.ellipsis, style: AppUI.title),
+          const SizedBox(height: AppUI.s4),
+          const Text(
+              'Solo cambia la categoría; precio, stock y fotos no se tocan.',
+              style: AppUI.bodySoft),
+          const SizedBox(height: AppUI.s16),
+          Row(children: [
+            Expanded(
+              child: AppButton(
+                label: 'Cancelar',
+                variant: AppButtonVariant.secondary,
+                onPressed: () => Navigator.of(ctx).pop(false),
+              ),
+            ),
+            const SizedBox(width: AppUI.s8),
+            Expanded(
+              child: AppButton(
+                label: 'Sí, aplicar',
+                onPressed: () => Navigator.of(ctx).pop(true),
+              ),
+            ),
+          ]),
+        ],
+      ),
+    ),
+  );
+  return ok == true;
+}
+
 class CategoryPickerSheet extends StatefulWidget {
   const CategoryPickerSheet({
     super.key,
