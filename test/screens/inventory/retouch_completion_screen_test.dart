@@ -19,6 +19,7 @@ import 'package:vendia_pos/screens/inventory/retouch_completion_screen.dart';
 import 'package:vendia_pos/services/api_service.dart';
 import 'package:vendia_pos/services/app_error.dart';
 import 'package:vendia_pos/services/auth_service.dart';
+import 'package:vendia_pos/theme/app_theme.dart';
 
 const _raw1 = 'https://r2.vendia.store/products/t1/aaa.jpg';
 const _raw2 = 'https://r2.vendia.store/products/t1/bbb.jpg';
@@ -119,6 +120,7 @@ List<Map<String, dynamic>> _twoProducts() => [
 Future<void> _pumpScreen(WidgetTester tester, _FakeApi api,
     List<Map<String, dynamic>> products) async {
   await tester.pumpWidget(MaterialApp(
+    theme: AppTheme.light,
     home: RetouchCompletionScreen(
       products: products,
       apiOverride: api,
@@ -424,6 +426,7 @@ void main() {
       '(guard de secuencia)', (tester) async {
     final api = _SequencedApi();
     await tester.pumpWidget(MaterialApp(
+    theme: AppTheme.light,
       home: RetouchCompletionScreen(
         products: _twoProducts(),
         apiOverride: api,
@@ -494,6 +497,7 @@ void main() {
       'review_items': <Map<String, dynamic>>[],
     };
     await tester.pumpWidget(MaterialApp(
+    theme: AppTheme.light,
       home: RetouchCompletionScreen(
         products: _twoProducts(),
         apiOverride: api,

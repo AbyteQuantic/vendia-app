@@ -18,6 +18,7 @@ import '../../services/auth_service.dart';
 import '../../theme/app_theme.dart';
 import '../../theme/app_ui.dart';
 import '../../utils/sku_generator.dart';
+import '../../widgets/compact_action_button.dart';
 import '../../widgets/product_image.dart';
 import '../../widgets/sku_manual_code_sheet.dart';
 import 'sku_scan_session_screen.dart';
@@ -614,52 +615,33 @@ class _SkuCompletionScreenState extends State<SkuCompletionScreen> {
   }
 
   /// UNA fila horizontal de acciones compactas (icono + label corto), la
-  /// altura de tarjeta de los módulos hermanos (097/101). El estilo es
-  /// EXPLÍCITO completo (alto, texto, borde): el theme legacy de
+  /// altura de tarjeta de los módulos hermanos (097/101). El botón
+  /// compartido lleva estilo explícito completo: el theme legacy de
   /// OutlinedButton (64dp / 22px) no participa y nada se apila ni desborda
   /// a 360dp.
   Widget _actions(_Row row) {
     return Row(children: [
       Expanded(
-        child: _actionBtn(
-            Icons.qr_code_scanner_rounded, 'Escanear', () => _scanOne(row)),
+        child: CompactActionButton(
+            icon: Icons.qr_code_scanner_rounded,
+            label: 'Escanear',
+            onPressed: () => _scanOne(row)),
       ),
       const SizedBox(width: AppUI.s8),
       Expanded(
-        child: _actionBtn(Icons.auto_awesome, 'Generar', () => _generate(row)),
+        child: CompactActionButton(
+            icon: Icons.auto_awesome,
+            label: 'Generar',
+            onPressed: () => _generate(row)),
       ),
       const SizedBox(width: AppUI.s8),
       Expanded(
-        child: _actionBtn(
-            Icons.keyboard_alt_outlined, 'Digitar', () => _typeManually(row)),
+        child: CompactActionButton(
+            icon: Icons.keyboard_alt_outlined,
+            label: 'Digitar',
+            onPressed: () => _typeManually(row)),
       ),
     ]);
-  }
-
-  Widget _actionBtn(IconData icon, String label, VoidCallback onTap) {
-    return OutlinedButton(
-      onPressed: onTap,
-      style: OutlinedButton.styleFrom(
-        foregroundColor: AppTheme.primary,
-        minimumSize: const Size(0, 44),
-        padding: const EdgeInsets.symmetric(horizontal: AppUI.s4),
-        side: BorderSide(color: AppTheme.primary.withValues(alpha: 0.4)),
-        shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(AppUI.radius)),
-        textStyle: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(icon, size: 16),
-          const SizedBox(width: AppUI.s4),
-          Flexible(
-            child: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis),
-          ),
-        ],
-      ),
-    );
   }
 
   /// Estado vacío celebratorio (AC-05): no quedan referencias sin código.

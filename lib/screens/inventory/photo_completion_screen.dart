@@ -15,6 +15,7 @@ import '../../services/api_service.dart';
 import '../../services/auth_service.dart';
 import '../../theme/app_theme.dart';
 import '../../theme/app_ui.dart';
+import '../../widgets/compact_action_button.dart';
 import '../legal/photo_rights_notice.dart';
 
 class PhotoCompletionScreen extends StatefulWidget {
@@ -274,7 +275,13 @@ class _PhotoCompletionScreenState extends State<PhotoCompletionScreen> {
                     height: 16,
                     child: CircularProgressIndicator(strokeWidth: 2)),
                 SizedBox(width: 8),
-                Text('Buscando fotos sugeridas…', style: AppUI.bodySoft),
+                // Flexible: a 360dp el texto no puede desbordar la fila.
+                Flexible(
+                  child: Text('Buscando fotos sugeridas…',
+                      style: AppUI.bodySoft,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis),
+                ),
               ]),
             ),
         ],
@@ -446,38 +453,36 @@ class _PhotoCompletionScreenState extends State<PhotoCompletionScreen> {
 
   Widget _actions(_Row row) {
     // Las 4 opciones que pidió el fundador, SIEMPRE visibles en cada tarjeta.
+    // Botón compacto compartido (estilo explícito completo): el theme legacy
+    // de OutlinedButton (64dp / 22px) no participa — nada gigante ni apilado.
     return Wrap(
       spacing: AppUI.s8,
       runSpacing: AppUI.s8,
       children: [
-        _actionBtn(Icons.auto_awesome, 'Crear IA', () => _generateAi(row)),
-        _actionBtn(Icons.upload_rounded, 'Cargar',
-            () => _pickPhoto(row, ImageSource.gallery)),
-        _actionBtn(Icons.photo_camera_rounded, 'Foto',
-            () => _pickPhoto(row, ImageSource.camera)),
-        _actionBtn(Icons.content_cut_rounded, 'Recortar fondo', () {
-          if (!row.done) {
-            _toast('Primero tome o cargue una foto para recortarle el fondo.');
-            return;
-          }
-          _removeBackground(row);
-        }),
+        CompactActionButton(
+            icon: Icons.auto_awesome,
+            label: 'Crear IA',
+            onPressed: () => _generateAi(row)),
+        CompactActionButton(
+            icon: Icons.upload_rounded,
+            label: 'Cargar',
+            onPressed: () => _pickPhoto(row, ImageSource.gallery)),
+        CompactActionButton(
+            icon: Icons.photo_camera_rounded,
+            label: 'Foto',
+            onPressed: () => _pickPhoto(row, ImageSource.camera)),
+        CompactActionButton(
+            icon: Icons.content_cut_rounded,
+            label: 'Recortar fondo',
+            onPressed: () {
+              if (!row.done) {
+                _toast(
+                    'Primero tome o cargue una foto para recortarle el fondo.');
+                return;
+              }
+              _removeBackground(row);
+            }),
       ],
-    );
-  }
-
-  Widget _actionBtn(IconData icon, String label, VoidCallback onTap) {
-    return OutlinedButton.icon(
-      onPressed: onTap,
-      icon: Icon(icon, size: 18),
-      label: Text(label),
-      style: OutlinedButton.styleFrom(
-        foregroundColor: AppTheme.primary,
-        side: BorderSide(color: AppTheme.primary.withValues(alpha: 0.4)),
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-        shape:
-            RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-      ),
     );
   }
 }
