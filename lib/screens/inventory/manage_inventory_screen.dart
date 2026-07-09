@@ -33,7 +33,6 @@ import 'category_completion_screen.dart';
 import 'kardex_screen.dart';
 import 'negative_stock_screen.dart';
 import 'product_import_screen.dart';
-import 'organize_categories_screen.dart';
 import 'product_save_flow.dart';
 import 'photo_completion_screen.dart';
 import 'retouch_completion_screen.dart';
@@ -535,17 +534,6 @@ class _ManageInventoryScreenState extends State<ManageInventoryScreen>
           const Padding(
             padding: EdgeInsets.only(right: 8),
             child: Center(child: BranchSelectorChip()),
-          ),
-          IconButton(
-            icon: const Icon(Icons.category_rounded,
-                color: AppTheme.textPrimary, size: 24),
-            tooltip: 'Organizar categorías (IA)',
-            onPressed: () async {
-              final changed = await Navigator.of(context).push<bool>(
-                MaterialPageRoute(builder: (_) => const OrganizeCategoriesScreen()),
-              );
-              if (changed == true && mounted) _loadProducts();
-            },
           ),
           IconButton(
             icon: const Icon(Icons.upload_file_rounded,
