@@ -491,24 +491,21 @@ class _RetouchCompletionScreenState extends State<RetouchCompletionScreen> {
             const SizedBox(height: AppUI.s8),
             Text(body, style: AppUI.bodySoft),
             const SizedBox(height: AppUI.s16),
+            // Par secundario/primario del kit: el theme legacy de
+            // OutlinedButton (64dp/22px) no participa (rediseño 2026-07-08).
             Row(children: [
               Expanded(
-                child: OutlinedButton(
+                child: AppButton(
+                  label: 'Ahora no',
+                  variant: AppButtonVariant.secondary,
                   onPressed: () => Navigator.of(ctx).pop(false),
-                  style:
-                      OutlinedButton.styleFrom(minimumSize: const Size(0, 48)),
-                  child: const Text('Ahora no'),
                 ),
               ),
               const SizedBox(width: AppUI.s8),
               Expanded(
-                child: FilledButton(
+                child: AppButton(
+                  label: confirmLabel,
                   onPressed: () => Navigator.of(ctx).pop(true),
-                  style: FilledButton.styleFrom(
-                      backgroundColor: AppTheme.primary,
-                      minimumSize: const Size(0, 48)),
-                  child: Text(confirmLabel,
-                      maxLines: 1, overflow: TextOverflow.ellipsis),
                 ),
               ),
             ]),
@@ -599,18 +596,11 @@ class _RetouchCompletionScreenState extends State<RetouchCompletionScreen> {
           Text('$_doneCount de ${_rows.length} retocadas',
               style: AppUI.bodyStrong),
           if (idle.length > 1) ...[
-            const SizedBox(height: 8),
-            SizedBox(
-              width: double.infinity,
-              child: FilledButton.icon(
-                onPressed: _retouchAll,
-                icon: const Icon(Icons.auto_awesome, size: 20),
-                label: Text('Retocar todas (${idle.length})',
-                    maxLines: 1, overflow: TextOverflow.ellipsis),
-                style: FilledButton.styleFrom(
-                    backgroundColor: AppTheme.primary,
-                    minimumSize: const Size(0, 48)),
-              ),
+            const SizedBox(height: AppUI.s8),
+            AppButton(
+              label: 'Retocar todas (${idle.length})',
+              icon: Icons.auto_awesome,
+              onPressed: _retouchAll,
             ),
           ],
         ],
@@ -633,10 +623,16 @@ class _RetouchCompletionScreenState extends State<RetouchCompletionScreen> {
         const Icon(Icons.wifi_off_rounded, color: AppTheme.error, size: 22),
         const SizedBox(width: AppUI.s8),
         Expanded(child: Text(r.message, style: AppUI.bodyStrong)),
+        // TextButton discreto con métricas explícitas del kit — que no
+        // herede el theme legacy (20px / 60×60).
         TextButton(
           onPressed: r.action,
-          child: const Text('Reintentar',
-              style: TextStyle(fontWeight: FontWeight.w700)),
+          style: TextButton.styleFrom(
+            minimumSize: const Size(0, 44),
+            textStyle:
+                const TextStyle(fontSize: 14, fontWeight: FontWeight.w700),
+          ),
+          child: const Text('Reintentar'),
         ),
       ]),
     );
@@ -683,9 +679,13 @@ class _RetouchCompletionScreenState extends State<RetouchCompletionScreen> {
             alignment: Alignment.centerRight,
             child: TextButton(
               onPressed: _cancelBatch,
-              style: TextButton.styleFrom(foregroundColor: AppUI.inkSoft),
-              child: const Text('Cancelar lote',
-                  style: TextStyle(fontSize: 13)),
+              style: TextButton.styleFrom(
+                foregroundColor: AppUI.inkSoft,
+                minimumSize: const Size(0, 44),
+                textStyle: const TextStyle(
+                    fontSize: 13, fontWeight: FontWeight.w600),
+              ),
+              child: const Text('Cancelar lote'),
             ),
           ),
         ],
@@ -708,6 +708,7 @@ class _RetouchCompletionScreenState extends State<RetouchCompletionScreen> {
             label: Text('Aplicar las $n'),
             style: TextButton.styleFrom(
               foregroundColor: AppTheme.primary,
+              minimumSize: const Size(0, 44),
               textStyle:
                   const TextStyle(fontSize: 14, fontWeight: FontWeight.w700),
             ),
@@ -779,15 +780,9 @@ class _RetouchCompletionScreenState extends State<RetouchCompletionScreen> {
               style: AppUI.bodySoft,
             ),
             const SizedBox(height: AppUI.s24),
-            SizedBox(
-              width: double.infinity,
-              child: FilledButton(
-                onPressed: () => Navigator.of(context).pop(),
-                style: FilledButton.styleFrom(
-                    backgroundColor: AppTheme.primary,
-                    minimumSize: const Size(0, 48)),
-                child: const Text('Volver al inventario'),
-              ),
+            AppButton(
+              label: 'Volver al inventario',
+              onPressed: () => Navigator.of(context).pop(),
             ),
           ],
         ),

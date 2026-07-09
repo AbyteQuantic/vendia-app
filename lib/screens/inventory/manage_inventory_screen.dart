@@ -21,11 +21,10 @@ import '../../widgets/ai_instruction_dialog.dart';
 import '../../widgets/ai_photo_options_sheet.dart';
 import '../../widgets/branch_selector_drawer.dart';
 import '../../widgets/full_image_viewer.dart';
-import '../../widgets/product_image.dart';
 import '../../widgets/branch_aware_reload.dart';
+import '../../widgets/inventory_product_tile.dart';
 import '../../widgets/negative_stock_banner.dart';
 import '../../widgets/picked_image_preview.dart';
-import '../../widgets/stock_badge.dart';
 import '../../widgets/advanced_product_options.dart';
 import '../../widgets/product_media_editor.dart';
 import '../../widgets/variant_group_link_tile.dart';
@@ -588,20 +587,33 @@ class _ManageInventoryScreenState extends State<ManageInventoryScreen>
             // Count + Filter chips. Spec 101: con TRES contadores posibles
             // (Sin precio / Sin SKU / Fotos sin retocar) la fila fija
             // desbordaba a 360dp → Wrap: los chips fluyen a otra línea.
+            // Rediseño 2026-07-08: UNA sola Wrap alineada a la izquierda con
+            // el conteo como pill neutro de la MISMA altura/estilo que los
+            // chips de curaduría — antes el conteo era texto suelto y la
+            // segunda línea se veía rota/flotando.
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 20),
               child: Wrap(
-                spacing: 6,
-                runSpacing: 4,
+                alignment: WrapAlignment.start,
+                spacing: AppUI.s8,
+                runSpacing: AppUI.s4,
                 crossAxisAlignment: WrapCrossAlignment.center,
                 children: [
-                  Text(
-                    '${_filtered.length} producto${_filtered.length != 1 ? 's' : ''}',
-                    style: const TextStyle(
-                      fontSize: 16,
-                      color: AppTheme.textSecondary,
-                      fontWeight: FontWeight.w500,
+                  Chip(
+                    label: Text(
+                      '${_filtered.length} producto${_filtered.length != 1 ? 's' : ''}',
+                      style: const TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                        color: AppUI.inkSoft,
+                      ),
                     ),
+                    backgroundColor: Colors.white,
+                    side: const BorderSide(color: AppUI.border),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    materialTapTargetSize: MaterialTapTargetSize.padded,
                   ),
                   if (_noPriceCount > 0)
                     FilterChip(
@@ -756,11 +768,13 @@ class _ManageInventoryScreenState extends State<ManageInventoryScreen>
                                   if (item is String) {
                                     return _CategoryHeader(
                                       label: item,
-                                      topPadding: index == 0 ? 0 : 20,
+                                      topPadding: index == 0 ? 0 : AppUI.s16,
                                     );
                                   }
                                   final p = item as Map<String, dynamic>;
-                                  return _ProductTile(
+                                  return InventoryProductTile(
+                                    key: ValueKey(
+                                        'inventory_tile_${p['id']}'),
                                     product: p,
                                     onEdit: () => _editProduct(p),
                                     onDelete: () => _deleteProduct(p),
@@ -787,6 +801,8 @@ class _ManageInventoryScreenState extends State<ManageInventoryScreen>
 
 /// Encabezado de sección por categoría — acota el barrido visual a un
 /// grupo en vez de todo el catálogo (auditoría 2026-07-02).
+/// Estilo kit AppUI: label uppercase pequeño + divider sutil que ancla la
+/// sección (rediseño 2026-07-08).
 class _CategoryHeader extends StatelessWidget {
   final String label;
   final double topPadding;
@@ -796,206 +812,30 @@ class _CategoryHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: EdgeInsets.fromLTRB(4, topPadding, 4, 8),
-      child: Text(
-        label.toUpperCase(),
-        style: AppUI.sectionLabel,
+      padding: EdgeInsets.fromLTRB(AppUI.s4, topPadding, AppUI.s4, AppUI.s8),
+      child: Row(
+        children: [
+          Flexible(
+            child: Text(
+              label.toUpperCase(),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: AppUI.sectionLabel,
+            ),
+          ),
+          const SizedBox(width: AppUI.s12),
+          const Expanded(
+            child: Divider(height: 1, thickness: 1, color: AppUI.border),
+          ),
+        ],
       ),
     );
   }
 }
 
 // ── Product tile ─────────────────────────────────────────────────────────────
-
-class _ProductTile extends StatelessWidget {
-  final Map<String, dynamic> product;
-  final VoidCallback onEdit;
-  final VoidCallback onDelete;
-  final VoidCallback? onHistory;
-
-  const _ProductTile({
-    required this.product,
-    required this.onEdit,
-    required this.onDelete,
-    this.onHistory,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final name = product['name'] as String? ?? 'Sin nombre';
-    final price = (product['price'] as num?)?.toDouble() ?? 0;
-    final stock = product['stock'] as int? ?? 0;
-    final isMenuItem = product['is_menu_item'] == true;
-    final byPortions = product['availability_mode'] == 'por_porciones';
-    final photoUrl = product['photo_url'] as String?;
-    final imageUrl = product['image_url'] as String?;
-    final imgSrc = (photoUrl != null && photoUrl.isNotEmpty)
-        ? photoUrl
-        : imageUrl;
-    final barcode = product['barcode'] as String? ?? '';
-    final presentation = product['presentation'] as String? ?? '';
-    final content = product['content'] as String? ?? '';
-    final subtitleParts = <String>[
-      if (barcode.isNotEmpty) 'SKU: $barcode',
-      if (presentation.isNotEmpty || content.isNotEmpty)
-        [presentation, content].where((s) => s.isNotEmpty).join(' · '),
-    ];
-    final subtitle = subtitleParts.join(' | ');
-
-    return Dismissible(
-      key: ValueKey(product['id']),
-      direction: DismissDirection.endToStart,
-      background: Container(
-        alignment: Alignment.centerRight,
-        padding: const EdgeInsets.only(right: 24),
-        margin: const EdgeInsets.only(bottom: 12),
-        decoration: BoxDecoration(
-          color: AppTheme.error,
-          borderRadius: BorderRadius.circular(16),
-        ),
-        child: const Icon(Icons.delete_rounded, color: Colors.white, size: 28),
-      ),
-      confirmDismiss: (_) async {
-        HapticFeedback.mediumImpact();
-        onDelete();
-        return false; // dialog handles deletion
-      },
-      child: GestureDetector(
-        onTap: () {
-          HapticFeedback.lightImpact();
-          onEdit();
-        },
-        child: Container(
-          margin: const EdgeInsets.only(bottom: 12),
-          padding: const EdgeInsets.all(14),
-          decoration: AppUI.card(r: 10),
-          child: Row(
-            children: [
-              // Product image
-              ClipRRect(
-                borderRadius: BorderRadius.circular(12),
-                child: Container(
-                  width: 60,
-                  height: 60,
-                  color: Colors.white,
-                  // Spec 090: caché en disco del thumbnail (listado de inventario).
-                  child: ProductImage(
-                    url: imgSrc,
-                    width: 60,
-                    height: 60,
-                    fit: BoxFit.contain,
-                    placeholder: const Center(
-                        child: Icon(Icons.inventory_2_outlined,
-                            size: 28, color: AppTheme.textSecondary)),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 14),
-
-              // Info
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      name,
-                      style: AppUI.bodyStrong,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    if (subtitle.isNotEmpty) ...[
-                      const SizedBox(height: 2),
-                      Text(subtitle, style: AppUI.bodySoft),
-                    ],
-                    const SizedBox(height: 4),
-                    // Spec 101 (auditoría 360dp): esta fila desbordaba en
-                    // pantallas estrechas — precio con ellipsis y badge en
-                    // FittedBox para que se reduzca en vez de romper.
-                    Row(
-                      children: [
-                        Flexible(
-                          child: Text(
-                            _formatPrice(price),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
-                              fontSize: 15,
-                              fontWeight: FontWeight.w700,
-                              color: AppTheme.primary,
-                              fontFeatures: [FontFeature.tabularFigures()],
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        Flexible(
-                          child: FittedBox(
-                            fit: BoxFit.scaleDown,
-                            child: StockBadge(
-                                stock: stock,
-                                size: StockBadgeSize.medium,
-                                isMenuItem: isMenuItem,
-                                byPortions: byPortions),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-
-              // Actions
-              Column(
-                children: [
-                  IconButton(
-                    icon: const Icon(Icons.edit_rounded,
-                        size: 20, color: AppUI.inkSoft),
-                    onPressed: () {
-                      HapticFeedback.lightImpact();
-                      onEdit();
-                    },
-                    tooltip: 'Editar',
-                  ),
-                  if (onHistory != null)
-                    IconButton(
-                      icon: const Icon(Icons.history_rounded,
-                          size: 20, color: AppUI.inkSoft),
-                      onPressed: () {
-                        HapticFeedback.lightImpact();
-                        onHistory!();
-                      },
-                      tooltip: 'Kardex',
-                    ),
-                  IconButton(
-                    icon: const Icon(Icons.delete_outline_rounded,
-                        size: 22, color: AppTheme.error),
-                    onPressed: () {
-                      HapticFeedback.lightImpact();
-                      onDelete();
-                    },
-                    tooltip: 'Eliminar',
-                  ),
-                ],
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  static String _formatPrice(double price) {
-    final int cents = price.round();
-    final String s = cents.toString();
-    final buffer = StringBuffer('\$');
-    final start = s.length % 3;
-    if (start > 0) buffer.write(s.substring(0, start));
-    for (int i = start; i < s.length; i += 3) {
-      if (i > 0) buffer.write('.');
-      buffer.write(s.substring(i, i + 3));
-    }
-    return buffer.toString();
-  }
-}
+// El tile compacto vive en `lib/widgets/inventory_product_tile.dart`
+// (rediseño 2026-07-08 — Art. IX: extraer widgets reutilizables).
 
 // ── Edit product screen ──────────────────────────────────────────────────────
 

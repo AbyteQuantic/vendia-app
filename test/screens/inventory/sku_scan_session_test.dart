@@ -18,6 +18,7 @@ import 'package:vendia_pos/screens/inventory/sku_scan_session_screen.dart';
 import 'package:vendia_pos/services/api_service.dart';
 import 'package:vendia_pos/services/app_error.dart';
 import 'package:vendia_pos/services/auth_service.dart';
+import 'package:vendia_pos/theme/app_theme.dart';
 
 class _FakeApi extends ApiService {
   _FakeApi() : super(AuthService());
@@ -67,7 +68,9 @@ void main() {
   setUpAll(
       () => dotenv.testLoad(fileInput: 'API_BASE_URL=http://localhost:8080'));
 
-  Widget wrap(Widget child) => MaterialApp(home: child);
+  // Harness con el theme REAL de la app: los botones deben verse sanos aun
+  // con el theme legacy (OutlinedButton 64dp/22px) activo.
+  Widget wrap(Widget child) => MaterialApp(theme: AppTheme.light, home: child);
 
   final queue = [_p('1', 'Arroz Diana'), _p('2', 'Panela'), _p('3', 'Aceite')];
 
@@ -238,5 +241,35 @@ void main() {
 
     expect(api.patched.length, 1);
     expect(find.textContaining('1 código asignado'), findsOneWidget);
+  });
+
+  testWidgets('360dp: tarjeta de conflicto con botones del kit — sin '
+      'overflow y par Omitir/Corregir proporcionado (≤50dp de alto)',
+      (tester) async {
+    tester.view.physicalSize = const Size(360, 740);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+
+    final api = _FakeApi()
+      ..ownersByCode['DUP-1'] = {
+        'id': 'otro',
+        'name': 'Coca-Cola 350ml botella retornable familiar',
+      };
+    await tester.pumpWidget(wrap(SkuScanSessionScreen(
+      products: [_p('1', 'Whisky Old Parr 18 años botella grande 750ml')],
+      apiOverride: api,
+      keyboardOnly: true,
+    )));
+    await tester.pump();
+
+    await _scanByKeyboard(tester, 'DUP-1');
+
+    expect(tester.takeException(), isNull);
+    // Botones del kit (50dp), no el theme legacy de 64dp/22px.
+    final omitir = tester.getSize(find.widgetWithText(OutlinedButton, 'Omitir'));
+    final corregir =
+        tester.getSize(find.widgetWithText(FilledButton, 'Corregir'));
+    expect(omitir.height, lessThanOrEqualTo(50));
+    expect(corregir.height, lessThanOrEqualTo(50));
   });
 }
