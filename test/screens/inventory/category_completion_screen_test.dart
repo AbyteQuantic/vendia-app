@@ -339,6 +339,84 @@ void main() {
     });
   });
 
+  group('tope de 200 sugerencias del backend (caso borde 500+)', () {
+    testWidgets('con más productos que sugerencias y 200 exactas → banner '
+        'honesto del tope (no se confunde con "IA no supo")', (tester) async {
+      final api = _FakeApi()
+        ..suggestions = [
+          for (var i = 1; i <= 200; i++) _s('$i', 'P$i', 'Bebidas'),
+        ];
+      await pumpLoaded(tester, api,
+          [for (var i = 1; i <= 250; i++) _p('$i', 'P$i')]);
+
+      expect(find.textContaining('primeros 200'), findsOneWidget);
+      // Los 50 excedentes cuentan como pendientes pero no entran en el
+      // masivo (siguen en modo manual, al final de la lista).
+      expect(find.text('0 de 250 organizados'), findsOneWidget);
+      expect(find.text('Aplicar todas (200)'), findsOneWidget);
+      // Con sugerencias aún pendientes, el botón de pedir más no aparece.
+      expect(find.text('Pedir más sugerencias'), findsNothing);
+    });
+
+    testWidgets('al vaciar los sugeridos, "Pedir más sugerencias" rellama al '
+        'endpoint y trae la siguiente tanda', (tester) async {
+      final api = _FakeApi()
+        ..suggestions = [
+          for (var i = 1; i <= 200; i++) _s('$i', 'P$i', 'Bebidas'),
+        ];
+      await pumpLoaded(tester, api,
+          [for (var i = 1; i <= 201; i++) _p('$i', 'P$i')]);
+
+      expect(find.textContaining('primeros 200'), findsOneWidget);
+      await tester.tap(find.text('Aplicar todas (200)'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Sí, aplicar'));
+      await tester.pump();
+      await tester.pump();
+      await tester.pumpAndSettle();
+      expect(api.patched.length, 200);
+
+      // Solo queda "Por clasificar" → ahora sí se ofrece pedir más.
+      expect(find.text('Pedir más sugerencias'), findsOneWidget);
+      api.suggestions = [_s('201', 'P201', 'Aseo')];
+      await tester.tap(find.text('Pedir más sugerencias'));
+      await tester.pump();
+      await tester.pump();
+      await tester.pumpAndSettle();
+
+      expect(find.text('Aseo (1)'), findsOneWidget);
+      // La tanda nueva vino completa (<200) → el banner del tope se va.
+      expect(find.textContaining('primeros 200'), findsNothing);
+    });
+  });
+
+  group('normalización entre sugerencias nuevas (FR-06)', () {
+    testWidgets('dos sugerencias nuevas con casing distinto → UN solo grupo '
+        'y UNA sola categoría real', (tester) async {
+      final api = _FakeApi()
+        ..existingCategories = []
+        ..suggestions = [
+          _s('1', 'Papas Margarita', 'Snacks'),
+          _s('2', 'Detodito', 'snacks'),
+        ];
+      await pumpLoaded(
+          tester, api, [_p('1', 'Papas Margarita'), _p('2', 'Detodito')]);
+
+      // Primera aparición gana: un único grupo "Snacks (2)".
+      expect(find.text('Snacks (2)'), findsOneWidget);
+      expect(find.text('snacks (1)'), findsNothing);
+
+      await tester.tap(find.text('Aplicar todas (2)'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Sí, aplicar'));
+      await tester.pump();
+      await tester.pump();
+      await tester.pumpAndSettle();
+
+      expect(api.patched.map((e) => e.value['category']).toSet(), {'Snacks'});
+    });
+  });
+
   group('selección múltiple (FR-10)', () {
     testWidgets('marcar varios y asignarles UNA categoría en una sola acción',
         (tester) async {
@@ -368,6 +446,39 @@ void main() {
       expect(api.patched.map((e) => e.key).toSet(), {'1', '2'});
       expect(api.patched.map((e) => e.value['category']).toSet(), {'Aseo'});
       expect(find.text('Arroz'), findsOneWidget); // el no marcado sigue
+    });
+
+    testWidgets('tras asignar, las filas que FALLARON tampoco quedan '
+        'marcadas al reabrir la selección', (tester) async {
+      final api = _FakeApi()
+        ..existingCategories = ['Aseo']
+        ..updateErrors['2'] = const AppError(
+            type: AppErrorType.network, message: 'No pudimos conectar.');
+      await pumpLoaded(
+          tester, api, [_p('1', 'Jabón Rey'), _p('2', 'Límpido')]);
+
+      await tester.tap(find.text('Seleccionar'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byType(Checkbox).at(0));
+      await tester.tap(find.byType(Checkbox).at(1));
+      await tester.pump();
+      await tester.tap(find.text('Asignar categoría a 2'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Aseo'));
+      await tester.pump();
+      await tester.pump();
+      await tester.pumpAndSettle();
+
+      // '1' se guardó; '2' falló y permanece — pero SIN selección fantasma.
+      expect(api.patched.length, 1);
+      await tester.tap(find.text('Seleccionar'));
+      await tester.pumpAndSettle();
+      final boxes = tester
+          .widgetList<Checkbox>(find.byType(Checkbox))
+          .map((c) => c.value)
+          .toList();
+      expect(boxes, everyElement(isFalse));
+      expect(find.text('Asignar categoría a 0'), findsOneWidget);
     });
   });
 

@@ -26,11 +26,18 @@ import '../../theme/app_ui.dart';
 import '../../utils/text_normalize.dart';
 import '../../widgets/category_picker_sheet.dart';
 import '../../widgets/compact_action_button.dart';
+import '../../widgets/curation_banner.dart';
 import '../../widgets/product_image.dart';
 
 /// Acento IA (mismo morado del chip de retoque, Spec 101): la sugerencia
 /// se marca visualmente como "de la IA" hasta que el tendero la corrige.
 const _kAiAccent = Color(0xFF7C3AED);
+
+/// Tope del backend: suggest-categories procesa máximo 200 productos por
+/// llamada (product_categories_ai.go, `Limit(200)` sin paginación). Una
+/// respuesta de exactamente 200 con productos aún sin sugerencia = señal
+/// del tope, no de que "la IA no supo" (caso borde inventarios 500+).
+const _kSuggestionBatchLimit = 200;
 
 /// Estado mutable por producto dentro del flujo (patrón _Row de 097/100).
 class _Row {
@@ -104,6 +111,10 @@ class _CategoryCompletionScreenState extends State<CategoryCompletionScreen> {
   bool _applying = false;
   bool _selectionMode = false;
 
+  /// La última tanda de sugerencias llegó al tope del backend y quedaron
+  /// productos sin sugerencia → banner honesto + "Pedir más sugerencias".
+  bool _suggestionsTruncated = false;
+
   /// Categorías conocidas (las del tenant + las que nacen en la sesión):
   /// alimentan el selector y la normalización de grafía (Spec 068).
   List<String> _knownCategories = [];
@@ -135,10 +146,21 @@ class _CategoryCompletionScreenState extends State<CategoryCompletionScreen> {
       setState(() {
         for (final r in _rows) {
           final s = (byId[r.id] ?? '').trim();
-          // Normaliza la grafía de la sugerencia contra lo existente para
-          // que la agrupación no parta "Bebidas"/"bebidas" en dos.
-          if (s.isNotEmpty) r.suggested = canonicalValue(s, _knownCategories);
+          if (s.isEmpty) continue;
+          // Normaliza la grafía contra lo existente Y contra las sugerencias
+          // ya vistas en esta tanda (la primera aparición gana): dos
+          // sugerencias nuevas "Snacks"/"snacks" no pueden partir el grupo
+          // ni crear dos categorías reales (FR-06).
+          final canon = canonicalValue(s, _knownCategories);
+          r.suggested = canon;
+          _rememberCategory(canon);
         }
+        // Señal del tope de 200 (caso borde 500+): respuesta llena Y aún
+        // hay pendientes sin sugerencia → informar, no confundir con
+        // "la IA no supo".
+        _suggestionsTruncated = res.length >= _kSuggestionBatchLimit &&
+            _rows.any((r) => !r.leaving && r.suggested == null);
+        _aiDown = false;
         _loading = false;
       });
     } catch (_) {
@@ -149,6 +171,14 @@ class _CategoryCompletionScreenState extends State<CategoryCompletionScreen> {
         _loading = false;
       });
     }
+  }
+
+  /// Rellama al endpoint cuando la tanda anterior (tope 200) ya se aplicó:
+  /// los categorizados salieron del filtro del backend → entra la siguiente.
+  Future<void> _requestMoreSuggestions() async {
+    HapticFeedback.lightImpact();
+    setState(() => _loading = true);
+    await _load();
   }
 
   // ── Derivados ────────────────────────────────────────────────────────────
@@ -369,6 +399,9 @@ class _CategoryCompletionScreenState extends State<CategoryCompletionScreen> {
     setState(() {
       for (final r in sel) {
         r.manual = cat;
+        // Sin selección fantasma: también las filas que luego FALLEN al
+        // aplicar quedan desmarcadas para la próxima selección.
+        r.selected = false;
       }
       _selectionMode = false;
     });
@@ -452,8 +485,42 @@ class _CategoryCompletionScreenState extends State<CategoryCompletionScreen> {
               Text('$_doneCount de $_total organizados', style: AppUI.bodyStrong),
         ),
       ),
-      if (_aiDown) _aiDownBanner(),
-      if (_failedRows.isNotEmpty) _retryBanner(),
+      // Banner suave del modo manual (AC-05): la IA falló pero nada se
+      // bloquea.
+      if (_aiDown)
+        const CurationBanner(
+          icon: Icons.info_outline_rounded,
+          message: 'La IA no está disponible en este momento. '
+              'Asigne las categorías manualmente.',
+        ),
+      // Tope del backend (caso borde 500+): informa con calma que la tanda
+      // cubre los primeros 200 y, cuando los sugeridos ya se aplicaron,
+      // ofrece la siguiente tanda (los categorizados salieron del tope).
+      if (!_aiDown && _suggestionsTruncated)
+        CurationBanner(
+          icon: Icons.info_outline_rounded,
+          message: 'La IA sugirió categorías para los primeros 200 '
+              'productos. Organice estos primero y vuelva a entrar para '
+              'los demás.',
+          actionLabel: _rows.any((r) => !r.leaving && r.suggested != null)
+              ? null
+              : 'Pedir más sugerencias',
+          onAction:
+              (_applying || _loading) ? null : _requestMoreSuggestions,
+        ),
+      // Fallo honesto (AC-07): qué no se guardó + Reintentar. La tarjeta
+      // nunca se marcó hecha.
+      if (_failedRows.isNotEmpty)
+        CurationBanner(
+          icon: Icons.wifi_off_rounded,
+          error: true,
+          message: _failedRows.length == 1
+              ? 'Un producto no se guardó. Revise su conexión.'
+              : '${_failedRows.length} productos no se guardaron. '
+                  'Revise su conexión.',
+          actionLabel: 'Reintentar',
+          onAction: _applying ? null : () => _applyRows(_failedRows),
+        ),
       Expanded(
         child: ListView.builder(
           padding: const EdgeInsets.fromLTRB(16, 4, 16, 32),
@@ -466,66 +533,6 @@ class _CategoryCompletionScreenState extends State<CategoryCompletionScreen> {
         ),
       ),
     ]);
-  }
-
-  /// Banner suave del modo manual (AC-05): la IA falló pero nada se bloquea.
-  Widget _aiDownBanner() {
-    return Container(
-      margin: const EdgeInsets.fromLTRB(16, 4, 16, 4),
-      padding: const EdgeInsets.all(AppUI.s12),
-      decoration: BoxDecoration(
-        color: AppTheme.accentSoft,
-        borderRadius: BorderRadius.circular(AppUI.radius),
-        border: Border.all(color: AppTheme.accent.withValues(alpha: 0.35)),
-      ),
-      child: const Row(children: [
-        Icon(Icons.info_outline_rounded, color: AppTheme.primary, size: 22),
-        SizedBox(width: AppUI.s8),
-        Expanded(
-          child: Text(
-            'La IA no está disponible en este momento. '
-            'Asigne las categorías manualmente.',
-            style: AppUI.bodySoft,
-          ),
-        ),
-      ]),
-    );
-  }
-
-  /// Fallo honesto (AC-07): qué no se guardó + Reintentar. La tarjeta
-  /// nunca se marcó hecha.
-  Widget _retryBanner() {
-    final n = _failedRows.length;
-    return Container(
-      margin: const EdgeInsets.fromLTRB(16, 4, 16, 4),
-      padding: const EdgeInsets.all(AppUI.s12),
-      decoration: BoxDecoration(
-        color: AppTheme.error.withValues(alpha: 0.08),
-        borderRadius: BorderRadius.circular(AppUI.radius),
-        border: Border.all(color: AppTheme.error.withValues(alpha: 0.35)),
-      ),
-      child: Row(children: [
-        const Icon(Icons.wifi_off_rounded, color: AppTheme.error, size: 22),
-        const SizedBox(width: AppUI.s8),
-        Expanded(
-          child: Text(
-            n == 1
-                ? 'Un producto no se guardó. Revise su conexión.'
-                : '$n productos no se guardaron. Revise su conexión.',
-            style: AppUI.bodyStrong,
-          ),
-        ),
-        TextButton(
-          onPressed: _applying ? null : () => _applyRows(_failedRows),
-          style: TextButton.styleFrom(
-            minimumSize: const Size(0, 44),
-            textStyle:
-                const TextStyle(fontSize: 14, fontWeight: FontWeight.w700),
-          ),
-          child: const Text('Reintentar'),
-        ),
-      ]),
-    );
   }
 
   /// Encabezado de grupo: nombre + conteo + "Aplicar grupo" (FR-09).
