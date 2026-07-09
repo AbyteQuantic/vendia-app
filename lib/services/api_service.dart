@@ -1691,6 +1691,84 @@ class ApiService {
   }
 
   // ═══════════════════════════════════════════════════════════════════════════
+  // 3b. RETOQUE DE FOTOS EN LOTE (Spec 101)
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  /// Spec 101 (FR-11): encola un lote de retoque FIEL en el servidor.
+  /// [productIds] vacío/nulo = todos los elegibles (el backend RECALCULA la
+  /// elegibilidad server-side de todos modos). El "Mejorar foto" individual
+  /// de la vista de retoque usa un lote de 1 — TODO pasa por el mismo camino
+  /// y nada se aplica sin confirmar (candidate_url). Devuelve
+  /// `{batch_id, queued_count, skipped:[]}`; si ya hay un lote activo el
+  /// backend devuelve el existente (idempotente).
+  Future<Map<String, dynamic>> createRetouchBatch(
+      {List<String>? productIds}) async {
+    try {
+      final response = await _dio.post(
+        '/api/v1/inventory/retouch/batches',
+        data: {
+          if (productIds != null && productIds.isNotEmpty)
+            'product_ids': productIds,
+        },
+      );
+      return _extractData(response);
+    } on DioException catch (e) {
+      throw AppError.fromDioException(e);
+    }
+  }
+
+  /// Spec 101 (FR-14): un solo endpoint de lectura para chip + progreso +
+  /// revisión: `{eligible_count, active_batch|null, review_items:[]}`.
+  /// Los review_items vienen PAGINADOS (el plan §5: "review_items
+  /// paginados"); `active_batch.ready_for_review` es el COUNT total, así
+  /// que el llamador encadena páginas cuando recibió menos que el total.
+  Future<Map<String, dynamic>> fetchRetouchSummary(
+      {int page = 1, int perPage = 100}) async {
+    try {
+      final response = await _dio.get(
+        '/api/v1/inventory/retouch/summary',
+        queryParameters: {'page': page, 'per_page': perPage},
+      );
+      return _extractData(response);
+    } on DioException catch (e) {
+      throw AppError.fromDioException(e);
+    }
+  }
+
+  /// Spec 101 (FR-05/FR-06): aplica las candidatas confirmadas
+  /// (candidate→photo_url + is_ai_enhanced). Idempotente en el backend.
+  /// Sirve para 1 ítem o para "Aplicar las N".
+  Future<void> confirmRetouchItems(List<String> itemIds) async {
+    try {
+      await _dio.post('/api/v1/inventory/retouch/items/confirm',
+          data: {'item_ids': itemIds});
+    } on DioException catch (e) {
+      throw AppError.fromDioException(e);
+    }
+  }
+
+  /// Spec 101 (AC-06): descarta candidatas; el producto queda intacto y
+  /// vuelve a contar como "sin retocar".
+  Future<void> discardRetouchItems(List<String> itemIds) async {
+    try {
+      await _dio.post('/api/v1/inventory/retouch/items/discard',
+          data: {'item_ids': itemIds});
+    } on DioException catch (e) {
+      throw AppError.fromDioException(e);
+    }
+  }
+
+  /// Spec 101 (FR-15): cancela el lote; lo pendiente se descarta, lo ya
+  /// listo para revisar se conserva (el backend decide el detalle).
+  Future<void> cancelRetouchBatch(String batchId) async {
+    try {
+      await _dio.post('/api/v1/inventory/retouch/batches/$batchId/cancel');
+    } on DioException catch (e) {
+      throw AppError.fromDioException(e);
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
   // 4. INVENTORY IA
   // ═══════════════════════════════════════════════════════════════════════════
 
