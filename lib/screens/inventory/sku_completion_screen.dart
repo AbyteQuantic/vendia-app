@@ -393,18 +393,11 @@ class _SkuCompletionScreenState extends State<SkuCompletionScreen> {
           // FR-12: con varias pendientes, la ráfaga encadena escaneos sin
           // toques intermedios (el camino rápido frente al estante).
           if (_pendingCount > 1) ...[
-            const SizedBox(height: 8),
-            SizedBox(
-              width: double.infinity,
-              child: FilledButton.icon(
-                onPressed: _openBurstMode,
-                icon: const Icon(Icons.qr_code_scanner_rounded, size: 20),
-                label: const Text('Modo ráfaga',
-                    maxLines: 1, overflow: TextOverflow.ellipsis),
-                style: FilledButton.styleFrom(
-                    backgroundColor: AppTheme.primary,
-                    minimumSize: const Size(0, 48)),
-              ),
+            const SizedBox(height: AppUI.s8),
+            AppButton(
+              label: 'Modo ráfaga',
+              icon: Icons.qr_code_scanner_rounded,
+              onPressed: _openBurstMode,
             ),
           ],
         ],
@@ -432,11 +425,17 @@ class _SkuCompletionScreenState extends State<SkuCompletionScreen> {
             style: AppUI.bodyStrong,
           ),
         ),
+        // TextButton discreto con métricas explícitas del kit — que no
+        // herede el theme legacy (20px / 60×60).
         TextButton(
           onPressed: () =>
               _assignCode(r.row, r.code, generated: r.generated),
-          child: const Text('Reintentar',
-              style: TextStyle(fontWeight: FontWeight.w700)),
+          style: TextButton.styleFrom(
+            minimumSize: const Size(0, 44),
+            textStyle:
+                const TextStyle(fontSize: 14, fontWeight: FontWeight.w700),
+          ),
+          child: const Text('Reintentar'),
         ),
       ]),
     );
@@ -668,15 +667,9 @@ class _SkuCompletionScreenState extends State<SkuCompletionScreen> {
               style: AppUI.bodySoft,
             ),
             const SizedBox(height: AppUI.s24),
-            SizedBox(
-              width: double.infinity,
-              child: FilledButton(
-                onPressed: () => Navigator.of(context).pop(),
-                style: FilledButton.styleFrom(
-                    backgroundColor: AppTheme.primary,
-                    minimumSize: const Size(0, 48)),
-                child: const Text('Volver al inventario'),
-              ),
+            AppButton(
+              label: 'Volver al inventario',
+              onPressed: () => Navigator.of(context).pop(),
             ),
           ],
         ),

@@ -388,17 +388,16 @@ class _SkuScanSessionScreenState extends State<SkuScanSessionScreen> {
             textAlign: TextAlign.center,
             style: TextStyle(color: Colors.white, fontSize: 16, height: 1.4),
           ),
-          const SizedBox(height: 16),
-          FilledButton.icon(
+          const SizedBox(height: AppUI.s16),
+          // AppButton del kit: estilo explícito (50dp, texto 16, una línea);
+          // el theme legacy no participa.
+          AppButton(
+            label: 'Digitar o usar lector',
+            icon: Icons.keyboard_alt_outlined,
             onPressed: () {
               setState(() => _useKeyboard = true);
               _kbFocus.requestFocus();
             },
-            icon: const Icon(Icons.keyboard_alt_outlined, size: 20),
-            label: const Text('Digitar o usar lector'),
-            style: FilledButton.styleFrom(
-                backgroundColor: AppTheme.primary,
-                minimumSize: const Size(0, 48)),
           ),
         ],
       ),
@@ -489,14 +488,13 @@ class _SkuScanSessionScreenState extends State<SkuScanSessionScreen> {
                   Text('Asignando a: (${_index + 1} de ${_queue.length})',
                       style: AppUI.bodySoft),
                   const SizedBox(height: 2),
+                  // Proporción sana (rediseño 2026-07-08): jerarquía del kit
+                  // en lugar del 19px w800 que desbalanceaba el banner.
                   Text(
                     _currentName,
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                        fontSize: 19,
-                        fontWeight: FontWeight.w800,
-                        color: AppUI.ink),
+                    style: AppUI.bodyStrong,
                   ),
                 ],
               ),
@@ -547,23 +545,22 @@ class _SkuScanSessionScreenState extends State<SkuScanSessionScreen> {
               style: AppUI.bodySoft,
             ),
             const SizedBox(height: AppUI.s12),
+            // Par secundario/primario del kit (mismo patrón que Completar
+            // SKUs): el theme legacy de OutlinedButton (64dp/22px) no
+            // participa y nada se infla ni desborda a 360dp.
             Row(children: [
               Expanded(
-                child: OutlinedButton(
+                child: AppButton(
+                  label: 'Omitir',
+                  variant: AppButtonVariant.secondary,
                   onPressed: _skipCurrent,
-                  style: OutlinedButton.styleFrom(
-                      minimumSize: const Size(0, 44)),
-                  child: const Text('Omitir'),
                 ),
               ),
               const SizedBox(width: AppUI.s8),
               Expanded(
-                child: FilledButton(
+                child: AppButton(
+                  label: 'Corregir',
                   onPressed: _correctByKeyboard,
-                  style: FilledButton.styleFrom(
-                      backgroundColor: AppTheme.primary,
-                      minimumSize: const Size(0, 44)),
-                  child: const Text('Corregir'),
                 ),
               ),
             ]),
@@ -594,18 +591,12 @@ class _SkuScanSessionScreenState extends State<SkuScanSessionScreen> {
               style: AppUI.bodyStrong,
             ),
             const SizedBox(height: AppUI.s12),
-            SizedBox(
-              width: double.infinity,
-              child: FilledButton(
-                onPressed: () {
-                  setState(() => _retry = null);
-                  _handleCode(r.code);
-                },
-                style: FilledButton.styleFrom(
-                    backgroundColor: AppTheme.primary,
-                    minimumSize: const Size(0, 44)),
-                child: const Text('Reintentar'),
-              ),
+            AppButton(
+              label: 'Reintentar',
+              onPressed: () {
+                setState(() => _retry = null);
+                _handleCode(r.code);
+              },
             ),
           ],
         ),
@@ -693,15 +684,9 @@ class _SkuScanSessionScreenState extends State<SkuScanSessionScreen> {
               ),
             ],
             const SizedBox(height: AppUI.s24),
-            SizedBox(
-              width: double.infinity,
-              child: FilledButton(
-                onPressed: () => Navigator.of(context).pop(),
-                style: FilledButton.styleFrom(
-                    backgroundColor: AppTheme.primary,
-                    minimumSize: const Size(0, 48)),
-                child: const Text('Volver'),
-              ),
+            AppButton(
+              label: 'Volver',
+              onPressed: () => Navigator.of(context).pop(),
             ),
           ],
         ),
