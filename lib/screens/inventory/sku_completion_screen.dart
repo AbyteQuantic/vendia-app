@@ -19,6 +19,7 @@ import '../../theme/app_theme.dart';
 import '../../theme/app_ui.dart';
 import '../../utils/sku_generator.dart';
 import '../../widgets/product_image.dart';
+import '../../widgets/sku_manual_code_sheet.dart';
 import 'sku_scan_session_screen.dart';
 
 /// Estado mutable por producto dentro del flujo (patrón _Row de Spec 097).
@@ -271,22 +272,17 @@ class _SkuCompletionScreenState extends State<SkuCompletionScreen> {
             const SizedBox(height: AppUI.s12),
             Row(children: [
               Expanded(
-                child: OutlinedButton.icon(
+                child: AppButton(
+                  label: 'Generar otro',
+                  variant: AppButtonVariant.secondary,
                   onPressed: () => setSheet(() => code = _newCodeFor(row)),
-                  icon: const Icon(Icons.refresh_rounded, size: 20),
-                  label: const Text('Generar otro'),
-                  style:
-                      OutlinedButton.styleFrom(minimumSize: const Size(0, 48)),
                 ),
               ),
               const SizedBox(width: AppUI.s8),
               Expanded(
-                child: FilledButton(
+                child: AppButton(
+                  label: 'Guardar',
                   onPressed: () => Navigator.of(ctx).pop(code),
-                  style: FilledButton.styleFrom(
-                      backgroundColor: AppTheme.primary,
-                      minimumSize: const Size(0, 48)),
-                  child: const Text('Guardar'),
                 ),
               ),
             ]),
@@ -307,7 +303,7 @@ class _SkuCompletionScreenState extends State<SkuCompletionScreen> {
       backgroundColor: Colors.white,
       shape: const RoundedRectangleBorder(
           borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
-      builder: (_) => _ManualCodeSheet(productName: row.name, prefill: prefill),
+      builder: (_) => SkuManualCodeSheet(productName: row.name, prefill: prefill),
     );
     if (confirmed != null && mounted) {
       await _assignCode(row, confirmed, generated: false);
@@ -318,16 +314,15 @@ class _SkuCompletionScreenState extends State<SkuCompletionScreen> {
 
   Widget _sheetFrame({required String title, required List<Widget> children}) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 20, 20, 24),
+      padding: const EdgeInsets.fromLTRB(
+          AppUI.s16, AppUI.s12, AppUI.s16, AppUI.s24),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          sheetHandle(),
           Text(title,
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
-                  fontSize: 18, fontWeight: FontWeight.w800, color: AppUI.ink)),
+              maxLines: 2, overflow: TextOverflow.ellipsis, style: AppUI.title),
           const SizedBox(height: AppUI.s16),
           ...children,
         ],
@@ -592,27 +587,24 @@ class _SkuCompletionScreenState extends State<SkuCompletionScreen> {
           const SizedBox(height: AppUI.s8),
           Row(children: [
             Expanded(
-              child: OutlinedButton(
+              child: AppButton(
+                label: 'Omitir',
+                variant: AppButtonVariant.secondary,
                 onPressed: () {
                   HapticFeedback.selectionClick();
                   setState(() => row.conflict = null);
                 },
-                style: OutlinedButton.styleFrom(minimumSize: const Size(0, 44)),
-                child: const Text('Omitir'),
               ),
             ),
             const SizedBox(width: AppUI.s8),
             Expanded(
-              child: FilledButton(
+              child: AppButton(
+                label: 'Corregir',
                 onPressed: () {
                   final code = c.code;
                   setState(() => row.conflict = null);
                   _typeManually(row, prefill: code);
                 },
-                style: FilledButton.styleFrom(
-                    backgroundColor: AppTheme.primary,
-                    minimumSize: const Size(0, 44)),
-                child: const Text('Corregir'),
               ),
             ),
           ]),
@@ -621,30 +613,51 @@ class _SkuCompletionScreenState extends State<SkuCompletionScreen> {
     );
   }
 
+  /// UNA fila horizontal de acciones compactas (icono + label corto), la
+  /// altura de tarjeta de los módulos hermanos (097/101). El estilo es
+  /// EXPLÍCITO completo (alto, texto, borde): el theme legacy de
+  /// OutlinedButton (64dp / 22px) no participa y nada se apila ni desborda
+  /// a 360dp.
   Widget _actions(_Row row) {
-    return Wrap(
-      spacing: AppUI.s8,
-      runSpacing: AppUI.s8,
-      children: [
-        _actionBtn(
+    return Row(children: [
+      Expanded(
+        child: _actionBtn(
             Icons.qr_code_scanner_rounded, 'Escanear', () => _scanOne(row)),
-        _actionBtn(Icons.auto_awesome, 'Generar', () => _generate(row)),
-        _actionBtn(
+      ),
+      const SizedBox(width: AppUI.s8),
+      Expanded(
+        child: _actionBtn(Icons.auto_awesome, 'Generar', () => _generate(row)),
+      ),
+      const SizedBox(width: AppUI.s8),
+      Expanded(
+        child: _actionBtn(
             Icons.keyboard_alt_outlined, 'Digitar', () => _typeManually(row)),
-      ],
-    );
+      ),
+    ]);
   }
 
   Widget _actionBtn(IconData icon, String label, VoidCallback onTap) {
-    return OutlinedButton.icon(
+    return OutlinedButton(
       onPressed: onTap,
-      icon: Icon(icon, size: 18),
-      label: Text(label),
       style: OutlinedButton.styleFrom(
         foregroundColor: AppTheme.primary,
+        minimumSize: const Size(0, 44),
+        padding: const EdgeInsets.symmetric(horizontal: AppUI.s4),
         side: BorderSide(color: AppTheme.primary.withValues(alpha: 0.4)),
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+        shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(AppUI.radius)),
+        textStyle: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(icon, size: 16),
+          const SizedBox(width: AppUI.s4),
+          Flexible(
+            child: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis),
+          ),
+        ],
       ),
     );
   }
@@ -681,101 +694,6 @@ class _SkuCompletionScreenState extends State<SkuCompletionScreen> {
                     backgroundColor: AppTheme.primary,
                     minimumSize: const Size(0, 48)),
                 child: const Text('Volver al inventario'),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-/// Hoja para digitar el código a mano. Es un StatefulWidget propio para que
-/// el TextEditingController viva y muera con la hoja (disponerlo desde la
-/// pantalla rompía el frame de cierre de la animación del bottom sheet).
-class _ManualCodeSheet extends StatefulWidget {
-  const _ManualCodeSheet({required this.productName, this.prefill});
-  final String productName;
-  final String? prefill;
-
-  @override
-  State<_ManualCodeSheet> createState() => _ManualCodeSheetState();
-}
-
-class _ManualCodeSheetState extends State<_ManualCodeSheet> {
-  late final TextEditingController _ctrl =
-      TextEditingController(text: widget.prefill ?? '');
-  String? _error;
-
-  @override
-  void dispose() {
-    _ctrl.dispose();
-    super.dispose();
-  }
-
-  /// Valida el código digitado (longitud/caracteres — NFR de seguridad) y
-  /// cierra la hoja devolviéndolo, o pinta el error en el campo.
-  void _submit() {
-    final code = _ctrl.text.trim();
-    if (code.isEmpty) return setState(() => _error = 'Digite el código.');
-    if (code.length < 4) {
-      return setState(
-          () => _error = 'Código muy corto (mínimo 4 caracteres).');
-    }
-    if (!RegExp(r'^[A-Za-z0-9\-]+$').hasMatch(code)) {
-      return setState(() => _error = 'Use solo letras, números y guiones.');
-    }
-    Navigator.of(context).pop(code);
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding:
-          EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(20, 20, 20, 24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('Código para "${widget.productName}"',
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.w800,
-                    color: AppUI.ink)),
-            const SizedBox(height: AppUI.s16),
-            TextField(
-              controller: _ctrl,
-              autofocus: true,
-              textInputAction: TextInputAction.done,
-              style: const TextStyle(fontSize: 20, letterSpacing: 1),
-              onSubmitted: (_) => _submit(),
-              decoration: InputDecoration(
-                hintText: 'Digite el código de barras…',
-                hintStyle: const TextStyle(fontSize: 17, color: AppUI.inkSoft),
-                errorText: _error,
-                filled: true,
-                fillColor: Colors.white,
-                border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(AppUI.radius),
-                    borderSide: const BorderSide(color: AppUI.border)),
-                enabledBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(AppUI.radius),
-                    borderSide: const BorderSide(color: AppUI.border)),
-              ),
-            ),
-            const SizedBox(height: AppUI.s12),
-            SizedBox(
-              width: double.infinity,
-              child: FilledButton(
-                onPressed: _submit,
-                style: FilledButton.styleFrom(
-                    backgroundColor: AppTheme.primary,
-                    minimumSize: const Size(0, 48)),
-                child: const Text('Guardar'),
               ),
             ),
           ],

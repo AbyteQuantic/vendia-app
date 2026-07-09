@@ -17,6 +17,7 @@ import 'package:vendia_pos/screens/inventory/sku_scan_session_screen.dart';
 import 'package:vendia_pos/services/api_service.dart';
 import 'package:vendia_pos/services/app_error.dart';
 import 'package:vendia_pos/services/auth_service.dart';
+import 'package:vendia_pos/theme/app_theme.dart';
 
 class _FakeApi extends ApiService {
   _FakeApi() : super(AuthService());
@@ -79,7 +80,9 @@ void main() {
   setUpAll(
       () => dotenv.testLoad(fileInput: 'API_BASE_URL=http://localhost:8080'));
 
-  Widget wrap(Widget child) => MaterialApp(home: child);
+  // Theme REAL de la app: así el theme legacy de botones (64dp/22px) queda
+  // bajo prueba y la tarjeta compacta no puede regresar a botones gigantes.
+  Widget wrap(Widget child) => MaterialApp(theme: AppTheme.light, home: child);
 
   group('T-16 — lista, tarjetas y estado de éxito', () {
     testWidgets('lista solo los productos recibidos con precio y 3 acciones',
@@ -339,6 +342,75 @@ void main() {
       await tester.pump();
 
       expect(find.text('Modo ráfaga'), findsNothing);
+    });
+  });
+
+  group('UI normalizada — tarjeta compacta a 360dp', () {
+    Future<void> pumpAt360(WidgetTester tester, Widget child) async {
+      tester.view.physicalSize = const Size(360, 740);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+      await tester.pumpWidget(wrap(child));
+      await tester.pump();
+    }
+
+    testWidgets('nombre largo: cero overflow y las 3 acciones en UNA fila '
+        'con tap target ≥ 44dp', (tester) async {
+      final api = _FakeApi();
+      await pumpAt360(
+          tester,
+          SkuCompletionScreen(apiOverride: api, products: [
+            _p('1',
+                'Chocolatina de maní con leche entera edición especial 500 g'),
+            _p('2', 'Panela'),
+          ]));
+
+      expect(tester.takeException(), isNull); // cero overflow a 360dp
+
+      // Las 3 acciones comparten UN renglón (fila compacta, no apiladas).
+      final dyEscanear = tester.getCenter(find.text('Escanear').first).dy;
+      final dyGenerar = tester.getCenter(find.text('Generar').first).dy;
+      final dyDigitar = tester.getCenter(find.text('Digitar').first).dy;
+      expect(dyGenerar, moreOrLessEquals(dyEscanear, epsilon: 1.0));
+      expect(dyDigitar, moreOrLessEquals(dyEscanear, epsilon: 1.0));
+
+      // Tap target ≥ 44dp (HIG/Material) pese al estilo compacto.
+      final btn = find
+          .ancestor(
+              of: find.text('Escanear').first,
+              matching: find.byType(OutlinedButton))
+          .first;
+      expect(tester.getSize(btn).height, greaterThanOrEqualTo(44));
+      // Y nada de botones gigantes del theme legacy (64dp full-width).
+      expect(tester.getSize(btn).width, lessThan(200));
+    });
+
+    testWidgets('tarjeta de conflicto y hoja de Generar sin overflow a 360dp',
+        (tester) async {
+      final api = _FakeApi()
+        ..ownersByCode['7591'] = {
+          'id': 'otro',
+          'name': 'Coca-Cola 350ml retornable edición aniversario',
+          'presentation': 'Botella',
+        };
+      await pumpAt360(
+          tester,
+          SkuCompletionScreen(apiOverride: api, products: [
+            _p('1', 'Arroz Diana premium grano largo 5 libras'),
+          ]));
+
+      await _digitar(tester, '7591');
+      expect(find.text('Omitir'), findsOneWidget);
+      expect(find.text('Corregir'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+
+      await tester.tap(find.text('Omitir'));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Generar'));
+      await tester.pumpAndSettle();
+      expect(find.text('Generar otro'), findsOneWidget);
+      expect(tester.takeException(), isNull);
     });
   });
 }
