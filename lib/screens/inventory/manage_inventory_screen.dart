@@ -90,13 +90,37 @@ bool isMissingSkuPhysical(Map<String, dynamic> p) {
   return (p['barcode'] as String? ?? '').trim().isEmpty;
 }
 
-/// Spec 101 (FR-01/FR-02, AC-01): un producto tiene la "foto sin retocar" si
-/// su foto ACTUAL es una subida propia del tenant que no pasó por Mejorar
-/// con IA ni fue generada. El patrón de la URL decide (mismo criterio que el
-/// backend): la foto propia vive en `products/<tenantId>/…`; el sufijo
-/// `-enhanced` la marca como mejorada y `-generated` como creada con IA.
-/// Exclusiones: sin foto (eso es "Sin imagen"), foto del catálogo compartido
-/// (otra ruta), `is_ai_enhanced` y `photo_is_sample` (muestra IA de platos).
+/// Reconoce las claves de NUESTRO storage de fotos de producto: siempre
+/// `products/<tenantUUID>/…` (así las sube el backend, sea al bucket R2
+/// público o a Supabase storage). Las URLs externas de enriquecimiento por
+/// barcode (OpenFoodFacts usa segmentos numéricos, VTEX usa /arquivos/ids/)
+/// nunca traen un UUID tras `products/`. Mismo criterio que el backend
+/// (`services.isVendiaStorageURL`) — mantener ambos idénticos (Spec 101).
+final RegExp _vendiaStorageProductPath = RegExp(
+  r'products/[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}'
+  r'-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}/',
+);
+
+bool _isVendiaStorageUrl(String url) {
+  final lower = url.toLowerCase();
+  return lower.contains('.supabase.co/storage/') ||
+      lower.contains('.r2.cloudflarestorage.com/') ||
+      _vendiaStorageProductPath.hasMatch(url);
+}
+
+/// Spec 101 (FR-01/FR-02, AC-01 + ajuste fotos externas): un producto tiene
+/// la "foto sin retocar" si su foto ACTUAL no pasó por Mejorar con IA ni fue
+/// generada, y es propia del tenant O EXTERNA. El patrón de la URL decide
+/// (mismo criterio que el backend, `IsProductRetouchEligible`):
+/// - propia = `products/<tenantId>/…` → elegible;
+/// - externa (enriquecimiento por barcode — OpenFoodFacts, VTEX — fuera de
+///   nuestro storage) → elegible: suele venir cruda y merece retoque;
+/// - catálogo compartido VendIA (nuestro storage bajo el path de OTRO
+///   tenant, curada) → NO elegible;
+/// - sufijo `-enhanced` (mejorada) o `-generated` (creada con IA) → NO.
+/// Exclusiones: sin foto (eso es "Sin imagen"), `is_ai_enhanced`,
+/// `photo_is_sample` (muestra IA de platos) e `is_draft` (borradores que el
+/// tendero nunca guardó — el backend también los excluye).
 ///
 /// Función pura de nivel de archivo para testearla sin montar el widget —
 /// mismo criterio que [isMissingSkuPhysical]. Sin [tenantId] conocido no se
@@ -107,13 +131,16 @@ bool isPhotoUnretouched(Map<String, dynamic> p, {required String tenantId}) {
   if (t.isEmpty) return false;
   if (p['is_ai_enhanced'] == true) return false;
   if (p['photo_is_sample'] == true) return false;
+  if (p['is_draft'] == true) return false;
   final photo = (p['photo_url'] as String? ?? '').trim();
   final image = (p['image_url'] as String? ?? '').trim();
   final url = photo.isNotEmpty ? photo : image;
   if (url.isEmpty) return false;
-  if (!url.contains('products/$t/')) return false;
   if (url.contains('-enhanced') || url.contains('-generated')) return false;
-  return true;
+  if (url.contains('products/$t/')) return true; // foto propia cruda
+  // Externa (fuera de nuestro storage) → elegible; storage de otro tenant
+  // (catálogo compartido curado) → no.
+  return !_isVendiaStorageUrl(url);
 }
 
 /// Spec 102 (FR-01, AC-01): un producto está "sin categoría" si su categoría
