@@ -1,7 +1,7 @@
 name: vendia_pos
 description: VendIA — POS inteligente para tenderos colombianos
 publish_to: 'none'
-version: 2.0.0+1
+version: 2.0.0+2
 
 environment:
   sdk: '>=3.3.0 <4.0.0'

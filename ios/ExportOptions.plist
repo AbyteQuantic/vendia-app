@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Opciones de exportación del IPA de VendIA para subir a App Store Connect.
+  Se usa con:  flutter build ipa --export-options-plist=ios/ExportOptions.plist
+  Requiere un Mac con Xcode + cuenta Apple Developer. Ver frontend/RELEASE.md.
+  No toca certificados: la firma es automática (Xcode gestiona el perfil).
+-->
+<plist version="1.0">
+<dict>
+    <key>method</key>
+    <string>app-store</string>
+
+    <key>teamID</key>
+    <string>4534FQ59N9</string>
+
+    <key>signingStyle</key>
+    <string>automatic</string>
+
+    <key>uploadBitcode</key>
+    <false/>
+
+    <key>uploadSymbols</key>
+    <true/>
+
+    <key>destination</key>
+    <string>export</string>
+</dict>
+</plist>
