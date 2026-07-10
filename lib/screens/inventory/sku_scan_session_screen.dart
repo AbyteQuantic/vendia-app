@@ -359,8 +359,14 @@ class _SkuScanSessionScreenState extends State<SkuScanSessionScreen> {
 
   Widget _cameraPane() {
     if (kIsWeb) {
+      // Auditoría 2026-07-10: cableado a _onCameraCode (NO _handleCode) para
+      // que el guard de _lastCode también aplique en web — el scanner HTML
+      // reanuda tras el flash y, si el tendero no ha retirado la cámara del
+      // paquete, re-emite el MISMO código: sin el guard, redisparaba contra
+      // el producto SIGUIENTE y pintaba un conflicto falso ("ya es de X"),
+      // rompiendo la ráfaga (FR-12) en vendia.store.
       return Html5QrcodeScannerWidget(
-        onDetected: _handleCode,
+        onDetected: _onCameraCode,
         visibility: _webScannerVisible,
       );
     }

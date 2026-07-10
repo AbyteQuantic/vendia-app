@@ -14,6 +14,9 @@ class _FakeApi extends ApiService {
   final Map<String, CatalogSuggestion> _suggestions;
   final List<MapEntry<String, Map<String, dynamic>>> patched = [];
 
+  /// IDs de producto cuyo updateProduct falla (simula red intermitente).
+  final Set<String> failingIds = {};
+
   @override
   Future<Map<String, CatalogSuggestion>> fetchCatalogReferencePhotos(
       List<String> barcodes) async {
@@ -26,6 +29,7 @@ class _FakeApi extends ApiService {
   @override
   Future<Map<String, dynamic>> updateProduct(
       String id, Map<String, dynamic> data) async {
+    if (failingIds.contains(id)) throw Exception('timeout');
     patched.add(MapEntry(id, data));
     return {'id': id, ...data};
   }
@@ -149,6 +153,43 @@ void main() {
 
     expect(api.patched.length, 2);
     expect(find.text('2 de 2 con foto'), findsOneWidget);
+  });
+
+  testWidgets('"Usar todas" con fallos parciales: informa cuántas fallaron '
+      '(nada de silencio) y la sugerencia fallida sigue disponible',
+      (tester) async {
+    // Auditoría 2026-07-10: cada fallo del lote se tragaba en silencio —
+    // el tendero tocaba "Usar todas las sugeridas (3)", la red fallaba a
+    // mitad y no había NINGUNA señal de que quedaron fotos sin guardar.
+    final api = _FakeApi({
+      '111': const CatalogSuggestion(imageUrl: 'https://r2/a.jpg', verified: true),
+      '222': const CatalogSuggestion(imageUrl: 'https://off/b.jpg', verified: false),
+      '333': const CatalogSuggestion(imageUrl: 'https://r2/c.jpg', verified: true),
+    })
+      ..failingIds.add('2');
+    await tester.pumpWidget(wrap(PhotoCompletionScreen(
+      apiOverride: api,
+      products: [
+        _p('1', 'A', barcode: '111'),
+        _p('2', 'B', barcode: '222'),
+        _p('3', 'C', barcode: '333'),
+      ],
+    )));
+    await tester.pump();
+    await tester.pump();
+
+    await tester.tap(find.textContaining('Usar todas las sugeridas'));
+    await tester.pump();
+    await tester.pump();
+    await tester.pump();
+
+    // Las 2 que sí pasaron quedaron aplicadas; la fallida NO se marcó.
+    expect(api.patched.length, 2);
+    expect(find.text('2 de 3 con foto'), findsOneWidget);
+    // Aviso honesto del fallo parcial (el contador nunca miente).
+    expect(find.textContaining('1 no se pudo guardar'), findsOneWidget);
+    // La sugerencia fallida sigue ahí para reintentar con "Usar".
+    expect(find.text('Usar'), findsOneWidget);
   });
 
   testWidgets('UI normalizada: a 360dp cero overflow y acciones compactas '

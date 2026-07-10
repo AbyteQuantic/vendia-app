@@ -460,6 +460,60 @@ void main() {
     expect(find.text('Confirmar'), findsOneWidget);
   });
 
+  testWidgets('un poll en vuelo al Cancelar lote NO resucita el banner del '
+      'lote cancelado', (tester) async {
+    // Auditoría 2026-07-10: cancelar invalida los polls en vuelo (bump de
+    // _pollSeq) — antes, la respuesta vieja (lote aún "running") llegaba
+    // después del cancel y re-pintaba el banner de progreso + re-armaba el
+    // polling de un lote que ya no existe.
+    final api = _SequencedApi();
+    await tester.pumpWidget(MaterialApp(
+      theme: AppTheme.light,
+      home: RetouchCompletionScreen(
+        products: _twoProducts(),
+        apiOverride: api,
+        pollInterval: const Duration(minutes: 5),
+      ),
+    ));
+    await tester.pump();
+
+    Map<String, dynamic> running() => {
+          'eligible_count': 2,
+          'active_batch': {
+            'id': 'b1',
+            'status': 'running',
+            'queued': 2,
+            'processed': 0,
+            'failed': 0,
+            'ready_for_review': 0,
+          },
+          'review_items': <Map<String, dynamic>>[],
+        };
+
+    // Summary inicial: lote corriendo → banner visible.
+    api.pending[0].complete(running());
+    await tester.pump();
+    await tester.pump();
+    expect(find.text('Cancelar lote'), findsOneWidget);
+
+    // Se arma otro poll (p. ej. tras encolar) y QUEDA EN VUELO…
+    await tester.tap(find.text('Mejorar foto').first);
+    await tester.pump();
+    // …el tendero cancela el lote mientras tanto.
+    await tester.tap(find.text('Cancelar lote'));
+    await tester.pump();
+    await tester.pump();
+    expect(api.cancelCalls, ['b1']);
+    expect(find.text('Cancelar lote'), findsNothing);
+
+    // El poll viejo llega tarde con el lote aún "running": debe ignorarse.
+    api.pending[1].complete(running());
+    await tester.pump();
+    await tester.pump();
+    expect(find.text('Cancelar lote'), findsNothing,
+        reason: 'la respuesta vieja no debe resucitar el lote cancelado');
+  });
+
   testWidgets('doble toque en Confirmar manda UNA sola petición (busy guard)',
       (tester) async {
     final api = _FakeApi();
@@ -479,6 +533,104 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(api.confirmCalls.length, 1);
+  });
+
+  testWidgets('si el summary INICIAL falla, el polling reintenta y el lote '
+      'de otra sesión aparece al recuperarse la red (AC-09)', (tester) async {
+    // Auditoría 2026-07-10: _scheduleNextPoll cortaba el polling cuando
+    // _batch == null — pero tras un fallo del PRIMER fetch (cold start de
+    // Render, señal intermitente) aún no se sabe si hay lote: el lote
+    // encolado desde otro dispositivo jamás aparecía sin salir y volver.
+    final api = _FakeApi();
+    api.summaryFails = true;
+    api.summary = {
+      'eligible_count': 2,
+      'active_batch': {
+        'id': 'b9',
+        'status': 'running',
+        'queued': 3,
+        'processed': 1,
+        'failed': 0,
+        'ready_for_review': 1,
+      },
+      'review_items': [
+        _reviewItem('i1', '1', 'Arroz Diana', _raw1, _cand1),
+      ],
+    };
+    await tester.pumpWidget(MaterialApp(
+      theme: AppTheme.light,
+      home: RetouchCompletionScreen(
+        products: _twoProducts(),
+        apiOverride: api,
+        pollInterval: const Duration(seconds: 10),
+      ),
+    ));
+    await tester.pump();
+    await tester.pump();
+    expect(api.summaryCalls, 1); // el fetch inicial falló
+
+    // Vuelve la señal: el reintento (con backoff 2x tras 1 fallo) debe
+    // llegar solo, sin que el tendero salga y vuelva a entrar.
+    api.summaryFails = false;
+    await tester.pump(const Duration(seconds: 20));
+    await tester.pump();
+    expect(api.summaryCalls, 2);
+    expect(find.textContaining('1 lista'), findsOneWidget);
+    expect(find.text('Confirmar'), findsOneWidget);
+  });
+
+  testWidgets('entrada solo-revisión (lista vacía): NO muestra la '
+      'celebración mientras el primer summary está en vuelo', (tester) async {
+    // Auditoría 2026-07-10: al entrar desde el chip "Fotos por revisar (N)"
+    // la vista llega con products=[] y los ítems viven en el servidor. Antes
+    // pintaba "¡Fotos impecables!" (contador mintiendo) hasta que el summary
+    // resolvía.
+    final api = _SequencedApi();
+    await tester.pumpWidget(MaterialApp(
+      theme: AppTheme.light,
+      home: RetouchCompletionScreen(
+        products: const [],
+        apiOverride: api,
+        pollInterval: const Duration(minutes: 5),
+      ),
+    ));
+    await tester.pump();
+
+    // Summary en vuelo: nada de celebración; un indicador de carga honesto.
+    expect(find.text('¡Fotos impecables!'), findsNothing);
+    expect(find.byType(CircularProgressIndicator), findsOneWidget);
+
+    api.pending.single.complete({
+      'eligible_count': 0,
+      'active_batch': null,
+      'review_items': [
+        _reviewItem('i1', '1', 'Arroz Diana', _raw1, _cand1),
+      ],
+    });
+    await tester.pump();
+    await tester.pump();
+    expect(find.text('Confirmar'), findsOneWidget);
+    expect(find.text('¡Fotos impecables!'), findsNothing);
+  });
+
+  testWidgets('entrada solo-revisión con TODO al día: la celebración sí '
+      'aparece cuando el summary confirma que no hay nada', (tester) async {
+    final api = _SequencedApi();
+    await tester.pumpWidget(MaterialApp(
+      theme: AppTheme.light,
+      home: RetouchCompletionScreen(
+        products: const [],
+        apiOverride: api,
+        pollInterval: const Duration(minutes: 5),
+      ),
+    ));
+    await tester.pump();
+    expect(find.text('¡Fotos impecables!'), findsNothing);
+
+    api.pending.single.complete(_emptySummary());
+    await tester.pump();
+    await tester.pump();
+    expect(find.text('¡Fotos impecables!'), findsOneWidget);
   });
 
   testWidgets('el polling hace backoff cuando el summary falla '

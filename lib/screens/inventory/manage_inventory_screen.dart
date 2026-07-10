@@ -168,6 +168,15 @@ class _ManageInventoryScreenState extends State<ManageInventoryScreen>
   String? _error;
   bool _filterNoPrice = false;
 
+  /// Guard de secuencia de [_loadProducts] (auditoría 2026-07-10): con dos
+  /// cargas en vuelo (cambio de sede mientras la carga inicial no responde,
+  /// pull-to-refresh + recarga al volver de una vista de curaduría), la
+  /// respuesta VIEJA podía llegar de última y pisar la lista con los
+  /// productos de la sede anterior — el inventario visible divergía del
+  /// servidor. Solo la request más NUEVA aplica su resultado (mismo patrón
+  /// que el polling de RetouchCompletionScreen, review HIGH-2).
+  int _loadSeq = 0;
+
   @override
   void initState() {
     super.initState();
@@ -244,6 +253,7 @@ class _ManageInventoryScreenState extends State<ManageInventoryScreen>
   }
 
   Future<void> _loadProducts() async {
+    final seq = ++_loadSeq;
     setState(() {
       _loading = true;
       _error = null;
@@ -263,7 +273,9 @@ class _ManageInventoryScreenState extends State<ManageInventoryScreen>
       // recorre todas las páginas (mismo patrón que cart_controller.dart
       // ya aplica para el POS, Spec 088).
       final products = await _api.fetchAllProducts(sellableOnly: true);
-      if (!mounted) return;
+      // Respuesta vieja (ya hay una carga más nueva en vuelo o aplicada):
+      // se descarta sin tocar el estado.
+      if (!mounted || seq != _loadSeq) return;
       setState(() {
         _products = products;
         // PERF: contar SKU/precio faltantes una vez al cargar (no por build).
@@ -298,7 +310,9 @@ class _ManageInventoryScreenState extends State<ManageInventoryScreen>
         }
       }
     } catch (e) {
-      if (!mounted) return;
+      // El fallo de una carga VIEJA tampoco pisa la lista sana de la carga
+      // más nueva (p. ej. el timeout tardío de la sede anterior).
+      if (!mounted || seq != _loadSeq) return;
       setState(() {
         _error = 'Error al cargar inventario';
         _loading = false;
