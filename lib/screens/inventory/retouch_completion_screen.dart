@@ -120,6 +120,12 @@ class _RetouchCompletionScreenState extends State<RetouchCompletionScreen> {
   Timer? _pollTimer;
   int _pollFailures = 0;
 
+  /// El PRIMER summary (éxito o fallo) ya resolvió. Antes de eso, una
+  /// entrada solo-revisión (products=[] con los ítems en el servidor) no
+  /// puede pintar la celebración "¡Fotos impecables!" — sería el contador
+  /// mintiendo mientras el fetch está en vuelo (auditoría 2026-07-10).
+  bool _bootstrapped = false;
+
   /// Guard de secuencia del polling: cada fetch toma un token creciente y
   /// un resultado que llega TARDE (ya hay una request más nueva en vuelo o
   /// aplicada) se descarta — sin esto, una respuesta vieja pisaba el estado
@@ -199,11 +205,13 @@ class _RetouchCompletionScreenState extends State<RetouchCompletionScreen> {
       // El progreso es informativo: un poll fallido no interrumpe al tendero
       // con un banner; el siguiente intento llega con backoff.
       if (!mounted || seq != _pollSeq) return;
+      setState(() => _bootstrapped = true);
       _pollFailures++;
       _scheduleNextPoll();
       return;
     } catch (_) {
       if (!mounted || seq != _pollSeq) return;
+      setState(() => _bootstrapped = true);
       _pollFailures++;
       _scheduleNextPoll();
       return;
@@ -212,7 +220,10 @@ class _RetouchCompletionScreenState extends State<RetouchCompletionScreen> {
     // este resultado es viejo → se descarta sin tocar el estado.
     if (!mounted || seq != _pollSeq) return;
     _pollFailures = 0;
-    setState(() => _applySummary(summary, items));
+    setState(() {
+      _bootstrapped = true;
+      _applySummary(summary, items);
+    });
     _scheduleNextPoll();
   }
 
@@ -253,7 +264,14 @@ class _RetouchCompletionScreenState extends State<RetouchCompletionScreen> {
 
   void _scheduleNextPoll() {
     _pollTimer?.cancel();
-    if (!mounted || _batch == null) return;
+    if (!mounted) return;
+    // Con lote activo se sigue el progreso. Sin lote CONOCIDO solo se corta
+    // el polling cuando el último fetch fue un ÉXITO (el servidor confirmó
+    // que no hay lote); tras un fallo aún no se sabe — sin este reintento,
+    // un cold start / red intermitente en el PRIMER fetch mataba el polling
+    // y el lote encolado en otra sesión jamás aparecía (AC-09, auditoría
+    // 2026-07-10).
+    if (_batch == null && _pollFailures == 0) return;
     // Backoff suave: 1x → 2x → 4x el intervalo base, con tope de 60 s.
     final base = widget.pollInterval;
     final factor = 1 << _pollFailures.clamp(0, 3);
@@ -446,6 +464,10 @@ class _RetouchCompletionScreenState extends State<RetouchCompletionScreen> {
     try {
       await _api.cancelRetouchBatch(id);
       if (!mounted) return;
+      // Invalida cualquier poll EN VUELO: su respuesta (lote aún "running")
+      // llegaría después del cancel y resucitaría el banner + el polling de
+      // un lote que ya no existe (auditoría 2026-07-10).
+      _pollSeq++;
       setState(() {
         _batch = null;
         for (final r in _rows) {
@@ -548,7 +570,13 @@ class _RetouchCompletionScreenState extends State<RetouchCompletionScreen> {
         elevation: 0,
         title: const Text('Retocar fotos'),
       ),
-      body: _allDone ? _allDoneView() : _content(),
+      // La celebración solo cuando el servidor ya CONFIRMÓ que no hay nada
+      // (primer summary resuelto); antes, un indicador de carga honesto.
+      body: _allDone
+          ? (_bootstrapped
+              ? _allDoneView()
+              : const Center(child: CircularProgressIndicator()))
+          : _content(),
     );
   }
 

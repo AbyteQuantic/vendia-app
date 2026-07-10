@@ -133,6 +133,8 @@ class _PhotoCompletionScreenState extends State<PhotoCompletionScreen> {
   Future<void> _useAllSuggestions() async {
     if (_applyingAll) return;
     setState(() => _applyingAll = true);
+    var ok = 0;
+    var failed = 0;
     // Secuencial para no golpear el backend; cada fallo NO frena el resto.
     for (final row in _rows.where((r) => r.showSuggestion).toList()) {
       final s = row.suggestion;
@@ -141,14 +143,31 @@ class _PhotoCompletionScreenState extends State<PhotoCompletionScreen> {
       try {
         await _api.updateProduct(row.id, {'image_url': s.imageUrl});
         if (!mounted) return;
+        ok++;
         setState(() => row.assignedUrl = s.imageUrl);
       } catch (_) {
-        // se deja para reintento manual
+        // La sugerencia queda disponible para reintento manual; el fallo
+        // se cuenta y se INFORMA al final (auditoría 2026-07-10: antes se
+        // tragaba en silencio y el tendero no sabía que quedaron fotos sin
+        // guardar).
+        failed++;
       } finally {
         if (mounted) setState(() => row.busy = false);
       }
     }
-    if (mounted) setState(() => _applyingAll = false);
+    if (!mounted) return;
+    setState(() => _applyingAll = false);
+    // Resumen honesto del lote (fallos parciales incluidos).
+    if (failed > 0) {
+      _toast(
+        ok > 0
+            ? '$ok foto${ok == 1 ? '' : 's'} aplicada${ok == 1 ? '' : 's'}; '
+                '$failed no se ${failed == 1 ? 'pudo' : 'pudieron'} guardar. '
+                'Puede reintentar con "Usar".'
+            : 'No se pudo guardar. Revise su conexión e intente de nuevo.',
+        error: true,
+      );
+    }
   }
 
   Future<void> _generateAi(_Row row) async {
