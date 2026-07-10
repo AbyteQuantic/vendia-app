@@ -9,6 +9,7 @@ import '../../widgets/turnstile_captcha.dart';
 import '../auth/login_screen.dart';
 import 'post_login_gate.dart';
 import 'onboarding_stepper_controller.dart';
+import 'register_session.dart';
 import 'agentic/onboarding_agentic_animated_view.dart';
 import 'steps/step_owner.dart';
 import 'steps/step_business.dart';
@@ -43,39 +44,17 @@ class OnboardingStepperScreen extends StatelessWidget {
         },
         saveSession: (data) async {
           // Wipe local Isar data if switching to a different tenant.
-          final tenantId = (data['tenant_id'] ?? data['tenant']?['id'] ?? '').toString();
+          final tenantId = (data['tenant_id'] ?? '').toString();
           await DatabaseService.instance.clearIfTenantChanged(tenantId);
 
-          // Backend returns feature_flags + business_types at the root
-          // of the register/login response (migration 021). Fold them
-          // into both the tenant map and the legacy path so the
-          // dashboard can read them on first launch.
-          final featureFlags =
-              (data['feature_flags'] as Map<String, dynamic>?);
-          final businessTypes = (data['business_types'] as List?)
-              ?.whereType<String>()
-              .toList();
-
-          if (data.containsKey('access_token')) {
-            final tenant = Map<String, dynamic>.from(
-                (data['tenant'] as Map<String, dynamic>?) ?? {});
-            if (featureFlags != null) tenant['feature_flags'] = featureFlags;
-            if (businessTypes != null) tenant['business_types'] = businessTypes;
-            await auth.saveSession(
-              accessToken: data['access_token'] as String,
-              refreshToken: data['refresh_token'] as String? ?? '',
-              tenant: tenant,
-            );
-          } else {
-            await auth.saveLegacySession(
-              token: data['token'] as String,
-              tenantId: data['tenant_id'].toString(),
-              ownerName: data['owner_name'] as String,
-              businessName: data['business_name'] as String,
-              featureFlags: featureFlags,
-              businessTypes: businessTypes,
-            );
-          }
+          // Fix 101-retouch-401: la respuesta del register es
+          // workspace-shape (AuthResponse: tenant_id/owner_name/… TOP-LEVEL,
+          // sin mapa `tenant`). El parseo viejo (`data['tenant']` → `{}`)
+          // persistía tenant_id VACÍO y rompía todo flujo dependiente del
+          // tenant local (chip "Fotos sin retocar", Spec 101, entre otros).
+          // persistRegisterSession parsea el contrato real, con paridad
+          // total con login_screen.dart (incluye fold Spec 051).
+          await persistRegisterSession(auth, data);
         },
       ),
       // Spec 045 — la cara del onboarding es ahora la Agentic UI (premium,

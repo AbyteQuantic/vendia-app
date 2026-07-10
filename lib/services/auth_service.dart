@@ -237,7 +237,18 @@ class AuthService {
       );
 
   Future<String?> getTenantId() async {
-    return _storage.read(key: _keyTenantId);
+    final stored = await _storage.read(key: _keyTenantId);
+    if (stored != null && stored.trim().isNotEmpty) return stored;
+    // Auto-reparación (fix 101-retouch-401): el registro workspace-shape
+    // persistía tenant_id VACÍO (parseaba un mapa `tenant` inexistente).
+    // Las sesiones que quedaron así en producción se reparan solas: el
+    // claim `tenant_id` del JWT (que el backend ya validó al emitirlo) es
+    // la fuente de verdad; se re-persiste para que la siguiente lectura
+    // sea directa. Sin JWT o sin claim, se devuelve lo guardado.
+    final claim = tenantIdFromJwt(await getToken());
+    if (claim.isEmpty) return stored;
+    await _storage.write(key: _keyTenantId, value: claim);
+    return claim;
   }
 
   /// Check if user has active session.
@@ -537,4 +548,26 @@ class FeatureFlags {
         // Spec 084 — comisiones/liquidación a profesionales.
         enableStaffCommissions: json['enable_staff_commissions'] == true,
       );
+}
+
+/// Extrae el claim `tenant_id` de un JWT SIN validar la firma — la firma la
+/// valida el backend en cada request; aquí solo se lee el payload para la
+/// auto-reparación de [AuthService.getTenantId]. Devuelve `''` si el token
+/// es nulo, malformado o no trae el claim (p. ej. tokens legacy).
+String tenantIdFromJwt(String? token) {
+  if (token == null || token.isEmpty) return '';
+  final parts = token.split('.');
+  if (parts.length != 3) return '';
+  try {
+    final payload =
+        utf8.decode(base64Url.decode(base64Url.normalize(parts[1])));
+    final decoded = jsonDecode(payload);
+    if (decoded is Map<String, dynamic>) {
+      final v = decoded['tenant_id'];
+      if (v is String) return v.trim();
+    }
+  } catch (_) {
+    // Payload ilegible: no hay claim que rescatar.
+  }
+  return '';
 }
