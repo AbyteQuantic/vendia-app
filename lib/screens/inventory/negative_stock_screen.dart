@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import '../../widgets/product_image.dart';
 
 import '../../database/collections/local_product.dart';
 import '../../database/database_service.dart';
@@ -366,12 +367,15 @@ class _NegativeStockTile extends StatelessWidget {
                 width: 48,
                 height: 48,
                 color: Colors.white,
-                child: img != null && img.isNotEmpty
-                    ? Image.network(img, fit: BoxFit.contain,
-                        cacheWidth: 144, cacheHeight: 144, // PERF: decode a tamaño
-                        errorBuilder: (_, __, ___) =>
-                            const Icon(Icons.inventory_2_outlined, color: AppUI.inkSoft))
-                    : const Icon(Icons.inventory_2_outlined, color: AppUI.inkSoft),
+                // Spec 090: miniatura redimensionada de Supabase + caché en disco.
+                child: ProductImage(
+                  url: img,
+                  width: 48,
+                  height: 48,
+                  fit: BoxFit.contain,
+                  placeholder: const Icon(Icons.inventory_2_outlined,
+                      color: AppUI.inkSoft),
+                ),
               ),
             ),
             const SizedBox(width: AppUI.s12),

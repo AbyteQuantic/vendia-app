@@ -1,0 +1,26 @@
+# Plantilla del keystore de firma de release de Android (VendIA).
+#
+# CÓMO USAR (lo hace el FUNDADOR, no se sube a git):
+#   1. Copie este archivo a `android/key.properties`:
+#        cp android/key.properties.example android/key.properties
+#   2. Rellene los 4 valores de abajo con los de SU upload keystore.
+#   3. Guarde su contraseña en un gestor seguro. Si la pierde, no puede volver
+#      a firmar actualizaciones con el mismo keystore.
+#
+# `key.properties`, `*.jks` y `*.keystore` YA están en .gitignore: NUNCA se
+# suben al repositorio. Este `.example` sí se versiona (no lleva secretos).
+#
+# Pasos completos para generar el keystore y publicar: ver frontend/RELEASE.md
+
+# Contraseña del almacén de llaves (keystore).
+storePassword=CAMBIAR_POR_TU_CONTRASENA_DE_KEYSTORE
+
+# Contraseña de la llave (alias). Suele ser la misma que la del keystore.
+keyPassword=CAMBIAR_POR_TU_CONTRASENA_DE_LLAVE
+
+# Alias de la llave (el que usó en `keytool -alias`). Recomendado: vendia
+keyAlias=vendia
+
+# Ruta al archivo .jks. Puede ser absoluta (recomendado, fuera del repo) o
+# relativa a la carpeta android/. Ejemplo absoluto: /Users/tu-usuario/vendia-upload.jks
+storeFile=/ruta/absoluta/a/vendia-upload.jks

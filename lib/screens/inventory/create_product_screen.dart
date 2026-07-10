@@ -26,6 +26,7 @@ import '../../utils/sku_generator.dart';
 import '../../widgets/ai_instruction_dialog.dart';
 import '../../widgets/ai_photo_options_sheet.dart';
 import '../../widgets/catalog_photo_suggestion.dart';
+import '../../widgets/product_image.dart';
 import '../../theme/app_ui.dart';
 import '../../widgets/advanced_product_options.dart';
 import '../../widgets/branch_selector_drawer.dart';
@@ -336,13 +337,15 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
                 width: 48,
                 height: 48,
                 color: AppUI.hairline,
-                child: s.imageUrl != null && s.imageUrl!.isNotEmpty
-                    ? Image.network(s.imageUrl!,
-                        width: 48,
-                        height: 48,
-                        fit: BoxFit.contain,
-                        errorBuilder: (_, __, ___) => _suggestionPlaceholder())
-                    : _suggestionPlaceholder(),
+                // Spec 090: miniatura redimensionada de Supabase (si es propia)
+                // + caché en disco; externas quedan intactas.
+                child: ProductImage(
+                  url: s.imageUrl,
+                  width: 48,
+                  height: 48,
+                  fit: BoxFit.contain,
+                  placeholder: _suggestionPlaceholder(),
+                ),
               ),
             ),
             const SizedBox(width: 12),
