@@ -8,6 +8,7 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import '../theme/app_theme.dart';
+import '../utils/supabase_image.dart';
 
 class ProductImage extends StatelessWidget {
   const ProductImage({
@@ -31,8 +32,16 @@ class ProductImage extends StatelessWidget {
   Widget build(BuildContext context) {
     final ph = placeholder ?? _defaultPlaceholder();
     if (url == null || url!.isEmpty) return ph;
+    // Spec 090: si la foto vive en NUESTRO Supabase Storage, pide una
+    // miniatura redimensionada (≈10× menos bytes) en vez del PNG original.
+    // Fotos externas / R2 / ya-transformadas se dejan intactas.
+    final resolvedUrl = optimizedProductImageUrl(
+      url,
+      width: width,
+      height: height,
+    );
     return CachedNetworkImage(
-      imageUrl: url!,
+      imageUrl: resolvedUrl,
       height: height,
       width: width,
       fit: fit,
