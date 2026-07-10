@@ -1,12 +1,15 @@
 // Spec: specs/101-retocar-fotos-inventario/spec.md (T-20/T-21, FR-01, FR-02,
-// FR-03, AC-01, AC-02, AC-07)
+// FR-03, AC-01, AC-02, AC-07 + ajuste fotos externas)
 //
-// Predicado público "foto sin retocar": tiene foto propia (URL en
-// `products/<tenantId>/`) que NO pasó por Mejorar con IA (`-enhanced`), no es
-// generada (`-generated`), no está marcada `is_ai_enhanced` ni es muestra IA
-// (`photo_is_sample`). El chip "Fotos sin retocar (N)" cuenta al cargar y
-// navega a la vista dedicada; con revisión pendiente (summary del backend)
-// cambia a "Fotos por revisar (N)".
+// Predicado público "foto sin retocar": tiene foto efectiva que NO pasó por
+// Mejorar con IA (`-enhanced`), no es generada (`-generated`), no está
+// marcada `is_ai_enhanced` ni es muestra IA (`photo_is_sample`), y es propia
+// (`products/<tenantId>/`) O EXTERNA (enriquecimiento por barcode —
+// OpenFoodFacts, VTEX — fuera de nuestro storage). Las del catálogo
+// compartido (nuestro storage bajo el path de OTRO tenant, curadas) NO
+// cuentan. El chip "Fotos sin retocar (N)" cuenta al cargar y navega a la
+// vista dedicada; con revisión pendiente (summary del backend) cambia a
+// "Fotos por revisar (N)".
 
 import 'package:flutter/material.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
@@ -71,13 +74,21 @@ Map<String, dynamic> _p(
       if (sample) 'photo_is_sample': true,
     };
 
-const _t = 'tenant-1';
+// Tenants con forma UUID, como en producción (el reconocimiento de "nuestro
+// storage" usa la clave products/<uuid>/ — mismo criterio que el backend).
+const _t = '11111111-1111-1111-1111-111111111111';
+const _tOther = '22222222-2222-2222-2222-222222222222';
 const _raw1 = 'https://r2.vendia.store/products/$_t/aaa.jpg';
 const _raw2 = 'https://r2.vendia.store/products/$_t/bbb.png?v=2';
 const _raw3 = 'https://r2.vendia.store/products/$_t/ccc.jpg';
 const _enhanced = 'https://r2.vendia.store/products/$_t/ddd-enhanced.jpg';
 const _generated = 'https://r2.vendia.store/products/$_t/eee-generated.png';
-const _catalog = 'https://r2.vendia.store/catalog/7702004003508.jpg';
+// Catálogo compartido VendIA: vive en NUESTRO storage bajo el path de OTRO
+// tenant (curada) — así lucen las URLs reales aportadas por otros tenants.
+const _catalog = 'https://r2.vendia.store/products/$_tOther/7702004003508.jpg';
+// Externa de enriquecimiento por barcode (caso real Gatorade maracuyá).
+const _external =
+    'https://images.openfoodfacts.org/images/products/775/510/431/1652/front_fr.3.200.jpg';
 
 void main() {
   setUpAll(
@@ -114,18 +125,47 @@ void main() {
           isFalse);
     });
 
-    test('foto del catálogo compartido NO cuenta', () {
+    test('foto del catálogo compartido (storage de otro tenant) NO cuenta',
+        () {
       expect(
           isPhotoUnretouched(_p('1', 'Arroz', photoUrl: _catalog),
               tenantId: _t),
           isFalse);
     });
 
-    test('foto de OTRO tenant NO cuenta (aislamiento)', () {
+    test('catálogo compartido en Supabase storage de otro tenant NO cuenta',
+        () {
       expect(
           isPhotoUnretouched(
               _p('1', 'Arroz',
-                  photoUrl: 'https://r2.vendia.store/products/otro/x.jpg'),
+                  photoUrl:
+                      'https://xyz.supabase.co/storage/v1/object/public/product-photos/products/$_tOther/x.jpg'),
+              tenantId: _t),
+          isFalse);
+    });
+
+    test('foto EXTERNA de enriquecimiento (openfoodfacts) SÍ cuenta', () {
+      expect(
+          isPhotoUnretouched(_p('1', 'Gatorade maracuyá', imageUrl: _external),
+              tenantId: _t),
+          isTrue);
+    });
+
+    test('foto EXTERNA (VTEX) SÍ cuenta', () {
+      expect(
+          isPhotoUnretouched(
+              _p('1', 'Gatorade',
+                  imageUrl:
+                      'https://exitocol.vteximg.com.br/arquivos/ids/123/g.jpg'),
+              tenantId: _t),
+          isTrue);
+    });
+
+    test('URL -enhanced en host EXTERNO NO cuenta', () {
+      expect(
+          isPhotoUnretouched(
+              _p('1', 'Arroz',
+                  photoUrl: 'https://cdn.example.com/fotos/abc-enhanced.jpg'),
               tenantId: _t),
           isFalse);
     });
@@ -145,13 +185,23 @@ void main() {
           isFalse);
     });
 
+    test('is_draft=true NO cuenta (borrador nunca guardado)', () {
+      expect(
+          isPhotoUnretouched(
+              {..._p('1', 'Arroz', photoUrl: _raw1), 'is_draft': true},
+              tenantId: _t),
+          isFalse);
+    });
+
     test('sin tenantId conocido NO cuenta (conservador)', () {
       expect(isPhotoUnretouched(_p('1', 'Arroz', photoUrl: _raw1),
               tenantId: ''),
           isFalse);
     });
 
-    test('AC-01: 3 crudas + 1 mejorada + 1 catálogo + 1 muestra → 3', () {
+    test(
+        'AC-01 ajustado: 3 crudas + 1 externa + 1 mejorada + 1 catálogo '
+        'compartido + 1 muestra → 4', () {
       final products = [
         _p('1', 'Arroz', photoUrl: _raw1),
         _p('2', 'Panela', photoUrl: _raw2),
@@ -159,10 +209,11 @@ void main() {
         _p('4', 'Coca', photoUrl: _enhanced, aiEnhanced: true),
         _p('5', 'Jabón', photoUrl: _catalog),
         _p('6', 'Bandeja', photoUrl: _raw1, sample: true),
+        _p('7', 'Gatorade maracuyá', imageUrl: _external),
       ];
       expect(
           products.where((p) => isPhotoUnretouched(p, tenantId: _t)).length,
-          3);
+          4);
     });
   });
 
