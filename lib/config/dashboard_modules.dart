@@ -57,6 +57,7 @@ import '../screens/events/events_list_screen.dart';
 import '../screens/staff/agenda_screen.dart';
 import '../screens/staff/liquidations_screen.dart';
 import '../screens/kds/comandas_screen.dart';
+import '../screens/pos/cash_shift_screen.dart';
 import '../screens/tables/tables_screen.dart';
 
 /// Las 4 categorías con encabezado del Dashboard (spec §4.1).
@@ -316,6 +317,18 @@ const List<DashboardModule> dashboardModules = [
     layer: ModuleLayer.optional,
     capability: OptionalCapability.promotions,
     destination: PromotionsListScreen.new,
+  ),
+  // Spec 105 F5 — turno de caja con arqueo: el control antirrobo del
+  // dueño ausente. CORE (todo negocio con cajón lo necesita).
+  DashboardModule(
+    id: 'turno_caja',
+    title: 'Turno de Caja',
+    subtitle: 'Abra con base, cierre contando y vea la diferencia',
+    icon: Icons.point_of_sale_outlined,
+    color: Color(0xFF0D9668),
+    category: ModuleCategory.miNegocio,
+    layer: ModuleLayer.core,
+    destination: CashShiftScreen.new,
   ),
   // Spec 105 F2 — KDS de cocina: comandas vivas para restaurante/comidas
   // rápidas/bar (implícito por tipo en el catálogo F041; descubrible vía

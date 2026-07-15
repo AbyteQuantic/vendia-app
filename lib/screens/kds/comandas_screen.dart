@@ -14,12 +14,16 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import 'package:provider/provider.dart';
+
 import '../../models/order_ticket.dart';
 import '../../services/api_service.dart';
+import '../../services/branch_provider.dart';
 import '../../services/auth_service.dart';
 import '../../theme/app_theme.dart';
 import '../../theme/app_ui.dart';
 import '../../utils/beep.dart';
+import '../auth/login_screen.dart';
 import '../../utils/format_cop.dart';
 import '../../widgets/branch_selector_drawer.dart';
 
@@ -35,6 +39,10 @@ const int kOrphanAlertMinutes = 10;
 class ComandasScreen extends StatefulWidget {
   final ApiService? apiOverride;
 
+  /// Spec 105 F3 — modo ESTACIÓN (tablet de cocina anclada): sin flecha de
+  /// volver (el chef vive aquí) y con salida de sesión en el header.
+  final bool stationMode;
+
   /// Intervalo del poll (inyectable en tests). 12 s en producción —
   /// capacidad validada para el free tier (council 2026-06-28).
   final Duration pollInterval;
@@ -42,6 +50,7 @@ class ComandasScreen extends StatefulWidget {
   const ComandasScreen({
     super.key,
     this.apiOverride,
+    this.stationMode = false,
     this.pollInterval = const Duration(seconds: 12),
   });
 
@@ -274,13 +283,49 @@ class _ComandasScreenState extends State<ComandasScreen> {
       child: Scaffold(
         backgroundColor: AppUI.pageBg,
         appBar: glassAppBar(
-          title: 'Comandas',
-          onBack: () => Navigator.of(context).pop(),
-          actions: const [
-            Padding(
+          title: widget.stationMode ? 'Estación: Cocina' : 'Comandas',
+          onBack:
+              widget.stationMode ? null : () => Navigator.of(context).pop(),
+          actions: [
+            const Padding(
               padding: EdgeInsets.only(right: AppUI.s8),
               child: Center(child: BranchSelectorChip()),
             ),
+            if (widget.stationMode)
+              IconButton(
+                icon: const Icon(Icons.logout_rounded, color: AppUI.inkSoft),
+                tooltip: 'Cerrar sesión',
+                onPressed: () async {
+                  final confirm = await showDialog<bool>(
+                    context: context,
+                    builder: (ctx) => AlertDialog(
+                      title: const Text('¿Cerrar sesión?'),
+                      actions: [
+                        TextButton(
+                            onPressed: () => Navigator.pop(ctx, false),
+                            child: const Text('Cancelar')),
+                        TextButton(
+                            onPressed: () => Navigator.pop(ctx, true),
+                            child: const Text('Cerrar sesión',
+                                style: TextStyle(color: AppTheme.error))),
+                      ],
+                    ),
+                  );
+                  if (confirm != true || !context.mounted) return;
+                  // Mismo patrón que el logout del Dashboard: limpiar la
+                  // sede activa para que el próximo usuario no la herede.
+                  try {
+                    context.read<BranchProvider>().reset();
+                  } catch (_) {}
+                  await AuthService().logout();
+                  if (context.mounted) {
+                    Navigator.of(context).pushAndRemoveUntil(
+                      MaterialPageRoute(builder: (_) => const LoginScreen()),
+                      (route) => false,
+                    );
+                  }
+                },
+              ),
           ],
         ),
         body: Column(

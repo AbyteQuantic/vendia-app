@@ -64,21 +64,23 @@ void main() {
 
     test('F037: los cores reducidos son solo los esenciales', () {
       // El default ultra-simple (spec §4.1): pocos cores. Aceptamos
-      // 5–8 cores: los 5 nominados + reporte_inventario y proveedores
-      // que arrancan visibles, y catalogo_online (Spec 061: hub del
-      // catálogo en línea, destacado en VENDER).
+      // 5–9 cores: los 5 nominados + reporte_inventario y proveedores
+      // que arrancan visibles, catalogo_online (Spec 061: hub del
+      // catálogo en línea, destacado en VENDER) y turno_caja (Spec 105
+      // F5: arqueo — control antirrobo, universal para cajón).
       final cores = dashboardModules
           .where((m) => m.layer == ModuleLayer.core)
           .map((m) => m.id)
           .toSet();
       expect(cores.length, greaterThanOrEqualTo(5));
-      expect(cores.length, lessThanOrEqualTo(8));
+      expect(cores.length, lessThanOrEqualTo(9));
       expect(cores, contains('registrar_venta'));
       expect(cores, contains('catalogo_online'));
       expect(cores, contains('historial'));
       expect(cores, contains('analisis_ganancias'));
       expect(cores, contains('productos'));
       expect(cores, contains('configuracion'));
+      expect(cores, contains('turno_caja')); // Spec 105 F5
     });
 
     test('F037: marketing_hub NO es core (es opt-in)', () {
