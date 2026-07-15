@@ -17,6 +17,7 @@ const Map<String, IconData> _icons = {
   'local_shipping_rounded': Icons.local_shipping_rounded,
   'kitchen_rounded': Icons.kitchen_rounded,
   'restaurant_menu_rounded': Icons.restaurant_menu_rounded,
+  'soup_kitchen_rounded': Icons.soup_kitchen_rounded,
   'shopping_cart_rounded': Icons.shopping_cart_rounded,
   'handyman_rounded': Icons.handyman_rounded,
   'people_outline': Icons.people_outline,

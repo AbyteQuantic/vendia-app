@@ -56,6 +56,7 @@ import '../screens/capabilities/capability_scaffold.dart';
 import '../screens/events/events_list_screen.dart';
 import '../screens/staff/agenda_screen.dart';
 import '../screens/staff/liquidations_screen.dart';
+import '../screens/kds/comandas_screen.dart';
 import '../screens/tables/tables_screen.dart';
 
 /// Las 4 categorías con encabezado del Dashboard (spec §4.1).
@@ -315,6 +316,20 @@ const List<DashboardModule> dashboardModules = [
     layer: ModuleLayer.optional,
     capability: OptionalCapability.promotions,
     destination: PromotionsListScreen.new,
+  ),
+  // Spec 105 F2 — KDS de cocina: comandas vivas para restaurante/comidas
+  // rápidas/bar (implícito por tipo en el catálogo F041; descubrible vía
+  // capacidad de mesas para el resto).
+  DashboardModule(
+    id: 'comandas',
+    title: 'Comandas de Cocina',
+    subtitle: 'Pedidos en vivo: prepare, marque listo y entregue',
+    icon: Icons.soup_kitchen_rounded,
+    color: Color(0xFFEA580C),
+    category: ModuleCategory.vender,
+    layer: ModuleLayer.optional,
+    capability: OptionalCapability.tables,
+    destination: ComandasScreen.new,
   ),
   // F042 — Módulo de Eventos. Opt-in self-service desde el reel.
   DashboardModule(
