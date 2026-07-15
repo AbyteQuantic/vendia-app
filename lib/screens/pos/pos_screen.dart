@@ -20,6 +20,7 @@ import '../../widgets/sync_status_banner.dart';
 import '../../widgets/branch_aware_reload.dart';
 import 'cart_controller.dart';
 import 'kitchen_ticket.dart';
+import 'order_locator_screen.dart';
 import 'voice/voice_order_sheet.dart';
 import 'account_qr_screen.dart';
 import 'widgets/container_dialog.dart';
@@ -1836,8 +1837,20 @@ class _PosScreenBodyState extends State<_PosScreenBody>
       );
       if (kitchenPayload != null) {
         try {
-          await api.createOrder(kitchenPayload);
+          final created = await api.createOrder(kitchenPayload);
           debugPrint('[KDS] comanda prepago creada para venta $saleUuid');
+          // Spec 105 F4 — QR localizador: en mostrador, el éxito del cobro
+          // muestra el número GIGANTE + QR a /t/{token} + botón WhatsApp.
+          // Solo turno (el cliente recoge); en mesa lo lleva el mesero.
+          final token = (created['session_token'] as String?)?.trim() ?? '';
+          if (kitchenType == 'turno' && token.isNotEmpty && mounted) {
+            await Navigator.of(context).push(MaterialPageRoute(
+              builder: (_) => OrderLocatorScreen(
+                orderLabel: (created['label'] as String?) ?? label,
+                sessionToken: token,
+              ),
+            ));
+          }
         } catch (e) {
           debugPrint('[KDS] comanda prepago falló (venta intacta): $e');
         }
