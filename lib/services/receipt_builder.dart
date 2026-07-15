@@ -242,3 +242,48 @@ class ReceiptBuilder {
     return buf.toString();
   }
 }
+
+/// Spec 105 F4 — tiquete LOCALIZADOR para mostrador prepago: turno gigante
+/// + QR a la página viva /t/{token}. Se imprime aparte del recibo (como el
+/// turno de las cadenas). Puro y testeable, igual que ReceiptBuilder.
+class LocatorSlipBuilder {
+  LocatorSlipBuilder({
+    required this.orderLabel,
+    required this.trackingUrl,
+    this.paperSize = PaperSize.mm58,
+    this.cutPaper = true,
+  });
+
+  final String orderLabel;
+  final String trackingUrl;
+  final PaperSize paperSize;
+  final bool cutPaper;
+
+  Future<List<int>> build() async {
+    final profile = await CapabilityProfile.load();
+    final gen = Generator(paperSize, profile);
+    final bytes = <int>[];
+
+    bytes.addAll(gen.text('SU TURNO',
+        styles: const PosStyles(align: PosAlign.center, bold: true)));
+    bytes.addAll(gen.feed(1));
+    bytes.addAll(gen.text(orderLabel,
+        styles: const PosStyles(
+          align: PosAlign.center,
+          bold: true,
+          height: PosTextSize.size3,
+          width: PosTextSize.size3,
+        )));
+    bytes.addAll(gen.feed(1));
+    if (trackingUrl.isNotEmpty) {
+      bytes.addAll(gen.qrcode(trackingUrl, size: QRSize.size6));
+      bytes.addAll(gen.text('Escanee y su celular le avisa',
+          styles: const PosStyles(align: PosAlign.center)));
+      bytes.addAll(gen.text('cuando el pedido esté listo',
+          styles: const PosStyles(align: PosAlign.center)));
+    }
+    bytes.addAll(gen.feed(2));
+    if (cutPaper) bytes.addAll(gen.cut());
+    return bytes;
+  }
+}

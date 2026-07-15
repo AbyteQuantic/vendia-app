@@ -325,6 +325,31 @@ class HardwareService extends ChangeNotifier {
 
   /// Build + send a sale receipt. See class doc for the error contract.
   /// `openDrawer` is wired into the same byte stream the printer eats.
+  /// Spec 105 F4 — imprime el tiquete localizador (turno + QR) del
+  /// mostrador prepago. Mismo contrato silencioso que printSaleReceipt:
+  /// hardware apagado = no-op exitoso; error = false sin excepción.
+  Future<bool> printLocatorSlip(String orderLabel, String trackingUrl) async {
+    if (!_isEnabled) return true;
+    try {
+      final t = _transport();
+      if (t == null) return false;
+      if (!await t.isConnected()) {
+        final reconnected = await tryReconnect();
+        if (!reconnected) return false;
+      }
+      final bytes = await LocatorSlipBuilder(
+        orderLabel: orderLabel,
+        trackingUrl: trackingUrl,
+        paperSize: _config?.paperSize ?? PaperSize.mm58,
+      ).build();
+      await t.write(bytes);
+      return true;
+    } catch (e) {
+      _lastErrorMessage = 'No se pudo imprimir el turno: $e';
+      return false;
+    }
+  }
+
   Future<bool> printSaleReceipt(
     ReceiptTenantInfo tenant,
     List<ReceiptLine> lines,
