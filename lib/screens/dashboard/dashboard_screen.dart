@@ -25,6 +25,7 @@ import '../../widgets/push_optin_card.dart';
 import '../settings/notifications_settings_screen.dart';
 import '../../widgets/trial_bar.dart';
 import '../auth/login_screen.dart';
+import '../kds/comandas_screen.dart';
 import '../inventory/add_merchandise_screen.dart';
 import '../online_store/catalog_online_hub_screen.dart';
 import '../inventory/reorder_screen.dart';
@@ -113,6 +114,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
   // las muestra como chip(s) clickeable(s).
   List<String> _businessTypes = const [];
   FeatureFlags _featureFlags = const FeatureFlags();
+  // Spec 105 F3 — rol workspace del usuario (claim del JWT persistido al
+  // login). Filtra la grilla para roles de piso; ''/owner/admin/cashier
+  // conservan el dashboard completo (retro-compat del concilio).
+  String _role = '';
 
   // Estado de suscripción del tenant. Lo posee el Dashboard (no la
   // TrialBar) porque el header necesita saber si la barra del trial se
@@ -300,11 +305,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
       final flags = await auth.getFeatureFlags();
       final type = await auth.getBusinessType();
       final types = await auth.getBusinessTypes();
+      final role = (await auth.getRole()) ?? '';
       if (mounted) {
         setState(() {
           _featureFlags = flags;
           _businessType = (type != null && type.isNotEmpty) ? type : null;
           _businessTypes = types;
+          _role = role.toLowerCase();
         });
       }
     } catch (_) {
@@ -382,6 +389,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   /// Grilla + reel resueltos desde el catálogo dinámico, o null si aún no
   /// hay catálogo (entonces el dashboard usa el bundle compilado).
+  /// Spec 105 F3 — el COCINERO no tiene dashboard: su lugar de trabajo es
+  /// el KDS. Entra directo a la estación de cocina (sin flecha de volver,
+  /// con cierre de sesión propio). El resto de roles sigue igual.
+  bool get _isChefStation => _role == 'chef';
+
   CatalogDashboard? get _catalogDashboard {
     final c = _catalog;
     if (c == null || c.isEmpty) return null;
@@ -390,6 +402,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       businessTypes: _businessTypes,
       flags: _featureFlags,
       isPro: _isPro,
+      role: _role,
     );
   }
 
@@ -847,6 +860,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // Spec 105 F3 — chef: directo al KDS en modo estación, sin dashboard.
+    if (_isChefStation) return const ComandasScreen(stationMode: true);
+
     final topPad = MediaQuery.paddingOf(context).top;
     // PERF: resolver el catálogo dinámico UNA vez por build (antes se llamaba
     // 2× — reel + grid — recalculando filtros/orden cada vez).
@@ -1059,8 +1075,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     final activeIds = _activeOptionalIds();
                     final source = catalogDashboard?.grid ??
                         visibleModulesFor(_businessType, _featureFlags);
+                    // Spec 105 F3 — preset del rol también en el fallback
+                    // compilado (sin catálogo backend).
+                    final whitelist =
+                        moduleWhitelistForRole(_role, _featureFlags);
                     final gridModules = source
                         .where((m) => !activeIds.contains(m.id))
+                        .where((m) =>
+                            whitelist == null || whitelist.contains(m.id))
                         .toList();
                     // Spec 061+ — el Catálogo Online es la opción PRINCIPAL:
                     // siempre de PRIMERA en el carrusel (decisión fundador

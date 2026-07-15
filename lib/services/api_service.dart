@@ -3105,6 +3105,76 @@ class ApiService {
   }
 
   // ═══════════════════════════════════════════════════════════════════════════
+  // 7b. CASH SHIFTS — Spec 105 F5 (turno de caja con arqueo)
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  Future<Map<String, dynamic>> openCashShift({
+    required double openingAmount,
+    String? employeeUuid,
+    String? employeeName,
+  }) async {
+    try {
+      final response = await _dio.post('/api/v1/cash-shifts', data: {
+        'opening_amount': openingAmount,
+        if (employeeUuid != null) 'employee_uuid': employeeUuid,
+        if (employeeName != null) 'employee_name': employeeName,
+      });
+      return _extractData(response);
+    } on DioException catch (e) {
+      throw AppError.fromDioException(e);
+    }
+  }
+
+  /// Turno abierto + esperado corriendo. Null si no hay turno (404).
+  Future<Map<String, dynamic>?> fetchCurrentCashShift() async {
+    try {
+      final response = await _dio.get('/api/v1/cash-shifts/current');
+      return _extractData(response);
+    } on DioException catch (e) {
+      if (e.response?.statusCode == 404) return null;
+      throw AppError.fromDioException(e);
+    }
+  }
+
+  Future<Map<String, dynamic>> closeCashShift(
+    String uuid, {
+    required double countedAmount,
+    String? notes,
+  }) async {
+    try {
+      final response =
+          await _dio.post('/api/v1/cash-shifts/$uuid/close', data: {
+        'counted_amount': countedAmount,
+        if (notes != null && notes.isNotEmpty) 'notes': notes,
+      });
+      return _extractData(response);
+    } on DioException catch (e) {
+      throw AppError.fromDioException(e);
+    }
+  }
+
+  Future<List<Map<String, dynamic>>> fetchCashShifts() async {
+    try {
+      final response = await _dio.get('/api/v1/cash-shifts');
+      return _extractList(response);
+    } on DioException catch (e) {
+      throw AppError.fromDioException(e);
+    }
+  }
+
+  /// Spec 105 F5 — salida del día (re-verifica el PIN).
+  Future<Map<String, dynamic>> clockOut(
+      String employeeUuid, String pin) async {
+    try {
+      final response = await _dio.post('/api/v1/employees/clock-out',
+          data: {'employee_uuid': employeeUuid, 'pin': pin});
+      return _extractData(response);
+    } on DioException catch (e) {
+      throw AppError.fromDioException(e);
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
   // 8. ORDERS / KDS
   // ═══════════════════════════════════════════════════════════════════════════
 

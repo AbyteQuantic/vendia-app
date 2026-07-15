@@ -7,6 +7,7 @@ import '../../services/api_service.dart';
 import '../../services/auth_service.dart';
 import '../../services/branch_provider.dart';
 import '../../theme/app_theme.dart';
+import '../../theme/app_ui.dart';
 import '../../widgets/branch_selector_drawer.dart';
 import '../../widgets/profile_photo_avatar.dart';
 import '../../widgets/profile_photo_picker.dart';
@@ -25,11 +26,27 @@ class _EmployeesScreenState extends State<EmployeesScreen> {
   List<Map<String, dynamic>> _employees = [];
   List<Branch> _branches = [];
   bool _loading = true;
+  // Spec 105 F3 — toggle del dueño "el mesero puede cobrar" (OFF = mesero
+  // puro). Vive aquí porque es donde se asignan los roles.
+  bool _waiterCharge = false;
+  bool _savingWaiterCharge = false;
 
-  static const _roles = ['admin', 'cashier'];
+  // Spec 105 F3 — enum cerrado, un rol por empleado, cero matriz de
+  // permisos. El preset se comunica en UNA línea ("Verá: …").
+  static const _roles = ['admin', 'cashier', 'waiter', 'chef', 'courier'];
   static const _roleLabels = {
     'admin': 'Administrador',
     'cashier': 'Cajero',
+    'waiter': 'Mesero',
+    'chef': 'Cocinero',
+    'courier': 'Domiciliario',
+  };
+  static const _roleHints = {
+    'admin': 'Verá: todo el negocio',
+    'cashier': 'Verá: vender, mesas y comandas',
+    'waiter': 'Verá: mesas y pedidos para entregar',
+    'chef': 'Verá: SOLO comandas de cocina',
+    'courier': 'Verá: pedidos para entregar (domicilios)',
   };
 
   @override
@@ -37,6 +54,7 @@ class _EmployeesScreenState extends State<EmployeesScreen> {
     super.initState();
     _api = ApiService(AuthService());
     _fetchAll();
+    _loadWaiterCharge();
   }
 
   Future<void> _fetchAll() async {
@@ -161,6 +179,19 @@ class _EmployeesScreenState extends State<EmployeesScreen> {
                         .toList(),
                     onChanged: (v) =>
                         setSheetState(() => selectedRole = v ?? 'cashier'),
+                  ),
+                  const SizedBox(height: 4),
+                  // Spec 105 F3 — el preset del rol en una línea.
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: Padding(
+                      padding: const EdgeInsets.only(left: 4),
+                      child: Text(
+                        _roleHints[selectedRole] ?? '',
+                        style: const TextStyle(
+                            fontSize: 13, color: AppTheme.textSecondary),
+                      ),
+                    ),
                   ),
                   const SizedBox(height: 12),
 
@@ -308,8 +339,47 @@ class _EmployeesScreenState extends State<EmployeesScreen> {
     ));
   }
 
-  Color _roleColor(String role) =>
-      role == 'admin' ? AppTheme.primary : const Color(0xFF10B981);
+  Future<void> _loadWaiterCharge() async {
+    try {
+      final flags = await AuthService().getFeatureFlags();
+      if (mounted) setState(() => _waiterCharge = flags.enableWaiterCharge);
+    } catch (_) {/* sin red: el switch parte en OFF */}
+  }
+
+  Future<void> _setWaiterCharge(bool v) async {
+    setState(() {
+      _waiterCharge = v;
+      _savingWaiterCharge = true;
+    });
+    try {
+      final resp = await _api.updateBusinessProfile({
+        'config': {'enable_waiter_charge': v},
+      });
+      // Refresca el blob local (patrón CapabilityScaffold) para que el
+      // dashboard del mesero lo tome en su próximo refresh.
+      await AuthService().saveFeatureFlagsFromProfile(resp);
+    } catch (_) {
+      if (mounted) {
+        setState(() => _waiterCharge = !v); // revertir honesto
+        _showSnack('No se pudo guardar. Revise la conexión.', isError: true);
+      }
+    } finally {
+      if (mounted) setState(() => _savingWaiterCharge = false);
+    }
+  }
+
+  bool get _hasFloorRoles => _employees.any((e) {
+        final r = (e['role'] as String?) ?? '';
+        return r == 'waiter' || r == 'courier';
+      });
+
+  Color _roleColor(String role) => switch (role) {
+        'admin' => AppTheme.primary,
+        'chef' => const Color(0xFFEA580C),
+        'waiter' => const Color(0xFF7C3AED),
+        'courier' => const Color(0xFF0EA5E9),
+        _ => const Color(0xFF10B981),
+      };
 
   @override
   Widget build(BuildContext context) {
@@ -357,9 +427,40 @@ class _EmployeesScreenState extends State<EmployeesScreen> {
                   onRefresh: _fetchAll,
                   child: ListView.builder(
                     padding: const EdgeInsets.fromLTRB(20, 8, 20, 100),
-                    itemCount: orderedBranchIds.length,
+                    // +1: la tarjeta del toggle "mesero puede cobrar" arriba
+                    // (solo cuando hay meseros/domiciliarios que gobernar).
+                    itemCount: orderedBranchIds.length + (_hasFloorRoles ? 1 : 0),
                     itemBuilder: (_, i) {
-                      final branchId = orderedBranchIds[i];
+                      if (_hasFloorRoles && i == 0) {
+                        return Padding(
+                          padding: const EdgeInsets.only(bottom: 12),
+                          child: SoftCard(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: AppUI.s8),
+                            child: SwitchListTile.adaptive(
+                              key: const Key('waiter_charge_switch'),
+                              contentPadding: const EdgeInsets.symmetric(
+                                  horizontal: AppUI.s8),
+                              value: _waiterCharge,
+                              onChanged: _savingWaiterCharge
+                                  ? null
+                                  : _setWaiterCharge,
+                              secondary: const Icon(Icons.point_of_sale_rounded,
+                                  color: AppUI.inkSoft),
+                              title: const Text('El mesero puede cobrar',
+                                  style: AppUI.bodyStrong),
+                              subtitle: Text(
+                                _waiterCharge
+                                    ? 'Los meseros ven Registrar Venta'
+                                    : 'Mesero puro: solo mesas y entregas',
+                                style: AppUI.bodySoft,
+                              ),
+                            ),
+                          ),
+                        );
+                      }
+                      final branchId =
+                          orderedBranchIds[i - (_hasFloorRoles ? 1 : 0)];
                       final branch = branchId != null
                           ? _branches.where((b) => b.id == branchId).firstOrNull
                           : null;
@@ -708,6 +809,56 @@ class _EmployeeAdminSheet extends StatefulWidget {
 }
 
 class _EmployeeAdminSheetState extends State<_EmployeeAdminSheet> {
+  // Spec 105 F5 — registrar salida del día.
+  bool _clockingOut = false;
+
+  Future<void> _clockOut() async {
+    final pinCtrl = TextEditingController();
+    final pin = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('PIN del empleado'),
+        content: TextField(
+          controller: pinCtrl,
+          keyboardType: TextInputType.number,
+          obscureText: true,
+          maxLength: 4,
+          autofocus: true,
+          decoration: const InputDecoration(hintText: '4 dígitos'),
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Cancelar')),
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, pinCtrl.text.trim()),
+              child: const Text('Registrar salida')),
+        ],
+      ),
+    );
+    if (pin == null || pin.length != 4 || !mounted) return;
+    setState(() => _clockingOut = true);
+    try {
+      await ApiService(AuthService())
+          .clockOut(widget.emp['id'] as String? ?? '', pin);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('Salida registrada ✓'),
+        backgroundColor: AppTheme.success,
+        behavior: SnackBarBehavior.floating,
+      ));
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('No se pudo registrar (¿PIN correcto? ¿hubo entrada hoy?)'),
+        backgroundColor: AppTheme.error,
+        behavior: SnackBarBehavior.floating,
+      ));
+    } finally {
+      if (mounted) setState(() => _clockingOut = false);
+    }
+  }
+
   late final TextEditingController _nameCtrl;
   late final TextEditingController _phoneCtrl;
   final _formKey = GlobalKey<FormState>();
@@ -1178,6 +1329,30 @@ class _EmployeeAdminSheetState extends State<_EmployeeAdminSheet> {
                           color:
                               AppTheme.primary.withValues(alpha: 0.4)),
                       foregroundColor: AppTheme.primary,
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  // Spec 105 F5 — salida del día: la ENTRADA la estampa solo
+                  // el primer PIN del día; la salida se registra aquí con el
+                  // mismo PIN del empleado.
+                  OutlinedButton.icon(
+                    key: const Key('employee_clock_out'),
+                    onPressed: _clockingOut ? null : _clockOut,
+                    icon: _clockingOut
+                        ? const SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(strokeWidth: 2.5),
+                          )
+                        : const Icon(Icons.logout_rounded),
+                    label: Text(_clockingOut
+                        ? 'Registrando salida...'
+                        : 'Registrar salida del día (PIN)'),
+                    style: OutlinedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      side: BorderSide(
+                          color: AppTheme.warning.withValues(alpha: 0.5)),
+                      foregroundColor: AppTheme.warning,
                     ),
                   ),
                   const SizedBox(height: 10),

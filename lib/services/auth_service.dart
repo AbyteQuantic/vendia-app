@@ -408,6 +408,10 @@ class AuthService {
 /// missing — new modules do not appear by accident for legacy tenants.
 class FeatureFlags {
   final bool enableTables;
+
+  /// Spec 105 F3 — "el mesero puede cobrar": OFF = mesero puro (solo mesas
+  /// y entregas); ON agrega Registrar Venta a la vista del mesero.
+  final bool enableWaiterCharge;
   final bool enableKDS;
   final bool enableTips;
   final bool enableServices;
@@ -509,10 +513,12 @@ class FeatureFlags {
     this.enableEvents = false,
     this.enableSupplierMode = false,
     this.enableStaffCommissions = false,
+    this.enableWaiterCharge = false,
   });
 
   factory FeatureFlags.fromJson(Map<String, dynamic> json) => FeatureFlags(
         enableTables: json['enable_tables'] == true,
+        enableWaiterCharge: json['enable_waiter_charge'] == true,
         enableKDS: json['enable_kds'] == true,
         enableTips: json['enable_tips'] == true,
         enableServices: json['enable_services'] == true,

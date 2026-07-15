@@ -26,11 +26,28 @@ enum _Verdict { grid, reel, hidden }
 
 /// Resuelve el dashboard desde el catálogo. [businessTypes] son los tipos del
 /// tenant; [flags] sus capacidades activadas; [isPro] si tiene acceso Pro.
+/// Spec 105 F3 — preset FIJO de módulos por rol de piso. Null = sin filtro
+/// (owner/admin/cashier/legacy conservan el dashboard completo — el
+/// concilio exige "cashier existente intacto"). El mesero gana Registrar
+/// Venta SOLO si el dueño prendió "el mesero puede cobrar".
+List<String>? moduleWhitelistForRole(String role, FeatureFlags flags) {
+  switch (role) {
+    case 'chef':
+      return const ['comandas'];
+    case 'waiter':
+    case 'courier':
+      return ['comandas', 'mesas', if (flags.enableWaiterCharge) 'registrar_venta'];
+    default:
+      return null;
+  }
+}
+
 CatalogDashboard buildCatalogDashboard(
   Catalog catalog, {
   required List<String> businessTypes,
   required FeatureFlags flags,
   required bool isPro,
+  String role = '',
 }) {
   final bundleById = {for (final m in dashboardModules) m.id: m};
   final overrideByModuleId = {
@@ -59,6 +76,16 @@ CatalogDashboard buildCatalogDashboard(
   if (!grid.any((m) => m.id == 'catalogo_online')) {
     final co = bundleById['catalogo_online'];
     if (co != null) grid.add(co);
+  }
+
+  // Spec 105 F3 — roles de piso ven SOLO su preset; el reel (descubrir
+  // capacidades) es del dueño, no del piso.
+  final whitelist = moduleWhitelistForRole(role, flags);
+  if (whitelist != null) {
+    return CatalogDashboard(
+      grid: grid.where((m) => whitelist.contains(m.id)).toList(),
+      reel: const [],
+    );
   }
 
   return CatalogDashboard(grid: grid, reel: reel);
