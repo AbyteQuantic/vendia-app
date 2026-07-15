@@ -230,6 +230,56 @@ void main() {
     });
   });
 
+  group('ComandasScreen — layout obligatorio UI_RULES §3 (sin overflow)', () {
+    // Datos hostiles: labels y productos largos reales de producción.
+    List<Map<String, dynamic>> hostileRows() => [
+          _row(
+            id: 'v1',
+            label: 'Pedido de Distribuidora Comercial Hermanos Gutiérrez SAS',
+            status: 'nuevo',
+            items: [
+              {
+                'product_uuid': 'p1',
+                'product_name':
+                    'Bandeja paisa especial con chicharrón extra crocante y arepa de chócolo',
+                'quantity': 12,
+                'unit_price': 28000,
+                'notes':
+                    'sin cebolla, sin tomate, el chicharrón bien tostado por favor y la arepa aparte',
+                'duration_min': 25,
+              },
+            ],
+          ),
+          _row(id: 'v2', label: 'Mesa 2', status: 'preparando'),
+          _row(id: 'v3', label: 'Mesa 3', status: 'listo',
+              listoAt: DateTime.now().toIso8601String()),
+        ];
+
+    for (final (name, size) in [
+      ('360×640 gama baja', const Size(360, 640)),
+      ('411×891 estándar', const Size(411, 891)),
+      ('800×1280 tablet', const Size(800, 1280)),
+    ]) {
+      testWidgets('renderiza ambas pestañas sin overflow en $name',
+          (tester) async {
+        tester.view.physicalSize = size;
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(tester.view.reset);
+
+        final api = _FakeApi(rows: hostileRows());
+        await tester.pumpWidget(_app(api));
+        await tester.pump();
+        // Cualquier RenderFlex overflow revienta el test aquí.
+        expect(tester.takeException(), isNull);
+
+        await tester.tap(find.text('Para entregar (1)'));
+        await tester.pumpAndSettle();
+        expect(tester.takeException(), isNull);
+        expect(find.text('Confirmar ENTREGA'), findsOneWidget);
+      });
+    }
+  });
+
   group('ComandasScreen — estados', () {
     testWidgets('vacío: mensaje amable en español', (tester) async {
       final api = _FakeApi(rows: []);
