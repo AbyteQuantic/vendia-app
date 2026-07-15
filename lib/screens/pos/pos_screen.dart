@@ -185,12 +185,26 @@ class _PosScreenBodyState extends State<_PosScreenBody>
     if (mounted) setState(() => _flags = flags);
   }
 
+  // Diagnóstico 2026-07-15 (reporte del fundador): las mesas se cargaban UNA
+  // sola vez en initState con catch silencioso — un fallo transitorio (cold
+  // start de Render, red móvil) dejaba el selector mintiendo "No hay mesas
+  // configuradas" para siempre, con 6 mesas activas en la BD. Ahora el fallo
+  // se registra y el selector reintenta al abrirse.
+  bool _tablesLoadFailed = false;
+
   Future<void> _loadTables() async {
     try {
       final api = ApiService(AuthService());
       final tables = await api.fetchTables();
-      if (mounted) setState(() => _tables = tables);
-    } catch (_) {}
+      if (mounted) {
+        setState(() {
+          _tables = tables;
+          _tablesLoadFailed = false;
+        });
+      }
+    } catch (_) {
+      if (mounted) setState(() => _tablesLoadFailed = true);
+    }
   }
 
   /// "$15.000"-style formatter used in the mesa selector badges.
@@ -1171,10 +1185,20 @@ class _PosScreenBodyState extends State<_PosScreenBody>
     final accentColor = isImmediate ? const Color(0xFFEA580C) : AppTheme.primary;
     final subtitle = isImmediate ? 'Pago inmediato' : 'Cuenta abierta';
 
+    // Reintento al abrir: si la carga única de initState falló (cold start,
+    // red móvil), acá se vuelve a pedir en vez de mentir "no hay mesas".
+    var sheetRetried = false;
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
-      builder: (_) => Container(
+      builder: (_) => StatefulBuilder(builder: (sheetCtx, setSheet) {
+        if (_tables.isEmpty && !sheetRetried) {
+          sheetRetried = true;
+          _loadTables().then((_) {
+            if (sheetCtx.mounted) setSheet(() {});
+          });
+        }
+        return Container(
         decoration: const BoxDecoration(
           color: Colors.white,
           borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
@@ -1242,10 +1266,32 @@ class _PosScreenBodyState extends State<_PosScreenBody>
             _tables.isEmpty
                 ? Padding(
                     padding: const EdgeInsets.symmetric(vertical: 24),
-                    child: Text(
-                      'No hay mesas configuradas.\nVaya a Mi Negocio > Gestión de Mesas.',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(fontSize: 16, color: Colors.grey.shade500),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          // Estados honestos (UI_RULES §8): "no configuradas"
+                          // SOLO cuando el servidor respondió vacío; si la
+                          // carga falló, decirlo y ofrecer reintentar.
+                          _tablesLoadFailed
+                              ? 'No se pudieron cargar las mesas.\nRevise la conexión.'
+                              : 'No hay mesas configuradas.\nVaya a Mi Negocio > Gestión de Mesas.',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                              fontSize: 16, color: Colors.grey.shade500),
+                        ),
+                        if (_tablesLoadFailed) ...[
+                          const SizedBox(height: 12),
+                          TextButton.icon(
+                            key: const Key('mesa_selector_retry'),
+                            onPressed: () => _loadTables().then((_) {
+                              if (sheetCtx.mounted) setSheet(() {});
+                            }),
+                            icon: const Icon(Icons.refresh_rounded),
+                            label: const Text('Reintentar'),
+                          ),
+                        ],
+                      ],
                     ),
                   )
                 : GridView.builder(
@@ -1399,7 +1445,8 @@ class _PosScreenBodyState extends State<_PosScreenBody>
                   ),
           ],
         ),
-      ),
+      );
+      }),
     );
   }
 
