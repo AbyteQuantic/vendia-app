@@ -1844,6 +1844,19 @@ class _PosScreenBodyState extends State<_PosScreenBody>
           // Solo turno (el cliente recoge); en mesa lo lleva el mesero.
           final token = (created['session_token'] as String?)?.trim() ?? '';
           if (kitchenType == 'turno' && token.isNotEmpty && mounted) {
+            // Spec 105 F4 — tiquete localizador impreso (Spec 046): turno
+            // gigante + QR. Fire-and-forget: sin impresora configurada es
+            // un no-op silencioso y el QR en pantalla basta.
+            unawaited(() async {
+              try {
+                final slug = await api.fetchStoreSlug();
+                final base = (slug['base_url'] as String?)?.trim() ?? '';
+                if (base.isEmpty) return;
+                final url = '${Uri.parse(base).origin}/t/$token';
+                await HardwareService.instance.printLocatorSlip(
+                    (created['label'] as String?) ?? label, url);
+              } catch (_) {/* sin dominio/impresora: el QR en pantalla basta */}
+            }());
             await Navigator.of(context).push(MaterialPageRoute(
               builder: (_) => OrderLocatorScreen(
                 orderLabel: (created['label'] as String?) ?? label,
