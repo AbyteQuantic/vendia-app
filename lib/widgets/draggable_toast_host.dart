@@ -26,6 +26,13 @@ class _DraggableToastHostState extends State<DraggableToastHost> {
   static const _collapseAfter = Duration(seconds: 6);
   static const _prefKey = 'toast_top_offset';
 
+  /// Concilio 2026-07-15 — el default caía sobre la campana del Centro de
+  /// Tareas y el avatar del header (oclusión de controles, screenshots del
+  /// fundador). El fallback nace ~120dp más abajo: zona muerta bajo cualquier
+  /// header (UI_RULES §1). El usuario puede seguir arrastrándolo a donde
+  /// quiera (el clamp mínimo sigue en topSafe) y su posición persiste.
+  static const _defaultDrop = 120.0;
+
   double? _top; // desplazamiento vertical (null = default arriba)
   bool _expanded = true;
   Timer? _collapseTimer;
@@ -86,7 +93,7 @@ class _DraggableToastHostState extends State<DraggableToastHost> {
     final topSafe = media.padding.top + 6;
     final maxTop = media.size.height - 180;
     final clampMax = maxTop > topSafe ? maxTop : topSafe;
-    final top = (_top ?? topSafe).clamp(topSafe, clampMax);
+    final top = (_top ?? (topSafe + _defaultDrop)).clamp(topSafe, clampMax);
 
     // Cambió el toast visible → reinicia (expandido + nuevo timer de colapso).
     if (cur?.key != _shownKey) {
@@ -148,7 +155,7 @@ class _CollapsedPill extends StatelessWidget {
   Widget build(BuildContext context) {
     return Semantics(
       button: true,
-      label: 'Ver aviso',
+      label: 'Ver tarea pendiente',
       child: GestureDetector(
         onTap: onTap,
         child: Material(
@@ -164,7 +171,9 @@ class _CollapsedPill extends StatelessWidget {
               shape: BoxShape.circle,
               border: Border.all(color: color.withValues(alpha: 0.4)),
             ),
-            child: Icon(Icons.notifications_active_rounded, color: color, size: 22),
+            // bolt (acción pendiente), NO campana: la campana es símbolo
+            // EXCLUSIVO del Centro de Tareas — un símbolo, un significado.
+            child: Icon(Icons.bolt_rounded, color: color, size: 22),
           ),
         ),
       ),

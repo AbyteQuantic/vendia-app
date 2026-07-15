@@ -111,4 +111,90 @@ void main() {
     await tester.pump();
     expect(find.byKey(const Key('task_toast')), findsOneWidget);
   });
+
+  // ── Concilio 2026-07-15: los iconos de alerta no se superponen ──────────
+  // El default del toast caía en la MISMA zona que la campana del Centro de
+  // Tareas y el avatar del header (screenshots del fundador, iPhone). El
+  // fallback ahora baja ~120dp; el drag y la posición persistida se respetan.
+
+  testWidgets('sin posición persistida, el toast nace DEBAJO del header',
+      (tester) async {
+    SharedPreferences.setMockInitialValues({});
+    final tc = TaskCenterController(_FakeApi([
+      {'id': 'table_account:9', 'kind': 'table_account', 'urgency': 'critical',
+       'title': 'Mesa 1', 'subtitle': 'cuenta abierta', 'action_label': 'Cobrar'},
+    ]));
+    await tc.refresh();
+    await tester.pumpWidget(MultiProvider(
+      providers: [
+        ChangeNotifierProvider.value(value: tc),
+        ChangeNotifierProvider(create: (_) => NotificationToastController()),
+      ],
+      child: const MaterialApp(
+          home: Scaffold(body: Stack(children: [DraggableToastHost()]))),
+    ));
+    await tester.pump();
+
+    final positioned = tester.widget<Positioned>(find.byWidgetPredicate(
+        (w) => w is Positioned && w.top != null && w.left == 12));
+    // Zona segura: un header de ~110dp queda libre (padding.top=0 en tests).
+    expect(positioned.top, greaterThanOrEqualTo(110));
+  });
+
+  testWidgets('la posición que el usuario arrastró SIGUE mandando',
+      (tester) async {
+    SharedPreferences.setMockInitialValues({'toast_top_offset': 300.0});
+    final tc = TaskCenterController(_FakeApi([
+      {'id': 'table_account:9', 'kind': 'table_account', 'urgency': 'critical',
+       'title': 'Mesa 1', 'subtitle': 'cuenta abierta', 'action_label': 'Cobrar'},
+    ]));
+    await tc.refresh();
+    await tester.pumpWidget(MultiProvider(
+      providers: [
+        ChangeNotifierProvider.value(value: tc),
+        ChangeNotifierProvider(create: (_) => NotificationToastController()),
+      ],
+      child: const MaterialApp(
+          home: Scaffold(body: Stack(children: [DraggableToastHost()]))),
+    ));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 50));
+
+    final positioned = tester.widget<Positioned>(find.byWidgetPredicate(
+        (w) => w is Positioned && w.top != null && w.left == 12));
+    expect(positioned.top, 300.0);
+  });
+
+  testWidgets(
+      'la pastilla colapsada NO usa campana (un símbolo = un significado)',
+      (tester) async {
+    SharedPreferences.setMockInitialValues({});
+    final tc = TaskCenterController(_FakeApi([
+      {'id': 'table_account:9', 'kind': 'table_account', 'urgency': 'critical',
+       'title': 'Mesa 1', 'subtitle': 'cuenta abierta', 'action_label': 'Cobrar'},
+    ]));
+    await tc.refresh();
+    await tester.pumpWidget(MultiProvider(
+      providers: [
+        ChangeNotifierProvider.value(value: tc),
+        ChangeNotifierProvider(create: (_) => NotificationToastController()),
+      ],
+      child: const MaterialApp(
+          home: Scaffold(body: Stack(children: [DraggableToastHost()]))),
+    ));
+    await tester.pump();
+    await tester.pump(const Duration(seconds: 7)); // auto-colapso a los 6s
+
+    expect(find.byKey(const Key('toast_pill')), findsOneWidget);
+    expect(
+        find.descendant(
+            of: find.byKey(const Key('toast_pill')),
+            matching: find.byIcon(Icons.notifications_active_rounded)),
+        findsNothing);
+    expect(
+        find.descendant(
+            of: find.byKey(const Key('toast_pill')),
+            matching: find.byIcon(Icons.bolt_rounded)),
+        findsOneWidget);
+  });
 }
