@@ -309,7 +309,7 @@ class _ComandasScreenState extends State<ComandasScreen> {
         labelColor: AppTheme.primary,
         unselectedLabelColor: AppUI.inkSoft,
         indicatorColor: AppTheme.primary,
-        labelStyle: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+        labelStyle: AppUI.bodySoft.copyWith(fontWeight: FontWeight.w600),
         tabs: [
           Tab(text: 'Cocina (${_enCocina.length})'),
           Tab(text: 'Para entregar (${_listos.length})'),
@@ -329,14 +329,14 @@ class _ComandasScreenState extends State<ComandasScreen> {
           horizontal: AppUI.s16, vertical: AppUI.s8),
       child: Row(
         children: [
-          const Icon(Icons.wifi_off_rounded, size: 16, color: Color(0xFFB45309)),
+          const Icon(Icons.wifi_off_rounded, size: 16, color: AppTheme.warning),
           const SizedBox(width: AppUI.s8),
           Expanded(
             child: Text(
               'Sin conexión — mostrando lo último$hhmm',
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: const TextStyle(fontSize: 13, color: Color(0xFFB45309)),
+              style: AppUI.bodySoft.copyWith(color: AppTheme.warning),
             ),
           ),
         ],
@@ -471,6 +471,9 @@ class _ComandasScreenState extends State<ComandasScreen> {
     final flashing = _flashIds.contains(t.uuid);
     final isNuevo = t.status == OrderStatus.nuevo;
 
+    // Contenedor propio (no SoftCard) SOLO para poder pintar el borde
+    // izquierdo semáforo + el flash animado; replica los tokens del kit
+    // (blanco, radius 12, AppUI.shadow) — DESIGN_SYSTEM §Checklist.
     return AnimatedContainer(
       duration: const Duration(milliseconds: 400),
       margin: const EdgeInsets.only(bottom: AppUI.s12),
@@ -561,10 +564,9 @@ class _ComandasScreenState extends State<ComandasScreen> {
                 '“${it.notes}”',
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  fontSize: 13,
+                style: AppUI.bodySoft.copyWith(
                   fontStyle: FontStyle.italic,
-                  color: Color(0xFFB45309),
+                  color: AppTheme.warning,
                   fontWeight: FontWeight.w500,
                 ),
               ),
