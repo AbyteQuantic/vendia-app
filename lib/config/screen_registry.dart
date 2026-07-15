@@ -20,6 +20,7 @@ import '../screens/inventory/add_merchandise_screen.dart';
 import '../screens/inventory/ingredients_screen.dart';
 import '../screens/inventory/inventory_report_screen.dart';
 import '../screens/online_store/promo_management_screen.dart';
+import '../screens/pos/cuaderno_fiados_screen.dart';
 import '../screens/pos/pos_screen.dart';
 import '../screens/promotions/promotions_list_screen.dart';
 import '../screens/purchases/purchase_orders_screen.dart';
@@ -49,6 +50,11 @@ final Map<String, ScreenBuilder> kScreenRegistry = {
   'promo_management': PromoManagementScreen.new,
   'admin_hub': AdminHubScreen.new,
   'eventos': EventsListScreen.new,
+  // Cuaderno de fiados (ventas a crédito). Alias 'Creditos' porque el
+  // fundador creó el módulo desde el admin con esa clave exacta antes de
+  // que existiera el mapeo — sin el alias, su tile caía a "Próximamente".
+  'creditos': CuadernoFiadosScreen.new,
+  'Creditos': CuadernoFiadosScreen.new,
 };
 
 /// True si la app instalada conoce la pantalla nativa de [screenKey].
