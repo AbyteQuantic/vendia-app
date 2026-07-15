@@ -19,6 +19,7 @@ import '../../utils/beep.dart';
 import '../../widgets/sync_status_banner.dart';
 import '../../widgets/branch_aware_reload.dart';
 import 'cart_controller.dart';
+import 'kitchen_ticket.dart';
 import 'voice/voice_order_sheet.dart';
 import 'account_qr_screen.dart';
 import 'widgets/container_dialog.dart';
@@ -1657,6 +1658,13 @@ class _PosScreenBodyState extends State<_PosScreenBody>
       // (comportamiento legacy). Cuando viene, el backend valida que
       // el customer pertenezca al tenant.
       String? customerId,
+      // Spec 105 F2 — comanda PREPAGO: si la venta trae platos de menú,
+      // tras el POST exitoso nace el ticket de cocina atado por sale_uuid.
+      // kitchenLabel null → "Pedido N" automático (mostrador); la mesa
+      // inmediata pasa su label ("Mesa 4") y type 'mesa'.
+      String? kitchenLabel,
+      String? kitchenCustomerName,
+      String kitchenType = 'turno',
       }) async {
     // Guard compartido con SalesSyncService.pushToServer (sweep periódico
     // de 30 s / reconexión): si ese sweep ya está subiendo esta MISMA venta
@@ -1747,11 +1755,45 @@ class _PosScreenBodyState extends State<_PosScreenBody>
         } catch (_) {}
       }
       // Mark as synced in Isar
-      final db = DatabaseService.instance;
-      final allSales = await db.getSalesToday();
-      final match = allSales.where((s) => s.uuid == saleUuid).toList();
-      if (match.isNotEmpty) {
-        await db.markSaleSynced(match.first);
+      int salesToday = 0;
+      try {
+        final db = DatabaseService.instance;
+        final allSales = await db.getSalesToday();
+        salesToday = allSales.length;
+        final match = allSales.where((s) => s.uuid == saleUuid).toList();
+        if (match.isNotEmpty) {
+          await db.markSaleSynced(match.first);
+        }
+      } on StateError catch (_) {
+        // ISAR no inicializado (tests) — el conteo queda en 0.
+      }
+
+      // Spec 105 F2 — mostrador PREPAGO: la venta ya existe; si el pedido
+      // trae platos, la comanda nace pagada (sale_uuid → paid_at server-side;
+      // CloseOrder la rechaza — jamás doble venta). Best-effort: si falla,
+      // la cocina se entera a la voz (fallback del concilio) y la venta
+      // NUNCA se bloquea ni se repite.
+      var label = (kitchenLabel ?? '').trim();
+      if (label.isEmpty) {
+        final now = DateTime.now();
+        label = salesToday > 0
+            ? 'Pedido $salesToday'
+            : 'Pedido ${now.hour}:${now.minute.toString().padLeft(2, '0')}';
+      }
+      final kitchenPayload = buildKitchenTicketPayload(
+        cartItems,
+        saleUuid: saleUuid,
+        label: label,
+        customerName: kitchenCustomerName,
+        type: kitchenType,
+      );
+      if (kitchenPayload != null) {
+        try {
+          await api.createOrder(kitchenPayload);
+          debugPrint('[KDS] comanda prepago creada para venta $saleUuid');
+        } catch (e) {
+          debugPrint('[KDS] comanda prepago falló (venta intacta): $e');
+        }
       }
     } catch (e) {
       // Non-blocking: keep the UX flowing. The sale stays in Isar with
@@ -1900,6 +1942,9 @@ class _PosScreenBodyState extends State<_PosScreenBody>
           dynamicQrPayload: result.dynamicQrPayload,
           priceTier: priceTier,
           customerId: customerId,
+          // Spec 105 F2 — si hay platos, la comanda prepago sale con el
+          // nombre del cliente (si el checkout lo capturó).
+          kitchenCustomerName: result.customerName,
         );
         // Credit sales can leave a fiado in pending state; refresh the
         // badge so the cashier sees it in the Cuaderno indicator. The
@@ -2119,6 +2164,10 @@ class _PosScreenBodyState extends State<_PosScreenBody>
                       method.$1.toLowerCase(),
                       saleUuid,
                       priceTier: mesaPriceTier,
+                      // Spec 105 F2 — mesa inmediata: la comanda prepago
+                      // llega a cocina con el label de la mesa.
+                      kitchenLabel: ctx.tableLabel,
+                      kitchenType: 'mesa',
                     );
 
                     if (!mounted) return;
