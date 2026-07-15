@@ -956,6 +956,10 @@ class _EditProductSheetState extends State<_EditProductSheet> {
   late String _presentation;
   // Spec 063 — venta solo para mayores de 18.
   bool _isAgeRestricted = false;
+  // Spec 105 — tiempo de preparación (min): solo visible para PLATOS
+  // (is_menu_item). Alimenta el semáforo del KDS de comandas.
+  late final TextEditingController _durationCtrl;
+  bool _isMenuItem = false;
   bool _saving = false;
   bool _enhancing = false;
   String? _photoUrl;
@@ -1007,6 +1011,10 @@ class _EditProductSheetState extends State<_EditProductSheet> {
     _loadCategorySuggestions();
     _presentation = p['presentation'] as String? ?? '';
     _isAgeRestricted = p['is_age_restricted'] as bool? ?? false;
+    // Spec 105 — pre-llena el tiempo de preparación; vacío si es 0.
+    _isMenuItem = p['is_menu_item'] as bool? ?? false;
+    final pDur = (p['duration_min'] as num?)?.toInt() ?? 0;
+    _durationCtrl = TextEditingController(text: pDur > 0 ? '$pDur' : '');
     final photo = p['photo_url'] as String?;
     final image = p['image_url'] as String?;
     _photoUrl = (photo != null && photo.isNotEmpty) ? photo : image;
@@ -1030,6 +1038,7 @@ class _EditProductSheetState extends State<_EditProductSheet> {
     _priceCtrl.dispose();
     _stockCtrl.dispose();
     _minStockCtrl.dispose();
+    _durationCtrl.dispose();
     _contentCtrl.dispose();
     _skuCtrl.dispose();
     _categoryCtrl.dispose();
@@ -1275,6 +1284,9 @@ class _EditProductSheetState extends State<_EditProductSheet> {
       'characteristics': _characteristicsCtrl.text.trim(),
       // Spec 063 — venta para mayores de 18 (licor, cigarrillos).
       'is_age_restricted': _isAgeRestricted,
+      // Spec 105 — tiempo de preparación del plato (0 = sin tiempo).
+      if (_isMenuItem)
+        'duration_min': int.tryParse(_durationCtrl.text.trim()) ?? 0,
     };
     // Capturado ANTES de cualquier await: tras uno, el widget puede haberse
     // desmontado y context.read ya no sería seguro.
@@ -1772,6 +1784,26 @@ class _EditProductSheetState extends State<_EditProductSheet> {
                     _inputDecoration('Ej: 5 — le avisamos para pedir'),
               ),
               const SizedBox(height: 18),
+
+              // ── Spec 105 — tiempo de preparación (solo platos) ────────
+              if (_isMenuItem) ...[
+                const Text('Tiempo de preparación (min)',
+                    style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                        color: AppTheme.textSecondary)),
+                const SizedBox(height: 6),
+                TextField(
+                  key: const Key('product_duration_min_field'),
+                  controller: _durationCtrl,
+                  keyboardType: TextInputType.number,
+                  inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                  style: const TextStyle(fontSize: 18),
+                  decoration: _inputDecoration(
+                      'Ej: 15 — alimenta el semáforo de comandas'),
+                ),
+                const SizedBox(height: 18),
+              ],
 
               // Presentation chips
               const Text('Presentación',

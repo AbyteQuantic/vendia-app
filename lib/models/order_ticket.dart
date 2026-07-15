@@ -17,6 +17,13 @@ class OrderTicket {
   final DateTime? updatedAt;
   final int? serverId;
 
+  // ── Spec 105 — timestamps de transición y mostrador prepago ──
+  final DateTime? preparandoAt;
+  final DateTime? listoAt;
+  final DateTime? entregadoAt;
+  final DateTime? paidAt;
+  final String? saleUuid;
+
   OrderTicket({
     required this.uuid,
     required this.label,
@@ -33,6 +40,11 @@ class OrderTicket {
     DateTime? createdAt,
     this.updatedAt,
     this.serverId,
+    this.preparandoAt,
+    this.listoAt,
+    this.entregadoAt,
+    this.paidAt,
+    this.saleUuid,
   }) : createdAt = createdAt ?? DateTime.now();
 
   /// Calculate total from items
@@ -41,6 +53,21 @@ class OrderTicket {
 
   /// Number of items
   int get itemCount => items.fold(0, (sum, item) => sum + item.quantity);
+
+  /// Spec 105 — tiempo objetivo del ticket: el MAX de los duration_min de
+  /// sus ítems (la cocina paraleliza). Null si ningún ítem lo tiene.
+  int? get maxDurationMin {
+    int? max;
+    for (final item in items) {
+      final d = item.durationMin;
+      if (d != null && (max == null || d > max)) max = d;
+    }
+    return max;
+  }
+
+  /// Spec 105 — mostrador PREPAGO: la venta ya se registró en el POS;
+  /// el ticket muere en 'entregado', jamás pasa por cobrar.
+  bool get isPrepaid => paidAt != null;
 
   /// Time since creation
   String get timeAgo {
@@ -59,6 +86,8 @@ class OrderTicket {
         return 'Preparando';
       case OrderStatus.listo:
         return 'Listo';
+      case OrderStatus.entregado:
+        return 'Entregado';
       case OrderStatus.cobrado:
         return 'Cobrado';
       case OrderStatus.cancelado:
@@ -92,9 +121,27 @@ class OrderTicket {
       createdAt: json['created_at'] != null
           ? DateTime.parse(json['created_at'] as String)
           : DateTime.now(),
-      serverId: json['id'] as int?,
+      serverId: json['id'] is int ? json['id'] as int : null,
+      preparandoAt: _parseDate(json['preparando_at']),
+      listoAt: _parseDate(json['listo_at']),
+      entregadoAt: _parseDate(json['entregado_at']),
+      paidAt: _parseDate(json['paid_at']),
+      saleUuid: json['sale_uuid'] as String?,
     );
   }
+
+  /// Parsea la fila cruda del backend Go (GET /orders): la clave primaria
+  /// llega como `id` (uuid string) y no existe `uuid`.
+  factory OrderTicket.fromApi(Map<String, dynamic> json) {
+    return OrderTicket.fromJson({
+      ...json,
+      'uuid': (json['id'] as String?) ?? (json['uuid'] as String?) ?? '',
+      'id': null,
+    });
+  }
+
+  static DateTime? _parseDate(dynamic v) =>
+      v is String && v.isNotEmpty ? DateTime.tryParse(v) : null;
 
   Map<String, dynamic> toJson() => {
         'uuid': uuid,
@@ -132,6 +179,11 @@ class OrderTicket {
       createdAt: createdAt,
       updatedAt: DateTime.now(),
       serverId: serverId,
+      preparandoAt: preparandoAt,
+      listoAt: listoAt,
+      entregadoAt: entregadoAt,
+      paidAt: paidAt,
+      saleUuid: saleUuid,
     );
   }
 }
@@ -143,12 +195,22 @@ class OrderItem {
   final double unitPrice;
   final String? emoji;
 
+  // ── Spec 105 ──
+  /// Indicación del cliente ("sin cebolla"). La cocina la ve resaltada.
+  final String? notes;
+
+  /// Snapshot del tiempo de preparación (min) congelado al crear el pedido
+  /// (patrón anti-drift Spec 083). Null si el producto no lo define.
+  final int? durationMin;
+
   OrderItem({
     required this.productUuid,
     required this.productName,
     required this.quantity,
     required this.unitPrice,
     this.emoji,
+    this.notes,
+    this.durationMin,
   });
 
   double get subtotal => quantity * unitPrice;
@@ -160,6 +222,13 @@ class OrderItem {
       quantity: json['quantity'] as int,
       unitPrice: (json['unit_price'] as num).toDouble(),
       emoji: json['emoji'] as String?,
+      notes: (json['notes'] as String?)?.trim().isEmpty ?? true
+          ? null
+          : (json['notes'] as String).trim(),
+      // 0 = "sin tiempo definido" → null, para que el KDS use su default.
+      durationMin: ((json['duration_min'] as num?)?.toInt() ?? 0) > 0
+          ? (json['duration_min'] as num).toInt()
+          : null,
     );
   }
 
@@ -169,9 +238,11 @@ class OrderItem {
         'quantity': quantity,
         'unit_price': unitPrice,
         'emoji': emoji,
+        if (notes != null) 'notes': notes,
+        if (durationMin != null) 'duration_min': durationMin,
       };
 }
 
-enum OrderStatus { nuevo, preparando, listo, cobrado, cancelado }
+enum OrderStatus { nuevo, preparando, listo, entregado, cobrado, cancelado }
 
 enum OrderType { mesa, turno, paraLlevar, domicilioWeb }
