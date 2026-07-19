@@ -124,30 +124,26 @@ void main() {
     expect(c.phone, '');
   });
 
-  testWidgets('pregunta de tipo: tocar un chip fija el tipo y avanza',
-      (tester) async {
+  testWidgets(
+      'con credenciales completas aparece la consola de crear cuenta '
+      'con el aviso de datos (Spec 106, AC-15)', (tester) async {
     await tester.binding.setSurfaceSize(const Size(360, 900));
     addTearDown(() => tester.binding.setSurfaceSize(null));
 
     final c = _ctrl();
-    // Todo resuelto menos el tipo → arranca en la pregunta "tipo".
+    // Spec 106: solo credenciales → canRegister se cumple y se muestra la
+    // consola final (la pregunta de tipo ya no existe: la hace Vendi).
     c.setOwnerName('María');
     c.setOwnerLastName('Gómez');
     c.setPhone('3001234567');
     c.setPin('1234');
     c.setConfirmPin('1234');
-    c.setBusinessName('Tienda');
-    c.setAddress('Calle 5');
     await tester.pumpWidget(_wrap(c, _FakeApi(const {})));
     await tester.pump();
 
-    expect(find.text('¿Qué vende principalmente?'), findsOneWidget);
-    await tester.ensureVisible(find.byKey(const Key('chip_tipo_bar')));
-    await tester.tap(find.byKey(const Key('chip_tipo_bar')));
-    await tester.pump();
-
-    expect(c.businessType, 'bar');
-    expect(c.hasTables, isTrue); // side-effect intacto
+    expect(find.byKey(const Key('agentic_create_account')), findsOneWidget);
+    expect(find.byKey(const Key('accept_terms_checkbox')), findsOneWidget);
+    expect(find.byKey(const Key('data_notice_text')), findsOneWidget);
   });
 
   testWidgets('"Empezar de nuevo" borra los datos y vuelve al paso 1',

@@ -362,17 +362,11 @@ class OnboardingStepperController extends ChangeNotifier {
 
   bool get logoSelected => logoUrl.trim().isNotEmpty;
 
-  /// Gate único del botón "Crear mi cuenta": AND de todos los requeridos.
-  /// Replica exactamente los gates dispersos de _onNext + validators.
+  /// Gate único del botón "Crear mi cuenta". Spec 106 — registro corto:
+  /// SOLO credenciales; el nombre del negocio, los tipos y el logo los
+  /// configura la conversación con Vendi después de crear la cuenta.
   bool get canRegister =>
-      ownerValid &&
-      phoneValid &&
-      pinValid &&
-      pinConfirmed &&
-      businessNameValid &&
-      addressValid &&
-      businessTypeSelected &&
-      logoSelected;
+      ownerValid && phoneValid && pinValid && pinConfirmed;
 
   // ── Integración IA (Spec 045) ─────────────────────────────────────────────
 
@@ -488,35 +482,31 @@ class OnboardingStepperController extends ChangeNotifier {
   }
 
   Map<String, dynamic> _buildPayload() {
+    // Spec 106 — registro MÍNIMO: solo credenciales. El backend pone el
+    // placeholder "Mi negocio" y Vendi configura todo lo demás conversando.
+    // Si una sesión restaurada de la app vieja trae datos del negocio, se
+    // envían (no se pierden), pero ya no son requisito.
     return {
       'owner': {
         'name': '$ownerName $ownerLastName'.trim(),
         'phone': phone,
         'password': pin,
       },
-      'business': {
-        'name': businessName,
-        'razon_social': razonSocial,
-        'nit': nit,
-        'address': address,
-        'type': businessType, // tipo principal
-        'types': businessTypes, // todos los portafolios
-        'has_multiple_branches': hasMultipleBranches,
-        if (logoUrl.isNotEmpty) 'logo_url': logoUrl,
-      },
-      'config': {
-        'sale_types': saleTypes,
-        'has_showcases': hasShowcases,
-        'has_tables': hasTables,
-        // F023: capacidades opcionales
-        'offers_services': offersServices,
-        'sells_by_weight': sellsByWeight,
-      },
-      // Fase 2: empleados se agrega en el módulo Administrar (Fase 4)
+      if (businessName.trim().isNotEmpty || businessTypes.isNotEmpty)
+        'business': {
+          if (businessName.trim().isNotEmpty) 'name': businessName,
+          if (address.trim().isNotEmpty) 'address': address,
+          if (businessType.isNotEmpty) 'type': businessType,
+          if (businessTypes.isNotEmpty) 'types': businessTypes,
+          if (logoUrl.isNotEmpty) 'logo_url': logoUrl,
+        },
       'employees': [],
       // Spec 098 (Fase 1): aceptación de T&C. OnboardingStepperScreen lo
       // extrae del payload y lo pasa como acceptTerms a la llamada real.
       'accept_terms': acceptedTerms,
+      // Spec 106 (FR-13): el registro mostró el aviso de que la conversación
+      // con Vendi se guarda para mejorar el asistente.
+      'data_notice_accepted': true,
     };
   }
 
