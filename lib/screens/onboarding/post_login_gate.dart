@@ -23,6 +23,7 @@ import 'package:flutter/material.dart';
 
 import '../../services/api_service.dart';
 import '../../services/auth_service.dart';
+import '../auth/login_screen.dart';
 import '../dashboard/dashboard_screen.dart';
 import 'vendi/vendi_chat_screen.dart';
 
@@ -81,9 +82,21 @@ class _PostLoginGateState extends State<PostLoginGate> {
         completed = await auth.getOnboardingCompleted();
       }
     } catch (_) {
-      // 2) Offline o error de red — caemos al cache. Fail-open: ante
-      //    cualquier error mostramos el Dashboard, nunca atrapamos
-      //    al dueño en la welcome por una lectura fallida.
+      // Hotfix 2026-07-19: si el fetch falló Y la sesión ya no existe (el
+      // interceptor hizo logout por un token vencido irrecuperable), montar
+      // el Dashboard "fail-open" disparaba una ráfaga de llamadas sin
+      // Authorization → cascada de toasts. Sin sesión → al Login.
+      var stillHasSession = true;
+      try {
+        stillHasSession = await auth.hasSession();
+      } catch (_) {}
+      if (!stillHasSession) {
+        _goToLogin();
+        return;
+      }
+      // 2) Offline o error de red CON sesión — caemos al cache. Fail-open:
+      //    mostramos el Dashboard, nunca atrapamos al dueño por una
+      //    lectura fallida.
       try {
         completed = await auth.getOnboardingCompleted();
       } catch (_) {
@@ -95,6 +108,14 @@ class _PostLoginGateState extends State<PostLoginGate> {
     setState(() {
       _onboardingCompleted = completed;
     });
+  }
+
+  void _goToLogin() {
+    if (!mounted) return;
+    Navigator.of(context).pushAndRemoveUntil(
+      MaterialPageRoute(builder: (_) => const LoginScreen()),
+      (_) => false,
+    );
   }
 
   void _goToDashboard() {

@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 
 import '../models/task.dart';
 import 'api_service.dart';
+import 'auth_service.dart';
 
 /// TaskCenterController — el ÚNICO origen de tareas/notificaciones de la app.
 /// Un solo Timer.periodic(15s) reemplaza los dos pollers anteriores
@@ -76,6 +77,16 @@ class TaskCenterController extends ChangeNotifier {
 
   Future<void> refresh() async {
     if (_loading) return;
+    // Hotfix bucle "sesión expiró" (2026-07-19): tras el logout, el
+    // Timer.periodic quedaba vivo golpeando la API cada 15s sobre el Login.
+    // Guard SIN await: en entornos de test el read del secure storage puede
+    // no completar jamás y un await aquí colgaba la suite (CI 2×). Se lanza
+    // fire-and-forget: cuando resuelva sin sesión, detiene el poller. El
+    // fetch en vuelo que alcance a salir sin sesión produce un 401 que el
+    // interceptor ya deja pasar en silencio.
+    unawaited(AuthService().hasSession().then((ok) {
+      if (!ok) stop();
+    }).catchError((_) {}));
     _loading = true;
     try {
       final res = await _api.fetchTasks(branchId: _branchId);

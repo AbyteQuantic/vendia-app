@@ -130,8 +130,30 @@ class ApiService {
         if (error.response?.statusCode == 401 &&
             !error.requestOptions.path.contains('/auth/refresh') &&
             !error.requestOptions.path.contains('/login')) {
-          // Try token refresh
-          final refreshed = await _tryRefreshToken();
+          // Hotfix bucle "sesión expiró" (2026-07-19): si la request salió
+          // SIN sesión (token ya borrado — p.ej. pollers huérfanos sobre el
+          // Login), no hay nada que refrescar ni que anunciar: el toast
+          // sobre pantallas pre-auth era exactamente este caso.
+          final hadAuthHeader =
+              (error.requestOptions.headers['Authorization'] as String?)
+                      ?.isNotEmpty ==
+                  true;
+          // Fail-open ante error del storage (tests/plugin ausente): si no
+          // se puede leer la sesión, se asume que existe y sigue el flujo
+          // normal de refresh (comportamiento pre-hotfix).
+          var stillHasSession = true;
+          try {
+            stillHasSession = await _auth.hasSession();
+          } catch (_) {}
+          if (!hadAuthHeader || !stillHasSession) {
+            handler.next(error);
+            return;
+          }
+
+          // Single-flight: N 401s concurrentes comparten UN refresh. Sin
+          // esto, el backend rota el refresh token para el primero y los
+          // demás fallaban → logout() borraba los tokens recién renovados.
+          final refreshed = await _refreshTokenSingleFlight();
           if (refreshed) {
             // Retry the original request
             final opts = error.requestOptions;
@@ -142,25 +164,33 @@ class ApiService {
               return handler.resolve(response);
             } catch (_) {}
           }
-          _auth.logout();
-          scaffoldKey.currentState?.showSnackBar(
-            const SnackBar(
-              content: Row(
-                children: [
-                  Icon(Icons.lock_clock_rounded, color: Colors.white, size: 24),
-                  SizedBox(width: 12),
-                  Expanded(
-                    child: Text(
-                      'Tu sesión expiró. Por favor inicia sesión de nuevo.',
-                      style: TextStyle(fontSize: 18),
+          // Cierre de sesión UNA sola vez + toast deduplicado: la primera
+          // request perdedora anuncia; las demás (hasSession ya false) pasan
+          // en silencio por el guard de arriba.
+          if (shouldNotifySessionExpired(DateTime.now())) {
+            try {
+              await _auth.logout();
+            } catch (_) {}
+            scaffoldKey.currentState?.showSnackBar(
+              const SnackBar(
+                content: Row(
+                  children: [
+                    Icon(Icons.lock_clock_rounded,
+                        color: Colors.white, size: 24),
+                    SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        'Tu sesión expiró. Por favor inicia sesión de nuevo.',
+                        style: TextStyle(fontSize: 18),
+                      ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
+                backgroundColor: AppTheme.error,
+                duration: Duration(seconds: 5),
               ),
-              backgroundColor: AppTheme.error,
-              duration: Duration(seconds: 5),
-            ),
-          );
+            );
+          }
         }
         handler.next(error);
       },
@@ -185,6 +215,34 @@ class ApiService {
   @visibleForTesting
   set httpClientAdapterForTesting(HttpClientAdapter adapter) =>
       _dio.httpClientAdapter = adapter;
+
+  /// Single-flight compartido entre TODAS las instancias de ApiService (cada
+  /// pantalla construye la suya): un solo intento de refresh a la vez; los
+  /// 401 concurrentes esperan el mismo Future en vez de competir.
+  static Future<bool>? _refreshInFlight;
+
+  Future<bool> _refreshTokenSingleFlight() {
+    return _refreshInFlight ??=
+        _tryRefreshToken().whenComplete(() => _refreshInFlight = null);
+  }
+
+  /// Marca del último aviso de sesión expirada (dedup global). Visible para
+  /// tests; resetear a null entre casos.
+  @visibleForTesting
+  static DateTime? lastSessionExpiredNoticeAt;
+
+  /// ¿Corresponde anunciar (toast + logout) esta expiración de sesión?
+  /// Devuelve true a lo sumo una vez por ventana de 30s — una ráfaga de 401s
+  /// concurrentes produce UN aviso, no uno por request. Pura y testeable.
+  @visibleForTesting
+  static bool shouldNotifySessionExpired(DateTime now) {
+    final last = lastSessionExpiredNoticeAt;
+    if (last != null && now.difference(last) < const Duration(seconds: 30)) {
+      return false;
+    }
+    lastSessionExpiredNoticeAt = now;
+    return true;
+  }
 
   Future<bool> _tryRefreshToken() async {
     try {
