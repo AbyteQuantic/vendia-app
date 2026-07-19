@@ -27,6 +27,7 @@ void _fillCredentials(OnboardingStepperController c) {
 }
 
 void main() {
+  _splitTests();
   group('Registro corto — solo credenciales (Spec 106)', () {
     test('el flujo tiene exactamente owner, phone y pin', () {
       expect(kOnboardingQuestions.map((q) => q.id).toList(),
@@ -111,6 +112,40 @@ void main() {
       expect(find.byType(VendiChatScreen), findsOneWidget);
       // Dejar que el turno inicial (degradado en test, sin red) termine.
       await tester.pumpAndSettle(const Duration(milliseconds: 100));
+    });
+  });
+}
+
+// Spec 106 (2026-07-19): una sola caja de nombre — split determinista.
+void _splitTests() {
+  group('setOwnerFullName — una caja, split automático', () {
+    test('dos palabras: nombre + apellido', () {
+      final c = _c();
+      c.setOwnerFullName('María Gómez');
+      expect(c.ownerName, 'María');
+      expect(c.ownerLastName, 'Gómez');
+      expect(c.ownerValid, isTrue);
+    });
+
+    test('tres palabras: primer token = nombre, resto apellidos', () {
+      final c = _c();
+      c.setOwnerFullName('Carmen Cecilia Lopez');
+      expect(c.ownerName, 'Carmen');
+      expect(c.ownerLastName, 'Cecilia Lopez');
+      expect(c.ownerValid, isTrue);
+    });
+
+    test('una sola palabra: aún no válido (falta apellido)', () {
+      final c = _c();
+      c.setOwnerFullName('Carmen');
+      expect(c.ownerValid, isFalse);
+    });
+
+    test('espacios múltiples y bordes se normalizan', () {
+      final c = _c();
+      c.setOwnerFullName('  Juan   Pérez  ');
+      expect(c.ownerName, 'Juan');
+      expect(c.ownerLastName, 'Pérez');
     });
   });
 }
