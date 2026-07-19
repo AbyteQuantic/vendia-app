@@ -284,6 +284,30 @@ class OnboardingStepperController extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Spec 106 (feedback del fundador 2026-07-19): UNA sola caja para el
+  /// nombre completo — el sistema separa nombre y apellidos solo. Regla
+  /// determinista: primer token = nombre (para saludos: "¡Todo listo,
+  /// Carmen!"), el resto = apellidos. El backend recibe el nombre COMPLETO
+  /// re-unido (`_buildPayload` une nombre + apellidos), así que la partición
+  /// exacta nombre/segundo-nombre/apellido no altera lo persistido. Si el
+  /// tendero dicta por voz/IA, el parse de Gemini sigue haciendo la
+  /// separación semántica fina.
+  void setOwnerFullName(String v) {
+    final parts =
+        v.trim().split(RegExp(r'\s+')).where((p) => p.isNotEmpty).toList();
+    if (parts.isEmpty) {
+      ownerName = '';
+      ownerLastName = '';
+    } else if (parts.length == 1) {
+      ownerName = parts.first;
+      ownerLastName = '';
+    } else {
+      ownerName = parts.first;
+      ownerLastName = parts.sublist(1).join(' ');
+    }
+    notifyListeners();
+  }
+
   void setPhone(String v) {
     phone = v;
     notifyListeners();

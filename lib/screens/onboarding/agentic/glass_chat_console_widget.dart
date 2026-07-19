@@ -53,8 +53,7 @@ class GlassChatConsoleWidget extends StatefulWidget {
 class _GlassChatConsoleWidgetState extends State<GlassChatConsoleWidget> {
   // Controladores por campo, creados una vez (cursor estable). Se sincronizan
   // con el estado del controller cuando cambia la pregunta activa.
-  final _name = TextEditingController();
-  final _lastName = TextEditingController();
+  final _fullName = TextEditingController();
   final _phone = TextEditingController();
   final _pin = TextEditingController();
   final _pinConfirm = TextEditingController();
@@ -64,7 +63,7 @@ class _GlassChatConsoleWidgetState extends State<GlassChatConsoleWidget> {
 
   @override
   void dispose() {
-    for (final c in [_name, _lastName, _phone, _pin, _pinConfirm, _bizName, _address]) {
+    for (final c in [_fullName, _phone, _pin, _pinConfirm, _bizName, _address]) {
       c.dispose();
     }
     super.dispose();
@@ -76,8 +75,7 @@ class _GlassChatConsoleWidgetState extends State<GlassChatConsoleWidget> {
     if (_syncedFor == widget.question.id) return;
     _syncedFor = widget.question.id;
     final c = widget.controller;
-    _name.text = c.ownerName;
-    _lastName.text = c.ownerLastName;
+    _fullName.text = ('${c.ownerName} ${c.ownerLastName}').trim();
     _phone.text = c.phone;
     _bizName.text = c.businessName;
     _address.text = c.address;
@@ -168,11 +166,11 @@ class _GlassChatConsoleWidgetState extends State<GlassChatConsoleWidget> {
     switch (widget.question.kind) {
       case QKind.text:
         if (widget.question.id == 'owner') {
+          // Spec 106 (2026-07-19): UNA sola caja — el sistema separa
+          // nombre/apellidos (setOwnerFullName); cero fricción (Art. I).
           return _textBody([
-            _field(_name, 'Su nombre', c.setOwnerName,
+            _field(_fullName, 'Nombre y apellidos', c.setOwnerFullName,
                 key: 'q_owner_name', cap: TextCapitalization.words),
-            _field(_lastName, 'Sus apellidos', c.setOwnerLastName,
-                cap: TextCapitalization.words),
           ]);
         }
         if (widget.question.id == 'phone') {

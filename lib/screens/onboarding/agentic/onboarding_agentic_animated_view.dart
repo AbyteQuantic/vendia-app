@@ -23,6 +23,7 @@ import '../../../services/voice_recorder.dart';
 import '../../../theme/app_theme.dart';
 import '../onboarding_stepper_controller.dart';
 import '../post_login_gate.dart';
+import '../vendi/vendi_chat_screen.dart' show VendiAvatar;
 import '../../legal/terms_screen.dart';
 import '../../../widgets/sprite_sheet_player.dart';
 import 'glass_chat_console_widget.dart';
@@ -553,8 +554,22 @@ class _OnboardingAgenticAnimatedViewState
                   ConstrainedBox(
                     constraints: BoxConstraints(
                         maxHeight: MediaQuery.of(context).size.height * 0.62),
-                    child:
-                        _ctrl.canRegister ? _readyConsole() : _questionConsole(),
+                    // Spec 106 (2026-07-19): avatar flotante de Vendi sobre la
+                    // consola — señal visual de que una IA guía el registro.
+                    child: Stack(
+                      clipBehavior: Clip.none,
+                      children: [
+                        _ctrl.canRegister
+                            ? _readyConsole()
+                            : _questionConsole(),
+                        Positioned(
+                          top: -26,
+                          right: 20,
+                          child: _FloatingVendiAvatar(
+                              reduceMotion: reduceMotion),
+                        ),
+                      ],
+                    ),
                   ),
                 ],
               ),
@@ -749,6 +764,86 @@ class _OnboardingAgenticAnimatedViewState
           ),
         ),
       ),
+    );
+  }
+}
+
+/// Avatar de Vendi flotando sobre la consola del registro (Spec 106): anillo
+/// blanco + sombra + chispa de IA, con una levitación suave (se detiene con
+/// reduce-motion). Señala desde el primer paso que una IA acompaña el proceso.
+class _FloatingVendiAvatar extends StatefulWidget {
+  const _FloatingVendiAvatar({required this.reduceMotion});
+
+  final bool reduceMotion;
+
+  @override
+  State<_FloatingVendiAvatar> createState() => _FloatingVendiAvatarState();
+}
+
+class _FloatingVendiAvatarState extends State<_FloatingVendiAvatar>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _c = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 2600),
+  );
+
+  @override
+  void initState() {
+    super.initState();
+    if (!widget.reduceMotion) _c.repeat(reverse: true);
+  }
+
+  @override
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final avatar = Container(
+      key: const Key('vendi_floating_avatar'),
+      padding: const EdgeInsets.all(3),
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        color: Colors.white,
+        boxShadow: [
+          BoxShadow(
+            color: AppTheme.primary.withValues(alpha: 0.25),
+            blurRadius: 14,
+            offset: const Offset(0, 6),
+          ),
+        ],
+      ),
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          const VendiAvatar(size: 50),
+          Positioned(
+            right: -3,
+            top: -3,
+            child: Container(
+              padding: const EdgeInsets.all(3),
+              decoration: const BoxDecoration(
+                shape: BoxShape.circle,
+                color: Colors.white,
+              ),
+              child: const Icon(Icons.auto_awesome_rounded,
+                  size: 13, color: AppTheme.accent),
+            ),
+          ),
+        ],
+      ),
+    );
+
+    if (widget.reduceMotion) return avatar;
+    return AnimatedBuilder(
+      animation: _c,
+      builder: (_, child) => Transform.translate(
+        offset: Offset(0, -5 * Curves.easeInOut.transform(_c.value)),
+        child: child,
+      ),
+      child: avatar,
     );
   }
 }
