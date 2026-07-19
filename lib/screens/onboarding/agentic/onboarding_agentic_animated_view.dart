@@ -782,20 +782,25 @@ class _FloatingVendiAvatar extends StatefulWidget {
 
 class _FloatingVendiAvatarState extends State<_FloatingVendiAvatar>
     with SingleTickerProviderStateMixin {
-  late final AnimationController _c = AnimationController(
-    vsync: this,
-    duration: const Duration(milliseconds: 2600),
-  );
+  // Nullable y creado SOLO en initState: un `late final` perezoso se
+  // inicializaría en dispose() cuando reduce-motion nunca lo tocó, y crear
+  // un Ticker durante el desmontaje busca ancestros desactivados (crash).
+  AnimationController? _c;
 
   @override
   void initState() {
     super.initState();
-    if (!widget.reduceMotion) _c.repeat(reverse: true);
+    if (!widget.reduceMotion) {
+      _c = AnimationController(
+        vsync: this,
+        duration: const Duration(milliseconds: 2600),
+      )..repeat(reverse: true);
+    }
   }
 
   @override
   void dispose() {
-    _c.dispose();
+    _c?.dispose();
     super.dispose();
   }
 
@@ -836,11 +841,12 @@ class _FloatingVendiAvatarState extends State<_FloatingVendiAvatar>
       ),
     );
 
-    if (widget.reduceMotion) return avatar;
+    final c = _c;
+    if (widget.reduceMotion || c == null) return avatar;
     return AnimatedBuilder(
-      animation: _c,
+      animation: c,
       builder: (_, child) => Transform.translate(
-        offset: Offset(0, -5 * Curves.easeInOut.transform(_c.value)),
+        offset: Offset(0, -5 * Curves.easeInOut.transform(c.value)),
         child: child,
       ),
       child: avatar,
