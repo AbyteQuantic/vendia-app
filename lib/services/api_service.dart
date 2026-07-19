@@ -138,7 +138,14 @@ class ApiService {
               (error.requestOptions.headers['Authorization'] as String?)
                       ?.isNotEmpty ==
                   true;
-          if (!hadAuthHeader || !await _auth.hasSession()) {
+          // Fail-open ante error del storage (tests/plugin ausente): si no
+          // se puede leer la sesión, se asume que existe y sigue el flujo
+          // normal de refresh (comportamiento pre-hotfix).
+          var stillHasSession = true;
+          try {
+            stillHasSession = await _auth.hasSession();
+          } catch (_) {}
+          if (!hadAuthHeader || !stillHasSession) {
             handler.next(error);
             return;
           }
@@ -161,7 +168,9 @@ class ApiService {
           // request perdedora anuncia; las demás (hasSession ya false) pasan
           // en silencio por el guard de arriba.
           if (shouldNotifySessionExpired(DateTime.now())) {
-            await _auth.logout();
+            try {
+              await _auth.logout();
+            } catch (_) {}
             scaffoldKey.currentState?.showSnackBar(
               const SnackBar(
                 content: Row(

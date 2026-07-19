@@ -80,7 +80,13 @@ class TaskCenterController extends ChangeNotifier {
     // Hotfix bucle "sesión expiró" (2026-07-19): sin sesión no hay tareas
     // que pedir — el Timer.periodic quedaba vivo tras el logout y seguía
     // golpeando la API (401) cada 15s sobre la pantalla de Login.
-    if (!await AuthService().hasSession()) {
+    // Fail-open ante error (tests/plugin de storage ausente): si no se puede
+    // determinar la sesión, se comporta como siempre (sigue el fetch).
+    var sessionOk = true;
+    try {
+      sessionOk = await AuthService().hasSession();
+    } catch (_) {}
+    if (!sessionOk) {
       stop();
       return;
     }
