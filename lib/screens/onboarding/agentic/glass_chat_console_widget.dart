@@ -11,7 +11,6 @@ import 'package:flutter/services.dart';
 
 import '../../../theme/app_theme.dart';
 import '../onboarding_stepper_controller.dart';
-import 'onboarding_cards.dart' show kBusinessTypeLabels;
 import 'onboarding_flow.dart';
 
 const Color kIndigo = Color(0xFF4F46E5);
@@ -182,7 +181,8 @@ class _GlassChatConsoleWidgetState extends State<GlassChatConsoleWidget> {
                 key: 'q_phone', keyboard: TextInputType.phone),
           ]);
         }
-        // negocio
+        // Fallback defensivo (no debería alcanzarse con el flujo de 3
+        // preguntas de Spec 106).
         return _textBody([
           _field(_bizName, 'Nombre del negocio', c.setBusinessName,
               key: 'q_biz_name', cap: TextCapitalization.words),
@@ -198,25 +198,8 @@ class _GlassChatConsoleWidgetState extends State<GlassChatConsoleWidget> {
               obscure: true,
               max: 8),
         ]);
-      case QKind.typeChips:
-        return _chips('tipo', [
-          for (final e in kBusinessTypeLabels.entries) (e.key, e.value),
-        ], selected: c.businessType);
-      case QKind.branchChips:
-        return _chips('local', const [
-          ('uno', 'No, uno solo'),
-          ('varios', 'Sí, varios'),
-        ], selected: c.hasMultipleBranches ? 'varios' : 'uno');
-      case QKind.logoChips:
-        return _chips('logo', const [
-          ('generar', 'Crear con IA'),
-          ('subir', 'Subir foto'),
-        ]);
-      case QKind.employeeChips:
-        return _chips('empleados', const [
-          ('no', 'No, solo yo'),
-          ('si', 'Sí'),
-        ], selected: c.hasEmployees == null ? null : (c.hasEmployees! ? 'si' : 'no'));
+      // Spec 106: los QKind de chips (tipo/local/logo/empleados) se retiraron
+      // — esa configuración ahora la hace Vendi conversando tras el registro.
     }
   }
 
@@ -274,64 +257,6 @@ class _GlassChatConsoleWidgetState extends State<GlassChatConsoleWidget> {
     );
   }
 
-  Widget _chips(String questionId, List<(String, String)> options,
-      {String? selected}) {
-    // Ancho máximo del chip = todo el ancho útil menos paddings, para que una
-    // etiqueta larga ("Depósito de Construcción") elipse en vez de desbordar.
-    final maxChip = MediaQuery.of(context).size.width - 80;
-    return Wrap(
-      spacing: 10,
-      runSpacing: 10,
-      children: options.map((o) {
-        final isSel = selected == o.$1;
-        return Material(
-          color: Colors.transparent,
-          child: InkWell(
-            key: Key('chip_${questionId}_${o.$1}'),
-            borderRadius: BorderRadius.circular(18),
-            onTap: () {
-              HapticFeedback.selectionClick();
-              widget.onChip(questionId, o.$1);
-            },
-            child: ConstrainedBox(
-              constraints: BoxConstraints(minHeight: 56, maxWidth: maxChip),
-              child: Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
-                decoration: BoxDecoration(
-                  color: isSel ? kIndigo.withValues(alpha: 0.10) : Colors.white,
-                  borderRadius: BorderRadius.circular(18),
-                  border: Border.all(
-                      color: isSel ? kIndigo : AppTheme.borderColor,
-                      width: isSel ? 2 : 1.5),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    if (isSel) ...[
-                      const Icon(Icons.check_rounded, size: 18, color: kIndigo),
-                      const SizedBox(width: 6),
-                    ],
-                    Flexible(
-                      child: Text(o.$2,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.w600,
-                              color: isSel ? kIndigo : AppTheme.textPrimary)),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
-        );
-      }).toList(),
-    );
-  }
-
-  // Píldora de IA: input libre + sparkle + voz (acelerador opcional).
   Widget _aiPill() {
     return Container(
       decoration: BoxDecoration(

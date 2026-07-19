@@ -33,19 +33,21 @@ void main() {
       expect(c.canRegister, isTrue);
     });
 
-    test('address es REQUERIDA (aprobado por el fundador)', () {
+    test('address ya NO es requisito del registro corto (Spec 106)', () {
       final c = _make();
       _fillAllValid(c);
       c.address = '   ';
       expect(c.addressValid, isFalse);
-      expect(c.canRegister, isFalse);
+      // Spec 106: el registro solo exige credenciales; la dirección la
+      // captura Vendi (o el perfil) después.
+      expect(c.canRegister, isTrue);
     });
 
-    test('logo requerido: sin logoUrl no se puede registrar', () {
+    test('logo ya NO es requisito del registro corto (Spec 106)', () {
       final c = _make();
       _fillAllValid(c);
       c.clearLogo();
-      expect(c.canRegister, isFalse);
+      expect(c.canRegister, isTrue);
     });
 
     test('PIN: 4-8 dígitos y confirmación', () {
@@ -72,12 +74,12 @@ void main() {
       expect(c.phoneValid, isTrue);
     });
 
-    test('businessType seleccionado es requerido', () {
+    test('businessType ya NO es requisito: lo detecta Vendi (Spec 106)', () {
       final c = _make();
       _fillAllValid(c);
       c.businessTypes = [];
       expect(c.businessTypeSelected, isFalse);
-      expect(c.canRegister, isFalse);
+      expect(c.canRegister, isTrue);
     });
   });
 
@@ -168,7 +170,7 @@ void main() {
   });
 
   group('contrato de submit intacto (invariantes)', () {
-    test('payload conserva employees:[] y constantes', () async {
+    test('payload conserva employees:[] y credenciales (Spec 106)', () async {
       Map<String, dynamic>? sent;
       final c = OnboardingStepperController(
         apiCall: (p) async {
@@ -180,8 +182,10 @@ void main() {
       _fillAllValid(c);
       await c.submit();
       expect(sent!['employees'], isEmpty);
-      expect((sent!['config'] as Map)['sale_types'], ['products']);
-      expect((sent!['config'] as Map)['has_showcases'], false);
+      // Spec 106: el bloque config ya no viaja — el backend pone defaults
+      // y la configuración real la hace Vendi conversando.
+      expect(sent!.containsKey('config'), isFalse);
+      expect(sent!['data_notice_accepted'], isTrue);
       expect((sent!['owner'] as Map)['name'], 'María Gómez');
       expect((sent!['owner'] as Map)['password'], '1234');
     });

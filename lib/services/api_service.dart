@@ -1882,6 +1882,82 @@ class ApiService {
     }
   }
 
+  // Spec: specs/106-onboarding-conversacional-agente/spec.md
+  /// Avanza un turno de la conversación de onboarding con Vendi
+  /// (POST /api/v1/onboarding/agent/turn, autenticado). Sin [sessionId]
+  /// retoma la sesión activa del tenant o crea una nueva (AC-11).
+  ///
+  /// NUNCA lanza: ante cualquier fallo devuelve `degraded:true` +
+  /// `offer_fallback:true` para que la UI ofrezca la selección manual
+  /// sin bloquear al tendero (AC-10).
+  Future<Map<String, dynamic>> agentTurn({
+    String? sessionId,
+    String? text,
+    String? chip,
+  }) async {
+    try {
+      final response = await _dio.post(
+        '/api/v1/onboarding/agent/turn',
+        data: {
+          if (sessionId != null && sessionId.isNotEmpty) 'session_id': sessionId,
+          if (text != null && text.isNotEmpty) 'text': text,
+          if (chip != null && chip.isNotEmpty) 'chip': chip,
+        },
+        options: Options(receiveTimeout: const Duration(seconds: 50)),
+      );
+      return Map<String, dynamic>.from(_extractData(response));
+    } catch (_) {
+      return {
+        'degraded': true,
+        'reason': 'network',
+        'offer_fallback': true,
+        'say': <String>[],
+        'chips': <Map<String, dynamic>>[],
+      };
+    }
+  }
+
+  /// Confirma la propuesta de Vendi y aplica la configuración al negocio
+  /// (POST /api/v1/onboarding/agent/confirm). Mismo contrato degradado.
+  Future<Map<String, dynamic>> agentConfirm(String sessionId) async {
+    try {
+      final response = await _dio.post(
+        '/api/v1/onboarding/agent/confirm',
+        data: {'session_id': sessionId},
+        options: Options(receiveTimeout: const Duration(seconds: 30)),
+      );
+      return Map<String, dynamic>.from(_extractData(response));
+    } catch (_) {
+      return {'degraded': true, 'reason': 'network'};
+    }
+  }
+
+  /// Camino de respaldo sin IA (POST /api/v1/onboarding/agent/fallback):
+  /// tipos multi-selección + toggles básicos elegidos a mano (FR-10).
+  Future<Map<String, dynamic>> agentFallback({
+    String? sessionId,
+    String? businessName,
+    required List<String> types,
+    Map<String, bool> attrs = const {},
+  }) async {
+    try {
+      final response = await _dio.post(
+        '/api/v1/onboarding/agent/fallback',
+        data: {
+          if (sessionId != null && sessionId.isNotEmpty) 'session_id': sessionId,
+          if (businessName != null && businessName.isNotEmpty)
+            'business_name': businessName,
+          'types': types,
+          'attrs': attrs,
+        },
+        options: Options(receiveTimeout: const Duration(seconds: 30)),
+      );
+      return Map<String, dynamic>.from(_extractData(response));
+    } catch (_) {
+      return {'degraded': true, 'reason': 'network'};
+    }
+  }
+
   /// Phase-4 Voice-to-Catalog: ships the tendero's recorded note to
   /// Gemini multimodal and returns the parsed `[{name, quantity,
   /// price}]` array. The backend gates the endpoint behind

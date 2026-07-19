@@ -1,10 +1,13 @@
 // Spec: specs/036-dashboard-adaptativo-onboarding/spec.md
 // Spec: specs/037-reel-capacidades-dashboard/spec.md
+// Spec: specs/106-onboarding-conversacional-agente/spec.md
 //
 // Compuerta post-login: decide qué pantalla mostrar después de
 // autenticarse.
 //
-//   onboarding_completed == false  → WelcomeScreen (1ª vez, F037)
+//   onboarding_completed == false  → VendiChatScreen (Spec 106 — el
+//                                    asistente configura el negocio
+//                                    conversando; reemplaza a WelcomeScreen)
 //   onboarding_completed == true   → DashboardScreen
 //
 // Centraliza el check para que login / splash / branch-selector no
@@ -15,25 +18,27 @@
 // hace —, así que un re-login no refresca el cache local. Por eso este
 // gate fetchea cada vez al backend y usa el cache de AuthService solo
 // como fallback offline.
-//
-// F037 reemplazó el wizard de 3 pasos (`OnboardingWizardScreen`) por
-// una pantalla única de bienvenida (`WelcomeScreen`).
 
 import 'package:flutter/material.dart';
 
 import '../../services/api_service.dart';
 import '../../services/auth_service.dart';
 import '../dashboard/dashboard_screen.dart';
-import 'welcome_screen.dart';
+import 'vendi/vendi_chat_screen.dart';
 
 class PostLoginGate extends StatefulWidget {
   final String ownerName;
   final String businessName;
 
+  /// Solo para tests: fuerza el resultado del check sin tocar red/almacén.
+  @visibleForTesting
+  final bool? onboardingCompletedOverride;
+
   const PostLoginGate({
     super.key,
     required this.ownerName,
     required this.businessName,
+    this.onboardingCompletedOverride,
   });
 
   @override
@@ -51,6 +56,10 @@ class _PostLoginGateState extends State<PostLoginGate> {
   }
 
   Future<void> _resolve() async {
+    if (widget.onboardingCompletedOverride != null) {
+      setState(() => _onboardingCompleted = widget.onboardingCompletedOverride);
+      return;
+    }
     final auth = AuthService();
     bool completed = true;
 
@@ -110,9 +119,9 @@ class _PostLoginGateState extends State<PostLoginGate> {
     }
 
     if (!resolved) {
-      // Primer ingreso — mostramos la welcome screen. Al terminarla
-      // navegamos al Dashboard.
-      return WelcomeScreen(onCompleted: _goToDashboard);
+      // Primer ingreso — Vendi configura el negocio conversando (Spec 106,
+      // AC-01). Al confirmar la propuesta navegamos al Dashboard.
+      return VendiChatScreen(onCompleted: _goToDashboard);
     }
 
     return DashboardScreen(

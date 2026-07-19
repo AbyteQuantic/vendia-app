@@ -697,6 +697,20 @@ class _OnboardingAgenticAnimatedViewState
                 ),
               ),
             ),
+            const SizedBox(height: 4),
+            // Spec 106 (FR-13/AC-15): aviso de datos del asistente, en
+            // lenguaje llano y visible ANTES del CTA de crear la cuenta.
+            const Text(
+              'Al crear su cuenta, un asistente le ayudará a configurar su '
+              'negocio conversando. Esa conversación se guarda para mejorar '
+              'el servicio. Más detalle en la política de datos (en los '
+              'términos).',
+              key: Key('data_notice_text'),
+              style: TextStyle(
+                  fontSize: 13,
+                  height: 1.35,
+                  color: AppTheme.textSecondary),
+            ),
             const SizedBox(height: 12),
             SizedBox(
               height: 64,
