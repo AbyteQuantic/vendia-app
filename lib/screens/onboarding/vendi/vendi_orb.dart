@@ -32,6 +32,11 @@ enum VendiOrbMood { idle, asking, thinking, explaining, settled }
 const int _kN = 160;
 const double _kTau = math.pi * 2;
 
+/// Solo para verificación visual en tests: expone los puntos re-muestreados
+/// de una forma (renderizarlos fuera de Flutter antes de embarcar cambios).
+@visibleForTesting
+List<Offset> debugVendiShapePoints(VendiOrbShape s) => _VendiShapes.of(s);
+
 class VendiOrb extends StatefulWidget {
   const VendiOrb({
     super.key,
@@ -234,8 +239,13 @@ class _OrbPainter extends CustomPainter {
     final center =
         mix(_breatheCenterFor(prevMood), _breatheCenterFor(mood));
     final breathe = center + amp * 1.6 * math.sin(now / 1.05);
-    final wobAmp =
-        (settledMorph ? amp : 0) + (mood == VendiOrbMood.thinking ? .015 : 0);
+    // Los ÍCONOS no ondulan el contorno (deformaba la silueta — feedback
+    // fundador): su vida es la respiración uniforme + el destello. Solo la
+    // palomilla, que es abstracta, ondula.
+    final wobAmp = isIcon
+        ? 0.0
+        : (settledMorph ? amp : 0) +
+            (mood == VendiOrbMood.thinking ? .015 : 0);
 
     // Gestos one-shot (un solo canal de señal a la vez, Adenda A):
     // pregunta = pulso de invitación; cierre = pulso único de asentamiento.
@@ -372,13 +382,31 @@ class _VendiShapes {
       Offset(-.84, .02),  // punta del brazo corto
     ];
 
+    // Silueta de usuario ANALÍTICA (feedback fundador 2026-07-20: "sigue muy
+    // deforme"): cabeza = círculo denso; hombros = Béziers simétricos con
+    // tangentes continuas; base casi plana con esquinas redondeadas. Se
+    // verificó el render (pipeline replicado) antes de embarcar.
+    List<Offset> bez(Offset p0, Offset p1, Offset p2, Offset p3, int steps) {
+      return List.generate(steps + 1, (i) {
+        final t = i / steps, u = 1 - t;
+        return Offset(
+          u * u * u * p0.dx + 3 * u * u * t * p1.dx + 3 * u * t * t * p2.dx + t * t * t * p3.dx,
+          u * u * u * p0.dy + 3 * u * u * t * p1.dy + 3 * u * t * t * p2.dy + t * t * t * p3.dy,
+        );
+      });
+    }
+
     final user = <Offset>[
-      ...arc(0, .34, .32, 245, -65, 48), // cabeza (gira por la cima)
-      const Offset(.24, -.02), const Offset(.46, -.14), const Offset(.60, -.32),
-      const Offset(.65, -.52), const Offset(.66, -.66), // hombro derecho
-      const Offset(.44, -.70), const Offset(0, -.72), const Offset(-.44, -.70),
-      const Offset(-.66, -.66), const Offset(-.65, -.52), const Offset(-.60, -.32),
-      const Offset(-.46, -.14), const Offset(-.24, -.02), // hombro izquierdo
+      ...arc(0, .40, .30, 245, -65, 64), // cabeza — círculo de verdad
+      ...bez(const Offset(.127, .128), const Offset(.30, .02),
+          const Offset(.56, -.10), const Offset(.62, -.34), 24),
+      ...bez(const Offset(.62, -.34), const Offset(.64, -.50),
+          const Offset(.62, -.62), const Offset(.48, -.64), 12),
+      const Offset(.30, -.66), const Offset(0, -.665), const Offset(-.30, -.66),
+      ...bez(const Offset(-.48, -.64), const Offset(-.62, -.62),
+          const Offset(-.64, -.50), const Offset(-.62, -.34), 12),
+      ...bez(const Offset(-.62, -.34), const Offset(-.56, -.10),
+          const Offset(-.30, .02), const Offset(-.127, .128), 24),
     ];
 
     final phone = <Offset>[
@@ -430,7 +458,9 @@ class _VendiShapes {
 
     return {
       VendiOrbShape.palomilla: _resample(palomilla),
-      VendiOrbShape.user: _resample(user),
+      // La silueta ya es suave por construcción: 1 sola pasada conserva la
+      // definición (2 pasadas le derriten el cuello).
+      VendiOrbShape.user: _resample(user, passes: 1),
       VendiOrbShape.phone: _resample(phone),
       VendiOrbShape.lock: _resample(lock),
       VendiOrbShape.store: _resample(store),
@@ -440,7 +470,7 @@ class _VendiShapes {
 
   /// Re-muestrea la polilínea cerrada a N puntos equidistantes por arco,
   /// arrancando SIEMPRE en el punto más alto (ancla canónica → morphs sanos).
-  static List<Offset> _resample(List<Offset> raw) {
+  static List<Offset> _resample(List<Offset> raw, {int passes = 2}) {
     final pts = <Offset>[];
     for (final q in raw) {
       if (pts.isEmpty || (q - pts.last).distance > 1e-4) pts.add(q);
@@ -469,7 +499,7 @@ class _VendiShapes {
     // Suavizado gaussiano circular (2 pasadas, ventana 5): redondea TODAS
     // las esquinas — bordes suaves, nunca picos (feedback del fundador).
     const w = [1.0, 4.0, 6.0, 4.0, 1.0];
-    for (var pass = 0; pass < 2; pass++) {
+    for (var pass = 0; pass < passes; pass++) {
       out = List.generate(_kN, (k) {
         var x = 0.0, y = 0.0;
         for (var d = 0; d < 5; d++) {
