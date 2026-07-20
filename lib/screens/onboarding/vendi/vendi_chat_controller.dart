@@ -13,6 +13,7 @@ typedef VendiTurnCall = Future<Map<String, dynamic>> Function({
   String? text,
   String? chip,
   String? kind,
+  bool? restart,
 });
 typedef VendiConfirmCall = Future<Map<String, dynamic>> Function(
     String sessionId);
@@ -120,6 +121,28 @@ class VendiChatController extends ChangeNotifier {
   /// Reintenta el último estado tras un turno degradado.
   Future<void> retry() => _runTurn();
 
+  /// "Empezar de nuevo" (Adenda A.3): limpia todo el estado local, abandona
+  /// la sesión en el servidor y arranca una conversación nueva.
+  Future<void> restart() async {
+    if (busy) return;
+    messages.clear();
+    chips = const [];
+    proposalGrid = const [];
+    proposalReel = const [];
+    profileTypes = const [];
+    attrs = const {};
+    phase = '';
+    pendingKey = '';
+    done = false;
+    degraded = false;
+    offerFallback = false;
+    actionResult = null;
+    sessionId = null;
+    await _clearSession();
+    notifyListeners();
+    await _runTurn(restart: true);
+  }
+
   Future<void> _confirm() async {
     final sid = sessionId;
     if (sid == null || sid.isEmpty) return;
@@ -152,15 +175,19 @@ class VendiChatController extends ChangeNotifier {
     }
   }
 
-  Future<void> _runTurn({String? text, String? chip}) async {
+  Future<void> _runTurn({String? text, String? chip, bool restart = false}) async {
     if (busy) return;
     busy = true;
     degraded = false;
     chips = const [];
     notifyListeners();
     try {
-      final res =
-          await _turnCall(sessionId: sessionId, text: text, chip: chip, kind: kind);
+      final res = await _turnCall(
+          sessionId: sessionId,
+          text: text,
+          chip: chip,
+          kind: kind,
+          restart: restart ? true : null);
       _apply(res);
     } finally {
       busy = false;
