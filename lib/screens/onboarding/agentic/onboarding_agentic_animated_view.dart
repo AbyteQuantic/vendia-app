@@ -516,22 +516,21 @@ class _OnboardingAgenticAnimatedViewState
     final busy =
         _parsing || _ctrl.status == StepperStatus.loading || _persisting;
 
-    return Scaffold(
-      backgroundColor: const Color(0xFFF7FBFD),
-      // El gradiente cubre SIEMPRE toda la pantalla: sin esto, al abrir el
-      // teclado el body se re-inseta y aparece un panel blanco que tapa el
-      // contenido (reporte del fundador 2026-07-20). El despeje del teclado
-      // lo hacen las consolas con su padding por viewInsets.
-      resizeToAvoidBottomInset: false,
-      body: DecoratedBox(
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [Color(0xFFF7FBFD), Color(0xFFEAF4FA)],
-          ),
+    // Teclado (iOS web): el gradiente vive FUERA del Scaffold para cubrir
+    // siempre toda la pantalla, y el body SÍ se re-layouta con el teclado
+    // (resize default) — con resize:false el navegador panea la página y
+    // se pierde todo el contenido (reporte del fundador 2026-07-20 #2).
+    return DecoratedBox(
+      decoration: const BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [Color(0xFFF7FBFD), Color(0xFFEAF4FA)],
         ),
-        child: SafeArea(
+      ),
+      child: Scaffold(
+        backgroundColor: Colors.transparent,
+        body: SafeArea(
           bottom: false,
           child: Column(
             children: [
@@ -563,6 +562,9 @@ class _OnboardingAgenticAnimatedViewState
       ),
     );
   }
+
+  // NOTA: sin resizeToAvoidBottomInset:false — el cierre del DecoratedBox
+  // y el Scaffold transparente viven arriba.
 
   /// El símbolo se transforma con cada pregunta (dirección OS1 aprobada):
   /// silueta al preguntar el nombre, teléfono, candado para la clave y la

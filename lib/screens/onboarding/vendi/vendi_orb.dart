@@ -335,7 +335,7 @@ class _VendiShapes {
       per += (ord[(i + 1) % ord.length] - ord[i]).distance;
       lens.add(per);
     }
-    return List.generate(_kN, (k) {
+    var out = List.generate(_kN, (k) {
       final d = per * k / _kN;
       var i = 0;
       while (lens[i + 1] < d) {
@@ -345,6 +345,21 @@ class _VendiShapes {
       final t = (d - lens[i]) / ((lens[i + 1] - lens[i]) == 0 ? 1 : (lens[i + 1] - lens[i]));
       return Offset(a.dx + (b.dx - a.dx) * t, a.dy + (b.dy - a.dy) * t);
     }, growable: false);
+    // Suavizado gaussiano circular (2 pasadas, ventana 5): redondea TODAS
+    // las esquinas — bordes suaves, nunca picos (feedback del fundador).
+    const w = [1.0, 4.0, 6.0, 4.0, 1.0];
+    for (var pass = 0; pass < 2; pass++) {
+      out = List.generate(_kN, (k) {
+        var x = 0.0, y = 0.0;
+        for (var d = 0; d < 5; d++) {
+          final pt = out[(k + d - 2 + _kN) % _kN];
+          x += pt.dx * w[d];
+          y += pt.dy * w[d];
+        }
+        return Offset(x / 16, y / 16);
+      }, growable: false);
+    }
+    return out;
   }
 
   /// Rotación + orientación del recorrido que minimizan la distancia total

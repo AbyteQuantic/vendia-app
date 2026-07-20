@@ -87,8 +87,9 @@ class _GlassChatConsoleWidgetState extends State<GlassChatConsoleWidget> {
     _syncFields();
     final inner = Container(
       color: Colors.transparent,
-      padding: EdgeInsets.fromLTRB(
-          24, 10, 24, MediaQuery.of(context).viewInsets.bottom + 16),
+      // El Scaffold ya re-layouta con el teclado (resize default): padding
+      // fijo — sumar viewInsets aquí duplicaba el despeje (panel blanco).
+      padding: const EdgeInsets.fromLTRB(24, 10, 24, 16),
       child: SingleChildScrollView(
         child: Column(
           mainAxisSize: MainAxisSize.min,
