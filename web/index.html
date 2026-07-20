@@ -32,6 +32,34 @@
   <!-- Favicon -->
   <link rel="icon" type="image/png" href="favicon.png"/>
 
+  <!-- Spec 106 OS1 — fix teclado iOS web: sin esta meta y con el documento
+       scrolleable, Safari PANEA la página entera al enfocar un campo (el
+       input real del DOM que Flutter esconde queda fuera de vista y el
+       navegador "lo persigue"), dejando el canvas fuera de pantalla.
+       interactive-widget=resizes-content hace lo propio en Chrome/Android. -->
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover, interactive-widget=resizes-content">
+  <style>
+    html { overflow: hidden; height: 100%; overscroll-behavior: none; }
+    body { position: fixed; inset: 0; width: 100%; height: 100%;
+           overflow: hidden; margin: 0; }
+  </style>
+  <script>
+    // Cinturón extra: si Safari igual panea al abrir el teclado, devolvemos
+    // el scroll del documento a 0 (el layout lo maneja Flutter, no el
+    // navegador).
+    (function () {
+      var reset = function () {
+        if (window.scrollX !== 0 || window.scrollY !== 0) window.scrollTo(0, 0);
+        document.documentElement.scrollTop = 0;
+        if (document.body) document.body.scrollTop = 0;
+      };
+      window.addEventListener('scroll', reset, { passive: true });
+      if (window.visualViewport) {
+        window.visualViewport.addEventListener('resize', reset);
+      }
+    })();
+  </script>
+
   <title>VendIA</title>
   <link rel="manifest" href="manifest.json">
 
