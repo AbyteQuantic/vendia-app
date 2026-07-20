@@ -542,7 +542,9 @@ class _OnboardingAgenticAnimatedViewState
                     key: const Key('vendi_orb'),
                     shape: _orbShape,
                     size: compact ? 120 : 190,
-                    listening: _typing || busy || _recording,
+                    mood: (_typing || busy || _recording)
+                        ? VendiOrbMood.thinking
+                        : VendiOrbMood.asking,
                   ),
                 ),
               ),
