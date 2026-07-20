@@ -12,7 +12,7 @@ VendiChatController _controller({
   var first = true;
   return VendiChatController(
     persist: false,
-    turnCall: ({sessionId, text, chip}) async {
+    turnCall: ({sessionId, text, chip, kind}) async {
       if (delay > Duration.zero) await Future<void>.delayed(delay);
       if (first) {
         first = false;
@@ -137,7 +137,7 @@ void main() {
     var fallbackTapped = false;
     final c = VendiChatController(
       persist: false,
-      turnCall: ({sessionId, text, chip}) async {
+      turnCall: ({sessionId, text, chip, kind}) async {
         if (first) {
           first = false;
           return {

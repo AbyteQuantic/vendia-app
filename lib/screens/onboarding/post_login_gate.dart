@@ -23,8 +23,10 @@ import 'package:flutter/material.dart';
 
 import '../../services/api_service.dart';
 import '../../services/auth_service.dart';
+import '../../services/role_manager.dart';
 import '../auth/login_screen.dart';
 import '../dashboard/dashboard_screen.dart';
+import '../home/home_screen.dart';
 import 'vendi/vendi_chat_screen.dart';
 
 class PostLoginGate extends StatefulWidget {
@@ -121,12 +123,33 @@ class _PostLoginGateState extends State<PostLoginGate> {
   void _goToDashboard() {
     if (!mounted) return;
     Navigator.of(context).pushReplacement(
-      MaterialPageRoute(
-        builder: (_) => DashboardScreen(
+      MaterialPageRoute(builder: (_) => _homeFor()),
+    );
+  }
+
+  /// Spec 107 — back-office entra al inicio v2; los roles de piso conservan
+  /// su vista restringida (DashboardScreen aplica su whitelist por rol).
+  Widget _homeFor() {
+    return FutureBuilder<String?>(
+      future: AuthService().getRole(),
+      builder: (context, snap) {
+        if (!snap.hasData && snap.connectionState != ConnectionState.done) {
+          return const Scaffold(
+              backgroundColor: Colors.white, body: SizedBox.shrink());
+        }
+        final r = WorkspaceRoleX.parse(snap.data);
+        final isFloor = r == WorkspaceRole.waiter;
+        if (isFloor) {
+          return DashboardScreen(
+            ownerName: widget.ownerName,
+            businessName: widget.businessName,
+          );
+        }
+        return HomeScreenV2(
           ownerName: widget.ownerName,
           businessName: widget.businessName,
-        ),
-      ),
+        );
+      },
     );
   }
 
@@ -145,9 +168,6 @@ class _PostLoginGateState extends State<PostLoginGate> {
       return VendiChatScreen(onCompleted: _goToDashboard);
     }
 
-    return DashboardScreen(
-      ownerName: widget.ownerName,
-      businessName: widget.businessName,
-    );
+    return _homeFor();
   }
 }
