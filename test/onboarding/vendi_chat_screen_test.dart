@@ -49,11 +49,15 @@ Future<void> _pump(WidgetTester tester, VendiChatController c) async {
   tester.view.physicalSize = const Size(360, 690);
   tester.view.devicePixelRatio = 1.0;
   addTearDown(tester.view.reset);
-  await tester.pumpWidget(MaterialApp(
-    home: VendiChatScreen(
-      controllerOverride: c,
-      onCompleted: () {},
-      onFallback: () {},
+  await tester.pumpWidget(MediaQuery(
+    // reduce-motion: el orb no arranca su Ticker de vida → pumpAndSettle sano.
+    data: const MediaQueryData(disableAnimations: true),
+    child: MaterialApp(
+      home: VendiChatScreen(
+        controllerOverride: c,
+        onCompleted: () {},
+        onFallback: () {},
+      ),
     ),
   ));
 }
@@ -152,11 +156,14 @@ void main() {
     tester.view.physicalSize = const Size(360, 690);
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.reset);
-    await tester.pumpWidget(MaterialApp(
-      home: VendiChatScreen(
-        controllerOverride: c,
-        onCompleted: () {},
-        onFallback: () => fallbackTapped = true,
+    await tester.pumpWidget(MediaQuery(
+      data: const MediaQueryData(disableAnimations: true),
+      child: MaterialApp(
+        home: VendiChatScreen(
+          controllerOverride: c,
+          onCompleted: () {},
+          onFallback: () => fallbackTapped = true,
+        ),
       ),
     ));
     await tester.pumpAndSettle();

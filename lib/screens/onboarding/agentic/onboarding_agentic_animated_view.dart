@@ -23,14 +23,11 @@ import '../../../services/voice_recorder.dart';
 import '../../../theme/app_theme.dart';
 import '../onboarding_stepper_controller.dart';
 import '../post_login_gate.dart';
-import '../vendi/vendi_chat_screen.dart' show VendiAvatar;
+import '../vendi/vendi_orb.dart';
 import '../../legal/terms_screen.dart';
-import '../../../widgets/sprite_sheet_player.dart';
 import 'glass_chat_console_widget.dart';
 import 'onboarding_animation_controller.dart';
-import 'onboarding_bg_tempo.dart';
 import 'onboarding_flow.dart';
-import 'preview_canvas_widget.dart';
 
 typedef ResolvePath = Future<String> Function();
 typedef ReadAudio = Future<RecordedAudio> Function(String stopResult);
@@ -507,77 +504,65 @@ class _OnboardingAgenticAnimatedViewState
           hasType: _ctrl.businessTypeSelected, hasLogo: _ctrl.logoSelected);
     }
 
-    // Velocidad del fondo según el estado (Spec 048): IA/persistencia → rápido,
-    // typing → lento, esperando input → lento-suave.
+    // Spec 106 Adenda OS1 ("Her"): fondo limpio en la gama clara de la marca,
+    // el símbolo vivo de Vendi como protagonista y la pregunta debajo.
     final busy =
         _parsing || _ctrl.status == StepperStatus.loading || _persisting;
-    final bgFps = bgFpsForTempo(resolveBgTempo(busy: busy, typing: _typing));
 
     return Scaffold(
-      backgroundColor: const Color(0xFFFAFAFA),
-      body: Stack(
-        children: [
-          // Video de fondo (sprite sheet liviano). cover → desktop/tablet/mobile
-          // sin deformar la relación de aspecto.
-          Positioned.fill(
-            child: SpriteSheetPlayer(
-              asset: 'assets/onboarding/onboarding_hex_bg.webp',
-              columns: 5,
-              rows: 6,
-              frameCount: 30,
-              targetFps: bgFps,
-              reduceMotion: reduceMotion,
-            ),
+      backgroundColor: const Color(0xFFF7FBFD),
+      body: DecoratedBox(
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [Color(0xFFF7FBFD), Color(0xFFEAF4FA)],
           ),
-          // Velo claro para legibilidad (tema claro, usuarios 50+): suave en el
-          // centro (donde el video se ve), más marcado arriba/abajo.
-          const Positioned.fill(child: IgnorePointer(child: _OnboardingScrim())),
-          Positioned.fill(
-            child: SafeArea(
-              bottom: false,
-              child: Column(
-                children: [
-                  _header(),
-                  if (_degraded) _degradedBanner(),
-                  Expanded(
-                    child: PreviewCanvasWidget(
-                      anim: _anim,
-                      businessName: _ctrl.businessName,
-                      ownerName: _ctrl.ownerName,
-                      phone: _ctrl.phone,
-                      businessType: _ctrl.businessType,
-                      logoUrl: _ctrl.logoUrl,
-                      compact: compact,
-                      backgroundColor: Colors.transparent, // deja ver el video
-                    ),
+        ),
+        child: SafeArea(
+          bottom: false,
+          child: Column(
+            children: [
+              _header(),
+              if (_degraded) _degradedBanner(),
+              Expanded(
+                child: Center(
+                  child: VendiOrb(
+                    key: const Key('vendi_orb'),
+                    shape: _orbShape,
+                    size: compact ? 120 : 190,
+                    listening: _typing || busy || _recording,
                   ),
-                  ConstrainedBox(
-                    constraints: BoxConstraints(
-                        maxHeight: MediaQuery.of(context).size.height * 0.62),
-                    // Spec 106 (2026-07-19): avatar flotante de Vendi sobre la
-                    // consola — señal visual de que una IA guía el registro.
-                    child: Stack(
-                      clipBehavior: Clip.none,
-                      children: [
-                        _ctrl.canRegister
-                            ? _readyConsole()
-                            : _questionConsole(),
-                        Positioned(
-                          top: -26,
-                          right: 20,
-                          child: _FloatingVendiAvatar(
-                              reduceMotion: reduceMotion),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
+                ),
               ),
-            ),
+              ConstrainedBox(
+                constraints: BoxConstraints(
+                    maxHeight: MediaQuery.of(context).size.height * 0.62),
+                child:
+                    _ctrl.canRegister ? _readyConsole() : _questionConsole(),
+              ),
+            ],
           ),
-        ],
+        ),
       ),
     );
+  }
+
+  /// El símbolo se transforma con cada pregunta (dirección OS1 aprobada):
+  /// silueta al preguntar el nombre, teléfono, candado para la clave y la
+  /// tienda cuando todo está listo para crear la cuenta.
+  VendiOrbShape get _orbShape {
+    if (_ctrl.canRegister) return VendiOrbShape.store;
+    switch (_question.id) {
+      case 'owner':
+        return VendiOrbShape.user;
+      case 'phone':
+        return VendiOrbShape.phone;
+      case 'pin':
+        return VendiOrbShape.lock;
+      default:
+        return VendiOrbShape.palomilla;
+    }
   }
 
   Widget _header() {
@@ -764,118 +749,6 @@ class _OnboardingAgenticAnimatedViewState
           ),
         ),
       ),
-    );
-  }
-}
-
-/// Avatar de Vendi flotando sobre la consola del registro (Spec 106): anillo
-/// blanco + sombra + chispa de IA, con una levitación suave (se detiene con
-/// reduce-motion). Señala desde el primer paso que una IA acompaña el proceso.
-class _FloatingVendiAvatar extends StatefulWidget {
-  const _FloatingVendiAvatar({required this.reduceMotion});
-
-  final bool reduceMotion;
-
-  @override
-  State<_FloatingVendiAvatar> createState() => _FloatingVendiAvatarState();
-}
-
-class _FloatingVendiAvatarState extends State<_FloatingVendiAvatar>
-    with SingleTickerProviderStateMixin {
-  // Nullable y creado SOLO en initState: un `late final` perezoso se
-  // inicializaría en dispose() cuando reduce-motion nunca lo tocó, y crear
-  // un Ticker durante el desmontaje busca ancestros desactivados (crash).
-  AnimationController? _c;
-
-  @override
-  void initState() {
-    super.initState();
-    if (!widget.reduceMotion) {
-      _c = AnimationController(
-        vsync: this,
-        duration: const Duration(milliseconds: 2600),
-      )..repeat(reverse: true);
-    }
-  }
-
-  @override
-  void dispose() {
-    _c?.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final avatar = Container(
-      key: const Key('vendi_floating_avatar'),
-      padding: const EdgeInsets.all(3),
-      decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        color: Colors.white,
-        boxShadow: [
-          BoxShadow(
-            color: AppTheme.primary.withValues(alpha: 0.25),
-            blurRadius: 14,
-            offset: const Offset(0, 6),
-          ),
-        ],
-      ),
-      child: Stack(
-        clipBehavior: Clip.none,
-        children: [
-          const VendiAvatar(size: 50),
-          Positioned(
-            right: -3,
-            top: -3,
-            child: Container(
-              padding: const EdgeInsets.all(3),
-              decoration: const BoxDecoration(
-                shape: BoxShape.circle,
-                color: Colors.white,
-              ),
-              child: const Icon(Icons.auto_awesome_rounded,
-                  size: 13, color: AppTheme.accent),
-            ),
-          ),
-        ],
-      ),
-    );
-
-    final c = _c;
-    if (widget.reduceMotion || c == null) return avatar;
-    return AnimatedBuilder(
-      animation: c,
-      builder: (_, child) => Transform.translate(
-        offset: Offset(0, -5 * Curves.easeInOut.transform(c.value)),
-        child: child,
-      ),
-      child: avatar,
-    );
-  }
-}
-
-/// Velo claro sobre el video de fondo. Mantiene el contraste del texto en el
-/// tema claro (usuarios 50+) dejando ver el video, sobre todo en el centro.
-class _OnboardingScrim extends StatelessWidget {
-  const _OnboardingScrim();
-
-  @override
-  Widget build(BuildContext context) {
-    // Los ARGB son el color base FAFAFA con distinta opacidad.
-    return const DecoratedBox(
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: [
-            Color(0x8CFAFAFA), // ~55% arriba (header)
-            Color(0x2EFAFAFA), // ~18% centro (se ve el video)
-            Color(0x73FAFAFA), // ~45% abajo (consola)
-          ],
-          stops: [0.0, 0.45, 1.0],
-        ),
-      ),
-      child: SizedBox.expand(),
     );
   }
 }

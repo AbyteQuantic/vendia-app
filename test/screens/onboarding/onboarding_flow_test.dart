@@ -101,17 +101,21 @@ void main() {
 
   group('PostLoginGate → Vendi (AC-01)', () {
     testWidgets('onboarding incompleto muestra VendiChatScreen', (tester) async {
-      await tester.pumpWidget(const MaterialApp(
-        home: PostLoginGate(
-          ownerName: 'María',
-          businessName: 'Mi negocio',
-          onboardingCompletedOverride: false,
+      await tester.pumpWidget(const MediaQuery(
+        data: MediaQueryData(disableAnimations: true),
+        child: MaterialApp(
+          home: PostLoginGate(
+            ownerName: 'María',
+            businessName: 'Mi negocio',
+            onboardingCompletedOverride: false,
+          ),
         ),
       ));
       await tester.pump();
       expect(find.byType(VendiChatScreen), findsOneWidget);
       // Dejar que el turno inicial (degradado en test, sin red) termine.
-      await tester.pumpAndSettle(const Duration(milliseconds: 100));
+      await tester.pump(const Duration(milliseconds: 400));
+      await tester.pump(const Duration(milliseconds: 400));
     });
   });
 }
