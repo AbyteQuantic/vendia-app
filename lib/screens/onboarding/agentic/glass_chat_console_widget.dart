@@ -4,8 +4,6 @@
 // UNA pregunta del agente + el cuerpo de respuesta (chips o teclado) + la
 // píldora de IA (sparkle/voz). Blur estático bajo RepaintBoundary (jank #1 en
 // web es animar el sigma). Reusa los setters del OnboardingStepperController.
-import 'dart:ui';
-
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -13,7 +11,10 @@ import '../../../theme/app_theme.dart';
 import '../onboarding_stepper_controller.dart';
 import 'onboarding_flow.dart';
 
-const Color kIndigo = Color(0xFF4F46E5);
+// Spec 106 Adenda OS1: la consola dejó el glassmorphism — fondo limpio,
+// pregunta centrada en tipografía liviana, campos SIN caja (solo el cursor
+// parpadeando invita a escribir) y acentos en el azul de la marca.
+const Color kIndigo = AppTheme.primary;
 
 class GlassChatConsoleWidget extends StatefulWidget {
   const GlassChatConsoleWidget({
@@ -85,17 +86,9 @@ class _GlassChatConsoleWidgetState extends State<GlassChatConsoleWidget> {
   Widget build(BuildContext context) {
     _syncFields();
     final inner = Container(
-      decoration: BoxDecoration(
-        color: widget.useBlur
-            ? Colors.white.withValues(alpha: 0.65)
-            : Colors.white.withValues(alpha: 0.92),
-        border: Border(
-          top: BorderSide(
-              color: AppTheme.borderColor.withValues(alpha: 0.5), width: 0.5),
-        ),
-      ),
+      color: Colors.transparent,
       padding: EdgeInsets.fromLTRB(
-          20, 18, 20, MediaQuery.of(context).viewInsets.bottom + 16),
+          24, 10, 24, MediaQuery.of(context).viewInsets.bottom + 16),
       child: SingleChildScrollView(
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -111,48 +104,29 @@ class _GlassChatConsoleWidgetState extends State<GlassChatConsoleWidget> {
       ),
     );
 
-    return RepaintBoundary(
-      child: ClipRRect(
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
-        child: DecoratedBox(
-          decoration: const BoxDecoration(
-            boxShadow: [
-              BoxShadow(
-                color: Color(0x05000000),
-                blurRadius: 24,
-                offset: Offset(0, -8),
-              ),
-            ],
-          ),
-          // Blur ESTÁTICO (sigma fijo) — nunca interpolado.
-          child: widget.useBlur
-              ? BackdropFilter(
-                  filter: ImageFilter.blur(sigmaX: 14, sigmaY: 14),
-                  child: inner,
-                )
-              : inner,
-        ),
-      ),
-    );
+    return RepaintBoundary(child: inner);
   }
 
   Widget _agentBubble() {
     return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+      crossAxisAlignment: CrossAxisAlignment.center,
       children: [
         Text(
           widget.question.prompt,
+          textAlign: TextAlign.center,
           style: const TextStyle(
-            fontSize: 18,
-            fontWeight: FontWeight.w600,
+            fontSize: 24,
+            fontWeight: FontWeight.w300,
             color: AppTheme.textPrimary,
             height: 1.3,
+            letterSpacing: -0.2,
           ),
         ),
         if (widget.question.subtitle.isNotEmpty) ...[
-          const SizedBox(height: 4),
+          const SizedBox(height: 6),
           Text(
             widget.question.subtitle,
+            textAlign: TextAlign.center,
             style: const TextStyle(
                 fontSize: 15, color: AppTheme.textSecondary, height: 1.3),
           ),
@@ -170,13 +144,14 @@ class _GlassChatConsoleWidgetState extends State<GlassChatConsoleWidget> {
           // nombre/apellidos (setOwnerFullName); cero fricción (Art. I).
           return _textBody([
             _field(_fullName, 'Nombre y apellidos', c.setOwnerFullName,
-                key: 'q_owner_name', cap: TextCapitalization.words),
+                key: 'q_owner_name', cap: TextCapitalization.words,
+                autofocus: true),
           ]);
         }
         if (widget.question.id == 'phone') {
           return _textBody([
             _field(_phone, 'Celular', c.setPhone,
-                key: 'q_phone', keyboard: TextInputType.phone),
+                key: 'q_phone', keyboard: TextInputType.phone, autofocus: true),
           ]);
         }
         // Fallback defensivo (no debería alcanzarse con el flujo de 3
@@ -189,7 +164,8 @@ class _GlassChatConsoleWidgetState extends State<GlassChatConsoleWidget> {
       case QKind.pin:
         return _textBody([
           _field(_pin, 'Clave (4 a 8 números)', c.setPin,
-              key: 'q_pin', keyboard: TextInputType.number, obscure: true, max: 8),
+              key: 'q_pin', keyboard: TextInputType.number, obscure: true,
+              max: 8, autofocus: true),
           _field(_pinConfirm, 'Repita la clave', c.setConfirmPin,
               key: 'q_pin_confirm',
               keyboard: TextInputType.number,
@@ -208,20 +184,13 @@ class _GlassChatConsoleWidgetState extends State<GlassChatConsoleWidget> {
         ...fields,
         const SizedBox(height: 12),
         SizedBox(
-          height: 56,
-          child: ElevatedButton(
+          height: 52,
+          child: TextButton(
             key: const Key('console_next'),
             onPressed: widget.onAdvance,
-            style: ElevatedButton.styleFrom(
-              backgroundColor: kIndigo,
-              shape:
-                  RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-            ),
+            style: TextButton.styleFrom(foregroundColor: AppTheme.primary),
             child: const Text('Siguiente',
-                style: TextStyle(
-                    fontSize: 17,
-                    fontWeight: FontWeight.w600,
-                    color: Colors.white)),
+                style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700)),
           ),
         ),
       ],
@@ -237,19 +206,35 @@ class _GlassChatConsoleWidgetState extends State<GlassChatConsoleWidget> {
     bool obscure = false,
     int? max,
     TextCapitalization cap = TextCapitalization.none,
+    bool autofocus = false,
   }) {
+    // OS1: sin caja, sin borde, sin fondo — texto centrado y el cursor azul
+    // parpadeando como única invitación a escribir.
     return Padding(
-      padding: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.only(bottom: 6),
       child: TextField(
         key: key == null ? null : Key(key),
         controller: ctrl,
         keyboardType: keyboard,
         obscureText: obscure,
         textCapitalization: cap,
+        autofocus: autofocus,
+        textAlign: TextAlign.center,
+        cursorColor: AppTheme.primary,
+        cursorWidth: 1.6,
         inputFormatters:
             max == null ? null : [LengthLimitingTextInputFormatter(max)],
-        style: const TextStyle(fontSize: 16, color: AppTheme.textPrimary),
-        decoration: InputDecoration(hintText: hint),
+        style: const TextStyle(
+            fontSize: 20, fontWeight: FontWeight.w400, color: AppTheme.textPrimary),
+        decoration: InputDecoration(
+          border: InputBorder.none,
+          enabledBorder: InputBorder.none,
+          focusedBorder: InputBorder.none,
+          filled: false,
+          hintText: hint,
+          hintStyle: const TextStyle(
+              fontSize: 18, fontWeight: FontWeight.w300, color: AppTheme.textSecondary),
+        ),
         onChanged: onChanged,
       ),
     );
@@ -258,16 +243,9 @@ class _GlassChatConsoleWidgetState extends State<GlassChatConsoleWidget> {
   Widget _aiPill() {
     return Container(
       decoration: BoxDecoration(
-        color: Colors.white,
         borderRadius: BorderRadius.circular(28),
         border: Border.all(
-            color: AppTheme.borderColor.withValues(alpha: 0.8), width: 1.5),
-        boxShadow: [
-          BoxShadow(
-              color: AppTheme.primary.withValues(alpha: 0.05),
-              blurRadius: 20,
-              offset: const Offset(0, 6)),
-        ],
+            color: const Color(0xFFD5E6F0), width: 1),
       ),
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
       child: Row(
@@ -329,7 +307,7 @@ class _GlassChatConsoleWidgetState extends State<GlassChatConsoleWidget> {
                   shape: BoxShape.circle,
                   gradient: color == kIndigo
                       ? const LinearGradient(
-                          colors: [kIndigo, Color(0xFF6366F1)])
+                          colors: [AppTheme.primary, AppTheme.accent])
                       : null,
                   color: color == kIndigo ? null : color,
                 )

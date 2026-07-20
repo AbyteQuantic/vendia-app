@@ -1,16 +1,19 @@
-// Spec: specs/106-onboarding-conversacional-agente/spec.md
+// Spec: specs/106-onboarding-conversacional-agente/spec.md (Adenda OS1)
 //
-// Pantalla de conversación con Vendi: el tendero configura su negocio
-// hablando, no escogiendo opciones. Reemplaza al onboarding F045 (AC-01).
-// Diseño aprobado en el prototipo del fundador: header con avatar de marca,
-// burbujas, chips de respuesta rápida, input inferior. Probado a 360dp.
+// Conversación con Vendi en la dirección visual "Her/OS1" aprobada por el
+// fundador (2026-07-19): cero burbujas y cero cajas — el símbolo vivo
+// (VendiOrb) preside la pantalla y se transforma según la fase de la
+// conversación; el diálogo del asistente aparece centrado en tipografía
+// liviana; los chips son texto azul; el input es una línea sin borde con el
+// cursor parpadeando como única invitación a escribir.
 import 'package:flutter/material.dart';
 
 import '../../../services/api_service.dart';
 import '../../../services/auth_service.dart';
 import '../../../theme/app_theme.dart';
-import 'vendi_chat_controller.dart';
 import 'type_fallback_screen.dart';
+import 'vendi_chat_controller.dart';
+import 'vendi_orb.dart';
 
 class VendiChatScreen extends StatefulWidget {
   const VendiChatScreen({
@@ -37,8 +40,8 @@ class _VendiChatScreenState extends State<VendiChatScreen> {
   late final VendiChatController _ctrl;
   late final ApiService _api = ApiService(AuthService());
   final _inputCtrl = TextEditingController();
-  final _scrollCtrl = ScrollController();
   bool _navigated = false;
+  bool _typing = false;
 
   @override
   void initState() {
@@ -50,25 +53,20 @@ class _VendiChatScreenState extends State<VendiChatScreen> {
           confirmCall: (sessionId) => _api.agentConfirm(sessionId),
         );
     _ctrl.addListener(_onChange);
+    _inputCtrl.addListener(() {
+      final t = _inputCtrl.text.isNotEmpty;
+      if (t != _typing && mounted) setState(() => _typing = t);
+    });
     _ctrl.start();
   }
 
   void _onChange() {
     if (!mounted) return;
     setState(() {});
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (_scrollCtrl.hasClients) {
-        _scrollCtrl.animateTo(
-          _scrollCtrl.position.maxScrollExtent,
-          duration: const Duration(milliseconds: 250),
-          curve: Curves.easeOut,
-        );
-      }
-    });
     if (_ctrl.done && !_navigated) {
       _navigated = true;
-      // Breve pausa para que se lea el mensaje final antes de navegar.
-      Future.delayed(const Duration(milliseconds: 1400), () {
+      // Breve pausa para que se lea el cierre (y el corazón) antes de salir.
+      Future.delayed(const Duration(milliseconds: 1600), () {
         if (mounted) widget.onCompleted();
       });
     }
@@ -79,7 +77,6 @@ class _VendiChatScreenState extends State<VendiChatScreen> {
     _ctrl.removeListener(_onChange);
     if (widget.controllerOverride == null) _ctrl.dispose();
     _inputCtrl.dispose();
-    _scrollCtrl.dispose();
     super.dispose();
   }
 
@@ -103,157 +100,118 @@ class _VendiChatScreenState extends State<VendiChatScreen> {
     ));
   }
 
+  /// El símbolo acompaña la fase: tienda cuando se habla del negocio o de la
+  /// propuesta, corazón al terminar, y la palomilla — la identidad de Vendi —
+  /// mientras conversa e interpreta.
+  VendiOrbShape get _orbShape {
+    if (_ctrl.done) return VendiOrbShape.heart;
+    switch (_ctrl.phase) {
+      case 'ask_name':
+      case 'propose':
+        return VendiOrbShape.store;
+      default:
+        return VendiOrbShape.palomilla;
+    }
+  }
+
+  /// Bloque final de mensajes del asistente (el "diálogo" OS1: lo último que
+  /// dijo Vendi, no un historial de burbujas).
+  List<VendiMessage> get _lastAssistantBlock {
+    final out = <VendiMessage>[];
+    for (var i = _ctrl.messages.length - 1; i >= 0; i--) {
+      final m = _ctrl.messages[i];
+      if (m.role != VendiRole.assistant) break;
+      out.insert(0, m);
+    }
+    return out;
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF4F8FB),
-      body: SafeArea(
-        child: Column(
-          children: [
-            _header(),
-            Expanded(child: _chatList()),
-            if (_ctrl.offerFallback) _fallbackBanner(),
-            if (_ctrl.chips.isNotEmpty) _chipsRow(),
-            _inputBar(),
-          ],
+      backgroundColor: const Color(0xFFF7FBFD),
+      body: DecoratedBox(
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [Color(0xFFF7FBFD), Color(0xFFEAF4FA)],
+          ),
+        ),
+        child: SafeArea(
+          child: Column(
+            children: [
+              const SizedBox(height: 10),
+              VendiOrb(
+                key: const Key('vendi_avatar'),
+                shape: _orbShape,
+                size: 150,
+                listening: _ctrl.busy || _typing,
+              ),
+              const Text(
+                'Vendi',
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  letterSpacing: 2.4,
+                  color: AppTheme.textSecondary,
+                ),
+              ),
+              Expanded(child: _dialogue()),
+              if (_ctrl.offerFallback) _fallbackCta(),
+              if (_ctrl.chips.isNotEmpty) _chipsRow(),
+              if (!_ctrl.done) _inputBar(),
+              const SizedBox(height: 6),
+            ],
+          ),
         ),
       ),
     );
   }
 
-  Widget _header() {
-    return Container(
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
-      decoration: const BoxDecoration(
-        gradient: LinearGradient(
-          colors: [AppTheme.primary, Color(0xFF1490C4), AppTheme.accent],
-          begin: Alignment.centerLeft,
-          end: Alignment.centerRight,
-        ),
-      ),
-      child: Row(
+  Widget _dialogue() {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.fromLTRB(28, 18, 28, 8),
+      child: Column(
         children: [
-          const VendiAvatar(key: Key('vendi_avatar'), size: 44),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text('Vendi',
-                    style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 17,
-                        fontWeight: FontWeight.w800)),
-                Row(children: [
-                  Container(
-                    width: 7,
-                    height: 7,
-                    decoration: const BoxDecoration(
-                        color: Color(0xFF7BF2B0), shape: BoxShape.circle),
+          for (final m in _lastAssistantBlock)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: RichText(
+                textAlign: TextAlign.center,
+                text: TextSpan(
+                  style: const TextStyle(
+                    fontSize: 22,
+                    height: 1.35,
+                    fontWeight: FontWeight.w300,
+                    letterSpacing: -0.2,
+                    color: AppTheme.textPrimary,
                   ),
-                  const SizedBox(width: 5),
-                  const Flexible(
-                    child: Text('Su asistente para crear la tienda',
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(color: Colors.white, fontSize: 12)),
-                  ),
-                ]),
-              ],
+                  children: parseVendiTags(m.text),
+                ),
+              ),
             ),
-          ),
+          if (_ctrl.busy)
+            const Padding(
+              padding: EdgeInsets.only(top: 6),
+              child: _TypingDots(key: Key('vendi_typing')),
+            ),
+          if (_ctrl.proposalGrid.isNotEmpty && !_ctrl.busy) _proposal(),
         ],
       ),
     );
   }
 
-  Widget _chatList() {
-    final items = <Widget>[
-      for (final m in _ctrl.messages) _bubble(m),
-      if (_ctrl.busy) _typingBubble(),
-      if (_ctrl.proposalGrid.isNotEmpty && !_ctrl.busy) _proposalCard(),
-    ];
-    return ListView(
-      controller: _scrollCtrl,
-      padding: const EdgeInsets.fromLTRB(12, 16, 12, 8),
-      children: items,
-    );
-  }
-
-  Widget _bubble(VendiMessage m) {
-    final isUser = m.role == VendiRole.user;
-    return Align(
-      alignment: isUser ? Alignment.centerRight : Alignment.centerLeft,
-      child: Container(
-        margin: const EdgeInsets.only(bottom: 10),
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-        constraints: const BoxConstraints(maxWidth: 290),
-        decoration: BoxDecoration(
-          color: isUser ? AppTheme.primary : Colors.white,
-          borderRadius: BorderRadius.only(
-            topLeft: const Radius.circular(16),
-            topRight: const Radius.circular(16),
-            bottomLeft: Radius.circular(isUser ? 16 : 6),
-            bottomRight: Radius.circular(isUser ? 6 : 16),
-          ),
-          border: isUser ? null : Border.all(color: const Color(0xFFDCE8F0)),
-        ),
-        child: RichText(
-          text: TextSpan(
-            style: TextStyle(
-              fontSize: 15,
-              height: 1.4,
-              color: isUser ? Colors.white : const Color(0xFF16303F),
-            ),
-            children: parseVendiTags(m.text),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _typingBubble() {
-    return Align(
-      alignment: Alignment.centerLeft,
-      child: Container(
-        key: const Key('vendi_typing'),
-        margin: const EdgeInsets.only(bottom: 10),
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: const Color(0xFFDCE8F0)),
-        ),
-        child: const _TypingDots(),
-      ),
-    );
-  }
-
-  Widget _proposalCard() {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 10),
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFFBFE4F2)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+  Widget _proposal() {
+    return Padding(
+      padding: const EdgeInsets.only(top: 10),
+      child: Wrap(
+        spacing: 8,
+        runSpacing: 8,
+        alignment: WrapAlignment.center,
         children: [
-          const Text('Así quedaría su tienda:',
-              style: TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w700,
-                  color: AppTheme.textSecondary)),
-          const SizedBox(height: 10),
-          Wrap(
-            spacing: 6,
-            runSpacing: 6,
-            children: [
-              for (final m in _ctrl.proposalGrid) _moduleChip(m, false),
-              for (final m in _ctrl.proposalReel) _moduleChip('✨ $m', true),
-            ],
-          ),
+          for (final m in _ctrl.proposalGrid) _moduleChip(m, false),
+          for (final m in _ctrl.proposalReel) _moduleChip('✨ $m', true),
         ],
       ),
     );
@@ -261,48 +219,42 @@ class _VendiChatScreenState extends State<VendiChatScreen> {
 
   Widget _moduleChip(String label, bool reel) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
       decoration: BoxDecoration(
-        color: reel ? const Color(0xFFFDF3E7) : const Color(0xFFEAF6FB),
         borderRadius: BorderRadius.circular(999),
         border: Border.all(
-            color: reel ? const Color(0xFFF0D9B8) : const Color(0xFFBFE4F2)),
+          color: reel ? const Color(0xFFF0D9B8) : const Color(0xFFBFE4F2),
+        ),
       ),
-      child: Text(label,
-          style: TextStyle(
-            fontSize: 12,
-            fontWeight: FontWeight.w700,
-            color: reel ? const Color(0xFF9A5E14) : const Color(0xFF0B5D8F),
-          )),
+      child: Text(
+        label,
+        style: TextStyle(
+          fontSize: 13,
+          fontWeight: FontWeight.w600,
+          color: reel ? const Color(0xFF9A5E14) : const Color(0xFF0B5D8F),
+        ),
+      ),
     );
   }
 
-  Widget _fallbackBanner() {
-    return Container(
-      width: double.infinity,
-      color: AppTheme.warning.withValues(alpha: 0.10),
-      padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
+  Widget _fallbackCta() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(28, 0, 28, 6),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           const Text(
             'La IA no está disponible en este momento.',
-            style: TextStyle(fontSize: 14, color: AppTheme.textPrimary),
+            textAlign: TextAlign.center,
+            style: TextStyle(fontSize: 14, color: AppTheme.textSecondary),
           ),
-          const SizedBox(height: 8),
-          SizedBox(
-            height: 48,
-            child: OutlinedButton(
-              key: const Key('vendi_fallback_cta'),
-              onPressed: _goFallback,
-              style: OutlinedButton.styleFrom(
-                foregroundColor: AppTheme.primary,
-                side: const BorderSide(color: AppTheme.primary, width: 1.5),
-                shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(14)),
-              ),
-              child: const Text('Escoger yo mismo los tipos de mi negocio',
-                  style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
+          TextButton(
+            key: const Key('vendi_fallback_cta'),
+            onPressed: _goFallback,
+            style: TextButton.styleFrom(foregroundColor: AppTheme.primary),
+            child: const Text(
+              'Escoger yo mismo los tipos de mi negocio',
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
             ),
           ),
         ],
@@ -312,29 +264,27 @@ class _VendiChatScreenState extends State<VendiChatScreen> {
 
   Widget _chipsRow() {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(12, 0, 12, 6),
+      padding: const EdgeInsets.fromLTRB(20, 0, 20, 4),
       child: Wrap(
-        spacing: 8,
-        runSpacing: 8,
+        spacing: 6,
+        runSpacing: 4,
+        alignment: WrapAlignment.center,
         children: [
           for (final chip in _ctrl.chips)
-            OutlinedButton(
+            TextButton(
               key: Key('vendi_chip_${chip.id}'),
-              onPressed: _ctrl.busy
-                  ? null
-                  : () => _ctrl.tapChip(chip.id, chip.label),
-              style: OutlinedButton.styleFrom(
-                foregroundColor: const Color(0xFF0B5D8F),
-                backgroundColor: Colors.white,
-                side: const BorderSide(color: Color(0xFF1490C4), width: 1.5),
+              onPressed:
+                  _ctrl.busy ? null : () => _ctrl.tapChip(chip.id, chip.label),
+              style: TextButton.styleFrom(
+                foregroundColor: AppTheme.primary,
                 padding:
-                    const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(999)),
+                    const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
               ),
-              child: Text(chip.label,
-                  style: const TextStyle(
-                      fontSize: 14, fontWeight: FontWeight.w700)),
+              child: Text(
+                chip.label,
+                style:
+                    const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+              ),
             ),
         ],
       ),
@@ -342,12 +292,8 @@ class _VendiChatScreenState extends State<VendiChatScreen> {
   }
 
   Widget _inputBar() {
-    return Container(
-      padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
-      decoration: const BoxDecoration(
-        color: Colors.white,
-        border: Border(top: BorderSide(color: Color(0xFFE0EAF1))),
-      ),
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(28, 0, 12, 8),
       child: Row(
         children: [
           Expanded(
@@ -355,49 +301,31 @@ class _VendiChatScreenState extends State<VendiChatScreen> {
               key: const Key('vendi_input'),
               controller: _inputCtrl,
               enabled: !_ctrl.done,
+              autofocus: false,
+              textAlign: TextAlign.center,
               textInputAction: TextInputAction.send,
               onSubmitted: (_) => _send(),
-              style: const TextStyle(fontSize: 15),
-              decoration: InputDecoration(
+              cursorColor: AppTheme.primary,
+              cursorWidth: 1.6,
+              style: const TextStyle(fontSize: 18, color: AppTheme.textPrimary),
+              decoration: const InputDecoration(
+                border: InputBorder.none,
+                enabledBorder: InputBorder.none,
+                focusedBorder: InputBorder.none,
+                filled: false,
                 hintText: 'Escriba su respuesta…',
-                hintStyle: const TextStyle(color: Color(0xFF8AA2B2)),
-                filled: true,
-                fillColor: const Color(0xFFF7FAFC),
-                contentPadding:
-                    const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(999),
-                  borderSide: const BorderSide(color: Color(0xFFC9DAE6)),
-                ),
-                enabledBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(999),
-                  borderSide:
-                      const BorderSide(color: Color(0xFFC9DAE6), width: 1.5),
-                ),
+                hintStyle: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w300,
+                    color: AppTheme.textSecondary),
               ),
             ),
           ),
-          const SizedBox(width: 8),
-          SizedBox(
-            width: 48,
-            height: 48,
-            child: Material(
-              color: Colors.transparent,
-              child: Ink(
-                decoration: const BoxDecoration(
-                  shape: BoxShape.circle,
-                  gradient: LinearGradient(
-                      colors: [AppTheme.primary, AppTheme.accent]),
-                ),
-                child: InkWell(
-                  key: const Key('vendi_send'),
-                  customBorder: const CircleBorder(),
-                  onTap: _ctrl.busy || _ctrl.done ? null : _send,
-                  child: const Icon(Icons.send_rounded,
-                      color: Colors.white, size: 22),
-                ),
-              ),
-            ),
+          IconButton(
+            key: const Key('vendi_send'),
+            onPressed: _ctrl.busy || _ctrl.done ? null : _send,
+            color: AppTheme.primary,
+            icon: const Icon(Icons.send_rounded, size: 24),
           ),
         ],
       ),
@@ -405,60 +333,9 @@ class _VendiChatScreenState extends State<VendiChatScreen> {
   }
 }
 
-/// Avatar de Vendi: círculo con gradiente de marca y carita sonriente
-/// (identidad aprobada del prototipo del fundador).
-class VendiAvatar extends StatelessWidget {
-  const VendiAvatar({super.key, this.size = 44});
-
-  final double size;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: size,
-      height: size,
-      decoration: const BoxDecoration(
-        shape: BoxShape.circle,
-        gradient: RadialGradient(
-          center: Alignment(-0.4, -0.5),
-          radius: 1.2,
-          colors: [Color(0xFF8FE9FB), AppTheme.accent, AppTheme.primary],
-        ),
-      ),
-      child: CustomPaint(painter: _VendiFacePainter()),
-    );
-  }
-}
-
-class _VendiFacePainter extends CustomPainter {
-  @override
-  void paint(Canvas canvas, Size size) {
-    final w = size.width;
-    final h = size.height;
-    final eye = Paint()..color = Colors.white;
-    final pupil = Paint()..color = const Color(0xFF0E3A57);
-    canvas.drawCircle(Offset(w * 0.36, h * 0.42), w * 0.075, eye);
-    canvas.drawCircle(Offset(w * 0.64, h * 0.42), w * 0.075, eye);
-    canvas.drawCircle(Offset(w * 0.375, h * 0.435), w * 0.032, pupil);
-    canvas.drawCircle(Offset(w * 0.655, h * 0.435), w * 0.032, pupil);
-    final smile = Paint()
-      ..color = Colors.white
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = w * 0.06
-      ..strokeCap = StrokeCap.round;
-    final path = Path()
-      ..moveTo(w * 0.34, h * 0.62)
-      ..quadraticBezierTo(w * 0.5, h * 0.74, w * 0.66, h * 0.62);
-    canvas.drawPath(path, smile);
-  }
-
-  @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
-}
-
-/// Tres puntos animados del indicador "escribiendo".
+/// Tres puntos animados del indicador "pensando/escribiendo".
 class _TypingDots extends StatefulWidget {
-  const _TypingDots();
+  const _TypingDots({super.key});
 
   @override
   State<_TypingDots> createState() => _TypingDotsState();
@@ -476,7 +353,11 @@ class _TypingDotsState extends State<_TypingDots>
     _c = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 1200),
-    )..repeat();
+    );
+    final reduce =
+        WidgetsBinding.instance.platformDispatcher.accessibilityFeatures
+            .disableAnimations;
+    if (!reduce) _c.repeat();
   }
 
   @override
@@ -494,7 +375,8 @@ class _TypingDotsState extends State<_TypingDots>
           mainAxisSize: MainAxisSize.min,
           children: List.generate(3, (i) {
             final phase = (_c.value - i * 0.18) % 1.0;
-            final opacity = phase < 0.4 ? 0.35 + phase * 1.6 : 1.0 - (phase - 0.4);
+            final opacity =
+                phase < 0.4 ? 0.35 + phase * 1.6 : 1.0 - (phase - 0.4);
             return Container(
               margin: const EdgeInsets.symmetric(horizontal: 2.5),
               width: 7,
@@ -525,7 +407,7 @@ List<TextSpan> parseVendiTags(String text) {
     spans.add(TextSpan(
       text: m.group(2),
       style: m.group(1) == 'b'
-          ? const TextStyle(fontWeight: FontWeight.w800)
+          ? const TextStyle(fontWeight: FontWeight.w600)
           : const TextStyle(fontStyle: FontStyle.italic),
     ));
     cursor = m.end;
