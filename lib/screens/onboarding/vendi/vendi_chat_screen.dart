@@ -40,6 +40,7 @@ class _VendiChatScreenState extends State<VendiChatScreen> {
   late final VendiChatController _ctrl;
   late final ApiService _api = ApiService(AuthService());
   final _inputCtrl = TextEditingController();
+  final _inputFocus = FocusNode();
   bool _navigated = false;
   bool _typing = false;
 
@@ -63,6 +64,11 @@ class _VendiChatScreenState extends State<VendiChatScreen> {
   void _onChange() {
     if (!mounted) return;
     setState(() {});
+    // El cursor parpadeando ES la invitación a escribir (OS1): al terminar
+    // cada turno sin chips, el foco vuelve solo al campo.
+    if (!_ctrl.busy && !_ctrl.done && _ctrl.chips.isEmpty) {
+      _inputFocus.requestFocus();
+    }
     if (_ctrl.done && !_navigated) {
       _navigated = true;
       // Breve pausa para que se lea el cierre (y el corazón) antes de salir.
@@ -77,6 +83,7 @@ class _VendiChatScreenState extends State<VendiChatScreen> {
     _ctrl.removeListener(_onChange);
     if (widget.controllerOverride == null) _ctrl.dispose();
     _inputCtrl.dispose();
+    _inputFocus.dispose();
     super.dispose();
   }
 
@@ -304,24 +311,22 @@ class _VendiChatScreenState extends State<VendiChatScreen> {
             child: TextField(
               key: const Key('vendi_input'),
               controller: _inputCtrl,
+              focusNode: _inputFocus,
               enabled: !_ctrl.done,
-              autofocus: false,
+              autofocus: true,
               textAlign: TextAlign.center,
               textInputAction: TextInputAction.send,
               onSubmitted: (_) => _send(),
               cursorColor: AppTheme.primary,
               cursorWidth: 1.6,
               style: const TextStyle(fontSize: 18, color: AppTheme.textPrimary),
+              // OS1: sin placeholder — el cursor azul parpadeando (autofocus)
+              // señala dónde escribir, como en el prototipo aprobado.
               decoration: const InputDecoration(
                 border: InputBorder.none,
                 enabledBorder: InputBorder.none,
                 focusedBorder: InputBorder.none,
                 filled: false,
-                hintText: 'Escriba su respuesta…',
-                hintStyle: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w300,
-                    color: AppTheme.textSecondary),
               ),
             ),
           ),

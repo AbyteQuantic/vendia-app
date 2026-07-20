@@ -282,11 +282,16 @@ class _VendiShapes {
       const Offset(-.34, .30), const Offset(-.34, .10),
     ];
 
+    // Tienda: techo plano + toldo que sobresale + PUERTA (la muesca central
+    // es lo que la hace leerse como tienda y no como camiseta).
     const store = <Offset>[
-      Offset(-.62, -.70), Offset(-.62, .10), Offset(-.86, .18), Offset(-.86, .34),
-      Offset(-.52, .58), Offset(0, .74), Offset(.52, .58),
-      Offset(.86, .34), Offset(.86, .18), Offset(.62, .10), Offset(.62, -.70),
-      Offset(.30, -.70), Offset(0, -.70), Offset(-.30, -.70),
+      Offset(-.78, .60), Offset(.78, .60),   // techo
+      Offset(.90, .30), Offset(.62, .30),    // toldo derecho
+      Offset(.62, -.70),                     // pared derecha
+      Offset(.18, -.70), Offset(.18, -.24),  // puerta (lado derecho)
+      Offset(-.18, -.24), Offset(-.18, -.70),// puerta (lado izquierdo)
+      Offset(-.62, -.70),                    // base izquierda
+      Offset(-.62, .30), Offset(-.90, .30),  // pared + toldo izquierdo
     ];
 
     final heart = List<Offset>.generate(_kN, (i) {
