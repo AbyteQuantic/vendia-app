@@ -1940,6 +1940,21 @@ class ApiService {
     }
   }
 
+  // Spec: specs/107-dashboard-v2-resumen/spec.md
+  /// La ÚNICA llamada del inicio v2 (FR-01). Lanza AppError si falla —
+  /// el HomeSummaryService decide caer al caché.
+  Future<Map<String, dynamic>> fetchDashboardSummary() async {
+    try {
+      final response = await _dio.get(
+        '/api/v1/dashboard/summary',
+        options: Options(receiveTimeout: const Duration(seconds: 20)),
+      );
+      return Map<String, dynamic>.from(_extractData(response));
+    } on DioException catch (e) {
+      throw AppError.fromDioException(e);
+    }
+  }
+
   // Spec: specs/106-onboarding-conversacional-agente/spec.md
   /// Avanza un turno de la conversación de onboarding con Vendi
   /// (POST /api/v1/onboarding/agent/turn, autenticado). Sin [sessionId]
@@ -1952,6 +1967,7 @@ class ApiService {
     String? sessionId,
     String? text,
     String? chip,
+    String? kind,
   }) async {
     try {
       final response = await _dio.post(
@@ -1960,6 +1976,7 @@ class ApiService {
           if (sessionId != null && sessionId.isNotEmpty) 'session_id': sessionId,
           if (text != null && text.isNotEmpty) 'text': text,
           if (chip != null && chip.isNotEmpty) 'chip': chip,
+          if (kind != null && kind.isNotEmpty) 'kind': kind,
         },
         options: Options(receiveTimeout: const Duration(seconds: 50)),
       );

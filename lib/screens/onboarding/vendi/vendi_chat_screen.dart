@@ -21,7 +21,15 @@ class VendiChatScreen extends StatefulWidget {
     required this.onCompleted,
     this.controllerOverride,
     this.onFallback,
+    this.kind = 'onboarding',
+    this.onNavigateRoute,
   });
+
+  /// Spec 107 — 'assist' abre el modo asistente del botón central.
+  final String kind;
+
+  /// Callback de la acción navigate del assist (FR-08b).
+  final void Function(String route)? onNavigateRoute;
 
   /// Se invoca cuando la tienda quedó configurada (ir al Dashboard).
   final VoidCallback onCompleted;
@@ -49,8 +57,9 @@ class _VendiChatScreenState extends State<VendiChatScreen> {
     super.initState();
     _ctrl = widget.controllerOverride ??
         VendiChatController(
-          turnCall: ({sessionId, text, chip}) =>
-              _api.agentTurn(sessionId: sessionId, text: text, chip: chip),
+          kind: widget.kind,
+          turnCall: ({sessionId, text, chip, kind}) => _api.agentTurn(
+              sessionId: sessionId, text: text, chip: chip, kind: kind),
           confirmCall: (sessionId) => _api.agentConfirm(sessionId),
         );
     _ctrl.addListener(_onChange);
@@ -69,7 +78,20 @@ class _VendiChatScreenState extends State<VendiChatScreen> {
     if (!_ctrl.busy && !_ctrl.done && _ctrl.chips.isEmpty) {
       _inputFocus.requestFocus();
     }
-    if (_ctrl.done && !_navigated) {
+    // Spec 107 — acción navigate ejecutada desde el chat: salir y navegar.
+    final ar = _ctrl.actionResult;
+    if (ar != null && ar['ok'] == true && ar['entity'] == 'route' &&
+        widget.onNavigateRoute != null && !_navigated) {
+      _navigated = true;
+      final route = (ar['route'] ?? '').toString();
+      Future.delayed(const Duration(milliseconds: 700), () {
+        if (!mounted) return;
+        Navigator.of(context).maybePop();
+        widget.onNavigateRoute!(route);
+      });
+      return;
+    }
+    if (widget.kind == 'onboarding' && _ctrl.done && !_navigated) {
       _navigated = true;
       // Breve pausa para que se lea el cierre (y el corazón) antes de salir.
       Future.delayed(const Duration(milliseconds: 1600), () {
@@ -111,6 +133,11 @@ class _VendiChatScreenState extends State<VendiChatScreen> {
   /// propuesta, corazón al terminar, y la palomilla — la identidad de Vendi —
   /// mientras conversa e interpreta.
   VendiOrbShape get _orbShape {
+    if (widget.kind == 'assist') {
+      final ar = _ctrl.actionResult;
+      if (ar != null && ar['ok'] == true) return VendiOrbShape.heart;
+      return VendiOrbShape.palomilla;
+    }
     if (_ctrl.done) return VendiOrbShape.heart;
     switch (_ctrl.phase) {
       case 'ask_name':

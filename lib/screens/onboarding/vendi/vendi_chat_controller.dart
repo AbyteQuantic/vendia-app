@@ -12,6 +12,7 @@ typedef VendiTurnCall = Future<Map<String, dynamic>> Function({
   String? sessionId,
   String? text,
   String? chip,
+  String? kind,
 });
 typedef VendiConfirmCall = Future<Map<String, dynamic>> Function(
     String sessionId);
@@ -47,10 +48,17 @@ class VendiChatController extends ChangeNotifier {
     required VendiTurnCall turnCall,
     required VendiConfirmCall confirmCall,
     this.persist = true,
+    this.kind = 'onboarding',
   })  : _turnCall = turnCall,
         _confirmCall = confirmCall;
 
+  /// 'onboarding' (Spec 106) | 'assist' (Spec 107, botón central).
+  final String kind;
+
   static const prefsKey = 'vendia:vendi:session';
+
+  String get _prefsKeyForKind =>
+      kind == 'onboarding' ? prefsKey : '$prefsKey:$kind';
 
   final VendiTurnCall _turnCall;
   final VendiConfirmCall _confirmCall;
@@ -71,13 +79,17 @@ class VendiChatController extends ChangeNotifier {
   bool offerFallback = false;
   bool done = false;
 
+  /// Spec 107 — resultado de la última acción assist ejecutada
+  /// ({ok, entity, id, route, say}); null si el turno no ejecutó nada.
+  Map<String, dynamic>? actionResult;
+
   /// Primer contacto o reanudación: manda un turno vacío. El backend saluda
   /// (sesión nueva) o re-emite la pregunta pendiente (sesión activa).
   Future<void> start() async {
     if (persist) {
       try {
         final prefs = await SharedPreferences.getInstance();
-        sessionId = prefs.getString(prefsKey);
+        sessionId = prefs.getString(_prefsKeyForKind);
       } catch (_) {}
     }
     await _runTurn();
@@ -144,7 +156,8 @@ class VendiChatController extends ChangeNotifier {
     chips = const [];
     notifyListeners();
     try {
-      final res = await _turnCall(sessionId: sessionId, text: text, chip: chip);
+      final res =
+          await _turnCall(sessionId: sessionId, text: text, chip: chip, kind: kind);
       _apply(res);
     } finally {
       busy = false;
@@ -153,6 +166,9 @@ class VendiChatController extends ChangeNotifier {
   }
 
   void _apply(Map<String, dynamic> res) {
+    actionResult = (res['action_result'] is Map)
+        ? Map<String, dynamic>.from(res['action_result'] as Map)
+        : null;
     if (res['degraded'] == true) {
       degraded = true;
       offerFallback = res['offer_fallback'] == true || offerFallback;
@@ -213,7 +229,7 @@ class VendiChatController extends ChangeNotifier {
   void _persistSession(String sid) {
     if (!persist) return;
     SharedPreferences.getInstance()
-        .then((p) => p.setString(prefsKey, sid))
+        .then((p) => p.setString(_prefsKeyForKind, sid))
         .catchError((_) => true);
   }
 
@@ -221,7 +237,7 @@ class VendiChatController extends ChangeNotifier {
     if (!persist) return;
     try {
       final prefs = await SharedPreferences.getInstance();
-      await prefs.remove(prefsKey);
+      await prefs.remove(_prefsKeyForKind);
     } catch (_) {}
   }
 }
