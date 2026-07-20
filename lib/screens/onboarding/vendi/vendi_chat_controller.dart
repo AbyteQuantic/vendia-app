@@ -73,6 +73,9 @@ class VendiChatController extends ChangeNotifier {
 
   String? sessionId;
   String phase = '';
+
+  /// Follow-up en curso (Adenda A): matiza la forma/gesto del orbe.
+  String pendingKey = '';
   bool age18 = false;
   bool busy = false;
   bool degraded = false;
@@ -181,6 +184,7 @@ class VendiChatController extends ChangeNotifier {
       _persistSession(sid);
     }
     phase = (res['phase'] as String?) ?? phase;
+    pendingKey = (res['pending_key'] as String?) ?? '';
     done = res['done'] == true;
     offerFallback = res['offer_fallback'] == true;
 

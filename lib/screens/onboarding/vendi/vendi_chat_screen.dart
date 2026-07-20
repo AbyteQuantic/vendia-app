@@ -130,8 +130,8 @@ class _VendiChatScreenState extends State<VendiChatScreen> {
   }
 
   /// El símbolo acompaña la fase: tienda cuando se habla del negocio o de la
-  /// propuesta, corazón al terminar, y la palomilla — la identidad de Vendi —
-  /// mientras conversa e interpreta.
+  /// propuesta, formas temáticas por follow-up, corazón al terminar, y la
+  /// palomilla — la identidad de Vendi — mientras conversa e interpreta.
   VendiOrbShape get _orbShape {
     if (widget.kind == 'assist') {
       final ar = _ctrl.actionResult;
@@ -143,9 +143,30 @@ class _VendiChatScreenState extends State<VendiChatScreen> {
       case 'ask_name':
       case 'propose':
         return VendiOrbShape.store;
+      case 'follow_ups':
+        switch (_ctrl.pendingKey) {
+          case 'mesas':
+            return VendiOrbShape.store;
+          case 'equipo':
+            return VendiOrbShape.user;
+          default:
+            return VendiOrbShape.palomilla;
+        }
       default:
         return VendiOrbShape.palomilla;
     }
+  }
+
+  /// Mood del orbe (Adenda A): un gesto a la vez, derivado del estado real.
+  VendiOrbMood get _orbMood {
+    if (widget.kind == 'assist') {
+      final ar = _ctrl.actionResult;
+      if (ar != null && ar['ok'] == true) return VendiOrbMood.settled;
+    }
+    if (_ctrl.done) return VendiOrbMood.settled;
+    if (_ctrl.busy || _typing) return VendiOrbMood.thinking;
+    if (_ctrl.proposalGrid.isNotEmpty) return VendiOrbMood.explaining;
+    return VendiOrbMood.asking;
   }
 
   /// Bloque final de mensajes del asistente (el "diálogo" OS1: lo último que
@@ -183,7 +204,7 @@ class _VendiChatScreenState extends State<VendiChatScreen> {
                 key: const Key('vendi_avatar'),
                 shape: _orbShape,
                 size: 150,
-                listening: _ctrl.busy || _typing,
+                mood: _orbMood,
               ),
               const Text(
                 'Vendi',
@@ -196,16 +217,28 @@ class _VendiChatScreenState extends State<VendiChatScreen> {
               ),
               // OS1: el campo fluye JUSTO debajo del diálogo (como en el
               // registro), no pegado al borde inferior de la pantalla.
+              // El ShaderMask desvanece el texto al llegar al borde superior
+              // del scroll — nunca una línea cortada al ras (AC-A5).
               Expanded(
-                child: SingleChildScrollView(
-                  padding: const EdgeInsets.fromLTRB(28, 18, 28, 12),
-                  child: Column(
-                    children: [
-                      _dialogue(),
-                      if (_ctrl.offerFallback) _fallbackCta(),
-                      if (_ctrl.chips.isNotEmpty) _chipsRow(),
-                      if (!_ctrl.done && _ctrl.chips.isEmpty) _inputBar(),
-                    ],
+                child: ShaderMask(
+                  key: const Key('vendi_dialogue_fade'),
+                  shaderCallback: (rect) => const LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [Colors.transparent, Colors.white],
+                    stops: [0, .06],
+                  ).createShader(rect),
+                  blendMode: BlendMode.dstIn,
+                  child: SingleChildScrollView(
+                    padding: const EdgeInsets.fromLTRB(28, 18, 28, 12),
+                    child: Column(
+                      children: [
+                        _dialogue(),
+                        if (_ctrl.offerFallback) _fallbackCta(),
+                        if (_ctrl.chips.isNotEmpty) _chipsRow(),
+                        if (!_ctrl.done && _ctrl.chips.isEmpty) _inputBar(),
+                      ],
+                    ),
                   ),
                 ),
               ),

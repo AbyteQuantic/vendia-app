@@ -20,6 +20,15 @@ import '../../../theme/app_theme.dart';
 
 enum VendiOrbShape { palomilla, user, phone, lock, store, heart }
 
+/// Estado anímico del orbe (Adenda A): un solo gesto a la vez.
+/// - [asking]: inclinación sutil sostenida + pulso de invitación cada ~5 s.
+/// - [thinking]: el destello del contorno acelera y la respiración se contrae.
+/// - [explaining]: un barrido único del destello + asentimiento hacia el
+///   contenido, una sola vez por mensaje.
+/// - [settled]: pulso único de cierre y el destello se apaga (quietud = listo).
+/// Con reduce-motion la FORMA porta el estado y los gestos se omiten.
+enum VendiOrbMood { idle, asking, thinking, explaining, settled }
+
 const int _kN = 160;
 const double _kTau = math.pi * 2;
 
@@ -28,14 +37,12 @@ class VendiOrb extends StatefulWidget {
     super.key,
     required this.shape,
     this.size = 200,
-    this.listening = false,
+    this.mood = VendiOrbMood.idle,
   });
 
   final VendiOrbShape shape;
   final double size;
-
-  /// Ondula más fuerte mientras el tendero escribe/habla.
-  final bool listening;
+  final VendiOrbMood mood;
 
   @override
   State<VendiOrb> createState() => _VendiOrbState();
@@ -49,8 +56,25 @@ class _VendiOrbState extends State<VendiOrb> with TickerProviderStateMixin {
     duration: const Duration(milliseconds: 1100),
   );
 
+  // Fundido entre parámetros del mood anterior y el actual (alpha/velocidad
+  // del destello, centro de respiración, inclinación).
+  late final AnimationController _moodCtrl = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 450),
+    value: 1,
+  );
+
   Ticker? _life;
   final ValueNotifier<double> _t = ValueNotifier(0); // segundos de vida
+  // Fase acumulada del destello viajero: acumular (dt / vuelta) en vez de
+  // derivarla del reloj mantiene la posición continua cuando la velocidad
+  // cambia entre moods (sin saltos visibles).
+  final ValueNotifier<double> _glowPhase = ValueNotifier(0);
+  double _lastLifeT = 0;
+
+  VendiOrbMood _prevMood = VendiOrbMood.idle;
+  double _moodStartT = 0; // _t.value al entrar al mood (gestos one-shot)
+  double _phaseAtMood = 0; // fase del destello al entrar (barrido único)
 
   late List<Offset> _from;
   late List<Offset> _to;
@@ -61,6 +85,19 @@ class _VendiOrbState extends State<VendiOrb> with TickerProviderStateMixin {
     _from = List.of(_VendiShapes.of(widget.shape));
     _to = List.of(_from);
     _morph.value = 1;
+    _prevMood = widget.mood;
+  }
+
+  double _glowLapSeconds() {
+    switch (widget.mood) {
+      case VendiOrbMood.thinking:
+        return 2.2; // se concentra
+      case VendiOrbMood.explaining:
+        // Barrido de presentación: UNA vuelta rápida y vuelve al reposo.
+        return (_glowPhase.value - _phaseAtMood) < 1.0 ? 1.4 : 6.0;
+      default:
+        return 6.0;
+    }
   }
 
   @override
@@ -69,7 +106,10 @@ class _VendiOrbState extends State<VendiOrb> with TickerProviderStateMixin {
     final reduce = MediaQuery.maybeOf(context)?.disableAnimations ?? false;
     if (!reduce && _life == null) {
       _life = createTicker((elapsed) {
-        _t.value = elapsed.inMicroseconds / 1e6;
+        final t = elapsed.inMicroseconds / 1e6;
+        _glowPhase.value += (t - _lastLifeT) / _glowLapSeconds();
+        _lastLifeT = t;
+        _t.value = t;
       })..start();
     }
   }
@@ -81,6 +121,18 @@ class _VendiOrbState extends State<VendiOrb> with TickerProviderStateMixin {
       _from = _currentPoints();
       _to = _VendiShapes.aligned(_from, _VendiShapes.of(widget.shape));
       _morph.forward(from: 0);
+    }
+    if (old.mood != widget.mood) {
+      _prevMood = old.mood;
+      _moodStartT = _t.value;
+      _phaseAtMood = _glowPhase.value;
+      // Entrada al gesto de pregunta más pausada; el cierre se asienta lento.
+      _moodCtrl.duration = switch (widget.mood) {
+        VendiOrbMood.asking => const Duration(milliseconds: 700),
+        VendiOrbMood.settled => const Duration(milliseconds: 800),
+        _ => const Duration(milliseconds: 450),
+      };
+      _moodCtrl.forward(from: 0);
     }
   }
 
@@ -97,7 +149,9 @@ class _VendiOrbState extends State<VendiOrb> with TickerProviderStateMixin {
   void dispose() {
     _life?.dispose();
     _morph.dispose();
+    _moodCtrl.dispose();
     _t.dispose();
+    _glowPhase.dispose();
     super.dispose();
   }
 
@@ -111,9 +165,13 @@ class _VendiOrbState extends State<VendiOrb> with TickerProviderStateMixin {
           to: _to,
           morph: _morph,
           time: _t,
+          glowPhase: _glowPhase,
           isIcon: widget.shape != VendiOrbShape.palomilla,
-          listening: widget.listening,
-          repaint: Listenable.merge([_morph, _t]),
+          mood: widget.mood,
+          prevMood: _prevMood,
+          moodAnim: _moodCtrl,
+          moodStartT: _moodStartT,
+          repaint: Listenable.merge([_morph, _t, _moodCtrl]),
         ),
       ),
     );
@@ -126,8 +184,12 @@ class _OrbPainter extends CustomPainter {
     required this.to,
     required this.morph,
     required this.time,
+    required this.glowPhase,
     required this.isIcon,
-    required this.listening,
+    required this.mood,
+    required this.prevMood,
+    required this.moodAnim,
+    required this.moodStartT,
     required super.repaint,
   });
 
@@ -135,8 +197,24 @@ class _OrbPainter extends CustomPainter {
   final List<Offset> to;
   final Animation<double> morph;
   final ValueNotifier<double> time;
+  final ValueNotifier<double> glowPhase;
   final bool isIcon;
-  final bool listening;
+  final VendiOrbMood mood;
+  final VendiOrbMood prevMood;
+  final Animation<double> moodAnim;
+  final double moodStartT;
+
+  // Parámetros por mood; el painter funde prev→actual con moodAnim.
+  static double _glowAlphaFor(VendiOrbMood m) => switch (m) {
+        VendiOrbMood.thinking => .70,
+        VendiOrbMood.settled => .15,
+        _ => .55,
+      };
+
+  static double _breatheCenterFor(VendiOrbMood m) =>
+      m == VendiOrbMood.thinking ? -.03 : 0;
+
+  static double _tiltFor(VendiOrbMood m) => m == VendiOrbMood.asking ? 1 : 0;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -144,19 +222,57 @@ class _OrbPainter extends CustomPainter {
     final r = math.min(size.width, size.height) * .40;
     final k = Curves.easeInOutCubic.transform(morph.value);
     final now = time.value;
+    // moodT: segundos dentro del mood actual (0 fijo con reduce-motion —
+    // los gestos one-shot y pulsos se quedan quietos, la forma comunica).
+    final moodT = math.max(0.0, now - moodStartT);
+    final blend = Curves.easeInOutSine.transform(moodAnim.value);
+    double mix(double a, double b) => a + (b - a) * blend;
 
     // Vida: la palomilla respira amplio; los íconos definidos apenas laten.
     final amp = isIcon ? .007 : .016;
-    final settled = morph.isCompleted || morph.value == 1;
-    final breathe = amp * 1.6 * math.sin(now / 1.05);
-    final wobAmp = (settled ? amp : 0) + (listening ? .03 : 0);
+    final settledMorph = morph.isCompleted || morph.value == 1;
+    final center =
+        mix(_breatheCenterFor(prevMood), _breatheCenterFor(mood));
+    final breathe = center + amp * 1.6 * math.sin(now / 1.05);
+    final wobAmp =
+        (settledMorph ? amp : 0) + (mood == VendiOrbMood.thinking ? .015 : 0);
+
+    // Gestos one-shot (un solo canal de señal a la vez, Adenda A):
+    // pregunta = pulso de invitación; cierre = pulso único de asentamiento.
+    var extraScale = 0.0;
+    if (mood == VendiOrbMood.asking && moodT > 0) {
+      final tp = moodT % 5.0;
+      if (tp < 1.2) extraScale += .02 * math.sin(math.pi * tp / 1.2);
+    }
+    if (mood == VendiOrbMood.settled && moodT > 0 && moodT < .9) {
+      extraScale += .05 * math.sin(math.pi * moodT / .9);
+    }
+    // Explicar = asentimiento hacia el contenido (baja 6dp y regresa).
+    var nod = 0.0;
+    if (mood == VendiOrbMood.explaining && moodT > 0) {
+      if (moodT < .6) {
+        nod = 6 * Curves.easeOutCubic.transform(moodT / .6);
+      } else if (moodT < 1.2) {
+        nod = 6 * (1 - Curves.easeInOut.transform((moodT - .6) / .6));
+      }
+    }
+    // Pregunta = leve inclinación de cabeza sostenida mientras espera.
+    final tilt = mix(_tiltFor(prevMood), _tiltFor(mood)) * 2.5 * math.pi / 180;
+
+    canvas.save();
+    canvas.translate(cx, cy + nod);
+    if (tilt != 0) canvas.rotate(tilt);
+    canvas.translate(-cx, -cy);
 
     // Ondulación de BAJA frecuencia: 2 ondas suaves recorren el contorno.
     final p = List<Offset>.generate(_kN, (j) {
       final a = from[j], b = to[j];
       final x = a.dx + (b.dx - a.dx) * k;
       final y = a.dy + (b.dy - a.dy) * k;
-      final s = 1 + breathe + wobAmp * math.sin(now / 1.1 + (j / _kN) * _kTau * 2);
+      final s = 1 +
+          breathe +
+          extraScale +
+          wobAmp * math.sin(now / 1.1 + (j / _kN) * _kTau * 2);
       // y matemática (arriba positivo) → canvas (abajo positivo)
       return Offset(cx + x * s * r, cy - y * s * r);
     }, growable: false);
@@ -200,10 +316,11 @@ class _OrbPainter extends CustomPainter {
     canvas.drawPath(path, line);
 
     // Pasada 3 — destello viajero: un tramo (~20%) del contorno brilla y
-    // recorre la forma lenta y suavemente (~6s por vuelta) — la señal de
-    // que Vendi está "pensando"/viva incluso cuando el trazo reposa.
+    // recorre la forma — la señal de que Vendi está viva. La velocidad y el
+    // brillo los gobierna el mood (pensar acelera; el cierre lo apaga).
+    final glowAlpha = mix(_glowAlphaFor(prevMood), _glowAlphaFor(mood));
     final glowLen = (_kN * .20).round();
-    final start = ((now / 6.0) % 1.0 * _kN).floor();
+    final start = (glowPhase.value % 1.0 * _kN).floor();
     final glowPath = Path();
     for (var i = 0; i <= glowLen; i++) {
       final pt = p[(start + i) % _kN];
@@ -214,13 +331,17 @@ class _OrbPainter extends CustomPainter {
       ..strokeWidth = 2.6
       ..strokeJoin = StrokeJoin.round
       ..strokeCap = StrokeCap.round
-      ..color = AppTheme.accent.withValues(alpha: .55);
+      ..color = AppTheme.accent.withValues(alpha: glowAlpha);
     canvas.drawPath(glowPath, glow);
+    canvas.restore();
   }
 
   @override
   bool shouldRepaint(covariant _OrbPainter old) =>
-      old.from != from || old.to != to || old.listening != listening;
+      old.from != from ||
+      old.to != to ||
+      old.mood != mood ||
+      old.prevMood != prevMood;
 }
 
 // ── Formas: anclas limpias → re-muestreo por arco (idéntico al prototipo) ───
