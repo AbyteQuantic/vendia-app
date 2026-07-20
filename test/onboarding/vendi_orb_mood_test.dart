@@ -129,15 +129,18 @@ void main() {
     await tester.pump(const Duration(seconds: 2));
   });
 
-  testWidgets('follow-up mesas → forma temática store (Adenda A)',
+  testWidgets('follow-up mesas → forma temática mesa + beat avanza (Adenda A)',
       (tester) async {
     final c = _controller();
     await _pump(tester, c);
     await tester.pumpAndSettle();
+    final beat0 = _orb(tester).beat;
     await tester.enterText(find.byKey(const Key('vendi_input')), 'Mi tienda');
     await tester.tap(find.byKey(const Key('vendi_send')));
     await tester.pumpAndSettle();
-    expect(_orb(tester).shape, VendiOrbShape.store);
+    expect(_orb(tester).shape, VendiOrbShape.mesa);
+    expect(_orb(tester).beat, greaterThan(beat0),
+        reason: 'cada mensaje nuevo puntúa con un latido');
   });
 
   testWidgets('el diálogo tiene desvanecido superior (AC-A5)', (tester) async {

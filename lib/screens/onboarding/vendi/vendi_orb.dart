@@ -18,7 +18,20 @@ import 'package:flutter/scheduler.dart';
 
 import '../../../theme/app_theme.dart';
 
-enum VendiOrbShape { palomilla, user, phone, lock, store, heart }
+enum VendiOrbShape {
+  palomilla,
+  user,
+  phone,
+  lock,
+  store,
+  heart,
+  // Formas por follow-up (Adenda A: el símbolo se transforma con cada
+  // pregunta — feedback fundador "sigue muy estático").
+  mesa,
+  casa,
+  cuaderno,
+  costal,
+}
 
 /// Estado anímico del orbe (Adenda A): un solo gesto a la vez.
 /// - [asking]: inclinación sutil sostenida + pulso de invitación cada ~5 s.
@@ -43,11 +56,16 @@ class VendiOrb extends StatefulWidget {
     required this.shape,
     this.size = 200,
     this.mood = VendiOrbMood.idle,
+    this.beat = 0,
   });
 
   final VendiOrbShape shape;
   final double size;
   final VendiOrbMood mood;
+
+  /// Latido por mensaje: cada vez que cambia, el orbe puntúa con un barrido
+  /// rápido del destello + un pulso corto — aunque la forma no cambie.
+  final int beat;
 
   @override
   State<VendiOrb> createState() => _VendiOrbState();
@@ -93,7 +111,14 @@ class _VendiOrbState extends State<VendiOrb> with TickerProviderStateMixin {
     _prevMood = widget.mood;
   }
 
+  double _phaseAtBeat = 0;
+  double _beatStartT = 0;
+
   double _glowLapSeconds() {
+    // Barrido de puntuación por mensaje nuevo: una vuelta rápida.
+    if ((_glowPhase.value - _phaseAtBeat) < 1.0 && _beatStartT > 0) {
+      return 1.4;
+    }
     switch (widget.mood) {
       case VendiOrbMood.thinking:
         return 2.2; // se concentra
@@ -115,7 +140,8 @@ class _VendiOrbState extends State<VendiOrb> with TickerProviderStateMixin {
         _glowPhase.value += (t - _lastLifeT) / _glowLapSeconds();
         _lastLifeT = t;
         _t.value = t;
-      })..start();
+      })
+        ..start();
     }
   }
 
@@ -126,6 +152,10 @@ class _VendiOrbState extends State<VendiOrb> with TickerProviderStateMixin {
       _from = _currentPoints();
       _to = _VendiShapes.aligned(_from, _VendiShapes.of(widget.shape));
       _morph.forward(from: 0);
+    }
+    if (old.beat != widget.beat) {
+      _beatStartT = _t.value;
+      _phaseAtBeat = _glowPhase.value;
     }
     if (old.mood != widget.mood) {
       _prevMood = old.mood;
@@ -176,6 +206,7 @@ class _VendiOrbState extends State<VendiOrb> with TickerProviderStateMixin {
           prevMood: _prevMood,
           moodAnim: _moodCtrl,
           moodStartT: _moodStartT,
+          beatStartT: _beatStartT,
           repaint: Listenable.merge([_morph, _t, _moodCtrl]),
         ),
       ),
@@ -195,6 +226,7 @@ class _OrbPainter extends CustomPainter {
     required this.prevMood,
     required this.moodAnim,
     required this.moodStartT,
+    required this.beatStartT,
     required super.repaint,
   });
 
@@ -208,6 +240,7 @@ class _OrbPainter extends CustomPainter {
   final VendiOrbMood prevMood;
   final Animation<double> moodAnim;
   final double moodStartT;
+  final double beatStartT;
 
   // Parámetros por mood; el painter funde prev→actual con moodAnim.
   static double _glowAlphaFor(VendiOrbMood m) => switch (m) {
@@ -220,6 +253,10 @@ class _OrbPainter extends CustomPainter {
       m == VendiOrbMood.thinking ? -.03 : 0;
 
   static double _tiltFor(VendiOrbMood m) => m == VendiOrbMood.asking ? 1 : 0;
+
+  // Piensa = el destello "escanea" un tramo más largo del contorno.
+  static double _glowFracFor(VendiOrbMood m) =>
+      m == VendiOrbMood.thinking ? .32 : .20;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -236,16 +273,14 @@ class _OrbPainter extends CustomPainter {
     // Vida: la palomilla respira amplio; los íconos definidos apenas laten.
     final amp = isIcon ? .007 : .016;
     final settledMorph = morph.isCompleted || morph.value == 1;
-    final center =
-        mix(_breatheCenterFor(prevMood), _breatheCenterFor(mood));
+    final center = mix(_breatheCenterFor(prevMood), _breatheCenterFor(mood));
     final breathe = center + amp * 1.6 * math.sin(now / 1.05);
     // Los ÍCONOS no ondulan el contorno (deformaba la silueta — feedback
     // fundador): su vida es la respiración uniforme + el destello. Solo la
     // palomilla, que es abstracta, ondula.
     final wobAmp = isIcon
         ? 0.0
-        : (settledMorph ? amp : 0) +
-            (mood == VendiOrbMood.thinking ? .015 : 0);
+        : (settledMorph ? amp : 0) + (mood == VendiOrbMood.thinking ? .015 : 0);
 
     // Gestos one-shot (un solo canal de señal a la vez, Adenda A):
     // pregunta = pulso de invitación; cierre = pulso único de asentamiento.
@@ -256,6 +291,11 @@ class _OrbPainter extends CustomPainter {
     }
     if (mood == VendiOrbMood.settled && moodT > 0 && moodT < .9) {
       extraScale += .05 * math.sin(math.pi * moodT / .9);
+    }
+    // Latido por mensaje nuevo: pulso corto aunque la forma no cambie.
+    final beatT = now - beatStartT;
+    if (beatStartT > 0 && beatT > 0 && beatT < .7) {
+      extraScale += .03 * math.sin(math.pi * beatT / .7);
     }
     // Explicar = asentimiento hacia el contenido (baja 6dp y regresa).
     var nod = 0.0;
@@ -289,7 +329,8 @@ class _OrbPainter extends CustomPainter {
 
     // Curva CERRADA y SUAVE: cuadráticas entre puntos medios (sin facetas).
     final path = Path();
-    Offset mid(Offset a, Offset b) => Offset((a.dx + b.dx) / 2, (a.dy + b.dy) / 2);
+    Offset mid(Offset a, Offset b) =>
+        Offset((a.dx + b.dx) / 2, (a.dy + b.dy) / 2);
     var m = mid(p[_kN - 1], p[0]);
     path.moveTo(m.dx, m.dy);
     for (var j = 0; j < _kN; j++) {
@@ -303,7 +344,8 @@ class _OrbPainter extends CustomPainter {
       end: Alignment.bottomRight,
       colors: [AppTheme.accent, AppTheme.primary],
     );
-    final shader = gradient.createShader(Rect.fromCircle(center: Offset(cx, cy), radius: r));
+    final shader = gradient
+        .createShader(Rect.fromCircle(center: Offset(cx, cy), radius: r));
 
     // Pasada 1 — halo sutil (ancho, casi transparente, sin blur pesado).
     final halo = Paint()
@@ -329,7 +371,8 @@ class _OrbPainter extends CustomPainter {
     // recorre la forma — la señal de que Vendi está viva. La velocidad y el
     // brillo los gobierna el mood (pensar acelera; el cierre lo apaga).
     final glowAlpha = mix(_glowAlphaFor(prevMood), _glowAlphaFor(mood));
-    final glowLen = (_kN * .20).round();
+    final glowLen =
+        (_kN * mix(_glowFracFor(prevMood), _glowFracFor(mood))).round();
     final start = (glowPhase.value % 1.0 * _kN).floor();
     final glowPath = Path();
     for (var i = 0; i <= glowLen; i++) {
@@ -361,8 +404,8 @@ class _VendiShapes {
   static List<Offset> of(VendiOrbShape s) => _cache[s]!;
 
   static Map<VendiOrbShape, List<Offset>> _build() {
-    List<Offset> arc(double cx, double cy, double r, double a0deg,
-        double a1deg, int steps) {
+    List<Offset> arc(
+        double cx, double cy, double r, double a0deg, double a1deg, int steps) {
       final a0 = a0deg * math.pi / 180, a1 = a1deg * math.pi / 180;
       return List.generate(steps + 1, (i) {
         final a = a0 + (a1 - a0) * (i / steps);
@@ -374,12 +417,12 @@ class _VendiShapes {
     // Contorno cerrado con grosor (silueta del check); las esquinas se
     // redondean solas por el suavizado de curvas del painter.
     const palomilla = <Offset>[
-      Offset(-.60, .26),  // tope del brazo corto
+      Offset(-.60, .26), // tope del brazo corto
       Offset(-.16, -.16), // codo interior
-      Offset(.58, .64),   // subida del brazo largo
-      Offset(.84, .40),   // punta exterior
+      Offset(.58, .64), // subida del brazo largo
+      Offset(.84, .40), // punta exterior
       Offset(-.17, -.62), // codo exterior (vértice del chulo)
-      Offset(-.84, .02),  // punta del brazo corto
+      Offset(-.84, .02), // punta del brazo corto
     ];
 
     // Silueta de usuario ANALÍTICA (feedback fundador 2026-07-20: "sigue muy
@@ -390,8 +433,14 @@ class _VendiShapes {
       return List.generate(steps + 1, (i) {
         final t = i / steps, u = 1 - t;
         return Offset(
-          u * u * u * p0.dx + 3 * u * u * t * p1.dx + 3 * u * t * t * p2.dx + t * t * t * p3.dx,
-          u * u * u * p0.dy + 3 * u * u * t * p1.dy + 3 * u * t * t * p2.dy + t * t * t * p3.dy,
+          u * u * u * p0.dx +
+              3 * u * u * t * p1.dx +
+              3 * u * t * t * p2.dx +
+              t * t * t * p3.dx,
+          u * u * u * p0.dy +
+              3 * u * u * t * p1.dy +
+              3 * u * t * t * p2.dy +
+              t * t * t * p3.dy,
         );
       });
     }
@@ -434,13 +483,49 @@ class _VendiShapes {
     // Tienda: techo plano + toldo que sobresale + PUERTA (la muesca central
     // es lo que la hace leerse como tienda y no como camiseta).
     const store = <Offset>[
-      Offset(-.78, .60), Offset(.78, .60),   // techo
-      Offset(.90, .30), Offset(.62, .30),    // toldo derecho
-      Offset(.62, -.70),                     // pared derecha
-      Offset(.18, -.70), Offset(.18, -.24),  // puerta (lado derecho)
-      Offset(-.18, -.24), Offset(-.18, -.70),// puerta (lado izquierdo)
-      Offset(-.62, -.70),                    // base izquierda
-      Offset(-.62, .30), Offset(-.90, .30),  // pared + toldo izquierdo
+      Offset(-.78, .60), Offset(.78, .60), // techo
+      Offset(.90, .30), Offset(.62, .30), // toldo derecho
+      Offset(.62, -.70), // pared derecha
+      Offset(.18, -.70), Offset(.18, -.24), // puerta (lado derecho)
+      Offset(-.18, -.24), Offset(-.18, -.70), // puerta (lado izquierdo)
+      Offset(-.62, -.70), // base izquierda
+      Offset(-.62, .30), Offset(-.90, .30), // pared + toldo izquierdo
+    ];
+
+    // Formas por follow-up (Adenda A) — verificadas con render del pipeline
+    // antes de embarcar (scratchpad/orbshape.py).
+    // mesa: tablero + dos patas (muesca inferior central).
+    const mesa = <Offset>[
+      Offset(-.85, .30), Offset(.85, .30), Offset(.85, .06), Offset(.55, .06),
+      Offset(.55, -.60), Offset(.30, -.60), Offset(.30, .06), Offset(-.30, .06),
+      Offset(-.30, -.60), Offset(-.55, -.60), Offset(-.55, .06),
+      Offset(-.85, .06),
+    ];
+
+    // casa: techo triangular + paredes + puerta.
+    const casa = <Offset>[
+      Offset(0, .80), Offset(.75, .25), Offset(.55, .25), Offset(.55, -.60),
+      Offset(.18, -.60), Offset(.18, -.15), Offset(-.18, -.15),
+      Offset(-.18, -.60), Offset(-.55, -.60), Offset(-.55, .25),
+      Offset(-.75, .25),
+    ];
+
+    // cuaderno: libreta con argollas arriba — el cuaderno de fiados.
+    final cuaderno = <Offset>[
+      const Offset(-.62, .48),
+      for (var i = 0; i < 4; i++) ...arc(-.45 + i * .30, .48, .10, 180, 0, 10),
+      const Offset(.62, .48), const Offset(.62, -.62), const Offset(-.62, -.62),
+    ];
+
+    // costal: saco amarrado — tela anudada + hombros caídos + base ancha.
+    final costal = <Offset>[
+      const Offset(-.26, .52), const Offset(-.14, .66), const Offset(0, .58),
+      const Offset(.14, .66), const Offset(.26, .52), const Offset(.14, .38),
+      ...bez(const Offset(.14, .38), const Offset(.60, .24),
+          const Offset(.70, -.34), const Offset(.40, -.60), 20),
+      const Offset(0, -.64),
+      ...bez(const Offset(-.40, -.60), const Offset(-.70, -.34),
+          const Offset(-.60, .24), const Offset(-.14, .38), 20),
     ];
 
     final heart = List<Offset>.generate(_kN, (i) {
@@ -465,6 +550,10 @@ class _VendiShapes {
       VendiOrbShape.lock: _resample(lock),
       VendiOrbShape.store: _resample(store),
       VendiOrbShape.heart: _resample(heart),
+      VendiOrbShape.mesa: _resample(mesa, passes: 1),
+      VendiOrbShape.casa: _resample(casa, passes: 1),
+      VendiOrbShape.cuaderno: _resample(cuaderno, passes: 1),
+      VendiOrbShape.costal: _resample(costal, passes: 1),
     };
   }
 
@@ -493,7 +582,8 @@ class _VendiShapes {
         i++;
       }
       final a = ord[i % ord.length], b = ord[(i + 1) % ord.length];
-      final t = (d - lens[i]) / ((lens[i + 1] - lens[i]) == 0 ? 1 : (lens[i + 1] - lens[i]));
+      final t = (d - lens[i]) /
+          ((lens[i + 1] - lens[i]) == 0 ? 1 : (lens[i + 1] - lens[i]));
       return Offset(a.dx + (b.dx - a.dx) * t, a.dy + (b.dy - a.dy) * t);
     }, growable: false);
     // Suavizado gaussiano circular (2 pasadas, ventana 5): redondea TODAS

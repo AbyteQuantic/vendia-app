@@ -148,9 +148,16 @@ class _VendiChatScreenState extends State<VendiChatScreen> {
       case 'propose':
         return VendiOrbShape.store;
       case 'follow_ups':
+        // Cada pregunta tiene su símbolo (Adenda A).
         switch (_ctrl.pendingKey) {
           case 'mesas':
-            return VendiOrbShape.store;
+            return VendiOrbShape.mesa;
+          case 'domicilios':
+            return VendiOrbShape.casa;
+          case 'fiado':
+            return VendiOrbShape.cuaderno;
+          case 'granel':
+            return VendiOrbShape.costal;
           case 'equipo':
             return VendiOrbShape.user;
           default:
@@ -247,6 +254,11 @@ class _VendiChatScreenState extends State<VendiChatScreen> {
                 shape: _orbShape,
                 size: 150,
                 mood: _orbMood,
+                // Latido: cada mensaje nuevo de Vendi puntúa con un barrido,
+                // aunque el símbolo se repita (feedback "sigue muy estático").
+                beat: _ctrl.messages
+                    .where((m) => m.role == VendiRole.assistant)
+                    .length,
               ),
               const Text(
                 'Vendi',
