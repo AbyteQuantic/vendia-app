@@ -130,6 +130,9 @@ class _VendiChatScreenState extends State<VendiChatScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFFF7FBFD),
+      // Sin re-inset del body (panel blanco sobre el contenido al abrir el
+      // teclado); el input se despeja solo con su padding por viewInsets.
+      resizeToAvoidBottomInset: false,
       body: DecoratedBox(
         decoration: const BoxDecoration(
           gradient: LinearGradient(
@@ -293,7 +296,8 @@ class _VendiChatScreenState extends State<VendiChatScreen> {
 
   Widget _inputBar() {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(28, 0, 12, 8),
+      padding: EdgeInsets.fromLTRB(
+          28, 0, 12, 8 + MediaQuery.of(context).viewInsets.bottom),
       child: Row(
         children: [
           Expanded(

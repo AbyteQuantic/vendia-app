@@ -198,6 +198,24 @@ class _OrbPainter extends CustomPainter {
       ..strokeCap = StrokeCap.round
       ..shader = shader;
     canvas.drawPath(path, line);
+
+    // Pasada 3 — destello viajero: un tramo (~20%) del contorno brilla y
+    // recorre la forma lenta y suavemente (~6s por vuelta) — la señal de
+    // que Vendi está "pensando"/viva incluso cuando el trazo reposa.
+    final glowLen = (_kN * .20).round();
+    final start = ((now / 6.0) % 1.0 * _kN).floor();
+    final glowPath = Path();
+    for (var i = 0; i <= glowLen; i++) {
+      final pt = p[(start + i) % _kN];
+      i == 0 ? glowPath.moveTo(pt.dx, pt.dy) : glowPath.lineTo(pt.dx, pt.dy);
+    }
+    final glow = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 2.6
+      ..strokeJoin = StrokeJoin.round
+      ..strokeCap = StrokeCap.round
+      ..color = AppTheme.accent.withValues(alpha: .55);
+    canvas.drawPath(glowPath, glow);
   }
 
   @override
@@ -221,11 +239,17 @@ class _VendiShapes {
       });
     }
 
-    final palomilla = List<Offset>.generate(_kN, (i) {
-      final a = i / _kN * _kTau;
-      final d = 1 + math.sin(a) * math.sin(a);
-      return Offset(.98 * math.cos(a) / d, .92 * math.sin(a) * math.cos(a) / d);
-    });
+    // La palomilla: el CHULO del OK — el mismo vector del logo de VendIA.
+    // Contorno cerrado con grosor (silueta del check); las esquinas se
+    // redondean solas por el suavizado de curvas del painter.
+    const palomilla = <Offset>[
+      Offset(-.60, .26),  // tope del brazo corto
+      Offset(-.16, -.16), // codo interior
+      Offset(.58, .64),   // subida del brazo largo
+      Offset(.84, .40),   // punta exterior
+      Offset(-.17, -.62), // codo exterior (vértice del chulo)
+      Offset(-.84, .02),  // punta del brazo corto
+    ];
 
     final user = <Offset>[
       ...arc(0, .34, .32, 245, -65, 48), // cabeza (gira por la cima)

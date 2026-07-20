@@ -518,6 +518,11 @@ class _OnboardingAgenticAnimatedViewState
 
     return Scaffold(
       backgroundColor: const Color(0xFFF7FBFD),
+      // El gradiente cubre SIEMPRE toda la pantalla: sin esto, al abrir el
+      // teclado el body se re-inseta y aparece un panel blanco que tapa el
+      // contenido (reporte del fundador 2026-07-20). El despeje del teclado
+      // lo hacen las consolas con su padding por viewInsets.
+      resizeToAvoidBottomInset: false,
       body: DecoratedBox(
         decoration: const BoxDecoration(
           gradient: LinearGradient(
