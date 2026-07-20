@@ -167,11 +167,21 @@ class _VendiChatScreenState extends State<VendiChatScreen> {
                   color: AppTheme.textSecondary,
                 ),
               ),
-              Expanded(child: _dialogue()),
-              if (_ctrl.offerFallback) _fallbackCta(),
-              if (_ctrl.chips.isNotEmpty) _chipsRow(),
-              if (!_ctrl.done) _inputBar(),
-              const SizedBox(height: 6),
+              // OS1: el campo fluye JUSTO debajo del diálogo (como en el
+              // registro), no pegado al borde inferior de la pantalla.
+              Expanded(
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.fromLTRB(28, 18, 28, 12),
+                  child: Column(
+                    children: [
+                      _dialogue(),
+                      if (_ctrl.offerFallback) _fallbackCta(),
+                      if (_ctrl.chips.isNotEmpty) _chipsRow(),
+                      if (!_ctrl.done && _ctrl.chips.isEmpty) _inputBar(),
+                    ],
+                  ),
+                ),
+              ),
             ],
           ),
         ),
@@ -180,9 +190,7 @@ class _VendiChatScreenState extends State<VendiChatScreen> {
   }
 
   Widget _dialogue() {
-    return SingleChildScrollView(
-      padding: const EdgeInsets.fromLTRB(28, 18, 28, 8),
-      child: Column(
+    return Column(
         children: [
           for (final m in _lastAssistantBlock)
             Padding(
@@ -208,7 +216,6 @@ class _VendiChatScreenState extends State<VendiChatScreen> {
             ),
           if (_ctrl.proposalGrid.isNotEmpty && !_ctrl.busy) _proposal(),
         ],
-      ),
     );
   }
 
@@ -303,7 +310,7 @@ class _VendiChatScreenState extends State<VendiChatScreen> {
 
   Widget _inputBar() {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(28, 0, 12, 8),
+      padding: const EdgeInsets.only(top: 14),
       child: Row(
         children: [
           Expanded(
