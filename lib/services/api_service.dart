@@ -1968,6 +1968,7 @@ class ApiService {
     String? text,
     String? chip,
     String? kind,
+    bool? restart,
   }) async {
     try {
       final response = await _dio.post(
@@ -1977,6 +1978,7 @@ class ApiService {
           if (text != null && text.isNotEmpty) 'text': text,
           if (chip != null && chip.isNotEmpty) 'chip': chip,
           if (kind != null && kind.isNotEmpty) 'kind': kind,
+          if (restart == true) 'restart': true,
         },
         options: Options(receiveTimeout: const Duration(seconds: 50)),
       );

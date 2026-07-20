@@ -13,7 +13,7 @@ VendiChatController _controller({
   var first = true;
   return VendiChatController(
     persist: false,
-    turnCall: ({sessionId, text, chip, kind}) async {
+    turnCall: ({sessionId, text, chip, kind, restart}) async {
       if (delay > Duration.zero) await Future<void>.delayed(delay);
       if (first) {
         first = false;

@@ -58,8 +58,12 @@ class _VendiChatScreenState extends State<VendiChatScreen> {
     _ctrl = widget.controllerOverride ??
         VendiChatController(
           kind: widget.kind,
-          turnCall: ({sessionId, text, chip, kind}) => _api.agentTurn(
-              sessionId: sessionId, text: text, chip: chip, kind: kind),
+          turnCall: ({sessionId, text, chip, kind, restart}) => _api.agentTurn(
+              sessionId: sessionId,
+              text: text,
+              chip: chip,
+              kind: kind,
+              restart: restart),
           confirmCall: (sessionId) => _api.agentConfirm(sessionId),
         );
     _ctrl.addListener(_onChange);
@@ -199,7 +203,45 @@ class _VendiChatScreenState extends State<VendiChatScreen> {
         body: SafeArea(
           child: Column(
             children: [
-              const SizedBox(height: 10),
+              // Nunca un callejón sin salida (Adenda A.3): regreso cuando el
+              // chat vino de otra pantalla + menú discreto de escape.
+              SizedBox(
+                height: 44,
+                child: Row(
+                  children: [
+                    if (Navigator.of(context).canPop())
+                      IconButton(
+                        key: const Key('vendi_back'),
+                        icon: const Icon(Icons.arrow_back_ios_new_rounded,
+                            size: 18, color: AppTheme.textSecondary),
+                        onPressed: () => Navigator.of(context).maybePop(),
+                      ),
+                    const Spacer(),
+                    PopupMenuButton<String>(
+                      key: const Key('vendi_menu'),
+                      icon: const Icon(Icons.more_horiz_rounded,
+                          color: AppTheme.textSecondary),
+                      onSelected: (v) {
+                        if (v == 'restart') _ctrl.restart();
+                        if (v == 'fallback') _goFallback();
+                      },
+                      itemBuilder: (_) => [
+                        const PopupMenuItem(
+                          key: Key('vendi_menu_restart'),
+                          value: 'restart',
+                          child: Text('Empezar de nuevo'),
+                        ),
+                        if (widget.kind != 'assist')
+                          const PopupMenuItem(
+                            key: Key('vendi_menu_fallback'),
+                            value: 'fallback',
+                            child: Text('Elegir los tipos yo mismo'),
+                          ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
               VendiOrb(
                 key: const Key('vendi_avatar'),
                 shape: _orbShape,

@@ -33,7 +33,7 @@ void main() {
   test('start emite el saludo y persiste el session_id (AC-11)', () async {
     String? sentSession;
     final c = VendiChatController(
-      turnCall: ({sessionId, text, chip, kind}) async {
+      turnCall: ({sessionId, text, chip, kind, restart}) async {
         sentSession = sessionId;
         return _turnOk();
       },
@@ -56,7 +56,7 @@ void main() {
         {VendiChatController.prefsKey: 's-guardada'});
     String? sentSession;
     final c = VendiChatController(
-      turnCall: ({sessionId, text, chip, kind}) async {
+      turnCall: ({sessionId, text, chip, kind, restart}) async {
         sentSession = sessionId;
         return _turnOk(sessionId: 's-guardada', phase: 'follow_ups');
       },
@@ -70,7 +70,7 @@ void main() {
 
   test('turno feliz actualiza mensajes, chips y perfil', () async {
     final c = VendiChatController(
-      turnCall: ({sessionId, text, chip, kind}) async {
+      turnCall: ({sessionId, text, chip, kind, restart}) async {
         if (text == null) return _turnOk();
         return {
           ..._turnOk(phase: 'confirm_types', say: ['Entendido: tienda y licores']),
@@ -103,7 +103,7 @@ void main() {
   test('degraded expone el fallback y no rompe (AC-10)', () async {
     var first = true;
     final c = VendiChatController(
-      turnCall: ({sessionId, text, chip, kind}) async {
+      turnCall: ({sessionId, text, chip, kind, restart}) async {
         if (first) {
           first = false;
           return _turnOk();
@@ -122,7 +122,7 @@ void main() {
   test('envío deshabilitado con turno en vuelo (doble-tap)', () async {
     var calls = 0;
     final c = VendiChatController(
-      turnCall: ({sessionId, text, chip, kind}) async {
+      turnCall: ({sessionId, text, chip, kind, restart}) async {
         calls++;
         await Future<void>.delayed(const Duration(milliseconds: 50));
         return _turnOk();
@@ -141,7 +141,7 @@ void main() {
   test('chip confirm llama al endpoint de confirmación y marca done', () async {
     var confirmed = '';
     final c = VendiChatController(
-      turnCall: ({sessionId, text, chip, kind}) async => _turnOk(phase: 'propose'),
+      turnCall: ({sessionId, text, chip, kind, restart}) async => _turnOk(phase: 'propose'),
       confirmCall: (sessionId) async {
         confirmed = sessionId;
         return {'onboarding_completed': true};
