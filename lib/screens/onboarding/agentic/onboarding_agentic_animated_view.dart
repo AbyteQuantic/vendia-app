@@ -76,6 +76,9 @@ class _OnboardingAgenticAnimatedViewState
   bool _parsing = false;
   bool _recording = false;
   bool _degraded = false;
+  // OS1: saludo de Vendi (palomilla) antes de la primera pregunta. Se salta
+  // automáticamente si hay datos restaurados de una sesión anterior.
+  bool _showGreeting = true;
   Timer? _persistTimer;
   bool _animReady = false;
 
@@ -449,7 +452,10 @@ class _OnboardingAgenticAnimatedViewState
 
   Future<void> _restore() async {
     if (!widget.persistOverride) {
-      setState(_recomputeTrailAndIndex);
+      setState(() {
+        _recomputeTrailAndIndex();
+        if (_hasAnyData) _showGreeting = false;
+      });
       return;
     }
     try {
@@ -486,6 +492,7 @@ class _OnboardingAgenticAnimatedViewState
     if (mounted) {
       setState(() {
         _recomputeTrailAndIndex();
+        if (_hasAnyData) _showGreeting = false;
       });
       if (_animReady) {
         _anim.reflect(
@@ -538,9 +545,13 @@ class _OnboardingAgenticAnimatedViewState
               ConstrainedBox(
                 constraints: BoxConstraints(
                     maxHeight: MediaQuery.of(context).size.height * 0.62),
-                child:
-                    _ctrl.canRegister ? _readyConsole() : _questionConsole(),
+                child: _showGreeting
+                    ? _greetingConsole()
+                    : (_ctrl.canRegister
+                        ? _readyConsole()
+                        : _questionConsole()),
               ),
+              _loaderDashes(),
             ],
           ),
         ),
@@ -552,6 +563,7 @@ class _OnboardingAgenticAnimatedViewState
   /// silueta al preguntar el nombre, teléfono, candado para la clave y la
   /// tienda cuando todo está listo para crear la cuenta.
   VendiOrbShape get _orbShape {
+    if (_showGreeting) return VendiOrbShape.palomilla;
     if (_ctrl.canRegister) return VendiOrbShape.store;
     switch (_question.id) {
       case 'owner':
@@ -567,8 +579,6 @@ class _OnboardingAgenticAnimatedViewState
 
   Widget _header() {
     final canBack = _trail.isNotEmpty;
-    final total = kOnboardingQuestions.length;
-    final step = (_qIndex + 1).clamp(1, total);
     return Container(
       height: 56,
       padding: const EdgeInsets.symmetric(horizontal: 8),
@@ -585,10 +595,8 @@ class _OnboardingAgenticAnimatedViewState
           else
             const SizedBox(width: 12),
           const Spacer(),
-          if (!_ctrl.canRegister)
-            Text('Paso $step de $total',
-                style: const TextStyle(
-                    fontSize: 13, color: AppTheme.textSecondary)),
+          // OS1: el progreso vive en los guiones del loader (abajo), no en
+          // un texto 'Paso X de Y'.
           if (_hasAnyData)
             IconButton(
               key: const Key('agentic_reset'),
@@ -614,6 +622,68 @@ class _OnboardingAgenticAnimatedViewState
           style: TextStyle(fontSize: 14, color: AppTheme.textPrimary),
         ),
       );
+
+  /// Saludo OS1: la palomilla se presenta antes de preguntar (prototipo v4).
+  Widget _greetingConsole() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(28, 4, 28, 26),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Text('Hola. Soy Vendi.',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                  fontSize: 26,
+                  fontWeight: FontWeight.w300,
+                  letterSpacing: -0.2,
+                  color: AppTheme.textPrimary)),
+          const SizedBox(height: 8),
+          const Text('Vamos a crear su tienda, solo conversando.',
+              textAlign: TextAlign.center,
+              style:
+                  TextStyle(fontSize: 15, color: AppTheme.textSecondary)),
+          const SizedBox(height: 14),
+          TextButton(
+            key: const Key('os1_empezar'),
+            onPressed: () => setState(() => _showGreeting = false),
+            style: TextButton.styleFrom(foregroundColor: AppTheme.primary),
+            child: const Text('Empezar',
+                style:
+                    TextStyle(fontSize: 17, fontWeight: FontWeight.w700)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Loader del póster: 3 guiones que se llenan con la gama de azules.
+  Widget _loaderDashes() {
+    final progress = _ctrl.canRegister
+        ? kOnboardingQuestions.length
+        : (_showGreeting ? 0 : firstUnansweredIndex(_ctrl, _answered));
+    const fills = [Color(0xFFA8DEF0), Color(0xFF22C3E6), AppTheme.primary];
+    return Padding(
+      key: const Key('os1_loader'),
+      padding: EdgeInsets.only(
+          top: 4, bottom: 12 + MediaQuery.of(context).viewInsets.bottom * 0),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          for (var i = 0; i < kOnboardingQuestions.length; i++)
+            AnimatedContainer(
+              duration: const Duration(milliseconds: 500),
+              margin: const EdgeInsets.symmetric(horizontal: 4),
+              width: 44,
+              height: 3,
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(99),
+                color: i < progress ? fills[i] : const Color(0xFFD5E6F0),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
 
   Widget _questionConsole() {
     return GlassChatConsoleWidget(

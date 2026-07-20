@@ -51,6 +51,15 @@ void _fillCanRegister(OnboardingStepperController c) {
   c.setLogoUrl('https://r2/logo.png');
 }
 
+Future<void> pasarSaludo(WidgetTester tester) async {
+  await tester.pump();
+  final empezar = find.byKey(const Key('os1_empezar'));
+  if (empezar.evaluate().isNotEmpty) {
+    await tester.tap(empezar);
+    await tester.pump();
+  }
+}
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   setUpAll(() =>
@@ -63,7 +72,7 @@ void main() {
 
     final c = _ctrl();
     await tester.pumpWidget(_wrap(c, _FakeApi(const {})));
-    await tester.pump();
+    await pasarSaludo(tester);
 
     expect(find.text('¿Cómo se llama usted?'), findsOneWidget);
     expect(find.byKey(const Key('console_ai_input')), findsOneWidget);
@@ -75,6 +84,7 @@ void main() {
 
   testWidgets('la IA llena varios campos y el agente SALTA a la pregunta de PIN',
       (tester) async {
+    // (el saludo OS1 se pasa tras el primer pump, ver pasarSaludo)
     await tester.binding.setSurfaceSize(const Size(360, 720));
     addTearDown(() => tester.binding.setSurfaceSize(null));
 
@@ -89,7 +99,7 @@ void main() {
       'degraded': false,
     });
     await tester.pumpWidget(_wrap(c, api));
-    await tester.pump();
+    await pasarSaludo(tester);
 
     await tester.enterText(find.byKey(const Key('console_ai_input')), 'soy María Gómez 3001234567');
     await tester.ensureVisible(find.byKey(const Key('console_send')));
@@ -197,7 +207,7 @@ void main() {
 
     expect(find.byKey(const Key('agentic_back')), findsOneWidget);
     expect(find.byKey(const Key('agentic_reset')), findsOneWidget);
-    expect(find.textContaining('Paso '), findsOneWidget);
+    expect(find.byKey(const Key('os1_loader')), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 

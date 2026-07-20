@@ -143,14 +143,14 @@ class _GlassChatConsoleWidgetState extends State<GlassChatConsoleWidget> {
           // Spec 106 (2026-07-19): UNA sola caja — el sistema separa
           // nombre/apellidos (setOwnerFullName); cero fricción (Art. I).
           return _textBody([
-            _field(_fullName, 'Nombre y apellidos', c.setOwnerFullName,
+            _field(_fullName, '', c.setOwnerFullName,
                 key: 'q_owner_name', cap: TextCapitalization.words,
                 autofocus: true),
           ]);
         }
         if (widget.question.id == 'phone') {
           return _textBody([
-            _field(_phone, 'Celular', c.setPhone,
+            _field(_phone, '', c.setPhone,
                 key: 'q_phone', keyboard: TextInputType.phone, autofocus: true),
           ]);
         }
@@ -163,7 +163,7 @@ class _GlassChatConsoleWidgetState extends State<GlassChatConsoleWidget> {
         ]);
       case QKind.pin:
         return _textBody([
-          _field(_pin, 'Clave (4 a 8 números)', c.setPin,
+          _field(_pin, 'Clave', c.setPin,
               key: 'q_pin', keyboard: TextInputType.number, obscure: true,
               max: 8, autofocus: true),
           _field(_pinConfirm, 'Repita la clave', c.setConfirmPin,
@@ -231,7 +231,8 @@ class _GlassChatConsoleWidgetState extends State<GlassChatConsoleWidget> {
           enabledBorder: InputBorder.none,
           focusedBorder: InputBorder.none,
           filled: false,
-          hintText: hint,
+          // OS1: sin placeholder — el cursor parpadeando ES la invitación.
+          hintText: hint.isEmpty ? null : hint,
           hintStyle: const TextStyle(
               fontSize: 18, fontWeight: FontWeight.w300, color: AppTheme.textSecondary),
         ),
@@ -241,13 +242,8 @@ class _GlassChatConsoleWidgetState extends State<GlassChatConsoleWidget> {
   }
 
   Widget _aiPill() {
-    return Container(
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(28),
-        border: Border.all(
-            color: const Color(0xFFD5E6F0), width: 1),
-      ),
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
       child: Row(
         children: [
           _circle(
@@ -263,12 +259,20 @@ class _GlassChatConsoleWidgetState extends State<GlassChatConsoleWidget> {
               controller: widget.inputController,
               minLines: 1,
               maxLines: 2,
+              textAlign: TextAlign.center,
+              cursorColor: AppTheme.primary,
               style: const TextStyle(fontSize: 15, color: AppTheme.textPrimary),
               decoration: const InputDecoration(
                 border: InputBorder.none,
+                enabledBorder: InputBorder.none,
+                focusedBorder: InputBorder.none,
+                filled: false,
                 isDense: true,
                 hintText: 'O cuénteme con sus palabras…',
-                hintStyle: TextStyle(fontSize: 14),
+                hintStyle: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w300,
+                    color: AppTheme.textSecondary),
               ),
               onSubmitted: (_) => widget.onSendAI(),
             ),
