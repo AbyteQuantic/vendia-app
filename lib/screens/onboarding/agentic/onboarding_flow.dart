@@ -47,7 +47,7 @@ const List<OnboardingQuestion> kOnboardingQuestions = [
   OnboardingQuestion(
     id: 'owner',
     prompt: '¿Cómo se llama usted?',
-    subtitle: 'Su nombre y apellido.',
+    subtitle: '',
     kind: QKind.text,
     stage: CanvasStage.datos,
     isResolved: _ownerResolved,

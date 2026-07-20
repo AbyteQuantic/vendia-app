@@ -146,7 +146,7 @@ class _OrbPainter extends CustomPainter {
     final now = time.value;
 
     // Vida: la palomilla respira amplio; los íconos definidos apenas laten.
-    final amp = isIcon ? .004 : .014;
+    final amp = isIcon ? .007 : .016;
     final settled = morph.isCompleted || morph.value == 1;
     final breathe = amp * 1.6 * math.sin(now / 1.05);
     final wobAmp = (settled ? amp : 0) + (listening ? .03 : 0);
