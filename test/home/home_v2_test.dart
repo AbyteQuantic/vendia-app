@@ -1,8 +1,11 @@
 // Spec: specs/107-dashboard-v2-resumen/spec.md
 import 'package:flutter/material.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'package:vendia_pos/screens/dashboard/business_profile_screen.dart';
+import 'package:vendia_pos/screens/dashboard/dashboard_screen.dart';
 import 'package:vendia_pos/screens/home/home_screen.dart';
 import 'package:vendia_pos/screens/home/home_widgets.dart';
 import 'package:vendia_pos/services/home_summary_service.dart';
@@ -33,6 +36,8 @@ Map<String, dynamic> _summaryJson({int sales = 486500, int online = 1}) => {
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+  setUpAll(
+      () => dotenv.testLoad(fileInput: 'API_BASE_URL=http://localhost:8080'));
   setUp(() => SharedPreferences.setMockInitialValues({}));
 
   group('HomeSummaryService (T-10, AC-10)', () {
@@ -164,5 +169,33 @@ void main() {
       await tester.pump(const Duration(milliseconds: 100));
       expect(find.byKey(const Key('home_cache_notice')), findsOneWidget);
     });
+
+    testWidgets(
+        '"Mi negocio" abre el perfil del negocio, no el Dashboard viejo',
+        (tester) async {
+      tester.view.physicalSize = const Size(360, 740);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+      final svc = HomeSummaryService(
+          persist: false, fetch: () async => _summaryJson());
+      await tester.pumpWidget(MaterialApp(
+        home: HomeScreenV2(
+          ownerName: 'C',
+          businessName: 'B',
+          summaryServiceOverride: svc,
+          capabilitiesOverride: const {},
+        ),
+      ));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+
+      await tester.tap(find.byKey(const Key('nav_negocio')));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+      expect(find.byType(BusinessProfileScreen), findsOneWidget);
+      expect(find.byType(DashboardScreen), findsNothing);
+    });
   });
 }
+
+

@@ -32,6 +32,7 @@ import '../pos/scan_screen.dart';
 import 'category_completion_screen.dart';
 import 'kardex_screen.dart';
 import 'negative_stock_screen.dart';
+import 'add_merchandise_screen.dart';
 import 'product_import_screen.dart';
 import 'product_save_flow.dart';
 import 'photo_completion_screen.dart';
@@ -832,22 +833,111 @@ class _ManageInventoryScreenState extends State<ManageInventoryScreen>
                         )
                       : _filtered.isEmpty
                           ? Center(
-                              child: Column(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  const Icon(Icons.inventory_2_outlined,
-                                      size: 56,
-                                      color: AppTheme.textSecondary),
-                                  const SizedBox(height: 12),
-                                  Text(
-                                    _searchCtrl.text.isNotEmpty
-                                        ? 'No se encontraron productos'
-                                        : 'Inventario vacío',
-                                    style: const TextStyle(
-                                        fontSize: 20,
+                              child: Padding(
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 32),
+                                child: Column(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    const Icon(Icons.inventory_2_outlined,
+                                        size: 56,
                                         color: AppTheme.textSecondary),
-                                  ),
-                                ],
+                                    const SizedBox(height: 12),
+                                    Text(
+                                      _searchCtrl.text.isNotEmpty
+                                          ? 'No se encontraron productos'
+                                          : 'Inventario vacío',
+                                      style: const TextStyle(
+                                          fontSize: 20,
+                                          color: AppTheme.textSecondary),
+                                    ),
+                                    // Vacío real (no una búsqueda sin
+                                    // resultados) → accionables de carga:
+                                    // nunca un callejón sin salida.
+                                    if (_searchCtrl.text.isEmpty) ...[
+                                      const SizedBox(height: 8),
+                                      const Text(
+                                        'Cargue sus productos como prefiera:',
+                                        textAlign: TextAlign.center,
+                                        style: TextStyle(
+                                            fontSize: 16,
+                                            color: AppTheme.textSecondary),
+                                      ),
+                                      const SizedBox(height: 20),
+                                      SizedBox(
+                                        width: double.infinity,
+                                        child: ElevatedButton.icon(
+                                          key: const Key(
+                                              'inventory_empty_add'),
+                                          style: ElevatedButton.styleFrom(
+                                            backgroundColor:
+                                                AppTheme.primary,
+                                            foregroundColor: Colors.white,
+                                            padding: const EdgeInsets
+                                                .symmetric(vertical: 16),
+                                            shape: RoundedRectangleBorder(
+                                              borderRadius:
+                                                  BorderRadius.circular(16),
+                                            ),
+                                          ),
+                                          icon: const Icon(
+                                              Icons
+                                                  .add_shopping_cart_rounded,
+                                              size: 24),
+                                          label: const Text(
+                                            'Agregar mercancía',
+                                            style:
+                                                TextStyle(fontSize: 18),
+                                          ),
+                                          onPressed: () async {
+                                            await Navigator.of(context)
+                                                .push(MaterialPageRoute(
+                                              builder: (_) =>
+                                                  const AddMerchandiseScreen(),
+                                            ));
+                                            _loadProducts();
+                                          },
+                                        ),
+                                      ),
+                                      const SizedBox(height: 12),
+                                      SizedBox(
+                                        width: double.infinity,
+                                        child: OutlinedButton.icon(
+                                          key: const Key(
+                                              'inventory_empty_import'),
+                                          style: OutlinedButton.styleFrom(
+                                            foregroundColor:
+                                                AppTheme.primary,
+                                            side: const BorderSide(
+                                                color: AppTheme.primary),
+                                            padding: const EdgeInsets
+                                                .symmetric(vertical: 16),
+                                            shape: RoundedRectangleBorder(
+                                              borderRadius:
+                                                  BorderRadius.circular(16),
+                                            ),
+                                          ),
+                                          icon: const Icon(
+                                              Icons.upload_file_rounded,
+                                              size: 24),
+                                          label: const Text(
+                                            'Importar desde archivo',
+                                            style:
+                                                TextStyle(fontSize: 18),
+                                          ),
+                                          onPressed: () async {
+                                            await Navigator.of(context)
+                                                .push(MaterialPageRoute(
+                                              builder: (_) =>
+                                                  const ProductImportScreen(),
+                                            ));
+                                            _loadProducts();
+                                          },
+                                        ),
+                                      ),
+                                    ],
+                                  ],
+                                ),
                               ),
                             )
                           : RefreshIndicator(

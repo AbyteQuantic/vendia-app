@@ -13,6 +13,7 @@ import '../../services/auth_service.dart';
 import '../../services/home_summary_service.dart';
 import '../../theme/app_theme.dart';
 import '../dashboard/dashboard_screen.dart';
+import '../dashboard/business_profile_screen.dart';
 import '../dashboard/financial_dashboard_screen.dart';
 import '../history/sales_history_screen.dart';
 import '../inventory/manage_inventory_screen.dart';
@@ -421,8 +422,11 @@ class _HomeScreenV2State extends State<HomeScreenV2> {
           const SizedBox(width: 72), // hueco del FAB
           item('nav_inventario', Icons.inventory_2_outlined, 'Inventario',
               () => _push(const ManageInventoryScreen())),
+          // "Mi negocio" = panel de configuración del negocio (perfil, logo,
+          // capacidades) — el Dashboard viejo ya tiene su entrada en
+          // "Todos los módulos ›" (feedback fundador: era redundante).
           item('nav_negocio', Icons.storefront_outlined, 'Mi negocio',
-              _openAllModules),
+              () => _push(const BusinessProfileScreen())),
         ],
       ),
     );
