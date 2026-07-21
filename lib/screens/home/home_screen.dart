@@ -142,7 +142,6 @@ class _HomeScreenV2State extends State<HomeScreenV2> {
           child: ListView(
             padding: EdgeInsets.zero,
             children: [
-              const TrialBar(),
               _hero(),
               const HeroTail(),
               Padding(
@@ -231,6 +230,9 @@ class _HomeScreenV2State extends State<HomeScreenV2> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // F009: la barra del trial vive DENTRO del héroe — su texto blanco
+          // necesita el fondo azul (sobre el fondo claro no se leía).
+          const TrialBar(),
           Row(
             children: [
               const Icon(Icons.storefront_outlined,
