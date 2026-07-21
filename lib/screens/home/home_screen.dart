@@ -11,6 +11,7 @@ import 'package:flutter/material.dart';
 import '../../services/api_service.dart';
 import '../../services/auth_service.dart';
 import '../../services/home_summary_service.dart';
+import '../../widgets/trial_bar.dart';
 import '../../theme/app_theme.dart';
 import '../dashboard/dashboard_screen.dart';
 import '../dashboard/business_profile_screen.dart';
@@ -18,6 +19,7 @@ import '../dashboard/financial_dashboard_screen.dart';
 import '../history/sales_history_screen.dart';
 import '../inventory/manage_inventory_screen.dart';
 import '../onboarding/vendi/vendi_chat_screen.dart';
+import '../online_store/catalog_online_hub_screen.dart';
 import '../pos/cuaderno_fiados_screen.dart';
 import '../pos/pos_screen.dart';
 import 'hero_carousel.dart';
@@ -121,6 +123,8 @@ class _HomeScreenV2State extends State<HomeScreenV2> {
       case 'ganancias':
       case 'reportes':
         _push(const FinancialDashboardScreen());
+      case 'catalogo':
+        _push(const CatalogOnlineHubScreen());
       default:
         _openAllModules();
     }
@@ -138,6 +142,7 @@ class _HomeScreenV2State extends State<HomeScreenV2> {
           child: ListView(
             padding: EdgeInsets.zero,
             children: [
+              const TrialBar(),
               _hero(),
               const HeroTail(),
               Padding(
@@ -312,7 +317,7 @@ class _HomeScreenV2State extends State<HomeScreenV2> {
           key: 'catalogo',
           label: 'Catálogo',
           icon: Icons.public_outlined,
-          onTap: _openAllModules),
+          onTap: () => _push(const CatalogOnlineHubScreen())),
       HeroCarouselItem(
           key: 'fiar',
           label: 'Fiar',
