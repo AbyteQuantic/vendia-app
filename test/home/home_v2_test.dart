@@ -7,6 +7,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:vendia_pos/screens/dashboard/business_profile_screen.dart';
 import 'package:vendia_pos/screens/dashboard/dashboard_screen.dart';
 import 'package:vendia_pos/screens/home/home_screen.dart';
+import 'package:vendia_pos/screens/online_store/catalog_online_hub_screen.dart';
+import 'package:vendia_pos/widgets/trial_bar.dart';
 import 'package:vendia_pos/screens/home/home_widgets.dart';
 import 'package:vendia_pos/services/home_summary_service.dart';
 
@@ -193,6 +195,37 @@ void main() {
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 400));
       expect(find.byType(BusinessProfileScreen), findsOneWidget);
+      expect(find.byType(DashboardScreen), findsNothing);
+    });
+
+    testWidgets(
+        'la barra de prueba está montada y "Catálogo" no abre el Dashboard viejo',
+        (tester) async {
+      tester.view.physicalSize = const Size(360, 740);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+      final svc = HomeSummaryService(
+          persist: false, fetch: () async => _summaryJson());
+      await tester.pumpWidget(MaterialApp(
+        home: HomeScreenV2(
+          ownerName: 'C',
+          businessName: 'B',
+          summaryServiceOverride: svc,
+          capabilitiesOverride: const {},
+        ),
+      ));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+
+      // F009: la TrialBar vive en el Home v2 (autónoma: ella decide si
+      // pintarse según el estado de suscripción).
+      expect(find.byType(TrialBar, skipOffstage: false), findsOneWidget);
+
+      await tester.tap(find.byKey(const Key('hero_item_catalogo')),
+          warnIfMissed: false);
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+      expect(find.byType(CatalogOnlineHubScreen), findsOneWidget);
       expect(find.byType(DashboardScreen), findsNothing);
     });
   });
